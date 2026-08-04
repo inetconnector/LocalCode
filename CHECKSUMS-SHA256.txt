@@ -1,0 +1,2 @@
+dist/LocalCodex.exe  04ec4f82d62e69ad6c866c3bad73bd8a44bc239dc521aac6824f58d0bf040f8e
+dist/LocalCodex-Debug.exe  e4a55216bf998cd76289a69231334717f088d1d84ef67bfa1ac0a5c0a16d31ee

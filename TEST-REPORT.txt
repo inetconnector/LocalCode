@@ -1,0 +1,47 @@
+LOCALCODEX 4.3.0 - TEST REPORT
+Date: 2026-08-04
+
+Successful automated checks in this package:
+- go fmt ./...
+- go test -count=1 ./...
+- go vet ./...
+- JavaScript syntax check of the embedded frontend with node --check
+- Windows amd64 GUI cross-build
+- Windows amd64 debug/console cross-build
+- PE32+ x86-64 structure check for both executables
+
+Regression tests covering the reported failures:
+- TestAgentContinuesAfterAskUserAnswer
+  A user answer such as "ja" continues the stored conversation and does not restart the task.
+- TestReadOnlyToolResultIsVisibleAsEvent
+  File reads, listings, searches and Git reads publish their real result as a UI event.
+- TestAskUserProducesOnlyOneVisibleQuestion
+  A question is not duplicated in the event stream.
+- TestSettingsEndpointAcceptsForwardCompatibleFieldsWhileAgentRuns
+  Settings accept unknown future fields, preserve omitted values and save while a run is active.
+- TestForceStopAlwaysReleasesUIState
+  A forced reset always restores an idle, usable interface and invalidates the old run.
+- TestControlAndOutputUIAreEmbedded
+  Header/composer cancel controls, phase display, output list and model timeout setting are embedded.
+- TestBackgroundWindowsCommandsUseNoWindowFlag
+  Background commands use the Windows no-window process flag instead of flashing a DOS window.
+- TestModelCallTimeoutReturnsControl
+  A blocked model call is stopped by the configured deadline and the interface is released.
+- TestStopAgentCancelsBlockedModelCall
+  The normal stop endpoint cancels a blocked model request promptly.
+
+Additional existing checks:
+- project root repair and project listing
+- file/image/general attachment validation and extraction
+- image analysis hand-off to the coding agent
+- README.md, AGENTS.md and managed STATE.md generation
+- Git/path/sandbox helpers
+- MCP stdio tools/list
+- settings round-trip
+- resizable-panel and settings UI wiring
+- Enter submission and general attachment inclusion
+
+Build-environment limitation:
+- The Windows executable was cross-compiled and structurally verified in Linux.
+- A final mouse-driven test on the user's exact Windows installation cannot be performed in this environment.
+- No claim is made that a real Windows desktop click-through was executed here.
