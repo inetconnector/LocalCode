@@ -41,7 +41,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file",
-			"discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "web_search", "web_fetch",
+			"project_info", "build_project", "deploy_android", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"finish", "ask_user",
 		}},
@@ -68,12 +68,13 @@ Arbeitsweise:
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
 - Halte Änderungen klein und kohärent. Nutze replace_text für eindeutige kleine Änderungen und write_file für neue oder vollständig neu geschriebene Dateien.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
-- Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle.
+- Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
 - MCP-Server können Tools, Ressourcen und Prompts bereitstellen. Liste zuerst Fähigkeiten, bevor du ein MCP-Tool aufrufst.
-- Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR.
+- Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Android SDK, Visual-Studio-Installationen, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR. Fehlt ein unterstütztes Werkzeug, bietet LocalCode dem Nutzer automatisch eine kontrollierte Installation an und wiederholt danach exakt den ursprünglichen Aufruf; frage dafür nicht zusätzlich mit ask_user.
 - Bevor du wegen eines Werkzeugfehlers den Nutzer fragst: Werkzeug entdecken, genaue Ausgabe auswerten, eine andere sichere Diagnose versuchen und bei unbekannter Bedienung offizielle Dokumentation mit web_search/web_fetch recherchieren. Wiederhole niemals denselben fehlgeschlagenen Befehl oder dieselbe Frage ohne neue Information.
-- Für Android bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
+- Nutze project_info für eine deterministische Erkennung des Buildsystems. Wenn der Nutzer kompilieren oder bauen verlangt, bevorzuge build_project statt einen geratenen Shell-Befehl. Für Android-Deployment auf ein verbundenes Gerät bevorzuge deploy_android; es baut zuerst, findet die APK, diagnostiziert ADB und installiert mit adb install -r.
+- Für einzelne Android-Diagnosen bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
@@ -84,6 +85,7 @@ Arbeitsweise:
 Werkzeuge:
 - list_files, read_file, search_text
 - replace_text, write_file, delete_file
+- project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - discover_tool(tool), tool_inventory, run_tool(tool,args)
 - run_command (komplexe Shell-Befehle, nicht-interaktiv), open_terminal (interaktiv sichtbar)
 - copy_path, move_path
@@ -122,12 +124,14 @@ func (s *AppState) StartAgent(userMessage, model string, attachments []Attachmen
 	}
 
 	continuation := s.Continuation
-	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0
-	if isContinuation {
+	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0 && likelyContinuationAnswer(continuation.Question, userMessage)
+	if continuation != nil {
+		// Consume a real answer, but discard a stale question when the user has
+		// clearly started a different task.
 		s.Continuation = nil
-		if continuation.Model != "" {
-			model = continuation.Model
-		}
+	}
+	if isContinuation && continuation.Model != "" {
+		model = continuation.Model
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -342,7 +346,8 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		language = "Deutsch"
 	}
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-STATUS:\n%s\n\nAUFGABE:\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitStatusSummary(project), userMessage, attachmentContext)}}
+	automationHint := taskAutomationHint(userMessage)
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-STATUS:\n%s\n\nAUFGABE:\n%s%s\n\n%s", filepath.Base(project), capabilityContext, instructions, tree, gitStatusSummary(project, cfg), userMessage, attachmentContext, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -410,6 +415,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		stepCtx, stepCancel := context.WithTimeout(ctx, modelTimeout)
 		action, usedModel, err := s.nextAgentAction(stepCtx, model, trimMessages(messages))
 		stepCancel()
+		s.mu.RLock()
+		fallbackTask := s.LastTask
+		s.mu.RUnlock()
+		action = normalizeAgentAction(action, fallbackTask)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 				s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -437,6 +446,13 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			s.AddEvent(UIEvent{Type: "warning", Message: "Wiederholte Rückfrage blockiert", Detail: "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren."})
 			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
 			continue
+		}
+		if action.Action == "ask_user" {
+			if blocked, hint := blockedAvoidanceQuestion(fallbackTask, action.Message); blocked {
+				s.AddEvent(UIEvent{Type: "warning", Message: "Unnötige Rückfrage blockiert", Detail: action.Message})
+				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + hint + " Fahre jetzt mit einer konkreten Werkzeugaktion fort."})
+				continue
+			}
 		}
 		signature := actionSignature(action)
 		if signature == lastSignature && action.Action != "finish" {
@@ -600,19 +616,37 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		data, _ := json.MarshalIndent(info, "", "  ")
 		result = string(data)
 		if !info.Available {
-			if cfg.AutoResearchToolHelp && cfg.NetworkEnabled && cfg.WebSearchProvider != "disabled" {
-				query := info.DisplayName + " official installation command line documentation Windows"
-				if info.DocsURL != "" {
-					if u, parseErr := url.Parse(info.DocsURL); parseErr == nil && u.Hostname() != "" {
-						query = "site:" + u.Hostname() + " " + query
+			missing := &ToolNotFoundError{Info: info, Detail: result}
+			if info.InstallSupported {
+				newCfg, installDetail, installed, installErr := s.offerInstallMissingTool(ctx, project, cfg, missing)
+				if installErr != nil {
+					err = installErr
+					result += "\n\n" + installDetail
+				} else if installed {
+					cfg = newCfg
+					info = discoverTool(project, a.Tool, cfg, true)
+					data, _ = json.MarshalIndent(info, "", "  ")
+					result = installDetail + "\n\nWERKZEUG NACH INSTALLATION:\n" + string(data)
+				} else {
+					err = missing
+				}
+			} else {
+				if cfg.AutoResearchToolHelp && cfg.NetworkEnabled && cfg.WebSearchProvider != "disabled" {
+					query := info.DisplayName + " official installation command line documentation Windows"
+					if info.DocsURL != "" {
+						if u, parseErr := url.Parse(info.DocsURL); parseErr == nil && u.Hostname() != "" {
+							query = "site:" + u.Hostname() + " " + query
+						}
+					}
+					if results, searchErr := webSearch(ctx, cfg, query, 3); searchErr == nil && len(results) > 0 {
+						result += "\n\nAutomatisch recherchierte offizielle Hilfe:\n" + formatWebResults(results)
 					}
 				}
-				if results, searchErr := webSearch(ctx, cfg, query, 3); searchErr == nil && len(results) > 0 {
-					result += "\n\nAutomatisch recherchierte offizielle Hilfe:\n" + formatWebResults(results)
-				}
+				err = missing
 			}
-			err = fmt.Errorf("tool not found: %s", info.Name)
 		}
+	case "project_info":
+		result = projectInfo(project, cfg)
 	case "tool_inventory":
 		infos := toolInventory(project, cfg, false)
 		data, _ := json.MarshalIndent(infos, "", "  ")
@@ -632,7 +666,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 			break
 		}
 		if gitActionIsReadOnly(a.Args) {
-			result, err = gitRead(project, a.Args...)
+			result, err = s.executeActionWithToolRepair(ctx, project, cfg, a)
 		} else {
 			return s.performApproved(ctx, project, a)
 		}
@@ -658,7 +692,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, a.Server, "prompts/list", map[string]any{})
 	case "mcp_get_prompt":
 		result, err = mcpCall(ctx, cfg, a.Server, "prompts/get", map[string]any{"name": a.PromptName, "arguments": a.Arguments})
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "run_tool", "run_command", "open_terminal", "copy_path", "move_path":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "run_tool", "run_command", "open_terminal", "copy_path", "move_path":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -695,6 +729,16 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
+	if missing := missingToolForAction(project, cfg, a); missing != nil && missing.Info.InstallSupported {
+		newCfg, installDetail, installed, installErr := s.offerInstallMissingTool(ctx, project, cfg, missing)
+		if installErr != nil {
+			return strings.TrimSpace(installDetail + "\n\nERROR: " + installErr.Error()), false
+		}
+		if !installed {
+			return strings.TrimSpace(installDetail + "\n\nDie Aktion wurde nicht ausgeführt, weil das benötigte Werkzeug fehlt."), false
+		}
+		cfg = newCfg
+	}
 	preview, err := previewAction(project, cfg, a)
 	if err != nil {
 		return "ERROR: " + err.Error(), false
@@ -710,7 +754,7 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 		return "REJECTED BY USER", false
 	}
 	s.AddEvent(UIEvent{Type: "action_running", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
-	result, err := executeAction(ctx, project, cfg, a)
+	result, err := s.executeActionWithToolRepair(ctx, project, cfg, a)
 	if err != nil {
 		detail := strings.TrimSpace(result)
 		if detail != "" {
@@ -734,7 +778,7 @@ func actionNeedsApproval(cfg Config, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "discover_tool", "tool_inventory", "list_files", "read_file", "search_text", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "project_info", "list_files", "read_file", "search_text", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
@@ -881,6 +925,10 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		return "Web search: " + a.Query, nil
 	case "web_fetch":
 		return "Web fetch: " + a.URL, nil
+	case "build_project":
+		return "Projekt mit dem automatisch erkannten Buildsystem bauen. Fehlende bekannte Werkzeuge werden nach separater Genehmigung installiert.", nil
+	case "deploy_android":
+		return "Android-Projekt bauen, ein autorisiertes verbundenes Gerät erkennen und die neueste Debug-APK mit adb install -r übertragen.", nil
 	case "mcp_call_tool":
 		return fmt.Sprintf("MCP %s tool %s\nArguments: %s", a.Server, a.Tool, mustJSON(a.Arguments)), nil
 	default:
@@ -896,6 +944,22 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return writeProjectFile(project, a.Path, a.Content)
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)
+	case "build_project":
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout < 10*time.Minute {
+			timeout = 10 * time.Minute
+		}
+		bctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return buildProject(bctx, project, cfg)
+	case "deploy_android":
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout < 15*time.Minute {
+			timeout = 15 * time.Minute
+		}
+		dctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return deployAndroid(dctx, project, cfg)
 	case "run_tool":
 		timeout := time.Duration(cfg.CommandTimeout) * time.Second
 		if timeout <= 0 {
@@ -922,7 +986,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		}
 		gctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		return runGit(gctx, project, a.Args)
+		args := append([]string{"--no-pager"}, a.Args...)
+		return runResolvedTool(gctx, project, "git", args, cfg)
 	case "web_search":
 		r, err := webSearch(ctx, cfg, a.Query, a.MaxResults)
 		return formatWebResults(r), err

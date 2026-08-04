@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -270,7 +271,12 @@ func openProjectTarget(project, target string) error {
 		if devenv, err := exec.LookPath("devenv.exe"); err == nil {
 			return startHidden(devenv, project)
 		}
-		return fmt.Errorf("Visual Studio wurde nicht gefunden")
+		for _, candidate := range visualStudioToolPaths("devenv") {
+			if st, err := os.Stat(candidate[0]); err == nil && !st.IsDir() {
+				return startHidden(candidate[0], project)
+			}
+		}
+		return fmt.Errorf("Visual Studio wurde weder über PATH noch über vswhere/Visual-Studio-Installationspfade gefunden")
 	default:
 		return startHidden("explorer.exe", project)
 	}
@@ -315,4 +321,109 @@ func detectGPU() string {
 		line = line[:i]
 	}
 	return line
+}
+
+var visualStudioRootsOnce sync.Once
+var cachedVisualStudioRoots []string
+
+func visualStudioInstallRoots() []string {
+	visualStudioRootsOnce.Do(func() {
+		roots := []string{}
+		addRoot := func(root string) {
+			root = strings.TrimSpace(root)
+			if root == "" {
+				return
+			}
+			for _, existing := range roots {
+				if strings.EqualFold(existing, root) {
+					return
+				}
+			}
+			roots = append(roots, filepath.Clean(root))
+		}
+		vswhereCandidates := []string{}
+		if p, err := exec.LookPath("vswhere.exe"); err == nil {
+			vswhereCandidates = append(vswhereCandidates, p)
+		}
+		for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles")} {
+			if base != "" {
+				vswhereCandidates = append(vswhereCandidates, filepath.Join(base, "Microsoft Visual Studio", "Installer", "vswhere.exe"))
+			}
+		}
+		for _, vswhere := range vswhereCandidates {
+			if st, err := os.Stat(vswhere); err != nil || st.IsDir() {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			cmd := exec.CommandContext(ctx, vswhere, "-all", "-products", "*", "-property", "installationPath")
+			hideCommandWindow(cmd)
+			out, err := cmd.Output()
+			cancel()
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(strings.ReplaceAll(string(out), "\r", ""), "\n") {
+				addRoot(line)
+			}
+			break
+		}
+		for _, base := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+			if base == "" {
+				continue
+			}
+			matches, _ := filepath.Glob(filepath.Join(base, "Microsoft Visual Studio", "*", "*"))
+			for _, match := range matches {
+				addRoot(match)
+			}
+		}
+		cachedVisualStudioRoots = roots
+	})
+	return append([]string(nil), cachedVisualStudioRoots...)
+}
+
+func visualStudioToolPaths(name string) [][2]string {
+	result := [][2]string{}
+	add := func(path, source string) {
+		if path != "" {
+			result = append(result, [2]string{path, source})
+		}
+	}
+	for _, root := range visualStudioInstallRoots() {
+		source := "Visual Studio: " + root
+		switch canonicalToolName(name) {
+		case "msbuild":
+			add(filepath.Join(root, "MSBuild", "Current", "Bin", "MSBuild.exe"), source)
+			add(filepath.Join(root, "MSBuild", "Current", "Bin", "amd64", "MSBuild.exe"), source)
+		case "git":
+			add(filepath.Join(root, "Common7", "IDE", "CommonExtensions", "Microsoft", "TeamFoundation", "Team Explorer", "Git", "cmd", "git.exe"), source)
+			add(filepath.Join(root, "Common7", "IDE", "CommonExtensions", "Microsoft", "TeamFoundation", "Team Explorer", "Git", "bin", "git.exe"), source)
+		case "cmake":
+			add(filepath.Join(root, "Common7", "IDE", "CommonExtensions", "Microsoft", "CMake", "CMake", "bin", "cmake.exe"), source)
+		case "ninja":
+			add(filepath.Join(root, "Common7", "IDE", "CommonExtensions", "Microsoft", "CMake", "Ninja", "ninja.exe"), source)
+		case "java", "keytool", "jarsigner":
+			add(filepath.Join(root, "Common7", "IDE", "Extensions", "Xamarin", "Android", "OpenJDK", "bin", executableName(canonicalToolName(name))), source)
+		case "devenv":
+			add(filepath.Join(root, "Common7", "IDE", "devenv.exe"), source)
+		case "nuget":
+			add(filepath.Join(root, "Common7", "IDE", "CommonExtensions", "Microsoft", "NuGet", "nuget.exe"), source)
+		}
+	}
+	return result
+}
+
+func androidHostDeviceDiagnostic() string {
+	script := `$ErrorActionPreference='SilentlyContinue'; ` +
+		`Get-PnpDevice -PresentOnly | Where-Object { ($_.FriendlyName -match 'Android|ADB|MTP|Google|Samsung|Pixel') -or ($_.InstanceId -match 'VID_18D1|VID_04E8|ADB') } | ` +
+		`Select-Object -First 12 Status,Class,FriendlyName,InstanceId | Format-Table -AutoSize | Out-String -Width 260`
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	hideCommandWindow(cmd)
+	out, err := cmd.Output()
+	text := strings.TrimSpace(string(out))
+	if err != nil || text == "" {
+		return "Windows meldet über Plug-and-Play kein eindeutig erkennbares Android-/ADB-Gerät. Prüfe Datenkabel, USB-Modus und OEM-USB-Treiber."
+	}
+	return "Windows Plug-and-Play erkennt folgende mögliche Android-Geräte:\n" + text
 }

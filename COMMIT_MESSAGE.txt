@@ -1,8 +1,11 @@
-feat: rename application to LocalCode and add Git-ready project setup
+fix: make tool discovery and repair deterministic
 
-- rename product, binaries, module paths and application data directories
-- migrate existing settings, chats and backups without deleting legacy data
-- add Apache License 2.0, NOTICE and third-party notices
-- update build scripts, documentation and LocalCode state markers
-- add Visual Studio and Go development exclusions
-- add consistent line-ending and editor configuration
+- discover Git, MSBuild, CMake, Ninja and IDE tools through Visual Studio and vswhere
+- locate Android SDK installations and alternate adb binaries
+- offer approved app-local installs for missing Git and Platform-Tools
+- verify installations and retry the original action automatically
+- add deterministic project build and Android deployment actions
+- prevent stale questions from hijacking new tasks
+- block avoidable Git and tool-usage questions
+- synthesize non-empty web search queries
+- update tests, documentation and state for LocalCode 4.6.0

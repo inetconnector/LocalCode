@@ -1,4 +1,4 @@
-# LocalCode 4.5.0
+# LocalCode 4.6.0
 
 LocalCode ist ein eigenständiger lokaler Windows-Coding-Agent für Ollama. Die Anwendung bietet eine desktopartige Projekt- und Chatoberfläche, persistente Chats, Datei- und Bildanhänge, Git, Befehlsausführung, Webrecherche, MCP, Genehmigungen und eine zentrale Einstellungsseite.
 
@@ -17,16 +17,20 @@ Die Anwendung heißt vollständig **LocalCode**. Programmdateien, UI, API-Kennun
 
 Beim ersten Start übernimmt LocalCode vorhandene Konfigurationen, Chatverläufe und Sicherungen der vorherigen Produktbezeichnung automatisch, falls im neuen LocalCode-Datenordner noch keine entsprechenden Dateien liegen. Die alten Dateien werden aus Sicherheitsgründen nicht gelöscht. Verwaltete ältere `STATE.md`-Marker werden beim nächsten Statusupdate in die neuen `LOCALCODE:STATE:BEGIN/END`-Marker überführt, ohne manuelle Inhalte anzutasten.
 
-## Werkzeugerkennung und Diagnose in 4.5.0
+## Werkzeugerkennung, Installation und Projekt-Automation in 4.6.0
 
-- Externe Entwicklungswerkzeuge werden strukturiert über feste Pfade, Projekt-Wrapper, Projektkonfiguration, Umgebungsvariablen, PATH und bekannte Installationsorte gesucht.
-- Gefundene Programme werden mit absolutem Pfad ausgeführt; die Oberfläche zeigt Pfad, Argumente, Arbeitsordner, Exitcode, Dauer, STDOUT und STDERR.
-- Für Android werden `local.properties`, `ANDROID_HOME`, `ANDROID_SDK_ROOT` und der übliche Windows-SDK-Pfad ausgewertet. ADB unterscheidet erreichbare, nicht autorisierte, offline und nicht gelistete Geräte.
-- Identische Werkzeugaktionen und bereits beantwortete Rückfragen werden blockiert, damit der Agent nicht in Wiederholungsschleifen gerät.
-- Bei Werkzeugfehlern kann automatisch offizielle Herstellerdokumentation recherchiert werden, sofern Netzwerkzugriff in den Einstellungen aktiviert ist.
-- Die Einstellungsseite enthält eine Werkzeugübersicht, eine gezielte ADB-Diagnose und feste Werkzeugpfade. Details stehen in `docs/TOOLS.md`.
+- Externe Entwicklungswerkzeuge werden über Projekt-Wrapper, feste Pfade, `PATH`, Android-SDK-Verzeichnisse, Umgebungsvariablen, Visual-Studio-Installationen und `vswhere.exe` gesucht.
+- Visual-Studio-Bestandteile wie MSBuild, das gebündelte Git, CMake, Ninja, NuGet und `devenv.exe` werden auch dann gefunden, wenn sie nicht im globalen `PATH` stehen.
+- Für fehlendes Git installiert LocalCode nach ausdrücklicher Genehmigung eine offizielle portable MinGit-Ausgabe benutzerlokal. Für fehlendes ADB/Fastboot werden nach Genehmigung die offiziellen Android SDK Platform-Tools benutzerlokal installiert.
+- Für Java nutzt LocalCode nach Genehmigung die offizielle Microsoft-OpenJDK-Paketierung, für .NET das offizielle benutzerlokale `dotnet-install.ps1` und für MSBuild den offiziellen Visual-Studio-Build-Tools-Bootstrapper mit dem MSBuild-Workload. Weitere bekannte Werkzeuge können über WinGet installiert werden. Jede Installation wird separat angezeigt, muss bestätigt und anschließend verifiziert werden.
+- Nach einer erfolgreichen Installation wird exakt die ursprüngliche Aktion automatisch erneut ausgeführt. Bis zu vier nacheinander fehlende, unterstützte Werkzeuge können innerhalb eines Vorgangs repariert werden.
+- `project_info`, `build_project` und `deploy_android` bieten deterministische Abläufe für Projekterkennung, Build und Android-Verteilung. Android-Deployment baut zuerst, sucht die aktuelle Debug-APK, prüft autorisierte Geräte und verwendet `adb install -r`.
+- ADB prüft alle gefundenen SDK-Kopien, startet den Server kontrolliert neu, unterscheidet `device`, `unauthorized` und `offline` und ergänzt eine Windows-Plug-and-Play-Diagnose.
+- Neue Aufgaben überschreiben alte Rückfragen. Unnötige Fragen nach `git init`, manueller Werkzeugeingabe oder einer bloßen Bestätigung, ob ADB installiert ist, werden blockiert, wenn LocalCode dies selbst prüfen kann.
+- Leere Websuchanfragen werden deterministisch aus der aktuellen Aufgabe ergänzt; erwartbare Git- und ADB-Zustände lösen keine sinnlose Webrecherche aus.
+- Details stehen in `docs/TOOLS.md`.
 
-## Stabilität und Kontrolle in 4.5.0
+## Stabilität und Kontrolle in 4.6.0
 
 - Hintergrundbefehle unter Windows laufen ohne aufblinkende Konsolenfenster.
 - Werkzeug-, Git-, Diff-, Befehls- und Fehlerausgaben sind im Chat und im rechten Ausgabenbereich vollständig aufklappbar.
@@ -100,7 +104,7 @@ Standardmäßig arbeitet LocalCode mit strikten Genehmigungen und auf das ausgew
 
 ## Abgrenzung
 
-LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.5.0 setzt jedoch die sichtbaren Arbeitsabläufe eigenständig und ohne absichtliche Dummy-Funktionen um.
+LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.6.0 erweitert diese Arbeitsabläufe um verifizierte Werkzeugreparatur und deterministische Build-/Android-Deployment-Aktionen; eine Modellparität mit einem gehosteten Frontier-Modell wird weiterhin nicht behauptet.
 
 ## Lizenz
 

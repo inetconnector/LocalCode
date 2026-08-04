@@ -3,43 +3,38 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 )
 
-func gitAvailable() bool { _, err := exec.LookPath("git"); return err == nil }
+func gitAvailable(project string, cfg Config) bool {
+	return discoverTool(project, "git", cfg, false).Available
+}
 
-func runGit(ctx context.Context, project string, args []string) (string, error) {
+func runGit(ctx context.Context, project string, args []string, cfg Config) (string, error) {
 	if len(args) == 0 {
 		return "", errors.New("git arguments are empty")
 	}
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", project, "--no-pager"}, args...)...)
-	hideCommandWindow(cmd)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	err := cmd.Run()
-	return truncateText(buf.String(), 160000), err
+	resolvedArgs := append([]string{"--no-pager"}, args...)
+	return runResolvedTool(ctx, project, "git", resolvedArgs, cfg)
 }
 
-func gitRead(project string, args ...string) (string, error) {
+func gitRead(project string, cfg Config, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	return runGit(ctx, project, args)
+	return runGit(ctx, project, args, cfg)
 }
 
-func gitStatusSummary(project string) string {
-	if !gitAvailable() {
-		return "Git ist nicht installiert."
+func gitStatusSummary(project string, cfg Config) string {
+	if !gitAvailable(project, cfg) {
+		return "Git wurde nach vollständiger Werkzeugerkennung nicht gefunden. LocalCode kann bei Bedarf eine portable Git-Version installieren."
 	}
-	out, err := gitRead(project, "status", "--short", "--branch")
+	out, err := gitRead(project, cfg, "status", "--short", "--branch")
 	if err != nil {
-		return "Kein Git-Repository oder git status fehlgeschlagen: " + err.Error()
+		return "Kein Git-Repository oder git status fehlgeschlagen:\n" + truncateText(out, 6000) + "\n" + err.Error()
 	}
 	if strings.TrimSpace(out) == "" {
 		return "Arbeitsbaum sauber."
@@ -47,8 +42,8 @@ func gitStatusSummary(project string) string {
 	return strings.TrimSpace(out)
 }
 
-func gitBranchName(project string) string {
-	out, err := gitRead(project, "branch", "--show-current")
+func gitBranchName(project string, cfg Config) string {
+	out, err := gitRead(project, cfg, "branch", "--show-current")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return "(kein Git-Branch)"
 	}

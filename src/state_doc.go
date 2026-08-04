@@ -144,8 +144,8 @@ func updateStateDocument(project string, cfg Config, running bool, model, task, 
 	fmt.Fprintf(&b, "- **Letzte Aufgabe:** %s\n", task)
 	fmt.Fprintf(&b, "- **Letztes Ergebnis:** %s\n", summary)
 	fmt.Fprintf(&b, "- **Aktualisierungsgrund:** %s\n", note)
-	fmt.Fprintf(&b, "- **Git-Branch:** `%s`\n", gitBranchName(project))
-	b.WriteString("\n## Git-Status\n\n```text\n" + gitStatusSummary(project) + "\n```\n")
+	fmt.Fprintf(&b, "- **Git-Branch:** `%s`\n", gitBranchName(project, cfg))
+	b.WriteString("\n## Git-Status\n\n```text\n" + gitStatusSummary(project, cfg) + "\n```\n")
 	b.WriteString("\n## Letzte Agentenaktionen\n\n")
 	for _, action := range actions {
 		b.WriteString("- " + action + "\n")

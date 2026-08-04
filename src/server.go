@@ -98,7 +98,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		RootDir:        s.state.Config.RootProjectDir,
 		Project:        s.state.Project,
 		Running:        s.state.Running,
-		GitAvailable:   gitAvailable(),
+		GitAvailable:   gitAvailable(s.state.Project, s.state.Config),
 		MCPCount:       enabledMCPCount(s.state.Config),
 		RunID:          s.state.RunID,
 		RunPhase:       s.state.RunPhase,
@@ -707,22 +707,23 @@ func (s *Server) handleGitOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RLock()
 	project := s.state.Project
-	enabled := s.state.Config.GitEnabled
+	cfg := s.state.Config
+	enabled := cfg.GitEnabled
 	s.state.mu.RUnlock()
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
 	}
-	if !enabled || !gitAvailable() {
+	if !enabled || !gitAvailable(project, cfg) {
 		http.Error(w, "Git ist nicht verfügbar oder deaktiviert", 400)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	status, statusErr := runGit(ctx, project, []string{"status", "--short", "--branch"})
-	diff, diffErr := runGit(ctx, project, []string{"diff", "--stat"})
-	logText, logErr := runGit(ctx, project, []string{"log", "-5", "--pretty=format:%h  %s  (%cr)"})
-	branch, _ := runGit(ctx, project, []string{"branch", "--show-current"})
+	status, statusErr := runGit(ctx, project, []string{"status", "--short", "--branch"}, cfg)
+	diff, diffErr := runGit(ctx, project, []string{"diff", "--stat"}, cfg)
+	logText, logErr := runGit(ctx, project, []string{"log", "-5", "--pretty=format:%h  %s  (%cr)"}, cfg)
+	branch, _ := runGit(ctx, project, []string{"branch", "--show-current"}, cfg)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{
 		"branch": strings.TrimSpace(branch),

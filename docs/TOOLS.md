@@ -73,3 +73,21 @@ Wenn `auto_research_tool_help` aktiviert ist und Netzwerkzugriff erlaubt wurde, 
 ## Grenzen
 
 Es gibt keine sichere Methode, jedes weltweit existierende Programm ohne Kontext und ohne vollständigen Datenträgerscan zu erkennen. LocalCode unterstützt bekannte Entwicklungswerkzeuge sowie beliebige projektlokale oder über PATH beziehungsweise feste Pfade erreichbare Programme. Neue Werkzeuge können ohne Codeänderung über `tool_overrides` eindeutig registriert werden.
+
+## Automatische Reparatur in 4.6.0
+
+Wenn eine bekannte Aktion ein fehlendes Werkzeug erkennt, zeigt LocalCode zuerst die durchsuchten Pfade und eine separate Installationsgenehmigung. Unterstützt sind insbesondere:
+
+- Git: offizielle portable MinGit-Ausgabe aus Git for Windows; App-lokal ohne globales PATH.
+- ADB/Fastboot: offizielles `platform-tools-latest-windows.zip` von Google; App-lokal.
+- Ausgewählte Werkzeuge: Installation über WinGet mit festen Paketkennungen.
+
+Nach der Installation wird das Programm erneut entdeckt, seine Version geprüft und die exakt gleiche ursprüngliche Aktion wiederholt. Installationsdownloads laufen mit Timeout und ZIP-Extraktion blockiert Pfadtraversierung.
+
+Visual-Studio-Werkzeuge werden über `vswhere.exe` und die bekannten Instanzpfade gesucht. Dazu gehören MSBuild, Visual-Studio-Git, CMake, Ninja, NuGet und `devenv.exe`.
+
+## Deterministische Projektaktionen
+
+- `project_info`: erkennt das Buildsystem und zeigt verfügbare Werkzeuge.
+- `build_project`: wählt einen reproduzierbaren Build für Android/Gradle, Go, Rust, Node, .NET/MSBuild, CMake oder Python.
+- `deploy_android`: baut ein Android-Projekt, wählt die neueste Debug-APK, verlangt genau ein autorisiertes Gerät und installiert mit `adb install -r`.

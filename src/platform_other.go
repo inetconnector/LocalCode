@@ -73,3 +73,7 @@ func killProcessTree(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 	}
 }
+
+func visualStudioToolPaths(name string) [][2]string { return nil }
+
+func androidHostDeviceDiagnostic() string { return "" }

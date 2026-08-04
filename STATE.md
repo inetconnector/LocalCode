@@ -1,34 +1,28 @@
 # LocalCode Entwicklungsstand
 
-**Version:** 4.5.0  
+**Version:** 4.6.0  
 **Status:** Build-, test- und paketierfähig  
 **Zielplattform:** Windows x64  
 **Backend:** Go, lokaler HTTP-Server, Ollama  
 **Frontend:** eingebettetes HTML/CSS/JavaScript im Edge-/Chrome-App-Modus
 
-## Produktidentität und Lizenz in 4.5.0
+## Werkzeugreparatur und deterministische Abläufe in 4.6.0
 
-- Produktname, UI, Binärdateien, Go-Modul, API-Kennung, MCP-Clientinfo, User-Agent, Konfigurationsordner, Logdatei, Backups, Build-Skripte und Dokumentation heißen vollständig **LocalCode**.
-- Frühere Konfigurationen, Chats und Sicherungen werden beim ersten Start verlustfrei kopiert, sofern am neuen Ziel noch keine Dateien vorhanden sind. Alte Daten werden nicht gelöscht.
-- Verwaltete ältere STATE.md-Marker werden auf `LOCALCODE:STATE:BEGIN/END` migriert; manuelle Inhalte bleiben erhalten.
+- Vollständige Werkzeugerkennung über Projekt-Wrapper, konfigurierte Pfade, `PATH`, Android SDK, Windows-Standardpfade sowie Visual Studio und `vswhere.exe`.
+- Verifizierte, benutzerlokale Installation der offiziellen Android SDK Platform-Tools und der offiziellen portablen MinGit-Ausgabe nach separater Genehmigung.
+- WinGet-Fallback für bekannte Pakete; Hintergrundprozesse bleiben unsichtbar und besitzen Timeout sowie kontrollierten Abbruch.
+- Nach Installation wird die ursprüngliche Aktion ohne erneutes Modellraten wiederholt. Mehrere nacheinander fehlende unterstützte Werkzeuge werden begrenzt repariert.
+- Neue Aktionen `project_info`, `build_project` und `deploy_android` erkennen Buildsysteme, führen den passenden Build aus und verteilen Android-Debug-APKs an genau ein autorisiertes Gerät.
+- Visual-Studio-Werkzeuge MSBuild, Git, CMake, Ninja, NuGet und `devenv.exe` werden innerhalb installierter VS-Instanzen gesucht.
+- ADB probiert alternative Installationen, startet/reconnectet den Server einmal, wertet Gerätezustände aus und ergänzt Windows-PnP-Diagnose.
+- Alte Rückfragen werden bei neuen Aufgaben verworfen. Unnötige Git-Initialisierungs- und Werkzeug-Ausweichfragen werden serverseitig blockiert.
+- Websuchen erhalten bei leerer Modellanfrage automatisch die aktuelle Nutzeraufgabe als Query.
+
+## Produktidentität, Lizenz und Git-Paket
+
+- Produktname und Binärdateien heißen **LocalCode**.
 - Lizenz: Apache License 2.0 mit `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
-
-## In 4.5.0 behobene Werkzeug- und Agentenfehler
-
-- Neue strukturierte Aktionen `discover_tool`, `tool_inventory` und `run_tool` lösen Programme vor der Ausführung auf und verwenden absolute Pfade.
-- Projektlokale Wrapper und Binaries in Projektwurzel, `bin`, `tools`, `.tools`, `scripts` und `node_modules/.bin` werden erkannt.
-- Android-SDK und ADB werden aus `local.properties`, `ANDROID_HOME`, `ANDROID_SDK_ROOT` und Windows-Standardpfaden gefunden.
-- ADB-Gerätezustände `device`, `unauthorized`, `offline` und leere Geräteliste werden getrennt behandelt; ein kontrollierter Reparaturversuch ersetzt Wiederholungsschleifen.
-- Werkzeugfehler behalten Exitcode, STDOUT und STDERR. Bei aktivierter Netzfreigabe ergänzt eine automatische Suche offizielle Herstellerhilfe.
-- Identische unmittelbar aufeinanderfolgende Aktionen und bereits beantwortete Rückfragen werden blockiert.
-- Tool- und Shellprozesse übernehmen Abbruch und Timeout des Agenten und beenden unter Windows den gesamten Kindprozessbaum.
-
-- Windows-Hintergrundprozesse werden mit `CREATE_NO_WINDOW` und verborgenem Fenster gestartet. Sichtbar bleiben nur vom Nutzer ausdrücklich geöffnete interaktive Terminals.
-- Werkzeugergebnisse, Befehlsausgaben, Git-Ausgaben, Diffs und Fehler werden als aufklappbare Karten im Chat und gesammelt im rechten Ausgabenbereich angezeigt.
-- Eine Antwort auf `ask_user`, beispielsweise „ja“, setzt denselben Agentenlauf mit der ursprünglichen Aufgabe fort, statt die Analyse neu zu starten und dieselbe Frage erneut zu stellen.
-- Während eines Laufs bleiben Eingabefeld und Abbruchsteuerung erreichbar. Ein normaler Abbruch beendet den Kontext; nach zwölf Sekunden kann die Oberfläche den Lauf kontrolliert zwangsweise zurücksetzen.
-- Jeder Modellschritt besitzt ein konfigurierbares Zeitlimit. Der Status zeigt Phase und Laufzeit und wird zusätzlich zur Ereignisverbindung regelmäßig abgeglichen.
-- Das Speichern der Einstellungen akzeptiert vorwärtskompatible Felder, erhält nicht mitgesendete Werte und liefert konkrete deutsche Fehlermeldungen statt eines pauschalen `Bad Request`.
+- Git-fertiges Paket mit `.gitignore`, `.gitattributes`, `.editorconfig`, `GIT-SETUP.md` und `COMMIT_MESSAGE.txt`.
 
 ## Verbindliche UI-Funktionen
 

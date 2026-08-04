@@ -48,3 +48,9 @@ src/tools.go
 src/types.go
 src/util.go
 src/web_tools.go
+
+RELEASE-NOTES-4.6.0.md
+src/agent_tool_repair.go
+src/continuation.go
+src/project_automation.go
+src/tool_install.go

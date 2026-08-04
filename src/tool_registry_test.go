@@ -3,8 +3,10 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -246,5 +248,228 @@ func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	}
 	if cfg.ToolOverrides == nil {
 		t.Fatal("tool override map must be initialized")
+	}
+}
+
+func TestMissingToolReturnsTypedError(t *testing.T) {
+	project := t.TempDir()
+	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}, NetworkEnabled: false})
+	text, err := runResolvedTool(context.Background(), project, "adb", []string{"devices", "-l"}, cfg)
+	if err == nil {
+		t.Fatal("expected missing-tool error")
+	}
+	var missing *ToolNotFoundError
+	if !errors.As(err, &missing) {
+		t.Fatalf("expected ToolNotFoundError, got %T: %v", err, err)
+	}
+	if missing.Info.Name != "adb" || !strings.Contains(text, "Durchsuchte Pfade") {
+		t.Fatalf("unexpected missing tool detail: %#v\n%s", missing, text)
+	}
+}
+
+func TestContinuationClassificationAvoidsStaleQuestionHijack(t *testing.T) {
+	question := "Es scheint, dass ADB fehlt. Möchten Sie den Befehl erneut ausführen?"
+	if !likelyContinuationAnswer(question, "nochmal versuchen") {
+		t.Fatal("short retry answer should continue")
+	}
+	if !likelyContinuationAnswer(question, "das Handy ist verbunden, such adb") {
+		t.Fatal("ADB-specific answer should continue")
+	}
+	if likelyContinuationAnswer(question, "schau im internet die neuesten nachrichten") {
+		t.Fatal("new web research task must not continue stale ADB question")
+	}
+}
+
+func TestNormalizeWebSearchUsesTaskFallback(t *testing.T) {
+	a := normalizeAgentAction(AgentAction{Action: "web_search", Message: "Web search"}, "neueste Nachrichten zu KI")
+	if a.Query != "neueste Nachrichten zu KI" {
+		t.Fatalf("query=%q", a.Query)
+	}
+	b := normalizeAgentAction(AgentAction{Action: "web_search", Message: "Offizielle ADB Dokumentation"}, "ignored")
+	if b.Query != "Offizielle ADB Dokumentation" {
+		t.Fatalf("query=%q", b.Query)
+	}
+}
+
+func TestGitReadUsesConfiguredToolOverride(t *testing.T) {
+	project := t.TempDir()
+	gitTool := filepath.Join(project, "tools", "git")
+	if runtime.GOOS == "windows" {
+		gitTool += ".cmd"
+	}
+	body := `echo OVERRIDE-GIT "$@"`
+	if runtime.GOOS == "windows" {
+		body = `echo OVERRIDE-GIT %*`
+	}
+	writeTestExecutable(t, gitTool, body)
+	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{"git": gitTool}, EnvironmentVars: map[string]string{}})
+	out, err := gitRead(project, cfg, "status", "--short")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "OVERRIDE-GIT") {
+		t.Fatalf("configured git tool was not used: %s", out)
+	}
+}
+
+func TestInstallMetadataForGitAndADB(t *testing.T) {
+	for _, name := range []string{"git", "adb", "fastboot"} {
+		profile := profileForTool(name)
+		if strings.TrimSpace(profile.InstallKind) == "" {
+			t.Fatalf("%s should define controlled Windows installation metadata", name)
+		}
+		if strings.TrimSpace(toolInstallPreview(name)) == "" {
+			t.Fatalf("%s install preview is empty", name)
+		}
+	}
+}
+
+func TestExtractZipSafe(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "tool.zip")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("platform-tools/adb.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("test"))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	if err := extractZipSafe(archive, dest); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dest, "platform-tools", "adb.exe")); err != nil || string(data) != "test" {
+		t.Fatalf("extracted file invalid: %q %v", data, err)
+	}
+}
+
+func TestExtractZipRejectsTraversal(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "bad.zip")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, _ := zw.Create("../escape.txt")
+	_, _ = w.Write([]byte("bad"))
+	_ = zw.Close()
+	_ = f.Close()
+	if err := extractZipSafe(archive, t.TempDir()); err == nil {
+		t.Fatal("expected traversal rejection")
+	}
+}
+
+func TestMissingToolForActionDetectsKnownCommand(t *testing.T) {
+	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	missing := missingToolForAction(t.TempDir(), cfg, AgentAction{Action: "run_command", Command: "definitely-not-a-real-tool-xyz --version"})
+	if missing != nil {
+		t.Fatalf("unknown command must remain a normal shell command: %#v", missing)
+	}
+
+	profile := profileForTool("adb")
+	if runtime.GOOS != "windows" {
+		// On non-Windows test hosts install support is intentionally unavailable,
+		// but discovery still needs to recognize adb as a known tool.
+		if profile.Name != "adb" {
+			t.Fatalf("adb profile missing")
+		}
+		return
+	}
+	missing = missingToolForAction(t.TempDir(), cfg, AgentAction{Action: "run_command", Command: "adb devices"})
+	if missing == nil || missing.Info.Name != "adb" {
+		t.Fatalf("expected missing adb preflight, got %#v", missing)
+	}
+}
+
+func TestBlockedAvoidanceQuestion(t *testing.T) {
+	blocked, _ := blockedAvoidanceQuestion("analysiere das projekt", "Es wurde kein Git-Repository initialisiert. Möchten Sie ein neues Git-Repository erstellen?")
+	if !blocked {
+		t.Fatal("irrelevant git init question should be blocked")
+	}
+	blocked, _ = blockedAvoidanceQuestion("initialisiere git und committe alles", "Möchten Sie ein neues Git-Repository initialisieren?")
+	if blocked {
+		t.Fatal("explicit git task must allow git question")
+	}
+	blocked, _ = blockedAvoidanceQuestion("verteile die app", "Bitte stellen Sie sicher, dass ADB korrekt installiert und in Ihrem Systempfad verfügbar ist.")
+	if !blocked {
+		t.Fatal("tool-avoidance question should be blocked")
+	}
+}
+
+func TestDetectProjectPlanAndroid(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "gradlew"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(root, "app", "src", "main")
+	if err := os.MkdirAll(manifest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifest, "AndroidManifest.xml"), []byte("<manifest/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := detectProjectPlan(root)
+	if plan.Kind != "android-gradle" || plan.BuildTool != "gradle" {
+		t.Fatalf("unexpected plan: %#v", plan)
+	}
+}
+
+func TestParseADBDevices(t *testing.T) {
+	devices := parseADBDevices("List of devices attached\nABC123\tdevice product:x model:y\nXYZ\tunauthorized usb:1\n")
+	if len(devices) != 2 || devices[0].Serial != "ABC123" || devices[0].State != "device" || devices[1].State != "unauthorized" {
+		t.Fatalf("unexpected devices: %#v", devices)
+	}
+}
+
+func TestTaskAutomationHint(t *testing.T) {
+	if !strings.Contains(taskAutomationHint("kompiliere das projekt"), "build_project") {
+		t.Fatal("build task should route to build_project")
+	}
+	if !strings.Contains(taskAutomationHint("verteile das an das verbundene handy"), "deploy_android") {
+		t.Fatal("deployment task should route to deploy_android")
+	}
+	if !strings.Contains(taskAutomationHint("schau im internet die neuesten nachrichten"), "web_search") {
+		t.Fatal("news task should route to web_search")
+	}
+}
+
+func TestDeployAndroidDeterministicFlow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("portable shell fixtures are exercised on non-Windows CI")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "gradlew"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(root, "app", "src", "main")
+	if err := os.MkdirAll(manifest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifest, "AndroidManifest.xml"), []byte("<manifest/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	javaTool := filepath.Join(root, "tools", "java")
+	gradleTool := filepath.Join(root, "tools", "gradle")
+	adbTool := filepath.Join(root, "tools", "adb")
+	writeTestExecutable(t, javaTool, `echo 'openjdk version 17'`)
+	writeTestExecutable(t, gradleTool, `mkdir -p app/build/outputs/apk/debug; echo apk > app/build/outputs/apk/debug/app-debug.apk; echo BUILD-SUCCESS`)
+	writeTestExecutable(t, adbTool, `if [ "$1" = "devices" ]; then echo 'List of devices attached'; printf 'SERIAL123\tdevice product:test model:test\n'; else echo Success; fi`)
+	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{"java": javaTool, "gradle": gradleTool, "adb": adbTool}, EnvironmentVars: map[string]string{}})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := deployAndroid(ctx, root, cfg)
+	if err != nil {
+		t.Fatalf("deploy failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "BUILD-SUCCESS") || !strings.Contains(out, "Success") || !strings.Contains(out, "SERIAL123") {
+		t.Fatalf("unexpected deployment output:\n%s", out)
 	}
 }

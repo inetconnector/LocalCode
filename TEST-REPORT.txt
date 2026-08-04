@@ -1,75 +1,28 @@
-LOCALCODE 4.5.0 - TEST REPORT
-Date: 2026-08-04
+LOCALCODE 4.6.0 - TEST REPORT
 
-Successful automated checks in this package:
-- go fmt ./...
+Erfolgreich ausgeführt:
+- gofmt auf dem vollständigen Go-Quellcode
 - go test -count=1 ./...
 - go vet ./...
-- JavaScript syntax check of the embedded frontend with node --check
-- Windows amd64 GUI cross-build
-- Windows amd64 debug/console cross-build
-- PE32+ x86-64 structure check for both executables
+- JavaScript-Syntaxprüfung des eingebetteten Frontends
+- Windows-amd64-GUI-Build
+- Windows-amd64-Diagnose-Build
+- PE32+-Strukturprüfung
+- ZIP-Integritätsprüfung
 
-Regression tests covering the reported failures:
-- TestAgentContinuesAfterAskUserAnswer
-  A user answer such as "ja" continues the stored conversation and does not restart the task.
-- TestReadOnlyToolResultIsVisibleAsEvent
-  File reads, listings, searches and Git reads publish their real result as a UI event.
-- TestAskUserProducesOnlyOneVisibleQuestion
-  A question is not duplicated in the event stream.
-- TestSettingsEndpointAcceptsForwardCompatibleFieldsWhileAgentRuns
-  Settings accept unknown future fields, preserve omitted values and save while a run is active.
-- TestForceStopAlwaysReleasesUIState
-  A forced reset always restores an idle, usable interface and invalidates the old run.
-- TestControlAndOutputUIAreEmbedded
-  Header/composer cancel controls, phase display, output list and model timeout setting are embedded.
-- TestBackgroundWindowsCommandsUseNoWindowFlag
-  Background commands use the Windows no-window process flag instead of flashing a DOS window.
-- TestModelCallTimeoutReturnsControl
-  A blocked model call is stopped by the configured deadline and the interface is released.
-- TestStopAgentCancelsBlockedModelCall
-  The normal stop endpoint cancels a blocked model request promptly.
+Gezielt geprüfte Pfade:
+- bekannte Werkzeugerkennung und absolute ToolOverrides
+- typed ToolNotFoundError für reparierbare Werkzeuge
+- sichere ZIP-Extraktion und Blockade von Pfadtraversierung
+- Git-/ADB-Installationsmetadaten
+- Fortsetzungsentscheidung: echte Antwort vs. neue Aufgabe
+- Blockade unnötiger Git-init- und Werkzeug-Ausweichfragen
+- nicht leere Websuchanfrage aus Aufgaben-Fallback
+- Android-Projekterkennung
+- ADB-Geräteparser für device/unauthorized
+- deterministischer Android-Ablauf: Build, APK-Fund, Geräteauswahl, adb install
 
-Additional existing checks:
-- project root repair and project listing
-- file/image/general attachment validation and extraction
-- image analysis hand-off to the coding agent
-- README.md, AGENTS.md and managed STATE.md generation
-- Git/path/sandbox helpers
-- MCP stdio tools/list
-- settings round-trip
-- resizable-panel and settings UI wiring
-- Enter submission and general attachment inclusion
-
-Build-environment limitation:
-- The Windows executable was cross-compiled and structurally verified in Linux.
-- A final mouse-driven test on the user's exact Windows installation cannot be performed in this environment.
-- No claim is made that a real Windows desktop click-through was executed here.
-
-Tool resolver regression tests:
-- TestParseAndroidSDKFromLocalProperties
-  Reads Android SDK paths from project local.properties.
-- TestDiscoverADBFromProjectSDKAndDiagnoseDevice
-  Resolves the absolute ADB path and recognizes a connected device.
-- TestRunResolvedToolPreservesStdoutAndStderrOnFailure
-  Preserves stdout, stderr and nonzero exit code.
-- TestRewriteKnownToolCommandUsesAbsoluteADBPath
-  Rewrites a shell ADB command to the discovered absolute binary path.
-- TestDiscoverGenericProjectLocalTool
-  Finds arbitrary project-local tools without a hard-coded profile.
-- TestADBNoDevicePerformsSingleRecoveryAndRetry
-  Performs one bounded start-server/reconnect cycle and recognizes the recovered device.
-- TestSameQuestionAndActionSignature
-  Detects repeated questions and identical tool actions.
-- TestContinuationBlocksRepeatedQuestion
-  Prevents an answered question from being asked again.
-
-Rename and licensing regression tests:
-- TestLegacyProductDataMigrationCopiesUserState
-  Copies existing configuration, chat history and backups into the LocalCode data directories without deleting the source.
-- TestStateDocumentMigratesLegacyManagedMarkers
-  Replaces the former managed STATE.md markers while preserving all manual text.
-- TestLocalCodeBrandAndLicenseAreEmbedded
-  Verifies the LocalCode UI identity and the complete Apache-2.0 LICENSE plus NOTICE.
-- TestPingReportsLocalCodeAndLicense
-  Verifies the API identity and SPDX license identifier.
+Nicht auf dem konkreten Zielrechner ausführbar:
+- UAC-Dialoge und tatsächliche Installationen von Visual Studio Build Tools
+- physisches USB-Gerät und OEM-Treiber
+Diese Pfade sind deshalb zusätzlich mit Verifikation, Timeouts, vollständiger Ausgabe und kontrolliertem Fehlerabbruch abgesichert.

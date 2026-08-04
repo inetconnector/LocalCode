@@ -132,7 +132,7 @@ func runDiagnostics() int {
 	fmt.Println("Approval-Modus:", diagCfg.ApprovalMode)
 	fmt.Println("Sandbox-Modus:", diagCfg.SandboxMode)
 	fmt.Println("Netzwerk:", diagCfg.NetworkEnabled, "Websuche:", diagCfg.WebSearchProvider)
-	fmt.Println("Git verfügbar/aktiv:", gitAvailable(), diagCfg.GitEnabled)
+	fmt.Println("Git verfügbar/aktiv:", gitAvailable(diagCfg.LastProject, diagCfg), diagCfg.GitEnabled)
 	fmt.Println("STATE.md automatisch:", diagCfg.AutoStateUpdate, diagCfg.StateFile)
 	fmt.Println("Aktive MCP-Server:", enabledMCPCount(diagCfg))
 	fmt.Println("Automatische Werkzeugerkennung:", diagCfg.AutoDiscoverTools)

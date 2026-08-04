@@ -3,12 +3,12 @@ REM SPDX-License-Identifier: Apache-2.0
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-title LocalCode 4.5.0 bauen
+title LocalCode 4.6.0 bauen
 
 taskkill /F /IM LocalCode.exe >nul 2>&1
 powershell.exe -NoLogo -NoProfile -Command "$n='Local'+'Codex'; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
-set "VERSION=4.5.0"
+set "VERSION=4.6.0"
 set "GOEXE="
 if exist "%~dp0.tools\go\bin\go.exe" set "GOEXE=%~dp0.tools\go\bin\go.exe"
 if not defined GOEXE for /f "delims=" %%G in ('where go.exe 2^>nul') do if not defined GOEXE set "GOEXE=%%G"

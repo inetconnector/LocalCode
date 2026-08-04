@@ -20,16 +20,18 @@ import (
 )
 
 type ToolInfo struct {
-	Name         string   `json:"name"`
-	DisplayName  string   `json:"display_name"`
-	Available    bool     `json:"available"`
-	Path         string   `json:"path,omitempty"`
-	Source       string   `json:"source,omitempty"`
-	Version      string   `json:"version,omitempty"`
-	DocsURL      string   `json:"docs_url,omitempty"`
-	InstallHint  string   `json:"install_hint,omitempty"`
-	Diagnostics  []string `json:"diagnostics,omitempty"`
-	SearchedPath []string `json:"searched_paths,omitempty"`
+	Name             string   `json:"name"`
+	DisplayName      string   `json:"display_name"`
+	Available        bool     `json:"available"`
+	Path             string   `json:"path,omitempty"`
+	Source           string   `json:"source,omitempty"`
+	Version          string   `json:"version,omitempty"`
+	DocsURL          string   `json:"docs_url,omitempty"`
+	InstallHint      string   `json:"install_hint,omitempty"`
+	InstallSupported bool     `json:"install_supported,omitempty"`
+	InstallPreview   string   `json:"install_preview,omitempty"`
+	Diagnostics      []string `json:"diagnostics,omitempty"`
+	SearchedPath     []string `json:"searched_paths,omitempty"`
 }
 
 type toolProfile struct {
@@ -39,11 +41,13 @@ type toolProfile struct {
 	VersionArgs []string
 	DocsURL     string
 	InstallHint string
+	InstallKind string
+	WingetID    string
 }
 
 var toolProfiles = []toolProfile{
-	{Name: "adb", DisplayName: "Android Debug Bridge", Aliases: []string{"adb", "adb.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://developer.android.com/tools/adb", InstallHint: "Android SDK Platform-Tools über Android Studio > SDK Manager installieren."},
-	{Name: "fastboot", DisplayName: "Android Fastboot", Aliases: []string{"fastboot", "fastboot.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/releases/platform-tools", InstallHint: "Android SDK Platform-Tools installieren."},
+	{Name: "adb", DisplayName: "Android Debug Bridge", Aliases: []string{"adb", "adb.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://developer.android.com/tools/adb", InstallHint: "Android SDK Platform-Tools installieren.", InstallKind: "android-platform-tools"},
+	{Name: "fastboot", DisplayName: "Android Fastboot", Aliases: []string{"fastboot", "fastboot.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/releases/platform-tools", InstallHint: "Android SDK Platform-Tools installieren.", InstallKind: "android-platform-tools"},
 	{Name: "sdkmanager", DisplayName: "Android SDK Manager", Aliases: []string{"sdkmanager", "sdkmanager.bat"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/sdkmanager", InstallHint: "Android SDK Command-Line Tools installieren."},
 	{Name: "emulator", DisplayName: "Android Emulator", Aliases: []string{"emulator", "emulator.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://developer.android.com/studio/run/emulator-commandline", InstallHint: "Android Emulator über den SDK Manager installieren."},
 	{Name: "avdmanager", DisplayName: "Android Virtual Device Manager", Aliases: []string{"avdmanager", "avdmanager.bat"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/avdmanager", InstallHint: "Android SDK Command-Line Tools installieren."},
@@ -53,27 +57,30 @@ var toolProfiles = []toolProfile{
 	{Name: "d8", DisplayName: "D8 Dex Compiler", Aliases: []string{"d8", "d8.bat"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/d8", InstallHint: "Android SDK Build-Tools installieren."},
 	{Name: "lint", DisplayName: "Android Lint", Aliases: []string{"lint", "lint.bat"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/studio/write/lint", InstallHint: "Android SDK Command-Line Tools installieren."},
 	{Name: "gradle", DisplayName: "Gradle", Aliases: []string{"gradle", "gradle.bat", "gradlew", "gradlew.bat"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.gradle.org/current/userguide/command_line_interface.html", InstallHint: "Bevorzugt den Gradle Wrapper des Projekts verwenden."},
-	{Name: "java", DisplayName: "Java", Aliases: []string{"java", "java.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://docs.oracle.com/en/java/", InstallHint: "JDK oder die in Android Studio enthaltene JBR verwenden."},
-	{Name: "keytool", DisplayName: "Java Keytool", Aliases: []string{"keytool", "keytool.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/keytool.html", InstallHint: "JDK oder Android Studio JBR installieren."},
-	{Name: "jarsigner", DisplayName: "Java JAR Signer", Aliases: []string{"jarsigner", "jarsigner.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/jarsigner.html", InstallHint: "JDK oder Android Studio JBR installieren."},
-	{Name: "git", DisplayName: "Git", Aliases: []string{"git", "git.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://git-scm.com/docs", InstallHint: "Git for Windows installieren."},
-	{Name: "gh", DisplayName: "GitHub CLI", Aliases: []string{"gh", "gh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cli.github.com/manual/", InstallHint: "GitHub CLI installieren; Login interaktiv mit gh auth login."},
-	{Name: "node", DisplayName: "Node.js", Aliases: []string{"node", "node.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://nodejs.org/docs/latest/api/", InstallHint: "Node.js LTS installieren."},
-	{Name: "npm", DisplayName: "npm", Aliases: []string{"npm", "npm.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/", InstallHint: "Wird mit Node.js installiert."},
-	{Name: "npx", DisplayName: "npx", Aliases: []string{"npx", "npx.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/commands/npx", InstallHint: "Wird mit npm installiert."},
-	{Name: "python", DisplayName: "Python", Aliases: []string{"python", "python.exe", "py", "py.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.python.org/3/", InstallHint: "Python installieren und dem PATH hinzufügen."},
-	{Name: "pip", DisplayName: "pip", Aliases: []string{"pip", "pip.exe", "pip3", "pip3.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://pip.pypa.io/en/stable/cli/", InstallHint: "pip mit Python installieren."},
-	{Name: "go", DisplayName: "Go", Aliases: []string{"go", "go.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://go.dev/doc/", InstallHint: "Go installieren."},
-	{Name: "dotnet", DisplayName: ".NET", Aliases: []string{"dotnet", "dotnet.exe"}, VersionArgs: []string{"--info"}, DocsURL: "https://learn.microsoft.com/dotnet/core/tools/", InstallHint: ".NET SDK installieren."},
+	{Name: "java", DisplayName: "Java", Aliases: []string{"java", "java.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://learn.microsoft.com/java/openjdk/", InstallHint: "JDK oder die in Android Studio enthaltene JBR verwenden.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
+	{Name: "keytool", DisplayName: "Java Keytool", Aliases: []string{"keytool", "keytool.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/keytool.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
+	{Name: "jarsigner", DisplayName: "Java JAR Signer", Aliases: []string{"jarsigner", "jarsigner.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/jarsigner.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
+	{Name: "git", DisplayName: "Git", Aliases: []string{"git", "git.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://git-scm.com/docs", InstallHint: "Git for Windows oder eine portable MinGit-Version installieren.", InstallKind: "mingit", WingetID: "Git.Git"},
+	{Name: "gh", DisplayName: "GitHub CLI", Aliases: []string{"gh", "gh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cli.github.com/manual/", InstallHint: "GitHub CLI installieren; Login interaktiv mit gh auth login.", InstallKind: "winget", WingetID: "GitHub.cli"},
+	{Name: "node", DisplayName: "Node.js", Aliases: []string{"node", "node.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://nodejs.org/docs/latest/api/", InstallHint: "Node.js LTS installieren.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "npm", DisplayName: "npm", Aliases: []string{"npm", "npm.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/", InstallHint: "Wird mit Node.js installiert.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "npx", DisplayName: "npx", Aliases: []string{"npx", "npx.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/commands/npx", InstallHint: "Wird mit npm installiert.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "python", DisplayName: "Python", Aliases: []string{"python", "python.exe", "py", "py.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.python.org/3/", InstallHint: "Python installieren und dem PATH hinzufügen.", InstallKind: "winget", WingetID: "Python.Python.3.13"},
+	{Name: "pip", DisplayName: "pip", Aliases: []string{"pip", "pip.exe", "pip3", "pip3.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://pip.pypa.io/en/stable/cli/", InstallHint: "pip mit Python installieren.", InstallKind: "winget", WingetID: "Python.Python.3.13"},
+	{Name: "go", DisplayName: "Go", Aliases: []string{"go", "go.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://go.dev/doc/", InstallHint: "Go installieren.", InstallKind: "winget", WingetID: "GoLang.Go"},
+	{Name: "dotnet", DisplayName: ".NET", Aliases: []string{"dotnet", "dotnet.exe"}, VersionArgs: []string{"--info"}, DocsURL: "https://learn.microsoft.com/dotnet/core/tools/", InstallHint: ".NET SDK installieren.", InstallKind: "dotnet-sdk"},
 	{Name: "cargo", DisplayName: "Cargo", Aliases: []string{"cargo", "cargo.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://doc.rust-lang.org/cargo/", InstallHint: "Rust über rustup installieren."},
 	{Name: "rustc", DisplayName: "Rust Compiler", Aliases: []string{"rustc", "rustc.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://doc.rust-lang.org/rustc/", InstallHint: "Rust über rustup installieren."},
-	{Name: "docker", DisplayName: "Docker", Aliases: []string{"docker", "docker.exe"}, VersionArgs: []string{"version", "--format", "{{.Client.Version}}"}, DocsURL: "https://docs.docker.com/reference/cli/docker/", InstallHint: "Docker Desktop installieren und starten."},
-	{Name: "cmake", DisplayName: "CMake", Aliases: []string{"cmake", "cmake.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cmake.org/cmake/help/latest/", InstallHint: "CMake installieren."},
+	{Name: "docker", DisplayName: "Docker", Aliases: []string{"docker", "docker.exe"}, VersionArgs: []string{"version", "--format", "{{.Client.Version}}"}, DocsURL: "https://docs.docker.com/reference/cli/docker/", InstallHint: "Docker Desktop installieren und starten.", InstallKind: "winget", WingetID: "Docker.DockerDesktop"},
+	{Name: "cmake", DisplayName: "CMake", Aliases: []string{"cmake", "cmake.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cmake.org/cmake/help/latest/", InstallHint: "CMake installieren.", InstallKind: "winget", WingetID: "Kitware.CMake"},
 	{Name: "ninja", DisplayName: "Ninja", Aliases: []string{"ninja", "ninja.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://ninja-build.org/manual.html", InstallHint: "Ninja installieren oder die Android-SDK-Kopie verwenden."},
 	{Name: "ssh", DisplayName: "OpenSSH Client", Aliases: []string{"ssh", "ssh.exe"}, VersionArgs: []string{"-V"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/openssh/openssh-overview", InstallHint: "Windows OpenSSH Client Feature installieren."},
 	{Name: "scp", DisplayName: "Secure Copy", Aliases: []string{"scp", "scp.exe"}, VersionArgs: []string{"-V"}, DocsURL: "https://man.openbsd.org/scp", InstallHint: "Windows OpenSSH Client Feature installieren."},
 	{Name: "curl", DisplayName: "curl", Aliases: []string{"curl", "curl.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://curl.se/docs/manpage.html", InstallHint: "curl installieren oder die Windows-Systemkopie verwenden."},
-	{Name: "msbuild", DisplayName: "MSBuild", Aliases: []string{"msbuild", "MSBuild.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://learn.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference", InstallHint: "Visual Studio Build Tools installieren."},
+	{Name: "msbuild", DisplayName: "MSBuild", Aliases: []string{"msbuild", "MSBuild.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://learn.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference", InstallHint: "Visual Studio Build Tools installieren.", InstallKind: "vs-build-tools"},
+	{Name: "devenv", DisplayName: "Visual Studio IDE", Aliases: []string{"devenv", "devenv.exe"}, VersionArgs: []string{"/Command", "File.Exit"}, DocsURL: "https://learn.microsoft.com/visualstudio/ide/reference/devenv-command-line-switches", InstallHint: "Visual Studio installieren."},
+	{Name: "vswhere", DisplayName: "Visual Studio Locator", Aliases: []string{"vswhere", "vswhere.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://github.com/microsoft/vswhere", InstallHint: "vswhere wird mit Visual Studio Installer installiert."},
+	{Name: "nuget", DisplayName: "NuGet CLI", Aliases: []string{"nuget", "nuget.exe"}, VersionArgs: []string{"help"}, DocsURL: "https://learn.microsoft.com/nuget/reference/nuget-exe-cli-reference", InstallHint: "NuGet CLI installieren oder dotnet restore verwenden."},
 }
 
 func canonicalToolName(name string) string {
@@ -142,10 +149,18 @@ func androidSDKRoots(project string) []string {
 	if runtime.GOOS == "windows" {
 		if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
 			roots = append(roots, filepath.Join(v, "Android", "Sdk"))
+			roots = append(roots, filepath.Join(v, "LocalCode", "tools", "android-platform-tools"))
 		}
 		if v := strings.TrimSpace(os.Getenv("USERPROFILE")); v != "" {
 			roots = append(roots, filepath.Join(v, "AppData", "Local", "Android", "Sdk"))
 		}
+		for _, base := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)")} {
+			if strings.TrimSpace(base) != "" {
+				roots = append(roots, filepath.Join(base, "Android", "android-sdk"))
+			}
+		}
+		// LocalCode's managed Platform-Tools install lives below the app config directory.
+		roots = append(roots, filepath.Join(appDataDir(), "tools", "android-platform-tools"))
 	}
 	return uniquePaths(roots)
 }
@@ -236,6 +251,9 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 			add(p, "PATH")
 		}
 	}
+	for _, candidate := range visualStudioToolPaths(profile.Name) {
+		add(candidate[0], candidate[1])
+	}
 	if runtime.GOOS == "windows" {
 		pf := os.Getenv("ProgramFiles")
 		pf86 := os.Getenv("ProgramFiles(x86)")
@@ -259,9 +277,15 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 		case "java", "keytool", "jarsigner":
 			add(filepath.Join(pf, "Android", "Android Studio", "jbr", "bin", executableName(profile.Name)), "Android Studio JBR")
 			add(filepath.Join(pf86, "Android", "Android Studio", "jbr", "bin", executableName(profile.Name)), "Android Studio JBR")
-			matches, _ := filepath.Glob(filepath.Join(pf, "Java", "*", "bin", executableName(profile.Name)))
-			for _, m := range matches {
-				add(m, "JDK")
+			for _, pattern := range []string{
+				filepath.Join(pf, "Java", "*", "bin", executableName(profile.Name)),
+				filepath.Join(pf, "Microsoft", "jdk-*", "bin", executableName(profile.Name)),
+				filepath.Join(pf, "Microsoft", "jdk-*", "*", "bin", executableName(profile.Name)),
+			} {
+				matches, _ := filepath.Glob(pattern)
+				for _, m := range matches {
+					add(m, "JDK")
+				}
 			}
 		case "python", "pip":
 			target := "python.exe"
@@ -279,6 +303,9 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 			add(filepath.Join(os.Getenv("WINDIR"), "System32", "OpenSSH", executableName(profile.Name)), "Windows OpenSSH")
 		case "curl":
 			add(filepath.Join(os.Getenv("WINDIR"), "System32", "curl.exe"), "Windows System32")
+		case "vswhere":
+			add(filepath.Join(pf86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "Visual Studio Installer")
+			add(filepath.Join(pf, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "Visual Studio Installer")
 		case "msbuild":
 			for _, base := range []string{pf, pf86} {
 				matches, _ := filepath.Glob(filepath.Join(base, "Microsoft Visual Studio", "*", "*", "MSBuild", "Current", "Bin", "MSBuild.exe"))
@@ -324,7 +351,7 @@ func scriptName(name string) string {
 
 func discoverTool(project, name string, cfg Config, withVersion bool) ToolInfo {
 	profile := profileForTool(name)
-	info := ToolInfo{Name: profile.Name, DisplayName: profile.DisplayName, DocsURL: profile.DocsURL, InstallHint: profile.InstallHint}
+	info := ToolInfo{Name: profile.Name, DisplayName: profile.DisplayName, DocsURL: profile.DocsURL, InstallHint: profile.InstallHint, InstallSupported: toolInstallSupported(profile.Name), InstallPreview: toolInstallPreview(profile.Name)}
 	candidates := toolCandidatePaths(project, profile, cfg)
 	for _, c := range candidates {
 		info.SearchedPath = append(info.SearchedPath, c.path)
@@ -544,14 +571,14 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 			}
 			cancel()
 		}
-		return b.String(), errors.New("tool not found: " + info.Name)
+		return b.String(), &ToolNotFoundError{Info: info, Detail: b.String()}
 	}
 	res := runDirectTool(ctx, project, info.Path, args, cfg)
 	res.Tool = info.Name
 	if info.Name == "adb" {
 		res = enrichADBResult(ctx, project, info.Path, args, cfg, res)
 	}
-	if res.Err != nil && info.DocsURL != "" {
+	if res.Err != nil && info.DocsURL != "" && shouldResearchToolFailure(info.Name, args, res) {
 		if res.Diagnostic != "" {
 			res.Diagnostic += "\n"
 		}
@@ -570,6 +597,23 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 	}
 	text := res.Text()
 	return text, res.Err
+}
+
+func shouldResearchToolFailure(name string, args []string, res ToolRunResult) bool {
+	text := strings.ToLower(res.Stdout + "\n" + res.Stderr)
+	joined := strings.ToLower(strings.Join(args, " "))
+	if name == "git" && (strings.Contains(text, "not a git repository") || strings.HasPrefix(joined, "--no-pager status")) {
+		return false
+	}
+	if name == "adb" && (strings.HasPrefix(joined, "devices") || strings.Contains(text, "unauthorized") || strings.Contains(text, "offline")) {
+		return false
+	}
+	for _, marker := range []string{"unknown option", "unrecognized option", "unknown command", "not recognized as", "command not found", "no such file or directory", "usage:"} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func diagnoseADBPath(project, path string, cfg Config) []string {
@@ -605,6 +649,32 @@ func enrichADBResult(ctx context.Context, project, path string, args []string, c
 			reason = "adb start-server und adb reconnect"
 		}
 		retry.Diagnostic = "Automatischer Wiederholungsversuch nach " + reason + ".\n" + adbDiagnostic(retry.Stdout, retry.Stderr, retry.Err)
+		if adbDeviceCount(retry.Stdout+"\n"+retry.Stderr) == 0 {
+			// Multiple SDKs frequently ship different adb.exe copies. Try every
+			// discovered installation once and keep the first one that really sees
+			// a device instead of assuming the first path is authoritative.
+			profile := profileForTool("adb")
+			for _, candidate := range toolCandidatePaths(project, profile, cfg) {
+				if strings.EqualFold(candidate.path, path) {
+					continue
+				}
+				if st, statErr := os.Stat(candidate.path); statErr != nil || st.IsDir() {
+					continue
+				}
+				altCtx, altCancel := context.WithTimeout(ctx, 10*time.Second)
+				alt := runDirectTool(altCtx, project, candidate.path, args, cfg)
+				altCancel()
+				if adbDeviceCount(alt.Stdout+"\n"+alt.Stderr) > 0 {
+					alt.Tool = "adb"
+					alt.Diagnostic = "Alternative ADB-Installation mit verbundenem Gerät ausgewählt: " + candidate.path + " [" + candidate.source + "]\n" + adbDiagnostic(alt.Stdout, alt.Stderr, alt.Err)
+					return alt
+				}
+			}
+			hostDiag := strings.TrimSpace(androidHostDeviceDiagnostic())
+			if hostDiag != "" {
+				retry.Diagnostic += "\n\n" + hostDiag
+			}
+		}
 		return retry
 	}
 	return initial
@@ -738,7 +808,7 @@ func rewriteKnownToolCommand(project, command string, cfg Config, shell string) 
 		if info.DocsURL != "" {
 			detail.WriteString("Offizielle Dokumentation: " + info.DocsURL + "\n")
 		}
-		return command, detail.String(), fmt.Errorf("tool not found: %s", name)
+		return command, detail.String(), &ToolNotFoundError{Info: info, Detail: detail.String()}
 	}
 	quoted := info.Path
 	switch shell {
