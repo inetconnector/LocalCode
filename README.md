@@ -107,3 +107,10 @@ LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder propriet�
 LocalCode steht unter der **Apache License 2.0**. Der vollständige Lizenztext befindet sich in [`LICENSE`](LICENSE); produktspezifische Hinweise stehen in [`NOTICE`](NOTICE), Hinweise zu externen Komponenten in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 Die Apache-2.0-Lizenz erlaubt Nutzung, Veränderung und Verteilung, verlangt dabei aber die Beibehaltung der Lizenz- und Hinweistexte. Für externe Programme, Modelle, MCP-Server und Webinhalte gelten jeweils deren eigene Lizenzen und Nutzungsbedingungen.
+
+## Git and Visual Studio
+
+The source package includes `.gitignore`, `.gitattributes`, `.editorconfig`,
+`GIT-SETUP.md` and `COMMIT_MESSAGE.txt`. Open the folder in Visual Studio and use
+the included commit message for the first Git commit.
+

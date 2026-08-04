@@ -1,0 +1,8 @@
+feat: rename application to LocalCode and add Git-ready project setup
+
+- rename product, binaries, module paths and application data directories
+- migrate existing settings, chats and backups without deleting legacy data
+- add Apache License 2.0, NOTICE and third-party notices
+- update build scripts, documentation and LocalCode state markers
+- add Visual Studio and Go development exclusions
+- add consistent line-ending and editor configuration

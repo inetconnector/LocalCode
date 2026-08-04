@@ -1,5 +1,193 @@
-﻿################################################################################
-# Diese .gitignore-Datei wurde von Microsoft(R) Visual Studio automatisch erstellt.
-################################################################################
+# LocalCode - Git ignore rules
+# Visual Studio, Go, Windows, build outputs, local state and secrets.
 
-/.vs
+# ----------------------------------------------------------------------
+# Visual Studio
+# ----------------------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.rsuser
+*.VC.db
+*.VC.opendb
+*.VC.VC.opendb
+*.VC.VC.db
+*.opendb
+*.dbmdl
+*.jfm
+*.pdb
+*.ipdb
+*.iobj
+*.ilk
+*.pch
+*.tlog
+*.lastbuildstate
+*.log
+*.cache
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+
+# Visual Studio build directories
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+ARM/
+ARM64/
+bld/
+[Bb]uild/
+[Bb]uilds/
+artifacts/
+TestResults/
+GeneratedFiles/
+BenchmarkDotNet.Artifacts/
+
+# Visual Studio generated project files
+*.csproj.user
+*.vbproj.user
+*.vcxproj.user
+*.fsproj.user
+*.sln.cache
+*.ncb
+*.aps
+*.sdf
+*.opensdf
+*.pidb
+*.svclog
+*.scc
+*.vssscc
+*.vspscc
+*.vshost.*
+*.publish.xml
+*.pubxml
+*.pubxml.user
+*.publishproj
+
+# ----------------------------------------------------------------------
+# Go
+# ----------------------------------------------------------------------
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+coverage/
+coverage.*
+cover.out
+vendor/
+go.work
+go.work.sum
+
+# Keep intentionally distributed binaries out of Git.
+dist/
+portable-go/
+.tools/
+toolcache/
+
+# ----------------------------------------------------------------------
+# LocalCode runtime state
+# ----------------------------------------------------------------------
+.localcode/
+localcode-data/
+localcode-cache/
+localcode-logs/
+localcode-backups/
+localcode-worktrees/
+localcode-settings.json
+localcode-settings.local.json
+localcode-history.json
+localcode-sessions.json
+localcode-state.json
+*.localcode.json
+
+# Generated diagnostics and runtime logs
+logs/
+diagnostics/
+crashdumps/
+*.dmp
+*.stacktrace
+*.trace
+*.pid
+*.lock
+
+# ----------------------------------------------------------------------
+# Secrets and machine-local configuration
+# ----------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+credentials/
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.kdbx
+auth.json
+tokens.json
+credentials.json
+service-account*.json
+
+# ----------------------------------------------------------------------
+# Operating systems
+# ----------------------------------------------------------------------
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+.directory
+.Trash-*
+
+# ----------------------------------------------------------------------
+# Archives and generated packages
+# ----------------------------------------------------------------------
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+
+# Preserve source-controlled release documentation/checksums.
+!CHECKSUMS-SHA256.txt
+!SOURCE-MANIFEST.txt
+!TEST-REPORT.txt
