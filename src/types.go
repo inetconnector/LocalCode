@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -49,35 +51,38 @@ type Config struct {
 
 	// Desktop UI and workflow preferences. These values are persisted and
 	// immediately applied by the embedded client; none of them are placeholders.
-	UITheme           string            `json:"ui_theme"` // dark | light | system
-	UIAccent          string            `json:"ui_accent"`
-	UIBackground      string            `json:"ui_background"`
-	UIForeground      string            `json:"ui_foreground"`
-	UIFont            string            `json:"ui_font"`
-	CodeFont          string            `json:"code_font"`
-	UILeftWidth       int               `json:"ui_left_width"`
-	UIRightWidth      int               `json:"ui_right_width"`
-	UITerminalHeight  int               `json:"ui_terminal_height"`
-	ShowBottomBar     bool              `json:"show_bottom_bar"`
-	TerminalDock      string            `json:"terminal_dock"`       // bottom | right
-	TerminalShell     string            `json:"terminal_shell"`      // powershell | cmd | wsl
-	AgentEnvironment  string            `json:"agent_environment"`   // windows-native | wsl
-	DefaultOpenTarget string            `json:"default_open_target"` // explorer | vscode | visualstudio
-	Language          string            `json:"language"`
-	ResponseSpeed     string            `json:"response_speed"` // fast | balanced | thorough
-	ProfileName       string            `json:"profile_name"`
-	AvatarInitials    string            `json:"avatar_initials"`
-	UserInstructions  string            `json:"user_instructions"`
-	PreferredLanguage string            `json:"preferred_language"`
-	VoiceEnabled      bool              `json:"voice_enabled"`
-	PetEnabled        bool              `json:"pet_enabled"`
-	PetName           string            `json:"pet_name"`
-	Shortcuts         map[string]string `json:"shortcuts"`
-	HookBeforeTask    string            `json:"hook_before_task"`
-	HookAfterTask     string            `json:"hook_after_task"`
-	HookBeforeTool    string            `json:"hook_before_tool"`
-	HookAfterTool     string            `json:"hook_after_tool"`
-	EnvironmentVars   map[string]string `json:"environment_vars"`
+	UITheme              string            `json:"ui_theme"` // dark | light | system
+	UIAccent             string            `json:"ui_accent"`
+	UIBackground         string            `json:"ui_background"`
+	UIForeground         string            `json:"ui_foreground"`
+	UIFont               string            `json:"ui_font"`
+	CodeFont             string            `json:"code_font"`
+	UILeftWidth          int               `json:"ui_left_width"`
+	UIRightWidth         int               `json:"ui_right_width"`
+	UITerminalHeight     int               `json:"ui_terminal_height"`
+	ShowBottomBar        bool              `json:"show_bottom_bar"`
+	TerminalDock         string            `json:"terminal_dock"`       // bottom | right
+	TerminalShell        string            `json:"terminal_shell"`      // powershell | cmd | wsl
+	AgentEnvironment     string            `json:"agent_environment"`   // windows-native | wsl
+	DefaultOpenTarget    string            `json:"default_open_target"` // explorer | vscode | visualstudio
+	Language             string            `json:"language"`
+	ResponseSpeed        string            `json:"response_speed"` // fast | balanced | thorough
+	ProfileName          string            `json:"profile_name"`
+	AvatarInitials       string            `json:"avatar_initials"`
+	UserInstructions     string            `json:"user_instructions"`
+	PreferredLanguage    string            `json:"preferred_language"`
+	VoiceEnabled         bool              `json:"voice_enabled"`
+	PetEnabled           bool              `json:"pet_enabled"`
+	PetName              string            `json:"pet_name"`
+	Shortcuts            map[string]string `json:"shortcuts"`
+	HookBeforeTask       string            `json:"hook_before_task"`
+	HookAfterTask        string            `json:"hook_after_task"`
+	HookBeforeTool       string            `json:"hook_before_tool"`
+	HookAfterTool        string            `json:"hook_after_tool"`
+	EnvironmentVars      map[string]string `json:"environment_vars"`
+	AutoDiscoverTools    bool              `json:"auto_discover_tools"`
+	AutoResearchToolHelp bool              `json:"auto_research_tool_help"`
+	ToolOverrides        map[string]string `json:"tool_overrides"`
 }
 
 type Attachment struct {

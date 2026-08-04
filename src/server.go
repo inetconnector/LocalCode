@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -57,6 +59,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/terminal-command", s.handleTerminalCommand)
 	s.mux.HandleFunc("/api/open-project", s.handleOpenProject)
 	s.mux.HandleFunc("/api/git-overview", s.handleGitOverview)
+	s.mux.HandleFunc("/api/tools", s.handleTools)
+	s.mux.HandleFunc("/api/tools/diagnose", s.handleToolDiagnose)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +76,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"app": "LocalCodex", "version": version})
+	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0"})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -737,7 +741,7 @@ func errorText(err error) string {
 }
 
 func chooseDefaultModel(models []ModelInfo, previous string) string {
-	// qwen2.5-coder:14b is the most reliable installed model for LocalCodex's
+	// qwen2.5-coder:14b is the most reliable installed model for LocalCode's
 	// strict structured-action loop. Older versions preferred gpt-oss:20b,
 	// which can return a thinking trace without a final structured action.
 	for _, m := range models {
@@ -795,4 +799,44 @@ func startHTTPServer(state *AppState, requestedPort int) (string, error) {
 		}
 	}()
 	return "http://" + ln.Addr().String(), nil
+}
+
+func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	project := s.state.Project
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+	withVersion := r.URL.Query().Get("versions") == "1"
+	infos := toolInventory(project, cfg, withVersion)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"tools": infos, "project": project})
+}
+
+func (s *Server) handleToolDiagnose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Tool string `json:"tool"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Tool) == "" {
+		http.Error(w, "tool is required", http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	project := s.state.Project
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+	info := discoverTool(project, req.Tool, cfg, true)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, info)
 }

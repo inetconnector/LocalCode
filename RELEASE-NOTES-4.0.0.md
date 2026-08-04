@@ -1,4 +1,4 @@
-# LocalCodex 4.3.0 – UI- und Einstellungs-Neuaufbau
+# LocalCode 4.0.0 – UI- und Einstellungs-Neuaufbau
 
 ## Oberfläche
 

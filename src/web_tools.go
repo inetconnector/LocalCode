@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -90,7 +92,7 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 func duckDuckGoSearch(ctx context.Context, query string, maxResults int) ([]WebResult, error) {
 	endpoint := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCodex/2.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/2.0")
 	resp, err := (&http.Client{Timeout: 35 * time.Second}).Do(req)
 	if err != nil {
 		return nil, err
@@ -167,7 +169,7 @@ func webFetch(ctx context.Context, cfg Config, rawURL string) (string, error) {
 		return err
 	}}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCodex/2.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/2.0")
 	req.Header.Set("Accept", "text/html,application/json,text/plain;q=0.9,*/*;q=0.5")
 	resp, err := client.Do(req)
 	if err != nil {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -9,8 +11,10 @@ import (
 	"time"
 )
 
-const stateBegin = "<!-- LOCALCODEX:STATE:BEGIN -->"
-const stateEnd = "<!-- LOCALCODEX:STATE:END -->"
+const stateBegin = "<!-- LOCALCODE:STATE:BEGIN -->"
+const stateEnd = "<!-- LOCALCODE:STATE:END -->"
+const legacyStateBegin = "<!-- LOCAL" + "CODEX:STATE:BEGIN -->"
+const legacyStateEnd = "<!-- LOCAL" + "CODEX:STATE:END -->"
 
 func ensureProjectDocs(project string, cfg Config) error {
 	if !cfg.CreateProjectDocs {
@@ -22,7 +26,7 @@ func ensureProjectDocs(project string, cfg Config) error {
 
 ## Zweck
 
-Dieses Repository wird mit LocalCodex bearbeitet. Ergänze hier Zweck, Architektur und Nutzerhinweise.
+Dieses Repository wird mit LocalCode bearbeitet. Ergänze hier Zweck, Architektur und Nutzerhinweise.
 
 ## Entwicklung
 
@@ -51,7 +55,7 @@ Dieses Repository wird mit LocalCodex bearbeitet. Ergänze hier Zweck, Architekt
 - Ändere nur notwendige Dateien und erhalte bestehende Konventionen.
 - Führe passende Tests, Linter und Builds aus.
 - Behaupte keinen Erfolg ohne tatsächliche Prüfung.
-- Halte STATE.md über die LocalCodex-Verwaltung aktuell.
+- Halte STATE.md über die LocalCode-Verwaltung aktuell.
 - Keine Geheimnisse ausgeben oder committen.
 - Destruktive Befehle, externe Logins, Netzwerkzugriffe und Veröffentlichung benötigen eine ausdrückliche Genehmigung.
 `
@@ -155,8 +159,14 @@ func updateStateDocument(project string, cfg Config, running bool, model, task, 
 	var updated string
 	start := strings.Index(old, stateBegin)
 	end := strings.Index(old, stateEnd)
+	endMarkerLength := len(stateEnd)
+	if start < 0 || end < start {
+		start = strings.Index(old, legacyStateBegin)
+		end = strings.Index(old, legacyStateEnd)
+		endMarkerLength = len(legacyStateEnd)
+	}
 	if start >= 0 && end >= start {
-		end += len(stateEnd)
+		end += endMarkerLength
 		updated = old[:start] + managed + old[end:]
 	} else if strings.TrimSpace(old) == "" {
 		updated = managed + "\n\n## Manuelle Notizen\n\n"

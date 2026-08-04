@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 package main
@@ -12,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -26,8 +29,19 @@ func hideCommandWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr.CreationFlags |= 0x08000000 // CREATE_NO_WINDOW
 }
 
+func killProcessTree(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	pid := fmt.Sprintf("%d", cmd.Process.Pid)
+	kill := exec.Command("taskkill.exe", "/PID", pid, "/T", "/F")
+	hideCommandWindow(kill)
+	_ = kill.Run()
+	_ = cmd.Process.Kill()
+}
+
 func openBrowser(url string) error {
-	// Prefer Chromium app mode so LocalCodex opens as a focused desktop-style
+	// Prefer Chromium app mode so LocalCode opens as a focused desktop-style
 	// window without browser tabs or an address bar. Fall back to the default
 	// browser when Edge/Chrome cannot be located.
 	candidates := []string{}
@@ -138,28 +152,70 @@ func runProjectCommand(ctx context.Context, project, command string, cfg Config)
 		return "", err
 	}
 	var cmd *exec.Cmd
+	resolutionNote := ""
 	if cfg.AgentEnvironment == "wsl" || cfg.TerminalShell == "wsl" {
 		wslProject := windowsPathToWSL(project)
 		line := "cd '" + strings.ReplaceAll(wslProject, "'", "'\\''") + "' && " + command
-		cmd = exec.CommandContext(ctx, "wsl.exe", "bash", "-lc", line)
+		cmd = exec.Command("wsl.exe", "bash", "-lc", line)
 	} else if cfg.TerminalShell == "cmd" {
-		cmd = exec.CommandContext(ctx, "cmd.exe", "/D", "/S", "/C", command)
+		rewritten, note, err := rewriteKnownToolCommand(project, command, cfg, "cmd")
+		if err != nil {
+			return note, err
+		}
+		resolutionNote = note
+		cmd = exec.Command("cmd.exe", "/D", "/S", "/C", rewritten)
 		cmd.Dir = project
 	} else {
-		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command)
+		rewritten, note, err := rewriteKnownToolCommand(project, command, cfg, "powershell")
+		if err != nil {
+			return note, err
+		}
+		resolutionNote = note
+		cmd = exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", rewritten)
 		cmd.Dir = project
 	}
 	cmd.Env = commandEnvironment(cfg)
 	hideCommandWindow(cmd)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	err := cmd.Run()
-	return truncateText(buf.String(), 160000), err
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	started := time.Now()
+	if err := cmd.Start(); err != nil {
+		return resolutionNote, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var err error
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		killProcessTree(cmd)
+		err = ctx.Err()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+		}
+	}
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	var out strings.Builder
+	if resolutionNote != "" {
+		out.WriteString(resolutionNote + "\n")
+	}
+	fmt.Fprintf(&out, "Arbeitsordner: %s\nExitcode: %d\nDauer: %s\n", project, exitCode, time.Since(started).Round(time.Millisecond))
+	if stdout.Len() > 0 {
+		out.WriteString("\nSTDOUT:\n" + stdout.String())
+	}
+	if stderr.Len() > 0 {
+		out.WriteString("\nSTDERR:\n" + stderr.String())
+	}
+	return truncateText(out.String(), 160000), err
 }
 
 func openInteractiveTerminal(project, command string, cfg Config) error {
-	title := "LocalCodex Terminal"
+	title := "LocalCode Terminal"
 	var args []string
 	if cfg.AgentEnvironment == "wsl" || cfg.TerminalShell == "wsl" {
 		wslProject := windowsPathToWSL(project)

@@ -33,3 +33,15 @@ Version 4.0.0 orientiert sich an öffentlich dokumentierten Codex-Arbeitsmustern
 - Anhänge werden lokal verarbeitet.
 - App-Modus über einen vorhandenen Chromium-Browser statt Electron.
 - Sicherheitsrelevante Grenzen werden offen dokumentiert.
+
+
+## Werkzeug- und Android-Referenzen
+
+- https://developer.android.com/tools/releases/platform-tools
+- https://developer.android.com/tools/adb
+- https://developer.android.com/studio/command-line/variables
+- https://developer.android.com/studio/run/device
+- https://developer.android.com/studio/run/oem-usb
+- https://developer.android.com/tools/sdkmanager
+
+Die Implementierung verwendet diese Quellen für die SDK-/ADB-Suchpfade, Gerätezustände und Installationshinweise.

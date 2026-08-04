@@ -1,12 +1,27 @@
-# LocalCodex Entwicklungsstand
+# LocalCode Entwicklungsstand
 
-**Version:** 4.3.0  
+**Version:** 4.5.0  
 **Status:** Build-, test- und paketierfähig  
 **Zielplattform:** Windows x64  
 **Backend:** Go, lokaler HTTP-Server, Ollama  
 **Frontend:** eingebettetes HTML/CSS/JavaScript im Edge-/Chrome-App-Modus
 
-## In 4.3.0 behobene Laufzeitfehler
+## Produktidentität und Lizenz in 4.5.0
+
+- Produktname, UI, Binärdateien, Go-Modul, API-Kennung, MCP-Clientinfo, User-Agent, Konfigurationsordner, Logdatei, Backups, Build-Skripte und Dokumentation heißen vollständig **LocalCode**.
+- Frühere Konfigurationen, Chats und Sicherungen werden beim ersten Start verlustfrei kopiert, sofern am neuen Ziel noch keine Dateien vorhanden sind. Alte Daten werden nicht gelöscht.
+- Verwaltete ältere STATE.md-Marker werden auf `LOCALCODE:STATE:BEGIN/END` migriert; manuelle Inhalte bleiben erhalten.
+- Lizenz: Apache License 2.0 mit `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
+
+## In 4.5.0 behobene Werkzeug- und Agentenfehler
+
+- Neue strukturierte Aktionen `discover_tool`, `tool_inventory` und `run_tool` lösen Programme vor der Ausführung auf und verwenden absolute Pfade.
+- Projektlokale Wrapper und Binaries in Projektwurzel, `bin`, `tools`, `.tools`, `scripts` und `node_modules/.bin` werden erkannt.
+- Android-SDK und ADB werden aus `local.properties`, `ANDROID_HOME`, `ANDROID_SDK_ROOT` und Windows-Standardpfaden gefunden.
+- ADB-Gerätezustände `device`, `unauthorized`, `offline` und leere Geräteliste werden getrennt behandelt; ein kontrollierter Reparaturversuch ersetzt Wiederholungsschleifen.
+- Werkzeugfehler behalten Exitcode, STDOUT und STDERR. Bei aktivierter Netzfreigabe ergänzt eine automatische Suche offizielle Herstellerhilfe.
+- Identische unmittelbar aufeinanderfolgende Aktionen und bereits beantwortete Rückfragen werden blockiert.
+- Tool- und Shellprozesse übernehmen Abbruch und Timeout des Agenten und beenden unter Windows den gesamten Kindprozessbaum.
 
 - Windows-Hintergrundprozesse werden mit `CREATE_NO_WINDOW` und verborgenem Fenster gestartet. Sichtbar bleiben nur vom Nutzer ausdrücklich geöffnete interaktive Terminals.
 - Werkzeugergebnisse, Befehlsausgaben, Git-Ausgaben, Diffs und Fehler werden als aufklappbare Karten im Chat und gesammelt im rechten Ausgabenbereich angezeigt.
@@ -65,7 +80,7 @@
 
 ## Technische Grenzen
 
-- LocalCodex ist ein eigenständiger lokaler Client und nicht OpenAI Codex.
+- LocalCode ist ein eigenständiger lokaler Client und nicht OpenAI Codex.
 - Ein lokales 14B-/20B-Modell kann die Modellqualität eines gehosteten Frontier-Modells nicht garantieren.
 - Die anwendungseigenen Pfad- und Freigaberegeln sind keine identische betriebssystemseitige Codex-Sandbox.
 - Computersteuerung fremder GUI-Anwendungen ist nur über ausdrücklich konfigurierte Werkzeuge oder MCP-Server möglich.

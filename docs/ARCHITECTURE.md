@@ -2,7 +2,7 @@
 
 ## Prozessmodell
 
-`LocalCodex.exe` startet einen ausschließlich an `127.0.0.1` gebundenen Go-HTTP-Server. Unter Windows wird die Oberfläche bevorzugt mit Edge oder Chrome im `--app`-Modus geöffnet. Dadurch entsteht ein eigenes App-Fenster ohne normale Browser-Tabs und Adressleiste. Ist kein Chromium-Browser verfügbar, wird der Standardbrowser verwendet.
+`LocalCode.exe` startet einen ausschließlich an `127.0.0.1` gebundenen Go-HTTP-Server. Unter Windows wird die Oberfläche bevorzugt mit Edge oder Chrome im `--app`-Modus geöffnet. Dadurch entsteht ein eigenes App-Fenster ohne normale Browser-Tabs und Adressleiste. Ist kein Chromium-Browser verfügbar, wird der Standardbrowser verwendet.
 
 ## Komponenten
 
@@ -12,13 +12,14 @@
 - `agent.go`: strukturierte Agentenschleife und Werkzeugdispatch.
 - `attachments.go`: allgemeine Dateianhänge, lokale Extraktion und temporäre Ablage.
 - `ollama.go`: Ollama-API, strukturierte Ausgaben und Bildanalyse.
+- `tool_registry.go`: strukturierte Werkzeugauflösung, absolute Ausführung, ADB-Diagnose und offizielle Hilfe.
 - `tools.go`, `git_tools.go`, `path_tools.go`, `web_tools.go`, `mcp.go`: reale lokale Werkzeuge.
 - `state_doc.go`: README-/AGENTS-/STATE-Pflege.
 - `static/index.html`: eingebettete dreigeteilte Desktop-Oberfläche.
 
 ## Dateianhänge
 
-Der Browser überträgt Dateien als Base64-kodierte JSON-Anhänge an `/api/chat`. Der Server validiert Anzahl, Einzelgröße und Gesamtgröße, schreibt die Daten in einen zufälligen Unterordner des LocalCodex-Konfigurationsverzeichnisses und entfernt ihn nach dem Agentenlauf.
+Der Browser überträgt Dateien als Base64-kodierte JSON-Anhänge an `/api/chat`. Der Server validiert Anzahl, Einzelgröße und Gesamtgröße, schreibt die Daten in einen zufälligen Unterordner des LocalCode-Konfigurationsverzeichnisses und entfernt ihn nach dem Agentenlauf.
 
 - Bilder gehen zusätzlich an ein lokales Vision-Modell.
 - Textformate werden direkt extrahiert.
@@ -29,7 +30,7 @@ Der Browser überträgt Dateien als Base64-kodierte JSON-Anhänge an `/api/chat`
 
 ## Chatverlauf
 
-Chats werden in `threads.json` im LocalCodex-Konfigurationsverzeichnis gespeichert. Binärdaten der Anhänge werden nicht dauerhaft in der Historie gespeichert; lediglich Name, MIME-Typ und Größe bleiben in den Ereignissen erhalten.
+Chats werden in `threads.json` im LocalCode-Konfigurationsverzeichnis gespeichert. Binärdaten der Anhänge werden nicht dauerhaft in der Historie gespeichert; lediglich Name, MIME-Typ und Größe bleiben in den Ereignissen erhalten.
 
 ## Sicherheitsgrenzen
 
@@ -43,3 +44,12 @@ Die UI besitzt drei Hauptbereiche in einem CSS-Grid. Linke und rechte Spalte wer
 Der Terminal-Docking-Modus ist kein rein visueller Schalter: Das bestehende Terminal-DOM-Element wird wahlweise in den zentralen Arbeitsbereich oder in den rechten Inspektor verschoben. Ereignishandler und Prozessausführung bleiben dabei erhalten.
 
 Die Einstellungsseite ist eine eigenständige Vollbildansicht. Jeder sichtbare Wert wird über `/api/settings` geladen und gespeichert oder löst eine konkrete API-Aktion aus.
+
+
+## Werkzeug-Resolver
+
+Der Agent verwendet für einzelne Programme bevorzugt `run_tool` statt frei formulierter Shell-Befehle. Der Resolver sucht in festen Einstellungen, Projektverzeichnissen, Projektkonfiguration, Umgebungsvariablen, PATH und bekannten Installationspfaden. Ausgeführt wird anschließend der absolute Pfad.
+
+Jeder Werkzeuglauf ist an den Agentenkontext gebunden. Ein Abbruch oder Timeout beendet unter Windows den Prozessbaum. Ausgaben werden getrennt als STDOUT und STDERR erfasst und zusammen mit Exitcode und Laufzeit an Agent und Oberfläche zurückgegeben.
+
+ADB besitzt eine eigene Zustandsdiagnose. Ein automatischer Reparaturversuch ist begrenzt; identische Aktionen und identische Rückfragen werden von der Agentenschleife blockiert.

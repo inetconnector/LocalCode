@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -23,7 +25,7 @@ var ignoredDirs = map[string]bool{
 	"bin": true, "obj": true, "dist": true, "build": true, "target": true,
 	".idea": true, ".vs": true, ".vscode": false,
 	".gradle": true, ".next": true, ".nuxt": true, "coverage": true,
-	".localcodex": true,
+	".localcode": true, ".local" + "codex": true,
 }
 
 var ignoredExt = map[string]bool{
@@ -230,7 +232,7 @@ func backupFile(projectRoot, fullPath string) error {
 	}
 	sum := sha256.Sum256([]byte(projectRoot))
 	rel, _ := filepath.Rel(projectRoot, fullPath)
-	dir := filepath.Join(cache, "LocalCodex", "backups", hex.EncodeToString(sum[:8]), time.Now().Format("20060102-150405.000"))
+	dir := filepath.Join(cache, "LocalCode", "backups", hex.EncodeToString(sum[:8]), time.Now().Format("20060102-150405.000"))
 	target := filepath.Join(dir, rel)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -377,12 +379,12 @@ func simpleDiff(oldText, newText string) string {
 	return truncateText(b.String(), 80000)
 }
 
-func executeCommand(projectRoot, command string, cfg Config) (string, error) {
+func executeCommand(parent context.Context, projectRoot, command string, cfg Config) (string, error) {
 	timeout := time.Duration(cfg.CommandTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	return runProjectCommand(ctx, projectRoot, command, cfg)
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -5,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +41,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file",
-			"run_command", "open_terminal", "copy_path", "move_path", "git", "web_search", "web_fetch",
+			"discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"finish", "ask_user",
 		}},
@@ -55,7 +58,7 @@ var actionSchema = map[string]any{
 	"required": []string{"action", "message"}, "additionalProperties": false,
 }
 
-const agentSystemPrompt = `Du bist LocalCodex, ein präziser autonomer Software-Agent für ein lokales Projekt.
+const agentSystemPrompt = `Du bist LocalCode, ein präziser autonomer Software-Agent für ein lokales Projekt.
 
 Du arbeitest in einer kontrollierten Werkzeugschleife. Jede Antwort MUSS genau ein JSON-Objekt gemäß dem vorgegebenen Schema enthalten. Kein Markdown um das JSON und keine sichtbare Gedankenkette.
 
@@ -68,8 +71,11 @@ Arbeitsweise:
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
 - MCP-Server können Tools, Ressourcen und Prompts bereitstellen. Liste zuerst Fähigkeiten, bevor du ein MCP-Tool aufrufst.
+- Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR.
+- Bevor du wegen eines Werkzeugfehlers den Nutzer fragst: Werkzeug entdecken, genaue Ausgabe auswerten, eine andere sichere Diagnose versuchen und bei unbekannter Bedienung offizielle Dokumentation mit web_search/web_fetch recherchieren. Wiederhole niemals denselben fehlgeschlagenen Befehl oder dieselbe Frage ohne neue Information.
+- Für Android bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
-- Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Dateioperationen darfst du run_command verwenden.
+- Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
@@ -78,7 +84,8 @@ Arbeitsweise:
 Werkzeuge:
 - list_files, read_file, search_text
 - replace_text, write_file, delete_file
-- run_command (nicht-interaktiv), open_terminal (interaktiv sichtbar)
+- discover_tool(tool), tool_inventory, run_tool(tool,args)
+- run_command (komplexe Shell-Befehle, nicht-interaktiv), open_terminal (interaktiv sichtbar)
 - copy_path, move_path
 - git mit args als Argumentliste, z. B. ["status","--short"]
 - web_search mit query/max_results, web_fetch mit url
@@ -325,7 +332,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s\nMCP-SERVER:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, mcpServersSummary(cfg))
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, mcpServersSummary(cfg), toolInventorySummary(project, cfg))
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
@@ -349,7 +356,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.AddEvent(UIEvent{Type: "agent_step", Message: "Hook vor Aufgabe ausgeführt", Detail: truncateText(out, 12000)})
 	}
 
-	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg)
+	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "")
 	runAfterHook = outcome == "done"
 }
 
@@ -372,11 +379,11 @@ func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, mod
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
-	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg)
+	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, continuation.Question)
 	runAfterHook = outcome == "done"
 }
 
-func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model string, messages []OllamaMessage, cfg Config) string {
+func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model string, messages []OllamaMessage, cfg Config, previousQuestion string) string {
 	maxSteps := cfg.MaxAgentSteps
 	if cfg.ResponseSpeed == "fast" && maxSteps > 35 {
 		maxSteps = 35
@@ -387,6 +394,8 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	if maxSteps <= 0 {
 		maxSteps = 60
 	}
+	lastSignature := ""
+	repeatBlocks := 0
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -424,6 +433,23 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			_ = saveConfig(cfg)
 		}
 		messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(action)})
+		if action.Action == "ask_user" && previousQuestion != "" && sameQuestion(action.Message, previousQuestion) {
+			s.AddEvent(UIEvent{Type: "warning", Message: "Wiederholte Rückfrage blockiert", Detail: "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren."})
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
+			continue
+		}
+		signature := actionSignature(action)
+		if signature == lastSignature && action.Action != "finish" {
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: "Identische Werkzeugaktion blockiert", Detail: action.Action + " wurde unmittelbar zuvor bereits ohne neue Information angefordert."})
+			hint := "SYSTEMHINWEIS: Die identische Aktion wurde blockiert. Wähle eine andere Diagnose. Entdecke das Werkzeug, verwende einen absoluten Pfad, werte die vollständige Ausgabe aus oder recherchiere offizielle Dokumentation."
+			if repeatBlocks >= 2 {
+				hint += " Stelle keine weitere gleichartige Rückfrage; schließe mit einer präzisen Fehlerdiagnose ab, falls keine sichere Alternative existiert."
+			}
+			messages = append(messages, OllamaMessage{Role: "user", Content: hint})
+			continue
+		}
+		lastSignature = signature
 		if action.Action == "ask_user" {
 			s.mu.Lock()
 			s.Continuation = &AgentContinuation{
@@ -569,6 +595,28 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 	var result string
 	var err error
 	switch a.Action {
+	case "discover_tool":
+		info := discoverTool(project, a.Tool, cfg, true)
+		data, _ := json.MarshalIndent(info, "", "  ")
+		result = string(data)
+		if !info.Available {
+			if cfg.AutoResearchToolHelp && cfg.NetworkEnabled && cfg.WebSearchProvider != "disabled" {
+				query := info.DisplayName + " official installation command line documentation Windows"
+				if info.DocsURL != "" {
+					if u, parseErr := url.Parse(info.DocsURL); parseErr == nil && u.Hostname() != "" {
+						query = "site:" + u.Hostname() + " " + query
+					}
+				}
+				if results, searchErr := webSearch(ctx, cfg, query, 3); searchErr == nil && len(results) > 0 {
+					result += "\n\nAutomatisch recherchierte offizielle Hilfe:\n" + formatWebResults(results)
+				}
+			}
+			err = fmt.Errorf("tool not found: %s", info.Name)
+		}
+	case "tool_inventory":
+		infos := toolInventory(project, cfg, false)
+		data, _ := json.MarshalIndent(infos, "", "  ")
+		result = string(data)
 	case "list_files":
 		result, err = projectTree(project, a.Path, a.MaxDepth, 1000)
 	case "read_file":
@@ -610,7 +658,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, a.Server, "prompts/list", map[string]any{})
 	case "mcp_get_prompt":
 		result, err = mcpCall(ctx, cfg, a.Server, "prompts/get", map[string]any{"name": a.PromptName, "arguments": a.Arguments})
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "run_command", "open_terminal", "copy_path", "move_path":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "run_tool", "run_command", "open_terminal", "copy_path", "move_path":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -629,8 +677,13 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		err = fmt.Errorf("unsupported action %s", a.Action)
 	}
 	if err != nil {
-		s.AddEvent(UIEvent{Type: "tool_error", Message: a.Message, Detail: err.Error(), Action: a.Action, Path: a.Path, Command: a.Command})
-		return "ERROR: " + err.Error(), false
+		detail := strings.TrimSpace(result)
+		if detail != "" {
+			detail += "\n\n"
+		}
+		detail += "ERROR: " + err.Error()
+		s.AddEvent(UIEvent{Type: "tool_error", Message: a.Message, Detail: detail, Action: a.Action, Path: a.Path, Command: a.Command})
+		return detail, false
 	}
 	s.AddEvent(UIEvent{Type: "tool_result", Message: a.Message, Detail: truncateText(result, 30000), Action: a.Action, Path: a.Path, Command: a.Command})
 	s.recordAction(a.Action + ": " + a.Message)
@@ -659,8 +712,13 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	s.AddEvent(UIEvent{Type: "action_running", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
 	result, err := executeAction(ctx, project, cfg, a)
 	if err != nil {
-		s.AddEvent(UIEvent{Type: "tool_error", Message: a.Message, Detail: err.Error(), Preview: preview, Action: a.Action, Path: a.Path, Command: a.Command})
-		return "ERROR: " + err.Error(), false
+		detail := strings.TrimSpace(result)
+		if detail != "" {
+			detail += "\n\n"
+		}
+		detail += "ERROR: " + err.Error()
+		s.AddEvent(UIEvent{Type: "tool_error", Message: a.Message, Detail: detail, Preview: preview, Action: a.Action, Path: a.Path, Command: a.Command})
+		return detail, false
 	}
 	s.AddEvent(UIEvent{Type: "action_done", Message: a.Message, Detail: truncateText(result, 30000), Preview: preview, Action: a.Action, Path: a.Path, Command: a.Command})
 	s.recordAction(a.Action + ": " + a.Message)
@@ -676,7 +734,7 @@ func actionNeedsApproval(cfg Config, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "list_files", "read_file", "search_text", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "list_files", "read_file", "search_text", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
@@ -684,6 +742,11 @@ func actionNeedsApproval(cfg Config, a AgentAction) bool {
 		return cfg.ApprovalMode != "auto"
 	case "git":
 		if gitActionIsReadOnly(a.Args) {
+			return false
+		}
+		return true
+	case "run_tool":
+		if cfg.ApprovalMode == "auto" && toolActionLooksReadOnly(a.Tool, a.Args) {
 			return false
 		}
 		return true
@@ -703,6 +766,22 @@ func commandLooksReadOnly(command string) bool {
 		if strings.HasPrefix(c, p) {
 			return true
 		}
+	}
+	return false
+}
+
+func toolActionLooksReadOnly(tool string, args []string) bool {
+	t := canonicalToolName(tool)
+	joined := strings.ToLower(strings.Join(args, " "))
+	switch t {
+	case "adb":
+		return strings.HasPrefix(joined, "devices") || strings.HasPrefix(joined, "version") || strings.HasPrefix(joined, "get-state")
+	case "git":
+		return strings.HasPrefix(joined, "status") || strings.HasPrefix(joined, "diff") || strings.HasPrefix(joined, "log") || strings.HasPrefix(joined, "show")
+	case "go":
+		return strings.HasPrefix(joined, "test") || strings.HasPrefix(joined, "vet") || strings.HasPrefix(joined, "list") || strings.HasPrefix(joined, "version")
+	case "java", "node", "npm", "npx", "python", "dotnet", "cargo", "cmake", "ninja", "gradle":
+		return strings.Contains(joined, "version") || strings.HasPrefix(joined, "--version") || strings.HasPrefix(joined, "-version")
 	}
 	return false
 }
@@ -769,6 +848,16 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return simpleDiff(old, ""), nil
+	case "run_tool":
+		if strings.TrimSpace(a.Tool) == "" {
+			return "", errors.New("tool is empty")
+		}
+		info := discoverTool(project, a.Tool, cfg, false)
+		path := info.Path
+		if path == "" {
+			path = "<wird gesucht>"
+		}
+		return fmt.Sprintf("Tool: %s\nPfad: %s\nArgumente: %s", a.Tool, path, quoteArgs(a.Args)), nil
 	case "run_command":
 		if strings.TrimSpace(a.Command) == "" {
 			return "", errors.New("command is empty")
@@ -807,8 +896,16 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return writeProjectFile(project, a.Path, a.Content)
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)
+	case "run_tool":
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout <= 0 {
+			timeout = 5 * time.Minute
+		}
+		tctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return runResolvedTool(tctx, project, a.Tool, a.Args, cfg)
 	case "run_command":
-		return executeCommand(project, a.Command, cfg)
+		return executeCommand(ctx, project, a.Command, cfg)
 	case "open_terminal":
 		if err := openInteractiveTerminal(project, a.Command, cfg); err != nil {
 			return "", err

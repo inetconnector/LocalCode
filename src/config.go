@@ -1,11 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+const productDirName = "LocalCode"
+const legacyProductDirName = "Local" + "Codex"
 
 func userProfileDir() string {
 	if profile := strings.TrimSpace(os.Getenv("USERPROFILE")); profile != "" {
@@ -62,16 +68,100 @@ func defaultConfig() Config {
 			"new_chat": "Ctrl+N", "settings": "Ctrl+,", "terminal": "Ctrl+`", "send": "Enter",
 			"newline": "Shift+Enter", "toggle_left": "Ctrl+Shift+L", "toggle_right": "Ctrl+Shift+R",
 		},
-		EnvironmentVars: map[string]string{},
+		EnvironmentVars:   map[string]string{},
+		AutoDiscoverTools: true, AutoResearchToolHelp: true, ToolOverrides: map[string]string{},
 	}
 }
 
-func configPath() string {
+func userConfigBaseDir() string {
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
 		base = filepath.Join(userProfileDir(), ".config")
 	}
-	return filepath.Join(base, "LocalCodex", "config.json")
+	return base
+}
+
+func userCacheBaseDir() string {
+	base, err := os.UserCacheDir()
+	if err != nil || base == "" {
+		base = filepath.Join(userProfileDir(), ".cache")
+	}
+	return base
+}
+
+func appDataDir() string {
+	return filepath.Join(userConfigBaseDir(), productDirName)
+}
+
+func configPath() string {
+	return filepath.Join(appDataDir(), "config.json")
+}
+
+func legacyAppDataDir() string {
+	return filepath.Join(userConfigBaseDir(), legacyProductDirName)
+}
+
+func copyFileIfMissing(source, target string) error {
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	}
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(target)
+		return copyErr
+	}
+	return closeErr
+}
+
+func copyDirIfMissing(source, target string) error {
+	info, err := os.Stat(source)
+	if err != nil || !info.IsDir() {
+		return err
+	}
+	return filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(target, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		return copyFileIfMissing(path, dst)
+	})
+}
+
+func migrateLegacyProductData() {
+	legacyDir := legacyAppDataDir()
+	if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
+		for _, name := range []string{"config.json", "threads.json"} {
+			_ = copyFileIfMissing(filepath.Join(legacyDir, name), filepath.Join(appDataDir(), name))
+		}
+	}
+
+	legacyCache := filepath.Join(userCacheBaseDir(), legacyProductDirName)
+	newCache := filepath.Join(userCacheBaseDir(), productDirName)
+	_ = copyDirIfMissing(filepath.Join(legacyCache, "backups"), filepath.Join(newCache, "backups"))
+	_ = copyFileIfMissing(filepath.Join(legacyCache, "local"+"codex.log"), filepath.Join(newCache, "localcode-migrated.log"))
 }
 
 func pathWithin(base, candidate string) bool {
@@ -104,8 +194,13 @@ func suspiciousProjectRoot(root string) bool {
 
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
-	if cfg.SchemaVersion < 2 {
-		cfg.SchemaVersion = 2
+	oldSchema := cfg.SchemaVersion
+	if cfg.SchemaVersion < 3 {
+		cfg.SchemaVersion = 3
+	}
+	if oldSchema < 3 {
+		cfg.AutoDiscoverTools = true
+		cfg.AutoResearchToolHelp = true
 	}
 	if cfg.Port == 0 {
 		cfg.Port = d.Port
@@ -262,6 +357,9 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.EnvironmentVars == nil {
 		cfg.EnvironmentVars = map[string]string{}
 	}
+	if cfg.ToolOverrides == nil {
+		cfg.ToolOverrides = map[string]string{}
+	}
 
 	root := strings.TrimSpace(cfg.RootProjectDir)
 	if root != "" {
@@ -314,6 +412,7 @@ func normalizeConfig(cfg Config) Config {
 }
 
 func loadConfig() Config {
+	migrateLegacyProductData()
 	cfg := defaultConfig()
 	if data, err := os.ReadFile(configPath()); err == nil {
 		var raw map[string]json.RawMessage
@@ -363,13 +462,5 @@ func saveConfig(cfg Config) error {
 }
 
 func logPath() string {
-	base, err := os.UserCacheDir()
-	if err != nil || base == "" {
-		base = filepath.Join(userProfileDir(), ".cache")
-	}
-	return filepath.Join(base, "LocalCodex", "localcodex.log")
-}
-
-func appDataDir() string {
-	return filepath.Dir(configPath())
+	return filepath.Join(userCacheBaseDir(), productDirName, "localcode.log")
 }

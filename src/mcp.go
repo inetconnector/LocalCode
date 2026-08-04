@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -85,7 +87,7 @@ func mcpInitializeRequest(id int) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": id, "method": "initialize", "params": map[string]any{
 		"protocolVersion": mcpProtocolVersion,
 		"capabilities":    map[string]any{"roots": map[string]any{"listChanged": false}},
-		"clientInfo":      mcpClientInfo{Name: "LocalCodex", Version: version},
+		"clientInfo":      mcpClientInfo{Name: "LocalCode", Version: version},
 	}}
 }
 

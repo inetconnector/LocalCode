@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -290,7 +292,7 @@ func TestNormalizeConfigRepairsAppDataProjectRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	localAppData := filepath.Join(profile, "AppData", "Local")
-	broken := filepath.Join(localAppData, "LocalCodex")
+	broken := filepath.Join(localAppData, "LocalCode")
 	if err := os.MkdirAll(broken, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1069,4 +1071,124 @@ func TestStopAgentCancelsBlockedModelCall(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("agent remained running after cancellation")
+}
+
+func TestLegacyProductDataMigrationCopiesUserState(t *testing.T) {
+	base := t.TempDir()
+	configBase := filepath.Join(base, "config")
+	cacheBase := filepath.Join(base, "cache")
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	t.Setenv("XDG_CACHE_HOME", cacheBase)
+
+	legacyDir := filepath.Join(configBase, legacyProductDirName)
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configData := []byte(`{"port":32145,"root_project_dir":"C:\\\\Users\\\\frede\\\\Projekte"}`)
+	if err := os.WriteFile(filepath.Join(legacyDir, "config.json"), configData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	threadsData := []byte(`{"version":1,"threads":[]}`)
+	if err := os.WriteFile(filepath.Join(legacyDir, "threads.json"), threadsData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyBackups := filepath.Join(cacheBase, legacyProductDirName, "backups", "demo")
+	if err := os.MkdirAll(legacyBackups, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyBackups, "file.txt"), []byte("backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	migrateLegacyProductData()
+
+	for _, item := range []struct {
+		path string
+		want string
+	}{
+		{filepath.Join(configBase, productDirName, "config.json"), string(configData)},
+		{filepath.Join(configBase, productDirName, "threads.json"), string(threadsData)},
+		{filepath.Join(cacheBase, productDirName, "backups", "demo", "file.txt"), "backup"},
+	} {
+		data, err := os.ReadFile(item.path)
+		if err != nil {
+			t.Fatalf("read migrated %s: %v", item.path, err)
+		}
+		if string(data) != item.want {
+			t.Fatalf("migrated %s = %q, want %q", item.path, data, item.want)
+		}
+	}
+}
+
+func TestStateDocumentMigratesLegacyManagedMarkers(t *testing.T) {
+	root := t.TempDir()
+	old := "# Handbuch\n\n" + legacyStateBegin + "\nalt\n" + legacyStateEnd + "\n\n## Manuell\nBehalten.\n"
+	if err := os.WriteFile(filepath.Join(root, "STATE.md"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	cfg.StateFile = "STATE.md"
+	if err := updateStateDocument(root, cfg, false, "qwen2.5-coder:14b", "Umbenennung", "fertig", []string{"Migration"}, "Markertest"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "STATE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, stateBegin) || !strings.Contains(text, stateEnd) {
+		t.Fatalf("new markers missing: %s", text)
+	}
+	if strings.Contains(text, legacyStateBegin) || strings.Contains(text, legacyStateEnd) {
+		t.Fatalf("legacy markers still present: %s", text)
+	}
+	for _, want := range []string{"# Handbuch", "## Manuell", "Behalten.", "Markertest"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q: %s", want, text)
+		}
+	}
+}
+
+func TestLocalCodeBrandAndLicenseAreEmbedded(t *testing.T) {
+	data, err := staticFS.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, want := range []string{"<title>LocalCode</title>", ">LocalCode<", "Apache-2.0"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing brand or license marker %q", want)
+		}
+	}
+	legacyVisibleName := "Local" + "Codex"
+	if strings.Contains(html, legacyVisibleName) {
+		t.Fatalf("legacy product name remains visible in UI")
+	}
+	license, err := os.ReadFile(filepath.Join("..", "LICENSE"))
+	if err != nil {
+		t.Fatalf("LICENSE missing: %v", err)
+	}
+	if !strings.Contains(string(license), "Apache License") || !strings.Contains(string(license), "Version 2.0") {
+		t.Fatal("LICENSE is not the complete Apache License 2.0 text")
+	}
+	if _, err := os.Stat(filepath.Join("..", "NOTICE")); err != nil {
+		t.Fatalf("NOTICE missing: %v", err)
+	}
+}
+
+func TestPingReportsLocalCodeAndLicense(t *testing.T) {
+	state := NewAppState(defaultConfig(), NewOllamaClient())
+	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
+	rr := httptest.NewRecorder()
+	NewServer(state).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	for _, want := range []string{`"app":"LocalCode"`, `"license":"Apache-2.0"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %s in %s", want, body)
+		}
+	}
 }

@@ -1,6 +1,6 @@
 # Security Model
 
-LocalCodex uses layered controls:
+LocalCode uses layered controls:
 
 - configurable approval modes
 - project/workspace/unrestricted path policy

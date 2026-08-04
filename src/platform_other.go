@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build !windows
 
 package main
@@ -6,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -33,12 +36,25 @@ func commandBlocked(cfg Config, command string) error {
 	}
 	return nil
 }
+
+func commandEnvironment(cfg Config) []string {
+	env := os.Environ()
+	for key, value := range cfg.EnvironmentVars {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
+
 func runProjectCommand(ctx context.Context, project, command string, cfg Config) (string, error) {
 	if err := commandBlocked(cfg, command); err != nil {
 		return "", err
 	}
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-lc", command)
 	cmd.Dir = project
+	cmd.Env = commandEnvironment(cfg)
 	var b bytes.Buffer
 	cmd.Stdout = &b
 	cmd.Stderr = &b
@@ -50,4 +66,10 @@ func openInteractiveTerminal(project, command string, cfg Config) error {
 		command = "exec $SHELL"
 	}
 	return exec.Command("x-terminal-emulator", "-e", "sh", "-lc", "cd '"+strings.ReplaceAll(project, "'", "'\\''")+"'; "+command+"; exec $SHELL").Start()
+}
+
+func killProcessTree(cmd *exec.Cmd) {
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -29,16 +31,16 @@ func main() {
 
 	cfg := loadConfig()
 	defaultURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
-	if runningVersion, ok := existingLocalCodexVersion(defaultURL); ok {
+	if runningVersion, ok := existingLocalCodeVersion(defaultURL); ok {
 		if runningVersion == version {
 			_ = openBrowser(defaultURL)
 			return
 		}
-		log.Printf("Stopping older LocalCodex instance %q before starting %q", runningVersion, version)
-		_ = shutdownExistingLocalCodex(defaultURL)
+		log.Printf("Stopping older LocalCode instance %q before starting %q", runningVersion, version)
+		_ = shutdownExistingLocalCode(defaultURL)
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
-			if _, stillRunning := existingLocalCodexVersion(defaultURL); !stillRunning {
+			if _, stillRunning := existingLocalCodeVersion(defaultURL); !stillRunning {
 				break
 			}
 			time.Sleep(150 * time.Millisecond)
@@ -55,17 +57,17 @@ func main() {
 	cancel()
 	if err != nil {
 		log.Printf("Ollama unavailable: %v", err)
-		showFatal("LocalCodex", "Ollama konnte nicht gestartet oder erreicht werden.\n\n"+err.Error()+"\n\nLog: "+logPath())
+		showFatal("LocalCode", "Ollama konnte nicht gestartet oder erreicht werden.\n\n"+err.Error()+"\n\nLog: "+logPath())
 		return
 	}
 
 	models, err := ollama.Tags(context.Background())
 	if err != nil {
-		showFatal("LocalCodex", "Ollama-Modelle konnten nicht gelesen werden:\n\n"+err.Error())
+		showFatal("LocalCode", "Ollama-Modelle konnten nicht gelesen werden:\n\n"+err.Error())
 		return
 	}
 	if len(models) == 0 {
-		showFatal("LocalCodex", "In Ollama ist kein Modell installiert. Installiere mindestens gpt-oss:20b oder qwen2.5-coder:14b.")
+		showFatal("LocalCode", "In Ollama ist kein Modell installiert. Installiere mindestens gpt-oss:20b oder qwen2.5-coder:14b.")
 		return
 	}
 
@@ -82,19 +84,19 @@ func main() {
 	state := NewAppState(cfg, ollama)
 	url, err := startHTTPServer(state, cfg.Port)
 	if err != nil {
-		showFatal("LocalCodex", fmt.Sprintf("Lokaler Server konnte nicht gestartet werden:\n\n%v", err))
+		showFatal("LocalCode", fmt.Sprintf("Lokaler Server konnte nicht gestartet werden:\n\n%v", err))
 		return
 	}
-	log.Printf("LocalCodex %s started at %s using Ollama %s", version, url, ollama.BaseURL)
+	log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
 	if err := openBrowser(url); err != nil {
-		showFatal("LocalCodex", "Browser konnte nicht geöffnet werden. Öffne manuell:\n"+url)
+		showFatal("LocalCode", "Browser konnte nicht geöffnet werden. Öffne manuell:\n"+url)
 	}
 
 	select {}
 }
 
 func runDiagnostics() int {
-	fmt.Println("LocalCodex Diagnose")
+	fmt.Println("LocalCode Diagnose")
 	fmt.Println("Version:", version)
 	fmt.Println("Konfiguration:", configPath())
 	fmt.Println("Log:", logPath())
@@ -133,11 +135,24 @@ func runDiagnostics() int {
 	fmt.Println("Git verfügbar/aktiv:", gitAvailable(), diagCfg.GitEnabled)
 	fmt.Println("STATE.md automatisch:", diagCfg.AutoStateUpdate, diagCfg.StateFile)
 	fmt.Println("Aktive MCP-Server:", enabledMCPCount(diagCfg))
+	fmt.Println("Automatische Werkzeugerkennung:", diagCfg.AutoDiscoverTools)
+	fmt.Println("Automatische offizielle Werkzeughilfe:", diagCfg.AutoResearchToolHelp)
+	fmt.Println("Werkzeuge:")
+	for _, tool := range toolInventory(diagCfg.LastProject, diagCfg, true) {
+		status := "NICHT GEFUNDEN"
+		if tool.Available {
+			status = "OK: " + tool.Path
+		}
+		fmt.Printf(" - %s: %s\n", tool.Name, status)
+		for _, line := range tool.Diagnostics {
+			fmt.Println("   Diagnose:", line)
+		}
+	}
 	fmt.Println("Diagnose erfolgreich.")
 	return 0
 }
 
-func existingLocalCodexVersion(baseURL string) (string, bool) {
+func existingLocalCodeVersion(baseURL string) (string, bool) {
 	client := &http.Client{Timeout: 900 * time.Millisecond}
 	resp, err := client.Get(baseURL + "/api/ping")
 	if err != nil {
@@ -151,13 +166,13 @@ func existingLocalCodexVersion(baseURL string) (string, bool) {
 		App     string `json:"app"`
 		Version string `json:"version"`
 	}
-	if json.NewDecoder(resp.Body).Decode(&v) != nil || v.App != "LocalCodex" {
+	if json.NewDecoder(resp.Body).Decode(&v) != nil || (v.App != "LocalCode" && v.App != legacyProductDirName) {
 		return "", false
 	}
 	return v.Version, true
 }
 
-func shutdownExistingLocalCodex(baseURL string) error {
+func shutdownExistingLocalCode(baseURL string) error {
 	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/shutdown", nil)
 	if err != nil {
 		return err

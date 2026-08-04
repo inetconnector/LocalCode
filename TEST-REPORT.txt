@@ -1,4 +1,4 @@
-LOCALCODEX 4.3.0 - TEST REPORT
+LOCALCODE 4.5.0 - TEST REPORT
 Date: 2026-08-04
 
 Successful automated checks in this package:
@@ -45,3 +45,31 @@ Build-environment limitation:
 - The Windows executable was cross-compiled and structurally verified in Linux.
 - A final mouse-driven test on the user's exact Windows installation cannot be performed in this environment.
 - No claim is made that a real Windows desktop click-through was executed here.
+
+Tool resolver regression tests:
+- TestParseAndroidSDKFromLocalProperties
+  Reads Android SDK paths from project local.properties.
+- TestDiscoverADBFromProjectSDKAndDiagnoseDevice
+  Resolves the absolute ADB path and recognizes a connected device.
+- TestRunResolvedToolPreservesStdoutAndStderrOnFailure
+  Preserves stdout, stderr and nonzero exit code.
+- TestRewriteKnownToolCommandUsesAbsoluteADBPath
+  Rewrites a shell ADB command to the discovered absolute binary path.
+- TestDiscoverGenericProjectLocalTool
+  Finds arbitrary project-local tools without a hard-coded profile.
+- TestADBNoDevicePerformsSingleRecoveryAndRetry
+  Performs one bounded start-server/reconnect cycle and recognizes the recovered device.
+- TestSameQuestionAndActionSignature
+  Detects repeated questions and identical tool actions.
+- TestContinuationBlocksRepeatedQuestion
+  Prevents an answered question from being asked again.
+
+Rename and licensing regression tests:
+- TestLegacyProductDataMigrationCopiesUserState
+  Copies existing configuration, chat history and backups into the LocalCode data directories without deleting the source.
+- TestStateDocumentMigratesLegacyManagedMarkers
+  Replaces the former managed STATE.md markers while preserving all manual text.
+- TestLocalCodeBrandAndLicenseAreEmbedded
+  Verifies the LocalCode UI identity and the complete Apache-2.0 LICENSE plus NOTICE.
+- TestPingReportsLocalCodeAndLicense
+  Verifies the API identity and SPDX license identifier.

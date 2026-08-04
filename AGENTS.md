@@ -1,4 +1,7 @@
-# LocalCodex Repository Instructions
+# LocalCode Repository Instructions
+- Externe Programme dürfen erst nach `discover_tool`/`run_tool` oder gleichwertiger absoluter Pfadauflösung als fehlend bezeichnet werden.
+- Werkzeugfehler müssen mit Pfad, Exitcode, STDOUT und STDERR diagnostiziert werden; identische Aktionen und Rückfragen dürfen nicht ohne neue Evidenz wiederholt werden.
+- Bei unbekannter Bedienung ist zuerst offizielle Herstellerdokumentation zu recherchieren; Drittquellen sind nur ergänzend zulässig.
 
 - Lies `README.md`, `STATE.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md` vor Änderungen.
 - Halte `STATE.md` nach jeder abgeschlossenen Änderung vollständig aktuell.

@@ -1,4 +1,4 @@
-# LocalCode 4.3.0
+# LocalCode 4.5.0
 
 LocalCode ist ein eigenständiger lokaler Windows-Coding-Agent für Ollama. Die Anwendung bietet eine desktopartige Projekt- und Chatoberfläche, persistente Chats, Datei- und Bildanhänge, Git, Befehlsausführung, Webrecherche, MCP, Genehmigungen und eine zentrale Einstellungsseite.
 
@@ -7,10 +7,26 @@ LocalCode ist ein eigenständiger lokaler Windows-Coding-Agent für Ollama. Die 
 1. ZIP vollständig entpacken.
 2. `BUILD-AND-RUN.bat` doppelklicken.
 3. Beim ersten Build lädt das Skript bei Bedarf eine portable offizielle Go-Version.
-4. LocalCodex öffnet sich unter Windows bevorzugt als Edge-/Chrome-App-Fenster ohne Browser-Tabs und Adressleiste.
+4. LocalCode öffnet sich unter Windows bevorzugt als Edge-/Chrome-App-Fenster ohne Browser-Tabs und Adressleiste.
 
 
-## Stabilität und Kontrolle in 4.3.0
+
+## Umbenennung und Datenmigration
+
+Die Anwendung heißt vollständig **LocalCode**. Programmdateien, UI, API-Kennung, Konfigurationsordner, Chats, Logs, Sicherungen, MCP-Clientinfo und Build-Artefakte verwenden diesen Namen.
+
+Beim ersten Start übernimmt LocalCode vorhandene Konfigurationen, Chatverläufe und Sicherungen der vorherigen Produktbezeichnung automatisch, falls im neuen LocalCode-Datenordner noch keine entsprechenden Dateien liegen. Die alten Dateien werden aus Sicherheitsgründen nicht gelöscht. Verwaltete ältere `STATE.md`-Marker werden beim nächsten Statusupdate in die neuen `LOCALCODE:STATE:BEGIN/END`-Marker überführt, ohne manuelle Inhalte anzutasten.
+
+## Werkzeugerkennung und Diagnose in 4.5.0
+
+- Externe Entwicklungswerkzeuge werden strukturiert über feste Pfade, Projekt-Wrapper, Projektkonfiguration, Umgebungsvariablen, PATH und bekannte Installationsorte gesucht.
+- Gefundene Programme werden mit absolutem Pfad ausgeführt; die Oberfläche zeigt Pfad, Argumente, Arbeitsordner, Exitcode, Dauer, STDOUT und STDERR.
+- Für Android werden `local.properties`, `ANDROID_HOME`, `ANDROID_SDK_ROOT` und der übliche Windows-SDK-Pfad ausgewertet. ADB unterscheidet erreichbare, nicht autorisierte, offline und nicht gelistete Geräte.
+- Identische Werkzeugaktionen und bereits beantwortete Rückfragen werden blockiert, damit der Agent nicht in Wiederholungsschleifen gerät.
+- Bei Werkzeugfehlern kann automatisch offizielle Herstellerdokumentation recherchiert werden, sofern Netzwerkzugriff in den Einstellungen aktiviert ist.
+- Die Einstellungsseite enthält eine Werkzeugübersicht, eine gezielte ADB-Diagnose und feste Werkzeugpfade. Details stehen in `docs/TOOLS.md`.
+
+## Stabilität und Kontrolle in 4.5.0
 
 - Hintergrundbefehle unter Windows laufen ohne aufblinkende Konsolenfenster.
 - Werkzeug-, Git-, Diff-, Befehls- und Fehlerausgaben sind im Chat und im rechten Ausgabenbereich vollständig aufklappbar.
@@ -53,10 +69,11 @@ Dateien können über den Plus-Button, Drag-and-drop oder die Zwischenablage ein
 
 ## Projekt- und Chatverlauf
 
-Chats werden lokal unter dem LocalCodex-Konfigurationsordner gespeichert und nach Projekt gruppiert. Der Verlauf enthält Benutzeraufgaben, Agentenschritte, Ergebnisse und Dateianhänge als Metadaten. Binärdaten der Anhänge werden nicht dauerhaft in den Chatverlauf eingebettet.
+Chats werden lokal unter dem LocalCode-Konfigurationsordner gespeichert und nach Projekt gruppiert. Der Verlauf enthält Benutzeraufgaben, Agentenschritte, Ergebnisse und Dateianhänge als Metadaten. Binärdaten der Anhänge werden nicht dauerhaft in den Chatverlauf eingebettet.
 
 ## Git, MCP, Web und Befehle
 
+- Strukturierte Werkzeugerkennung und direkte Ausführung über `discover_tool`, `tool_inventory` und `run_tool`.
 - Git-Status, Diff, Log, Branches, Commits und weitere freigegebene Git-Operationen.
 - Nicht-interaktive Befehle sowie sichtbare interaktive Terminals für Logins.
 - Websuche und Seitenabruf nach den konfigurierten Netzwerk- und Freigaberegeln.
@@ -75,12 +92,18 @@ Der Quellcode enthält:
 - `docs/MCP-EXAMPLES.md`
 - `docs/RESEARCH-NOTES.md`
 
-In ausgewählten Projekten kann LocalCodex fehlende `README.md` und `AGENTS.md` anlegen und einen klar markierten Bereich in `STATE.md` automatisch aktuell halten.
+In ausgewählten Projekten kann LocalCode fehlende `README.md` und `AGENTS.md` anlegen und einen klar markierten Bereich in `STATE.md` automatisch aktuell halten.
 
 ## Sicherheit
 
-Standardmäßig arbeitet LocalCodex mit strikten Genehmigungen und auf das ausgewählte Projekt begrenzten Dateizugriffen. Der native Windows-Modus verwendet anwendungseigene Pfad-, Befehls- und Freigaberegeln. Er ist keine identische Kopie der proprietären Codex-Sandbox.
+Standardmäßig arbeitet LocalCode mit strikten Genehmigungen und auf das ausgewählte Projekt begrenzten Dateizugriffen. Der native Windows-Modus verwendet anwendungseigene Pfad-, Befehls- und Freigaberegeln. Er ist keine identische Kopie der proprietären Codex-Sandbox.
 
 ## Abgrenzung
 
-LocalCodex ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.3.0 setzt jedoch die sichtbaren Arbeitsabläufe eigenständig und ohne absichtliche Dummy-Funktionen um.
+LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.5.0 setzt jedoch die sichtbaren Arbeitsabläufe eigenständig und ohne absichtliche Dummy-Funktionen um.
+
+## Lizenz
+
+LocalCode steht unter der **Apache License 2.0**. Der vollständige Lizenztext befindet sich in [`LICENSE`](LICENSE); produktspezifische Hinweise stehen in [`NOTICE`](NOTICE), Hinweise zu externen Komponenten in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Die Apache-2.0-Lizenz erlaubt Nutzung, Veränderung und Verteilung, verlangt dabei aber die Beibehaltung der Lizenz- und Hinweistexte. Für externe Programme, Modelle, MCP-Server und Webinhalte gelten jeweils deren eigene Lizenzen und Nutzungsbedingungen.
