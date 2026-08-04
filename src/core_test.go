@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -775,7 +776,7 @@ func TestAgentContinuesAfterAskUserAnswer(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "test-model", MaxAgentSteps: 10}, client)
-	if err := state.StartAgent("Projekt prüfen", "test-model", nil); err != nil {
+	if err := state.StartAgent("Git im Projekt einrichten", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -864,7 +865,7 @@ func TestAskUserProducesOnlyOneVisibleQuestion(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "test-model", MaxAgentSteps: 4}, client)
-	if err := state.StartAgent("Projekt prüfen", "test-model", nil); err != nil {
+	if err := state.StartAgent("Git im Projekt einrichten", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -1191,4 +1192,230 @@ func TestPingReportsLocalCodeAndLicense(t *testing.T) {
 			t.Fatalf("missing %s in %s", want, body)
 		}
 	}
+}
+
+func TestAnalysisTaskDoesNotRequireGitOrMutateProject(t *testing.T) {
+	var modelCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			modelCalls++
+			content := `{"action":"ask_user","message":"Es scheint, dass kein Git-Repository initialisiert wurde. Möchten Sie ein neues Git-Repository erstellen?"}`
+			if modelCalls == 2 {
+				content = `{"action":"replace_text","message":"Ändere einen Platzhalter","path":"README.md","old_text":"demo","new_text":"changed"}`
+			}
+			if modelCalls >= 3 {
+				content = `{"action":"finish","message":"Analyse abgeschlossen. Git war dafür nicht erforderlich; keine Dateien wurden geändert."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	readme := filepath.Join(project, "README.md")
+	if err := os.WriteFile(readme, []byte("demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.MaxAgentSteps = 10
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	if err := state.StartAgent("analysiere das projekt", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	waitForAgentStop(t, state, 4*time.Second)
+	data, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "demo\n" {
+		t.Fatalf("analysis mutated README: %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("analysis created .git unexpectedly: %v", err)
+	}
+	state.mu.RLock()
+	events := append([]UIEvent(nil), state.Events...)
+	state.mu.RUnlock()
+	for _, event := range events {
+		if event.Type == "question" {
+			t.Fatalf("analysis leaked unnecessary question: %#v", event)
+		}
+	}
+	if !eventContains(events, "final", "Projektanalyse kontrolliert abgeschlossen") {
+		t.Fatalf("analysis did not reach final report: %#v", events)
+	}
+}
+
+func TestAffirmativeGitQuestionInitializesRepositoryAndContinues(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available in test environment")
+	}
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			calls++
+			content := `{"action":"ask_user","message":"Soll Git in diesem Projekt initialisiert werden?"}`
+			if calls > 1 {
+				content = `{"action":"finish","message":"Git wurde initialisiert und verifiziert."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.MaxAgentSteps = 10
+	cfg.CreateProjectDocs = false
+	cfg.ApprovalMode = "balanced"
+	state := NewAppState(cfg, client)
+	if err := state.StartAgent("Richte die Git-Versionierung ein", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 4*time.Second)
+	state.mu.RLock()
+	continuation := state.Continuation
+	state.mu.RUnlock()
+	if continuation == nil || continuation.SuggestedAction == nil {
+		t.Fatalf("expected executable Git continuation: %#v", continuation)
+	}
+	if err := state.StartAgent("ja", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 6*time.Second)
+	if !isGitRepository(project, cfg) {
+		t.Fatal("confirmed Git initialization did not create repository")
+	}
+	if _, err := os.Stat(filepath.Join(project, ".gitignore")); err != nil {
+		t.Fatalf("Git initialization did not create .gitignore: %v", err)
+	}
+	state.mu.RLock()
+	events := append([]UIEvent(nil), state.Events...)
+	state.mu.RUnlock()
+	questions := 0
+	for _, event := range events {
+		if event.Type == "question" {
+			questions++
+		}
+	}
+	if questions != 1 {
+		t.Fatalf("Git question repeated instead of executing confirmation: %d %#v", questions, events)
+	}
+	if !eventContains(events, "final", "initialisiert") {
+		t.Fatalf("Git continuation did not finish: %#v", events)
+	}
+}
+
+func TestAgentCompactsLargeContextAndContinues(t *testing.T) {
+	var actionCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			var req OllamaChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatal(err)
+			}
+			isCompaction := false
+			for _, message := range req.Messages {
+				if strings.Contains(message.Content, "Verdichte den folgenden Verlauf") {
+					isCompaction = true
+					break
+				}
+			}
+			content := ""
+			if isCompaction {
+				content = `{"summary":"Große Datei wurde gelesen.","original_task":"prüfe die große datei","decisions":[],"project_facts":["big.txt ist groß"],"files_read":["big.txt"],"files_changed":[],"commands":[],"failures":[],"open_items":[],"next_recommended_action":"Bericht abschließen"}`
+			} else {
+				actionCalls++
+				if actionCalls == 1 {
+					content = `{"action":"read_file","message":"Lese große Datei","path":"big.txt"}`
+				} else {
+					content = `{"action":"finish","message":"Große Datei geprüft; Kontext wurde kontrolliert weitergeführt."}`
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "big.txt"), []byte(strings.Repeat("large-context-line\n", 9000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.ContextLength = 4096
+	cfg.ContextCompactionEnabled = true
+	cfg.ContextCompactionThresholdPercent = 45
+	cfg.ContextCompactionKeepRecent = 6
+	cfg.MaxAgentSteps = 8
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	if err := state.StartAgent("prüfe die große datei", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 6*time.Second)
+	state.mu.RLock()
+	events := append([]UIEvent(nil), state.Events...)
+	state.mu.RUnlock()
+	if !eventContains(events, "context_compacted", "Kontext komprimiert") {
+		t.Fatalf("large context was not compacted: %#v", events)
+	}
+	if !eventContains(events, "final", "kontrolliert weitergeführt") {
+		t.Fatalf("agent did not continue after compaction: %#v", events)
+	}
+}
+
+func waitForAgentStop(t *testing.T, state *AppState, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		state.mu.RLock()
+		running := state.Running
+		state.mu.RUnlock()
+		if !running {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("agent did not stop before timeout")
+}
+
+func eventContains(events []UIEvent, eventType, fragment string) bool {
+	for _, event := range events {
+		if event.Type == eventType && strings.Contains(event.Message+"\n"+event.Detail, fragment) {
+			return true
+		}
+	}
+	return false
 }

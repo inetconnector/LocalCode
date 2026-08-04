@@ -10,5 +10,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "LocalCode 4.6.0" "%~dp0dist\LocalCode.exe"
+start "LocalCode 4.7.0" "%~dp0dist\LocalCode.exe"
 exit /b 0

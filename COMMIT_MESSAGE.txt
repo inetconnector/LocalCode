@@ -1,11 +1,11 @@
-fix: make tool discovery and repair deterministic
+fix: add deterministic task supervision and context compaction
 
-- discover Git, MSBuild, CMake, Ninja and IDE tools through Visual Studio and vswhere
-- locate Android SDK installations and alternate adb binaries
-- offer approved app-local installs for missing Git and Platform-Tools
-- verify installations and retry the original action automatically
-- add deterministic project build and Android deployment actions
-- prevent stale questions from hijacking new tasks
-- block avoidable Git and tool-usage questions
-- synthesize non-empty web search queries
-- update tests, documentation and state for LocalCode 4.6.0
+- route analysis, builds, Android deployment, Git setup and web research through verified actions
+- prevent irrelevant Git initialization and file mutations during read-only analysis
+- execute confirmed Git initialization directly and verify the repository
+- derive non-empty web queries and add a fallback search provider
+- discover, install, verify and retry supported development tools
+- compact long agent contexts while preserving task state, decisions, files, commands and failures
+- expose compaction controls and events in the settings and output UI
+- add regression tests for agent drift, Git continuation and long-context recovery
+- update documentation, STATE.md and release metadata for LocalCode 4.7.0

@@ -49,13 +49,12 @@ func likelyContinuationAnswer(question, answer string) bool {
 }
 
 func normalizeAgentAction(a AgentAction, fallbackTask string) AgentAction {
-	if a.Action == "web_search" && strings.TrimSpace(a.Query) == "" {
-		candidate := strings.TrimSpace(a.Message)
-		generic := strings.ToLower(candidate)
-		if candidate == "" || generic == "web_search" || generic == "web search" || generic == "internetsuche" || generic == "suche im internet" {
-			candidate = strings.TrimSpace(fallbackTask)
+	if a.Action == "web_search" {
+		candidate := strings.TrimSpace(a.Query)
+		if candidate == "" {
+			candidate = strings.TrimSpace(a.Message)
 		}
-		a.Query = candidate
+		a.Query = deriveWebQuery(fallbackTask, candidate)
 	}
 	return a
 }
@@ -66,7 +65,7 @@ func blockedAvoidanceQuestion(task, question string) (bool, string) {
 	if q == "" {
 		return false, ""
 	}
-	gitQuestion := (strings.Contains(q, "git-repository") || strings.Contains(q, "git repository") || strings.Contains(q, "git-repo")) && (strings.Contains(q, "initialis") || strings.Contains(q, "erstellen") || strings.Contains(q, "git init"))
+	gitQuestion := strings.Contains(q, "git") && (strings.Contains(q, "initialis") || strings.Contains(q, "erstellen") || strings.Contains(q, "anlegen") || strings.Contains(q, "git init"))
 	gitTask := false
 	for _, marker := range []string{"git", "repository", "repo", "commit", "branch", "push", "pull request", "versionier"} {
 		if strings.Contains(t, marker) {

@@ -1,4 +1,4 @@
-# LocalCode 4.6.0
+# LocalCode 4.7.0
 
 LocalCode ist ein eigenständiger lokaler Windows-Coding-Agent für Ollama. Die Anwendung bietet eine desktopartige Projekt- und Chatoberfläche, persistente Chats, Datei- und Bildanhänge, Git, Befehlsausführung, Webrecherche, MCP, Genehmigungen und eine zentrale Einstellungsseite.
 
@@ -17,7 +17,17 @@ Die Anwendung heißt vollständig **LocalCode**. Programmdateien, UI, API-Kennun
 
 Beim ersten Start übernimmt LocalCode vorhandene Konfigurationen, Chatverläufe und Sicherungen der vorherigen Produktbezeichnung automatisch, falls im neuen LocalCode-Datenordner noch keine entsprechenden Dateien liegen. Die alten Dateien werden aus Sicherheitsgründen nicht gelöscht. Verwaltete ältere `STATE.md`-Marker werden beim nächsten Statusupdate in die neuen `LOCALCODE:STATE:BEGIN/END`-Marker überführt, ohne manuelle Inhalte anzutasten.
 
-## Werkzeugerkennung, Installation und Projekt-Automation in 4.6.0
+## Intelligente Aufgabensteuerung und Kontextkomprimierung in 4.7.0
+
+- Der Agent Supervisor klassifiziert Analyse, Build, Android-Deployment, Webrecherche und Git-Initialisierung und startet die jeweils sichere deterministische Aktion.
+- Eine Analyse ist ausdrücklich schreibgeschützt: fehlendes Git ist kein Blocker, mutierende Git- und Dateiaktionen werden blockiert.
+- Bestätigte Rückfragen enthalten eine ausführbare Folgeaktion. Ein „ja“ zu `git init` führt die Aktion aus und setzt den vorhandenen Kontext fort.
+- Leere Webanfragen werden serverseitig aus der Originalaufgabe erzeugt; DuckDuckGo besitzt einen Bing-RSS-Fallback.
+- Wiederholte Agentendrift wird kontrolliert beendet, statt Fragen oder Aktionen bis zum Schrittlimit zu wiederholen.
+- Langer Verlauf wird vor Erreichen des Kontextlimits verdichtet. Erhalten bleiben Aufgabe, Entscheidungen, Projektfakten, Dateien, Befehle, Fehler, offene Punkte und die nächste Aktion.
+- Die Komprimierung ist unter **Einstellungen > Konfiguration** aktivierbar und in Schwelle sowie Zahl der unverändert beibehaltenen Nachrichten einstellbar.
+
+## Werkzeugerkennung, Installation und Projekt-Automation in 4.7.0
 
 - Externe Entwicklungswerkzeuge werden über Projekt-Wrapper, feste Pfade, `PATH`, Android-SDK-Verzeichnisse, Umgebungsvariablen, Visual-Studio-Installationen und `vswhere.exe` gesucht.
 - Visual-Studio-Bestandteile wie MSBuild, das gebündelte Git, CMake, Ninja, NuGet und `devenv.exe` werden auch dann gefunden, wenn sie nicht im globalen `PATH` stehen.
@@ -30,7 +40,7 @@ Beim ersten Start übernimmt LocalCode vorhandene Konfigurationen, Chatverläufe
 - Leere Websuchanfragen werden deterministisch aus der aktuellen Aufgabe ergänzt; erwartbare Git- und ADB-Zustände lösen keine sinnlose Webrecherche aus.
 - Details stehen in `docs/TOOLS.md`.
 
-## Stabilität und Kontrolle in 4.6.0
+## Stabilität und Kontrolle in 4.7.0
 
 - Hintergrundbefehle unter Windows laufen ohne aufblinkende Konsolenfenster.
 - Werkzeug-, Git-, Diff-, Befehls- und Fehlerausgaben sind im Chat und im rechten Ausgabenbereich vollständig aufklappbar.
@@ -104,7 +114,7 @@ Standardmäßig arbeitet LocalCode mit strikten Genehmigungen und auf das ausgew
 
 ## Abgrenzung
 
-LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.6.0 erweitert diese Arbeitsabläufe um verifizierte Werkzeugreparatur und deterministische Build-/Android-Deployment-Aktionen; eine Modellparität mit einem gehosteten Frontier-Modell wird weiterhin nicht behauptet.
+LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.7.0 erweitert diese Arbeitsabläufe um verifizierte Werkzeugreparatur und deterministische Build-/Android-Deployment-Aktionen; eine Modellparität mit einem gehosteten Frontier-Modell wird weiterhin nicht behauptet.
 
 ## Lizenz
 

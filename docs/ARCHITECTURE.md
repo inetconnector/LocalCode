@@ -53,3 +53,9 @@ Der Agent verwendet für einzelne Programme bevorzugt `run_tool` statt frei form
 Jeder Werkzeuglauf ist an den Agentenkontext gebunden. Ein Abbruch oder Timeout beendet unter Windows den Prozessbaum. Ausgaben werden getrennt als STDOUT und STDERR erfasst und zusammen mit Exitcode und Laufzeit an Agent und Oberfläche zurückgegeben.
 
 ADB besitzt eine eigene Zustandsdiagnose. Ein automatischer Reparaturversuch ist begrenzt; identische Aktionen und identische Rückfragen werden von der Agentenschleife blockiert.
+## Agent Supervisor und Kontextkomprimierung (4.7)
+
+Vor jedem Modellschritt klassifiziert der Supervisor die ursprüngliche Aufgabe. Für häufige Workflows erzwingt er zunächst eine deterministische Aktion (`project_info`, `build_project`, `deploy_android`, `web_search` oder `git init`). Eine Intent-Policy blockiert mutierende Aktionen bei reiner Analyse und Nicht-Web-Aktionen bei einer Internetrecherche. Wiederholte unpassende Modellaktionen führen zu einem kontrollierten Supervisor-Abschluss statt zu einer Endlosschleife.
+
+Die Kontextverwaltung schätzt die Belegung fortlaufend. Beim konfigurierten Schwellenwert wird der ältere Verlauf in einen strukturierten Arbeitszustand überführt. Dieser enthält keine Gedankenkette, sondern ausschließlich Aufgabe, Entscheidungen, Projektfakten, gelesene/geänderte Dateien, Befehle, Fehler, offene Punkte und nächste Aktion. Die jüngsten Nachrichten bleiben unverändert.
+

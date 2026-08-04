@@ -53,7 +53,7 @@ func defaultBlockedPatterns() []string {
 func defaultConfig() Config {
 	return Config{
 		RootProjectDir: preferredProjectRoot(), Port: 32145,
-		ContextLength: 32768, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
+		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
 		WebFetchMaxBytes: 2 << 20, GitEnabled: true, AutoStateUpdate: true,
@@ -195,8 +195,8 @@ func suspiciousProjectRoot(root string) bool {
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 3 {
-		cfg.SchemaVersion = 3
+	if cfg.SchemaVersion < 4 {
+		cfg.SchemaVersion = 4
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -207,6 +207,15 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.ContextLength < 4096 {
 		cfg.ContextLength = d.ContextLength
+	}
+	if oldSchema < 4 {
+		cfg.ContextCompactionEnabled = true
+	}
+	if cfg.ContextCompactionThresholdPercent < 45 || cfg.ContextCompactionThresholdPercent > 90 {
+		cfg.ContextCompactionThresholdPercent = d.ContextCompactionThresholdPercent
+	}
+	if cfg.ContextCompactionKeepRecent < 6 || cfg.ContextCompactionKeepRecent > 40 {
+		cfg.ContextCompactionKeepRecent = d.ContextCompactionKeepRecent
 	}
 	if cfg.MaxAgentSteps < 10 || cfg.MaxAgentSteps > 200 {
 		cfg.MaxAgentSteps = d.MaxAgentSteps

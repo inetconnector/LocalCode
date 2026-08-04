@@ -1,12 +1,24 @@
 # LocalCode Entwicklungsstand
 
-**Version:** 4.6.0  
+**Version:** 4.7.0  
 **Status:** Build-, test- und paketierfähig  
 **Zielplattform:** Windows x64  
 **Backend:** Go, lokaler HTTP-Server, Ollama  
 **Frontend:** eingebettetes HTML/CSS/JavaScript im Edge-/Chrome-App-Modus
 
-## Werkzeugreparatur und deterministische Abläufe in 4.6.0
+## Agent Supervisor und Kontextverwaltung in 4.7.0
+
+- Aufgabenklassifikation für Analyse, Build, Android-Deployment, Webrecherche und Git-Initialisierung.
+- Read-only-Policy für Analyseaufgaben; fehlendes Git ist kein Blocker.
+- Direkt ausführbare Fortsetzungen für bestätigte Rückfragen, einschließlich verifiziertem `git init`.
+- Wiederholungs- und Driftkontrolle mit deterministischem Abschlussbericht.
+- Nicht leere Webquery an der Werkzeuggrenze und Bing-RSS-Fallback.
+- Kontextkomprimierung standardmäßig bei 68 Prozent; aktuelle 12 Nachrichten bleiben unverändert.
+- Modellgestützte strukturierte Verdichtung mit deterministischem Fallback.
+- UI-Einstellungen und sichtbares Ereignis für jede Komprimierung.
+- Regressionstests für Analyse ohne Mutation, Git-Fortsetzung und Langkontext-Fortsetzung.
+
+## Werkzeugreparatur und deterministische Abläufe in 4.7.0
 
 - Vollständige Werkzeugerkennung über Projekt-Wrapper, konfigurierte Pfade, `PATH`, Android SDK, Windows-Standardpfade sowie Visual Studio und `vswhere.exe`.
 - Verifizierte, benutzerlokale Installation der offiziellen Android SDK Platform-Tools und der offiziellen portablen MinGit-Ausgabe nach separater Genehmigung.

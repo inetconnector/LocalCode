@@ -45,3 +45,7 @@ Version 4.0.0 orientiert sich an öffentlich dokumentierten Codex-Arbeitsmustern
 - https://developer.android.com/tools/sdkmanager
 
 Die Implementierung verwendet diese Quellen für die SDK-/ADB-Suchpfade, Gerätezustände und Installationshinweise.
+## Kontextverwaltung und Agenten-Harness (4.7.0)
+
+Die Implementierung orientiert sich an öffentlich dokumentierten Agentenmustern: lange Workflows benötigen einen stabilen Werkzeugzyklus und eine Verdichtung, die Arbeitszustand statt Gesprächsprosa bewahrt. LocalCode komprimiert deshalb an einer konfigurierbaren Schwelle und hält Originalaufgabe, Entscheidungen, Artefakte, Befehle, Fehler und offene Punkte ausdrücklich fest. Ollama-Toolaufrufe werden weiterhin als mehrstufiger Nachrichtenzyklus mit zurückgespielten Werkzeugergebnissen geführt.
+

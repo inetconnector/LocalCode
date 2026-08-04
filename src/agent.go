@@ -63,7 +63,7 @@ const agentSystemPrompt = `Du bist LocalCode, ein präziser autonomer Software-A
 Du arbeitest in einer kontrollierten Werkzeugschleife. Jede Antwort MUSS genau ein JSON-Objekt gemäß dem vorgegebenen Schema enthalten. Kein Markdown um das JSON und keine sichtbare Gedankenkette.
 
 Arbeitsweise:
-- Lies zuerst AGENTS.md, README.md und STATE.md, sofern vorhanden. Prüfe Projektstruktur und Git-Status.
+- AGENTS.md, README.md, STATE.md, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
 - Halte Änderungen klein und kohärent. Nutze replace_text für eindeutige kleine Änderungen und write_file für neue oder vollständig neu geschriebene Dateien.
@@ -79,6 +79,7 @@ Arbeitsweise:
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
+- Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
 - ask_user nur, wenn eine echte Entscheidung oder interaktive Benutzeraktion blockiert.
 
@@ -347,7 +348,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	}
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(userMessage)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-STATUS:\n%s\n\nAUFGABE:\n%s%s\n\n%s", filepath.Base(project), capabilityContext, instructions, tree, gitStatusSummary(project, cfg), userMessage, attachmentContext, automationHint)}}
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, userMessage), userMessage, attachmentContext, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -361,7 +362,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.AddEvent(UIEvent{Type: "agent_step", Message: "Hook vor Aufgabe ausgeführt", Detail: truncateText(out, 12000)})
 	}
 
-	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "")
+	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", userMessage)
 	runAfterHook = outcome == "done"
 }
 
@@ -384,11 +385,30 @@ func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, mod
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
-	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, continuation.Question)
+	if continuation.SuggestedAction != nil {
+		if isAffirmativeAnswer(userMessage) {
+			action := *continuation.SuggestedAction
+			s.AddEvent(UIEvent{Type: "agent_step", Message: "Bestätigte Aktion wird direkt ausgeführt", Action: action.Action, Detail: action.Message})
+			result, actionErr := s.executeConfirmedContinuationAction(ctx, project, cfg, action)
+			messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(action)})
+			toolText := "TOOL RESULT for confirmed " + action.Action + ":\n" + truncateText(result, 120000)
+			if actionErr != nil {
+				toolText += "\n\n" + toolFailureRecoveryDirective(action, result, actionErr, continuation.OriginalTask)
+			}
+			messages = append(messages, OllamaMessage{Role: "user", Content: toolText + "\n\nDie Nutzerbestätigung wurde verbraucht. Frage nicht erneut nach derselben Aktion; verifiziere das Ergebnis und fahre fort."})
+		} else if isNegativeAnswer(userMessage) {
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Die vorgeschlagene Aktion wurde abgelehnt. Führe sie nicht aus und fahre, soweit möglich, ohne sie fort."})
+		}
+	}
+	originalTask := continuation.OriginalTask
+	if strings.TrimSpace(originalTask) == "" {
+		originalTask = s.LastTask
+	}
+	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, continuation.Question, originalTask)
 	runAfterHook = outcome == "done"
 }
 
-func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model string, messages []OllamaMessage, cfg Config, previousQuestion string) string {
+func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model string, messages []OllamaMessage, cfg Config, previousQuestion, originalTask string) string {
 	maxSteps := cfg.MaxAgentSteps
 	if cfg.ResponseSpeed == "fast" && maxSteps > 35 {
 		maxSteps = 35
@@ -399,25 +419,45 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	if maxSteps <= 0 {
 		maxSteps = 60
 	}
+	intent := classifyTaskIntent(originalTask)
+	completedActions := map[string]bool{}
+	failedActions := map[string]int{}
+	compactionCount := 0
 	lastSignature := ""
 	repeatBlocks := 0
+	supervisorBlocks := 0
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
 			return "cancelled"
 		}
+		if compacted, didCompact := s.compactAgentMessages(ctx, model, messages, cfg, originalTask); didCompact {
+			messages = compacted
+			compactionCount++
+		}
 		s.setRunPhase(runID, "model")
 		s.AddEvent(UIEvent{Type: "progress", Message: fmt.Sprintf("Modellschritt %d von %d", step, maxSteps), Detail: model})
-		modelTimeout := time.Duration(cfg.ModelTimeout) * time.Second
-		if modelTimeout <= 0 {
-			modelTimeout = 4 * time.Minute
+		var action AgentAction
+		usedModel := model
+		var err error
+		if forced := forcedActionForIntent(intent, completedActions); forced != nil {
+			action = *forced
+			s.AddEvent(UIEvent{Type: "agent_step", Message: "Deterministische Aufgabensteuerung: " + action.Message, Action: action.Action})
+		} else {
+			modelTimeout := time.Duration(cfg.ModelTimeout) * time.Second
+			if modelTimeout <= 0 {
+				modelTimeout = 4 * time.Minute
+			}
+			stepCtx, stepCancel := context.WithTimeout(ctx, modelTimeout)
+			action, usedModel, err = s.nextAgentAction(stepCtx, model, messages)
+			stepCancel()
 		}
-		stepCtx, stepCancel := context.WithTimeout(ctx, modelTimeout)
-		action, usedModel, err := s.nextAgentAction(stepCtx, model, trimMessages(messages))
-		stepCancel()
-		s.mu.RLock()
-		fallbackTask := s.LastTask
-		s.mu.RUnlock()
+		fallbackTask := originalTask
+		if strings.TrimSpace(fallbackTask) == "" {
+			s.mu.RLock()
+			fallbackTask = s.LastTask
+			s.mu.RUnlock()
+		}
 		action = normalizeAgentAction(action, fallbackTask)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
@@ -442,6 +482,19 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			_ = saveConfig(cfg)
 		}
 		messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(action)})
+		if allowed, hint := actionAllowedForIntent(intent, action); !allowed {
+			supervisorBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: "Aktion passt nicht zur Nutzeraufgabe und wurde blockiert", Detail: action.Action + ": " + action.Message})
+			if supervisorBlocks >= 2 && (intent.Kind == "analyze" || intent.Kind == "web_research") {
+				report := supervisedFallbackReport(intent, project, cfg, messages)
+				s.AddEvent(UIEvent{Type: "final", Message: report})
+				s.recordAction("Supervisor hat die Aufgabe kontrolliert abgeschlossen")
+				s.UpdateProjectState("Supervisor-Abschluss nach blockierter Agentendrift")
+				return "done"
+			}
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + hint + " Fahre jetzt mit einer passenden Aktion fort."})
+			continue
+		}
 		if action.Action == "ask_user" && previousQuestion != "" && sameQuestion(action.Message, previousQuestion) {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Wiederholte Rückfrage blockiert", Detail: "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren."})
 			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
@@ -449,7 +502,15 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		if action.Action == "ask_user" {
 			if blocked, hint := blockedAvoidanceQuestion(fallbackTask, action.Message); blocked {
+				supervisorBlocks++
 				s.AddEvent(UIEvent{Type: "warning", Message: "Unnötige Rückfrage blockiert", Detail: action.Message})
+				if supervisorBlocks >= 2 && (intent.Kind == "analyze" || intent.Kind == "web_research") {
+					report := supervisedFallbackReport(intent, project, cfg, messages)
+					s.AddEvent(UIEvent{Type: "final", Message: report})
+					s.recordAction("Supervisor hat die Aufgabe kontrolliert abgeschlossen")
+					s.UpdateProjectState("Supervisor-Abschluss nach wiederholter unnötiger Rückfrage")
+					return "done"
+				}
 				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + hint + " Fahre jetzt mit einer konkreten Werkzeugaktion fort."})
 				continue
 			}
@@ -469,11 +530,14 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if action.Action == "ask_user" {
 			s.mu.Lock()
 			s.Continuation = &AgentContinuation{
-				Project:  project,
-				ThreadID: s.CurrentThread,
-				Model:    model,
-				Question: action.Message,
-				Messages: append([]OllamaMessage(nil), messages...),
+				Project:         project,
+				ThreadID:        s.CurrentThread,
+				Model:           model,
+				Question:        action.Message,
+				Messages:        append([]OllamaMessage(nil), messages...),
+				SuggestedAction: suggestedActionForQuestion(action.Message),
+				OriginalTask:    originalTask,
+				CompactionCount: compactionCount,
 			}
 			s.mu.Unlock()
 			s.AddEvent(UIEvent{Type: "question", Message: action.Message})
@@ -489,7 +553,17 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if done {
 			return "done"
 		}
-		messages = append(messages, OllamaMessage{Role: "user", Content: "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, 120000)})
+		completedActions[action.Action] = true
+		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, 120000)
+		lowerResult := strings.ToLower(result)
+		if strings.Contains(lowerResult, "error:") || strings.Contains(lowerResult, "status: fehler") || strings.Contains(lowerResult, "status: timeout") || strings.Contains(lowerResult, "exitcode: 1") || strings.Contains(lowerResult, "exitcode: -1") {
+			failedActions[actionSignature(action)]++
+			toolMessage += "\n\n" + toolFailureRecoveryDirective(action, result, errors.New("Werkzeugaktion fehlgeschlagen"), originalTask)
+			if failedActions[actionSignature(action)] >= 2 {
+				toolMessage += "\nDie gleiche Aktion ist bereits mehrfach fehlgeschlagen. Verwende jetzt eine andere Diagnose oder beende mit einer präzisen Fehlerursache; keine identische Wiederholung."
+			}
+		}
+		messages = append(messages, OllamaMessage{Role: "user", Content: toolMessage})
 	}
 	s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
 	return "limit"
@@ -986,8 +1060,10 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		}
 		gctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		args := append([]string{"--no-pager"}, a.Args...)
-		return runResolvedTool(gctx, project, "git", args, cfg)
+		if len(a.Args) > 0 && strings.EqualFold(a.Args[0], "init") {
+			return initializeGitRepository(gctx, project, cfg)
+		}
+		return runGit(gctx, project, a.Args, cfg)
 	case "web_search":
 		r, err := webSearch(ctx, cfg, a.Query, a.MaxResults)
 		return formatWebResults(r), err

@@ -1,4 +1,4 @@
-LOCALCODE 4.6.0 - TEST REPORT
+LOCALCODE 4.7.0 - TEST REPORT
 
 Erfolgreich ausgeführt:
 - gofmt auf dem vollständigen Go-Quellcode
@@ -11,18 +11,25 @@ Erfolgreich ausgeführt:
 - ZIP-Integritätsprüfung
 
 Gezielt geprüfte Pfade:
+- Analyseaufgabe ohne Git-Initialisierung und ohne Dateiänderung
+- Supervisor-Blockade irrelevanter Git-Fragen und mutierender Analyseaktionen
+- kontrollierter Supervisor-Abschluss bei wiederholter Modelldrift
+- bestätigte Git-Initialisierung, Repository-Verifikation und .gitignore-Erstellung
 - bekannte Werkzeugerkennung und absolute ToolOverrides
 - typed ToolNotFoundError für reparierbare Werkzeuge
 - sichere ZIP-Extraktion und Blockade von Pfadtraversierung
 - Git-/ADB-Installationsmetadaten
 - Fortsetzungsentscheidung: echte Antwort vs. neue Aufgabe
-- Blockade unnötiger Git-init- und Werkzeug-Ausweichfragen
 - nicht leere Websuchanfrage aus Aufgaben-Fallback
-- Android-Projekterkennung
-- ADB-Geräteparser für device/unauthorized
+- DuckDuckGo-Suche mit Bing-RSS-Fallback auf Implementierungsebene
+- Android-Projekterkennung und ADB-Geräteparser
 - deterministischer Android-Ablauf: Build, APK-Fund, Geräteauswahl, adb install
+- automatische Kontextkomprimierung und Fortsetzung nach großem Werkzeugergebnis
+- Erhalt von Aufgabe, Entscheidungen, Projektfakten, Dateien, Befehlen, Fehlern und offenen Punkten
+- UI-Bindung der drei Komprimierungseinstellungen und sichtbares Komprimierungsereignis
 
 Nicht auf dem konkreten Zielrechner ausführbar:
 - UAC-Dialoge und tatsächliche Installationen von Visual Studio Build Tools
 - physisches USB-Gerät und OEM-Treiber
-Diese Pfade sind deshalb zusätzlich mit Verifikation, Timeouts, vollständiger Ausgabe und kontrolliertem Fehlerabbruch abgesichert.
+- reale Ollama-Geschwindigkeit und VRAM-Auslastung auf der Ziel-GPU
+Diese Pfade sind mit Verifikation, Timeouts, vollständiger Ausgabe, kontrolliertem Abbruch und deterministischen Fallbacks abgesichert.

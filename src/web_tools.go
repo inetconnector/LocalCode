@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
@@ -53,7 +54,18 @@ func webSearch(ctx context.Context, cfg Config, query string, maxResults int) ([
 	case "ollama":
 		return ollamaWebSearch(ctx, cfg, query, maxResults)
 	case "duckduckgo":
-		return duckDuckGoSearch(ctx, query, maxResults)
+		results, err := duckDuckGoSearch(ctx, query, maxResults)
+		if err == nil && len(results) > 0 {
+			return results, nil
+		}
+		fallback, fallbackErr := bingRSSSearch(ctx, query, maxResults)
+		if fallbackErr == nil && len(fallback) > 0 {
+			return fallback, nil
+		}
+		if err != nil && fallbackErr != nil {
+			return nil, fmt.Errorf("web search failed: DuckDuckGo: %v; Bing RSS: %v", err, fallbackErr)
+		}
+		return fallback, fallbackErr
 	default:
 		return nil, errors.New("web search provider is disabled")
 	}
@@ -200,4 +212,59 @@ func formatWebResults(results []WebResult) string {
 		fmt.Fprintf(&b, "%d. %s\n%s\n%s\n\n", i+1, r.Title, r.URL, r.Content)
 	}
 	return strings.TrimSpace(b.String())
+}
+
+type rssSearchFeed struct {
+	Channel struct {
+		Items []struct {
+			Title       string `xml:"title"`
+			Link        string `xml:"link"`
+			Description string `xml:"description"`
+			PubDate     string `xml:"pubDate"`
+		} `xml:"item"`
+	} `xml:"channel"`
+}
+
+func bingRSSSearch(ctx context.Context, query string, maxResults int) ([]WebResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, errors.New("search query is empty")
+	}
+	endpoint := "https://www.bing.com/search?format=rss&q=" + url.QueryEscape(query)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/4.7")
+	resp, err := (&http.Client{Timeout: 35 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Bing RSS HTTP %d", resp.StatusCode)
+	}
+	var feed rssSearchFeed
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		return nil, err
+	}
+	results := make([]WebResult, 0, minInt(maxResults, len(feed.Channel.Items)))
+	for _, item := range feed.Channel.Items {
+		if len(results) >= maxResults {
+			break
+		}
+		content := cleanHTMLText(item.Description)
+		if strings.TrimSpace(item.PubDate) != "" {
+			content = strings.TrimSpace(item.PubDate) + " — " + content
+		}
+		results = append(results, WebResult{Title: cleanHTMLText(item.Title), URL: strings.TrimSpace(item.Link), Content: content})
+	}
+	if len(results) == 0 {
+		return nil, errors.New("Bing RSS returned no results")
+	}
+	return results, nil
 }

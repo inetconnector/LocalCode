@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -243,8 +244,8 @@ exit /b 0`
 
 func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 2})
-	if cfg.SchemaVersion != 3 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp {
-		t.Fatalf("tool settings were not migrated: %#v", cfg)
+	if cfg.SchemaVersion != 4 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
+		t.Fatalf("tool and compaction settings were not migrated: %#v", cfg)
 	}
 	if cfg.ToolOverrides == nil {
 		t.Fatal("tool override map must be initialized")
@@ -471,5 +472,87 @@ func TestDeployAndroidDeterministicFlow(t *testing.T) {
 	}
 	if !strings.Contains(out, "BUILD-SUCCESS") || !strings.Contains(out, "Success") || !strings.Contains(out, "SERIAL123") {
 		t.Fatalf("unexpected deployment output:\n%s", out)
+	}
+}
+
+func TestAnalyzeIntentDoesNotRequireGitOrWrites(t *testing.T) {
+	intent := classifyTaskIntent("analysiere das projekt")
+	if intent.Kind != "analyze" || intent.GitRequested {
+		t.Fatalf("unexpected intent: %#v", intent)
+	}
+	if allowed, _ := actionAllowedForIntent(intent, AgentAction{Action: "replace_text", Path: "README.md"}); allowed {
+		t.Fatal("analysis intent must not allow file mutation")
+	}
+	if allowed, _ := actionAllowedForIntent(intent, AgentAction{Action: "read_file", Path: "README.md"}); !allowed {
+		t.Fatal("analysis intent must allow reads")
+	}
+}
+
+func TestGitContextDoesNotExposeFatalStatusForAnalysis(t *testing.T) {
+	project := t.TempDir()
+	cfg := normalizeConfig(Config{SchemaVersion: 4, GitEnabled: true, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	context := gitContextForTask(project, cfg, "analysiere das projekt")
+	if strings.Contains(strings.ToLower(context), "fatal") || !strings.Contains(context, "nicht erforderlich") {
+		t.Fatalf("unexpected git context: %s", context)
+	}
+}
+
+func TestSuggestedGitActionIsExecutedFromYesIntent(t *testing.T) {
+	action := suggestedActionForQuestion("Möchten Sie ein neues Git-Repository initialisieren?")
+	if action == nil || action.Action != "git" || len(action.Args) == 0 || action.Args[0] != "init" {
+		t.Fatalf("unexpected suggested action: %#v", action)
+	}
+	if !isAffirmativeAnswer("ja, mach das") {
+		t.Fatal("affirmative answer was not recognized")
+	}
+}
+
+func TestContextCompactionThreshold(t *testing.T) {
+	cfg := normalizeConfig(Config{SchemaVersion: 4, ContextLength: 4096, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 50, ContextCompactionKeepRecent: 8})
+	messages := []OllamaMessage{{Role: "system", Content: strings.Repeat("s", 2000)}, {Role: "user", Content: strings.Repeat("u", 7000)}}
+	if !shouldCompactMessages(messages, cfg) {
+		t.Fatalf("expected compaction, estimated=%d", estimateMessageTokens(messages))
+	}
+	state := deterministicContextSummary(messages, "analysiere das projekt")
+	if state.OriginalTask != "analysiere das projekt" || strings.TrimSpace(renderCompactedState(state)) == "" {
+		t.Fatalf("invalid compacted state: %#v", state)
+	}
+}
+
+func TestInitializeGitRepositoryAndGitignore(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed in test environment")
+	}
+	project := t.TempDir()
+	cfg := normalizeConfig(Config{SchemaVersion: 4, GitEnabled: true, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	out, err := initializeGitRepository(ctx, project, cfg)
+	if err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, out)
+	}
+	if !isGitRepository(project, cfg) {
+		t.Fatal("repository not created")
+	}
+	if _, err := os.Stat(filepath.Join(project, ".gitignore")); err != nil {
+		t.Fatalf(".gitignore missing: %v", err)
+	}
+}
+
+func TestContextCompactionSettingsArePresentInUI(t *testing.T) {
+	data, err := staticFS.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, id := range []string{"setContextCompaction", "setCompactionThreshold", "setCompactionKeepRecent"} {
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Fatalf("missing context compaction UI field %s", id)
+		}
+	}
+	for _, jsonField := range []string{"context_compaction_enabled", "context_compaction_threshold_percent", "context_compaction_keep_recent"} {
+		if !strings.Contains(html, jsonField) {
+			t.Fatalf("missing context compaction setting binding %s", jsonField)
+		}
 	}
 }

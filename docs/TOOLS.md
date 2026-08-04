@@ -91,3 +91,11 @@ Visual-Studio-Werkzeuge werden über `vswhere.exe` und die bekannten Instanzpfad
 - `project_info`: erkennt das Buildsystem und zeigt verfügbare Werkzeuge.
 - `build_project`: wählt einen reproduzierbaren Build für Android/Gradle, Go, Rust, Node, .NET/MSBuild, CMake oder Python.
 - `deploy_android`: baut ein Android-Projekt, wählt die neueste Debug-APK, verlangt genau ein autorisiertes Gerät und installiert mit `adb install -r`.
+## Supervisor-Regeln in 4.7.0
+
+- `analysiere das projekt`: startet `project_info`, bleibt schreibgeschützt und ignoriert einen fehlenden Git-Repository-Status.
+- `kompiliere das projekt`: startet `project_info` und danach `build_project`.
+- Android-Deployment: startet `project_info` und danach `deploy_android`; fehlende unterstützte Werkzeuge lösen die Installationsgenehmigung aus.
+- Internetrecherche: startet `web_search` mit einer serverseitig validierten, nicht leeren Query.
+- Git-Einrichtung: führt nach Genehmigung `git init` aus, verifiziert den Worktree und erstellt bei Bedarf `.gitignore`.
+

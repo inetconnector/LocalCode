@@ -27,18 +27,21 @@ type Config struct {
 	LastModel      string `json:"last_model"`
 	Port           int    `json:"port"`
 
-	OllamaURL           string `json:"ollama_url"`
-	ContextLength       int    `json:"context_length"`
-	MaxAgentSteps       int    `json:"max_agent_steps"`
-	CommandTimeout      int    `json:"command_timeout_seconds"`
-	ModelTimeout        int    `json:"model_timeout_seconds"`
-	ApprovalMode        string `json:"approval_mode"` // strict | balanced | auto | dangerous
-	SandboxMode         string `json:"sandbox_mode"`  // project | workspace | unrestricted
-	NetworkEnabled      bool   `json:"network_enabled"`
-	WebSearchProvider   string `json:"web_search_provider"` // disabled | duckduckgo | ollama
-	WebSearchAPIKeyEnv  string `json:"web_search_api_key_env"`
-	WebSearchMaxResults int    `json:"web_search_max_results"`
-	WebFetchMaxBytes    int64  `json:"web_fetch_max_bytes"`
+	OllamaURL                         string `json:"ollama_url"`
+	ContextLength                     int    `json:"context_length"`
+	ContextCompactionEnabled          bool   `json:"context_compaction_enabled"`
+	ContextCompactionThresholdPercent int    `json:"context_compaction_threshold_percent"`
+	ContextCompactionKeepRecent       int    `json:"context_compaction_keep_recent"`
+	MaxAgentSteps                     int    `json:"max_agent_steps"`
+	CommandTimeout                    int    `json:"command_timeout_seconds"`
+	ModelTimeout                      int    `json:"model_timeout_seconds"`
+	ApprovalMode                      string `json:"approval_mode"` // strict | balanced | auto | dangerous
+	SandboxMode                       string `json:"sandbox_mode"`  // project | workspace | unrestricted
+	NetworkEnabled                    bool   `json:"network_enabled"`
+	WebSearchProvider                 string `json:"web_search_provider"` // disabled | duckduckgo | ollama
+	WebSearchAPIKeyEnv                string `json:"web_search_api_key_env"`
+	WebSearchMaxResults               int    `json:"web_search_max_results"`
+	WebFetchMaxBytes                  int64  `json:"web_fetch_max_bytes"`
 
 	GitEnabled        bool   `json:"git_enabled"`
 	AutoStateUpdate   bool   `json:"auto_state_update"`
@@ -144,11 +147,14 @@ type PendingAction struct {
 }
 
 type AgentContinuation struct {
-	Project  string
-	ThreadID string
-	Model    string
-	Question string
-	Messages []OllamaMessage
+	Project         string
+	ThreadID        string
+	Model           string
+	Question        string
+	Messages        []OllamaMessage
+	SuggestedAction *AgentAction
+	OriginalTask    string
+	CompactionCount int
 }
 
 type AppState struct {
