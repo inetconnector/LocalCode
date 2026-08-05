@@ -15,5 +15,5 @@ if not exist "%~dp0dist\LocalCode.exe" (
     pause
     exit /b 1
 )
-start "LocalCode 4.8.0" "%~dp0dist\LocalCode.exe"
+start "LocalCode 6.0.0" "%~dp0dist\LocalCode.exe"
 exit /b 0

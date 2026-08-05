@@ -1,69 +1,90 @@
-.editorconfig
-.gitattributes
-.gitignore
-AGENTS.md
-BUILD-AND-RUN.bat
-BUILD.bat
-CHECKSUMS-SHA256.txt
-CLEAN-START.bat
-COMMIT_MESSAGE.txt
-DIAGNOSE.bat
-GIT-SETUP.md
-LICENSE
-NOTICE
-README-FIRST.txt
-README.md
-RELEASE-NOTES-4.0.0.md
-RELEASE-NOTES-4.3.0.md
-RELEASE-NOTES-4.4.0.md
-RELEASE-NOTES-4.5.0.md
-RELEASE-NOTES-4.6.0.md
-RELEASE-NOTES-4.7.0.md
-RELEASE-NOTES-4.8.0.md
-RESET-PROJECT-ROOT.bat
-SOURCE-MANIFEST.txt
-START.bat
-STATE.md
-TEST-REPORT.txt
-THIRD_PARTY_NOTICES.md
-VERSION.txt
-dist/LocalCode-Debug.exe
-dist/LocalCode.exe
-docs/ARCHITECTURE.md
-docs/MCP-EXAMPLES.md
-docs/RESEARCH-NOTES.md
-docs/SECURITY.md
-docs/TOOLS.md
-scripts/install-go.ps1
-src/agent.go
-src/agent_supervisor.go
-src/agent_tool_repair.go
-src/attachments.go
-src/config.go
-src/context_compaction.go
-src/continuation.go
-src/core_test.go
-src/git_tools.go
-src/go.mod
-src/history.go
-src/locale.go
-src/locale_other.go
-src/main.go
-src/mcp.go
-src/ollama.go
-src/path_tools.go
-src/platform_other.go
-src/platform_windows.go
-src/project_automation.go
-src/quality_test.go
-src/server.go
-src/state_doc.go
-src/static/i18n.js
-src/static/index.html
-src/tool_install.go
-src/tool_registry.go
-src/tool_registry_test.go
-src/tools.go
-src/types.go
-src/util.go
-src/web_tools.go
+LOCALCODE 6.0.0 SOURCE MANIFEST
+================================
+
+SHA-256  SIZE  PATH
+a16a63d7b2626472edd35e21bf3d6a1371f473138ba3d7012b05644f303034da         342  .editorconfig
+04e10940702f7a92a4fc5c12bb164d7e436dc0f67fb9911eb22720ae25a52d47         594  .gitattributes
+7ec8c292055a64598221721e767cd77352ddaad4399abb920477d68e5a36691c        3129  .gitignore
+2f6ad4fb488d9d8c013336158ba96eda03423da2f184385b6a3faae62a4d972b        4372  AGENTS.md
+32fb1b869f59a8d956494468ddbc4b9dea0d4a757754ee35d3385ffbf5d8ece8         379  BUILD-AND-RUN.bat
+c9b482152b99a279c0255c506c5771620ee2e2c6aa16047fb61815801e9e128c        3923  BUILD.bat
+6457b83debfd4c353aac68c413a869b0acdc60862c4c4078f267eb35c929acf7         176  CHECKSUMS-SHA256.txt
+94f14d336a893d206b022ab8c627df5cfaf85a7b1a65dc7585ea1ff6230d7f8d         931  CLEAN-START.bat
+f3a03266fa6b372b2265b33ea67c309b222321dbe5e615ca072c710aaf194921         542  COMMIT_MESSAGE.txt
+6af6eb72c772b0025d517e1160904b8dd0c82bb7f054d426775d84d9e9176b0c         261  DIAGNOSE.bat
+e65867fda8328e635428382230b367563a92caa1284344272bb1701bb48a3713        3954  GIT-SETUP.md
+cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30       11358  LICENSE
+2ed82e6775b3109ab2855366173427887ef93f7e90a3bcbd226bee7142c8d2c1         274  NOTICE
+776a6c0743d465888e876b2aaa8c3c3151706936018a646cd76b98c7967776fe        1151  NOTICE-AIDER.md
+1e141e21ae2bf57486aff9a9618098df2a4af8a2f0e74f707facbbb7fe4879c8        1052  README-FIRST.txt
+ac87232b68ec52f03b1a4525398a3eddb56a2a343f71543b1e2a131ba6032efd       17384  README.md
+94188c1a795f35a09ee632b0e52f4f9e50e34ceee0d8fd3da9f13138eeed7995        1714  RELEASE-NOTES-4.0.0.md
+5fae43f05cb122d850c92364480b02f12e8c3fce9dba994f513856857f434b39         967  RELEASE-NOTES-4.3.0.md
+f096ab4656d0db8aa9a427f2dcddadbb642b80b948b259faa880533c2d9a13d3        2878  RELEASE-NOTES-4.4.0.md
+a74ec64bcc69569f3a5f491faa1ceab60ad15d36b32760b7379c79ee5053247e        1165  RELEASE-NOTES-4.5.0.md
+7ffb75a7ab32adc258c659a20106abbb24a5346e0219d1d3bca0b5472d5b50be        1822  RELEASE-NOTES-4.6.0.md
+fbb70b5e5cfd113d3e3a7b8ea30f493df29bd8d67986b3910fdb8edbb98a6d5d        2416  RELEASE-NOTES-4.7.0.md
+98994e13f7336ce8f7ea7b63a3602d2cfd1202bf9d767588dfd343bb395083b5        2807  RELEASE-NOTES-4.8.0.md
+dca52da0dd354d785857f1b5df629e4446e76dcc77c277bb969424e9982ba589        2521  RELEASE-NOTES-4.9.0.md
+0ca54af43afd58f17a37453d86f041d0cddf09e436d1283da3a84aed899304ce        5477  RELEASE-NOTES-5.0.0.md
+b027873530ea8c4d842a28a21bf9e2d0234882b24d936af0234d994dee793c77        3360  RELEASE-NOTES-6.0.0.md
+a6ffadb433c9a2053a16f2e875b3c93d69aa8bee2ebd9711a971b7ab85bdd814        1239  RESET-PROJECT-ROOT.bat
+01a4c1420050ff426979c6222a063b58dcb60e8ab0e855c575ccb2d4c7d5d0ac         460  START.bat
+6892b913b992bead30ea9bf4395be2b355a5ff1c33d0d1219ad8f3785df49646        4388  STATE.md
+c0178238ea04d87746a641265fc15cc900636b14b312afad6b19773516cbcb36        6391  TEST-REPORT.txt
+5b2b3a0fe819c2d86bb821b1095ce03f878d390e38128da8bbd5bcb3c499dfc6        3817  THIRD_PARTY_NOTICES.md
+54ef76332b31df830699e9d4138396885ab72bae260a034a81ff02bf32d8e90a           6  VERSION.txt
+f523944807c6e80524d0ef0f86224152db3e42f36153ac8876fe17509fe63071    11568640  dist/LocalCode-Debug.exe
+94625c544e4f99eede0e541beb09c66544247913f9b4d6f3b393f3fab9ff9056     8194560  dist/LocalCode.exe
+26bde76d9f0fbe0dd1fcef1bca8d16376621fcf67f937d3fb2a66be82817ed59        6298  docs/AIDER-INTEGRATION.md
+aeb11e3fb6d9a3bd8b19ecdcd5ca34f379f3384638b34e98084a2dc6b4886297        4345  docs/ARCHITECTURE.md
+4f31d9509a82b0c3d817b3acb801e001476e15fe530412cc7e3289cf57e032f0         927  docs/MCP-EXAMPLES.md
+59dd0a0c5465b69a0ea263d48f5445da1c09846a16be454a606a886a19609552        3806  docs/MCP-SUITE.md
+bbdf6e87757920345ea29a6c8e95c92e76270d45dd0edf84234bf6698fffb290        1118  docs/RESEARCH-NOTES.md
+f522163ede705cf2c70b25fdbf057364c951dcf369f44cc0e215add5904d58eb        2761  docs/SECURITY.md
+59052abaccb4cd6b9bfe88dd1e4e47ad6dbfe4a2c905e977d41e7c4e94ec68cd        1574  docs/TOOLS.md
+cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30       11358  licenses/aider-LICENSE.txt
+5f61fe9ddeeab978c1a0bfbee779c6f0496c4ce64decd9171550a00afb027cd3       23587  scripts/__pycache__/ui-e2e-test.cpython-313.pyc
+5b20b1e18fa91cd047300750ff2ade4fe9aed732042cc38ce395cec25a4615da        2519  scripts/install-go.ps1
+3a6885ec7e85d3a205b02d0cc4da9b485a7a66c8551b48b5612f0caa0394ba8a       14400  scripts/ui-e2e-test.py
+a5c0f1958713d69fc9aba1bb25c982870020c4d583c1db05e02931249aacbc28       52193  src/agent.go
+2a681dabbabdcadd780e25c5700e8c56e03d7c5bcfde1d024370feabbc8c346a       12415  src/agent_supervisor.go
+e1f5460f5ab20e8a550bfac2cc83e3e8674b4c8f104cf8d9dd0e815e5fb3795b        7200  src/agent_tool_repair.go
+771a8dd3469a158456bf26f898fd6abc91f8aea36022899b93e81e9b795d23eb       44498  src/aider_engine.go
+3cc6f1c7a4ca2982ddb0818fd001db28024c33e77bafb0ab3b4ce9df1188da8c       12058  src/aider_engine_test.go
+24f106746786f31394eaadaeb2f1e42875c6d09ce75500a362357f64dde5dd62        3925  src/aider_server.go
+c890ed1d47f9e3e26897beab23199a474db83aacf85b59ef743dbd2ba8adcdb5        7031  src/approval_rules.go
+b76171a32270a6530e92ed8356d4070dc900c6eabe938b3b3bb73978e7022902       10294  src/attachments.go
+47d23a144946e5460a3d71a88880ca9d507e240716dda89244f047df5df1aaf7       22296  src/config.go
+8f03eab3aa4e46c63c0f348e068558a4a9b1c1cca23b306839f2ba6911af02c6        9307  src/context_compaction.go
+4fb8fd3ea9f40109c0568b99dff17b1456f79c257883e98f3e9db3076a8e1a02        6851  src/continuation.go
+ee81048941fd18c548fb3d791866ab0b23e925b8f41e410e035305d66fe59532       46949  src/core_test.go
+f25ecbc38b8ac40bcfb549316b979a3f61b0829416a60ffdf9a9852118d2fb93       10686  src/git_tools.go
+342c393f4c54ba20d07cee6ea49c9d693c729902eec68e692650d7dd25cc2107          26  src/go.mod
+ef43cbe1604a5ff0737a4850b53a618117250cab47ce41f68daf098444d02ab9        9913  src/history.go
+643066b991852b376e908cc73800fde513685754ea8413fd7b9eb8ebfedf2697        4525  src/locale.go
+2377114cc77d67e0bb256683bf1b3a54f8f74985318e22d099c69d69497dcd7b         307  src/locale_other.go
+52609e0d11ad3e825599539bd5004d47a4cdaf52d978e616ed139244af4f1df1        6984  src/main.go
+2dcf43a2d2a09be013ec07b627a9a467d9df1aea51fd024c38ee4b670f78bc91       21216  src/mcp.go
+9fa62093cd3706f0e79782595678ba5aac83187081ea1f7c9a36978e943058b4       23308  src/mcp_builtin.go
+4b02b02e975d1eafe29746b96fd8bf73f04f4891856ff06aea3e98240502e4cf        2109  src/mcp_external_integration_test.go
+05de92d3c32aeb97d28ae4d62ff553bdfba5dad7bc0360505435fd5822f060fa       12200  src/mcp_setup.go
+4432c30750b0f2ffde566c6d3f40fb918703d248467304f6f638de35ec2209e3        8766  src/mcp_suite_test.go
+2313f27c402063aa9d13289275b7a97bed4c93e399ffa6f95e21ae5872c12ed5       14990  src/ollama.go
+8af0bbb10ce79b72a75e95110a8d6d8c97f999692a70afc7539beaf2b6fe412b        3192  src/path_tools.go
+9cabeab44c7483b24ee7506fd87a0e5cbc20b494f38126124bad0768bd5bb244        2835  src/platform_other.go
+09cd75a48fa50378bd3b08ce7e745c057aa6eee411713c9ae9ed5e808a239f5d       15389  src/platform_windows.go
+62cf113c1e97edd5c91deded1af463f19288df7e4f79d8540b12d23fd809370b        9551  src/project_automation.go
+2145ad11e9735aeb8994ffa7947e730b2fec1811da1aec7bb4eebd04a6ac4a00        5076  src/project_catalog.go
+23773c7d858bd68bc2ce158ff81e60ffb896707b0fd6d8b9d3dbe4ea75215159       19338  src/quality_test.go
+6208c5894922ed1648960def79022ca35d7464e0588835da3b40a23589e090ef       36257  src/server.go
+a467dfc707f7094374607d23190fadb86b0112faa1e2a7ff927bd46a0eb07519        8392  src/state_doc.go
+4671be984ffa9a4b16e5eb14a7ff69981839dcd8bbcc05977e9801ff1e5e062e       68510  src/static/i18n.js
+b2735cd2931271c8c3ee2ab29f684cf47773e4551ddd4202ec6eeadf15522401      146599  src/static/index.html
+26fc48b819fadb98612c44816b923bf9938b9ca5a187f6f103b3e94f8b10e376       20965  src/tool_install.go
+f843ed9ca691edcdde37ef527b4b454cac01b3a6e15bff0998fd965d32e269b6       37102  src/tool_registry.go
+a3316ce8822f32521b53df4bc3dc154c6a3a398f12b5e7b17c54859424f93868       22071  src/tool_registry_test.go
+e776161f84a67a15c72d01d2e89dfcb85e5df5aaafbe1f47bfdf3b2abca32478        9825  src/tools.go
+0ae0f10e3cf421904b6e7f8ff11e437ce229d3b675d47888df581af66b753450       15578  src/types.go
+67c909d742f2cc4a65ebada1f7f3ea3626f993e1f07d8311ed234b9baa375ed0        1503  src/util.go
+75c00cc8df24a8bc3c4b6181ae3ded9226d9ce4c5526683e22969c93571031b5        8234  src/web_tools.go

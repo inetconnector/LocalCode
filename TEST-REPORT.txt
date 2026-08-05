@@ -1,101 +1,110 @@
-LOCALCODE 4.8.0 – TEST REPORT / PRÜFBERICHT
+LOCALCODE 6.0.0 - AIDER ENGINE TEST REPORT / PRUEFBERICHT
+=====================================================================
 
-DEUTSCH
-=======
+Scope / Umfang
+--------------
+This release integrates Aider as LocalCode's managed production editing engine.
+The review covered installation isolation, version pinning, Ollama model routing,
+repository-map invocation, multi-file edit arguments, architect/editor mode,
+Git behavior, conservative lint/test detection, persistent task histories,
+approval handling, cancellation, process-tree termination, backups, guarded
+undo, UI controls, localization, documentation, licensing and Windows builds.
 
-Erfolgreich ausgeführt:
-- gofmt auf dem vollständigen Go-Quellcode
-- go test -race -count=1 ./...
-- go test -shuffle=on -count=3 ./...
-- go vet ./...
-- Go-Coverage-Lauf
-- Windows-amd64-Testkompilierung
-- JavaScript-Syntaxprüfung für i18n.js und alle eingebetteten Skriptblöcke
-- HTML-ID-Prüfung ohne doppelte IDs
-- Übersetzungskatalogprüfung: Deutsch und Englisch enthalten dieselben Schlüssel
-- Windows-amd64-GUI-Build und Windows-amd64-Diagnose-Build
-- PE32+-Strukturprüfung
-- ZIP-Integritätsprüfung
+Dieses Release integriert Aider als verwaltete produktive Bearbeitungs-Engine
+von LocalCode. Geprueft wurden isolierte Installation, Versionsbindung,
+Ollama-Modellweiterleitung, Repository-Map-Aufrufe, Argumente fuer
+Mehrdatei-Aenderungen, Architect/Editor-Modus, Git-Verhalten, konservative
+Lint-/Testerkennung, dauerhafte Aufgabenverlaeufe, Genehmigungen, Abbruch,
+Prozessbaumbeendigung, Backups, geschuetztes Undo, UI, Uebersetzungen,
+Dokumentation, Lizenzierung und Windows-Builds.
 
-Gezielt geprüfte und reparierte Bereiche:
-- automatische Windows-Anzeigespracherkennung: Deutsch bei deutschem Windows, sonst Englisch
-- manuelle Sprachumschaltung und bevorzugte Agentenantwortsprache
-- deutsche und englische Oberfläche, Einstellungsseite, Dialoge, Projektvorlagen und Dokumentation
-- lokalisierte Werkzeughinweise und Installationsvorschauen
-- dauerhafte Genehmigungsleiste unten mittig, auch in Einstellungen und anderen Ansichten
-- Genehmigung, Ablehnung, Abbruch und Zeitablauf räumen den Pending-Zustand zuverlässig auf
-- Projektwurzel per direkter Eingabe und Windows-Ordnerdialog
-- Ordnerdialog besitzt ein Vordergrundfenster und verschwindet nicht hinter der App
-- Ganzzahlserialisierung für Splitter-, Kontext- und Timeoutwerte
-- atomisches Speichern von Konfiguration und Chatverlauf mit Backup-Wiederherstellung
-- zusammengefasste Hintergrundpersistenz ohne blockierende Dateizugriffe im Agentenlauf
-- kontrolliertes Beenden des Persistenzworkers mit Flush der neuesten Chatversion
-- kein Hintergrundschreiber greift nach dem Test-/Programmende auf gelöschte Verzeichnisse zu
-- Konfiguration wird erst nach erfolgreichem Speichern als aktiv übernommen
-- Projektauswahl meldet Fehler beim Erstellen der Dokumentation oder Speichern der Auswahl
-- Startzeitlimit für Ollama-Modellabfrage
-- Loopback-Hostprüfung, Cross-Origin-/Cross-Site-Schutz und restriktive Browser-Sicherheitsheader
-- Analyse ohne unnötige Git-Initialisierung
-- bestätigte Git-Initialisierung und Fortsetzung der ursprünglichen Aufgabe
-- automatische Werkzeugerkennung, Installationsgenehmigung und Verifikation
-- nicht leere Websuchanfrage aus Aufgaben-Fallback
-- automatische Kontextkomprimierung mit Erhalt von Aufgabe, Entscheidungen, Dateien, Befehlen, Fehlern und offenen Punkten
-- kontrollierter Modell-/Werkzeugabbruch und erzwungener Reset
-- UI-Mocktest: Genehmigungsleiste bleibt im Hauptfenster und in den Einstellungen sichtbar; Projektwurzel-Dialog funktioniert; Genehmigungs-POST enthält die korrekte ID und Entscheidung
+Automated checks / Automatisierte Pruefungen
+--------------------------------------------
+PASS  gofmt on all Go sources
+PASS  go test -count=1 ./...
+PASS  go test -race -count=1 ./...
+PASS  go test -shuffle=on -count=3 ./...
+PASS  go vet ./...
+PASS  114 Go tests discovered
+PASS  statement coverage: 45.5%
+PASS  Windows-amd64 test compilation
+PASS  JavaScript syntax checks for i18n and embedded client code
+PASS  HTML ID check: 198 IDs, 198 unique, 0 duplicates
+PASS  German/English localization parity: 487/487 keys, 0 missing
+PASS  browser UI E2E: 33 mocked API interactions without page errors
+PASS  Windows GUI build: PE32+ x86-64 GUI executable
+PASS  Windows diagnostic build: PE32+ x86-64 console executable
 
-Nicht auf dem konkreten Zielrechner ausführbar:
-- reale UAC-Dialoge und tatsächliche Installation großer Visual-Studio-Workloads
-- physisches USB-Gerät, OEM-Treiber und reale ADB-Installation auf dem Gerät
-- reale Ollama-Geschwindigkeit und VRAM-Auslastung auf der Ziel-GPU
+Aider integration checks / Aider-Integrationspruefungen
+-------------------------------------------------------
+PASS  pinned Aider version 0.86.2 is validated through aider --version
+PASS  managed uv tool installation is user-local and does not modify global
+      Python packages
+PASS  portable uv download is pinned and SHA-256 verified before execution
+PASS  Python 3.12 tool environment and dedicated cache/tool/bin directories
+PASS  explicit managed Aider config and intentionally empty env file
+PASS  project/home Aider configuration and repository .env are not silently
+      loaded by LocalCode-managed runs
+PASS  Ollama names, including hf.co/... model names, are routed through
+      ollama_chat/<model>
+PASS  OLLAMA_API_BASE uses the configured LocalCode Ollama endpoint
+PASS  repository map and max history token budgets are configurable
+PASS  per-task chat, input and LLM history paths are isolated from projects
+PASS  relevant editable files and read-only README.md, AGENTS.md and STATE.md
+PASS  diff/whole edit formats and architect/editor arguments
+PASS  conservative Go, Rust, Gradle, Android, .NET, Python and Node quality
+      command detection
+PASS  utility repo-map/lint/test runs use the same managed config, empty env,
+      ignore file, model routing, history controls and safety switches
+PASS  missing Git never blocks editing; Aider receives --git only for an
+      existing repository when enabled
+PASS  automatic Aider commits are disabled by default
+PASS  pre-edit, pre-lint and pre-test project backups
+PASS  hash manifests identify exact before/after file states
+PASS  undo refuses to overwrite files changed manually after an Aider run
+PASS  cancellation terminates the managed process tree and returns control
+PASS  race test for cancelled subprocess completion and output collection
+PASS  settings actions for status, install/repair, repository-map test and undo
 
-Diese externen Pfade sind mit Timeouts, vollständiger Ausgabe, Verifikation und kontrolliertem Abbruch abgesichert. Eine identische Funktions- oder Modellqualität des proprietären Codex-Dienstes wird nicht behauptet.
+Existing LocalCode capabilities retained / Beibehaltene Funktionen
+------------------------------------------------------------------
+PASS  visible approval workflow and persistent allow rules
+PASS  controlled stop and forced UI recovery
+PASS  MCP suite: Filesystem, PowerShell, Git, Fetch, GitHub and Playwright
+PASS  project/task context menus and new task creation below projects
+PASS  web research, terminal, attachments, vision analysis and file uploads
+PASS  tool discovery and approved user-local tool installation
+PASS  context compaction and persistent STATE.md management
+PASS  Visual-Studio-ready .gitignore, .gitattributes and .editorconfig
+PASS  bilingual README, Git setup, state, release notes and Aider documentation
+PASS  Apache-2.0 license plus Aider attribution and license copy
 
-ENGLISH
-=======
+External verification boundary / Grenze externer Verifikation
+---------------------------------------------------------------
+The source test suite uses a controlled fake Aider executable to verify the
+complete LocalCode/Aider process contract without changing a real repository.
+An attempted live Aider download/install in this build container could not
+complete because the environment could not resolve the external package hosts.
+Therefore this report does not claim a successful live PyPI/GitHub installation
+inside the build container.
 
-Successfully executed:
-- gofmt across the complete Go source tree
-- go test -race -count=1 ./...
-- go test -shuffle=on -count=3 ./...
-- go vet ./...
-- Go coverage run
-- Windows amd64 test compilation
-- JavaScript syntax checks for i18n.js and every embedded script block
-- HTML ID audit with no duplicate IDs
-- translation catalog parity check: German and English contain identical keys
-- Windows amd64 GUI and diagnostics builds
-- PE32+ structure verification
-- ZIP integrity verification
+On the target Windows computer LocalCode asks for approval, installs the pinned
+version, executes aider --version, and marks Aider ready only after the expected
+version is verified. The Settings page also provides explicit Install/repair and
+Test repository map actions. A real local Ollama edit can only be validated on
+the target computer because it depends on that computer's Ollama service,
+models, network access and project contents.
 
-Specifically reviewed and fixed:
-- automatic Windows display-language detection: German on German Windows, English otherwise
-- manual UI language selection and preferred agent response language
-- German and English interface, settings, dialogs, project templates, and documentation
-- localized tool guidance and installation previews
-- persistent bottom-center approval bar across the main UI, Settings, and other views
-- approval, rejection, cancellation, and expiration reliably clear pending state
-- project root selection through direct entry and the native Windows folder dialog
-- foreground-owned folder dialog that cannot silently open behind the app
-- integer serialization for splitters, context, and timeout values
-- atomic configuration and chat-history writes with backup recovery
-- coalesced background persistence without blocking agent execution
-- controlled persistence-worker shutdown with a final latest-state flush
-- no background writer accesses deleted test/application directories after shutdown
-- settings become active only after their durable write succeeds
-- project selection reports documentation or persistence failures instead of pretending success
-- startup timeout for Ollama model discovery
-- loopback Host validation, cross-origin/cross-site request protection, and restrictive browser security headers
-- analysis without unnecessary Git initialization
-- confirmed Git initialization and continuation of the original task
-- automatic tool discovery, installation approval, and post-install verification
-- non-empty web search query generation from the active task
-- automatic context compaction preserving task, decisions, files, commands, failures, and open work
-- controlled model/tool cancellation and forced reset
-- UI mock verification: approval dock remains visible in the main view and Settings; project-root modal works; approval POST contains the correct ID and decision
+Die Quelltests verwenden eine kontrollierte Aider-Testprogrammdatei, um den
+vollstaendigen LocalCode/Aider-Prozessvertrag zu pruefen, ohne ein echtes
+Repository zu veraendern. Ein echter Aider-Download in diesem Build-Container
+konnte wegen fehlender DNS-Aufloesung zu den externen Paketservern nicht
+abgeschlossen werden. Deshalb wird hier keine erfolgreiche Live-Installation
+im Build-Container behauptet.
 
-Not executable on the specific target computer from this environment:
-- real UAC dialogs and installation of large Visual Studio workloads
-- a physical USB device, OEM drivers, and a real ADB deployment
-- actual Ollama throughput and VRAM use on the target GPU
-
-These external paths use timeouts, complete output, verification, and controlled cancellation. Identical capability or model quality to the proprietary Codex service is not claimed.
+Auf dem Windows-Zielrechner fragt LocalCode nach Genehmigung, installiert die
+festgelegte Version, fuehrt aider --version aus und meldet Aider erst nach
+korrekter Versionspruefung als bereit. In den Einstellungen stehen zusaetzlich
+Installieren/Reparieren und Repository Map testen zur Verfuegung. Ein echter
+lokaler Ollama-Bearbeitungslauf kann nur auf dem Zielrechner geprueft werden,
+weil er von dessen Ollama-Dienst, Modellen, Netzwerk und Projektdateien abhaengt.

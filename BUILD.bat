@@ -6,7 +6,7 @@ cd /d "%~dp0"
 set "LC_LANG=en"
 for /f "delims=" %%L in ('powershell.exe -NoLogo -NoProfile -Command "(Get-UICulture).TwoLetterISOLanguageName" 2^>nul') do set "LC_LANG=%%L"
 if /I "%LC_LANG%"=="de" (
-  set "TITLE=LocalCode 4.8.0 bauen"
+  set "TITLE=LocalCode 6.0.0 bauen"
   set "NO_GO=[INFO] Go ist nicht installiert. Lade eine portable offizielle Go-Version ..."
   set "GO_MISSING=[FEHLER] go.exe wurde nicht gefunden:"
   set "STEP1=[1/5] Formatiere Quellcode ..."
@@ -20,7 +20,7 @@ if /I "%LC_LANG%"=="de" (
   set "FAILED=[FEHLER] BUILD FEHLGESCHLAGEN"
   set "FAIL_HELP=Das Fenster bleibt offen. Die konkrete Meldung steht oben."
 ) else (
-  set "TITLE=Build LocalCode 4.8.0"
+  set "TITLE=Build LocalCode 6.0.0"
   set "NO_GO=[INFO] Go is not installed. Downloading an official portable Go distribution ..."
   set "GO_MISSING=[ERROR] go.exe was not found:"
   set "STEP1=[1/5] Formatting source code ..."
@@ -39,7 +39,7 @@ title %TITLE%
 taskkill /F /IM LocalCode.exe >nul 2>&1
 powershell.exe -NoLogo -NoProfile -Command "$n='Local'+'Codex'; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
-set "VERSION=4.8.0"
+set "VERSION=6.0.0"
 set "GOEXE="
 if exist "%~dp0.tools\go\bin\go.exe" set "GOEXE=%~dp0.tools\go\bin\go.exe"
 if not defined GOEXE for /f "delims=" %%G in ('where go.exe 2^>nul') do if not defined GOEXE set "GOEXE=%%G"

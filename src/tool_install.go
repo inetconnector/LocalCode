@@ -47,6 +47,10 @@ func toolInstallPreview(name string, cfg Config) string {
 		return localizeConfigText(cfg, "Installiert das passende .NET SDK benutzerlokal mit dem offiziellen dotnet-install.ps1. Wenn global.json vorhanden ist, wird dessen SDK-Version verwendet; andernfalls der aktuelle LTS-Kanal.", "Installs the appropriate .NET SDK for the current user with the official dotnet-install.ps1 script. If global.json exists, its SDK version is used; otherwise the current LTS channel is installed.")
 	case "vs-build-tools":
 		return localizeConfigText(cfg, "Installiert die offiziellen Visual Studio Build Tools mit dem Workload Microsoft.VisualStudio.Workload.MSBuildTools. Die Installation benötigt Administratorrechte, kann mehrere Gigabyte herunterladen und zeigt gegebenenfalls eine UAC-Abfrage.", "Installs the official Visual Studio Build Tools with the Microsoft.VisualStudio.Workload.MSBuildTools workload. Installation requires administrator rights, may download several gigabytes, and can display a UAC prompt.")
+	case "node-portable":
+		return localizeConfigText(cfg, "Installiert die aktuelle Node.js-LTS-Version als offizielles portables ZIP benutzerlokal unter LocalCode\\tools. Keine Administratorrechte erforderlich.", "Installs the current Node.js LTS release from the official portable ZIP for the current user under LocalCode\\tools. Administrator rights are not required.")
+	case "gh-portable":
+		return localizeConfigText(cfg, "Installiert GitHub CLI aus dem offiziellen portablen Windows-ZIP benutzerlokal unter LocalCode\\tools. Die Anmeldung erfolgt anschließend interaktiv mit gh auth login.", "Installs GitHub CLI from the official portable Windows ZIP for the current user under LocalCode\\tools. Sign-in is then completed interactively with gh auth login.")
 	case "winget":
 		return localizeConfigText(cfg, fmt.Sprintf("Installiert %s über Windows Package Manager (Paket %s). Windows kann dafür eine UAC-Bestätigung anzeigen.", p.DisplayName, p.WingetID), fmt.Sprintf("Installs %s through Windows Package Manager (package %s). Windows may display a UAC confirmation.", p.DisplayName, p.WingetID))
 	default:
@@ -108,6 +112,29 @@ func installKnownTool(ctx context.Context, project, name string, cfg Config) (Co
 		}
 		cfg.ToolOverrides["msbuild"] = msbuild
 		return cfg, out + localizeConfigText(cfg, "\nMSBuild-Pfad: ", "\nMSBuild path: ") + msbuild, nil
+	case "gh-portable":
+		gh, out, err := installPortableGitHubCLI(ctx)
+		if err != nil {
+			return cfg, out, err
+		}
+		cfg.ToolOverrides["gh"] = gh
+		return cfg, out + localizeConfigText(cfg, "\nGitHub-CLI-Pfad: ", "\nGitHub CLI path: ") + gh, nil
+	case "node-portable":
+		nodeRoot, out, err := installPortableNode(ctx)
+		if err != nil {
+			return cfg, out, err
+		}
+		for _, tool := range []string{"node", "npm", "npx"} {
+			name := tool + ".cmd"
+			if tool == "node" {
+				name = "node.exe"
+			}
+			path := filepath.Join(nodeRoot, name)
+			if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
+				cfg.ToolOverrides[tool] = path
+			}
+		}
+		return cfg, out, nil
 	case "winget":
 		if profile.WingetID == "" {
 			return cfg, "", errors.New("winget package id is missing")
@@ -138,7 +165,7 @@ func downloadToFile(ctx context.Context, rawURL, target string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/4.8 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
 	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -254,7 +281,7 @@ func latestMinGitURL(ctx context.Context) (string, string, error) {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "LocalCode/4.8 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
 	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", err
@@ -384,4 +411,135 @@ func installVisualStudioBuildTools(ctx context.Context) (string, string, error) 
 		}
 	}
 	return "", truncateText(text, 120000), errors.New("MSBuild.exe missing after Visual Studio Build Tools installer completed")
+}
+
+type nodeRelease struct {
+	Version string   `json:"version"`
+	LTS     any      `json:"lts"`
+	Files   []string `json:"files"`
+}
+
+func installPortableNode(ctx context.Context) (string, string, error) {
+	if runtime.GOOS != "windows" {
+		return "", "", errors.New("portable Node.js installation is currently supported on Windows only")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://nodejs.org/dist/index.json", nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("Node.js index HTTP %d", resp.StatusCode)
+	}
+	var releases []nodeRelease
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&releases); err != nil {
+		return "", "", err
+	}
+	version := ""
+	for _, release := range releases {
+		if release.LTS == false || release.LTS == nil {
+			continue
+		}
+		for _, file := range release.Files {
+			if file == "win-x64-zip" {
+				version = release.Version
+				break
+			}
+		}
+		if version != "" {
+			break
+		}
+	}
+	if version == "" {
+		return "", "", errors.New("no Windows x64 Node.js LTS ZIP found")
+	}
+	asset := fmt.Sprintf("node-%s-win-x64.zip", version)
+	source := "https://nodejs.org/dist/" + version + "/" + asset
+	archive := filepath.Join(appDataDir(), "downloads", asset)
+	root := localToolDir("node")
+	if err := downloadToFile(ctx, source, archive); err != nil {
+		return root, "Download: " + source, err
+	}
+	temp := root + "-extract"
+	if err := extractZipSafe(archive, temp); err != nil {
+		return root, "Archive: " + archive, err
+	}
+	entries, err := os.ReadDir(temp)
+	if err != nil {
+		return root, "", err
+	}
+	if len(entries) != 1 || !entries[0].IsDir() {
+		return root, "", errors.New("unexpected Node.js ZIP layout")
+	}
+	_ = os.RemoveAll(root)
+	if err := os.Rename(filepath.Join(temp, entries[0].Name()), root); err != nil {
+		return root, "", err
+	}
+	_ = os.RemoveAll(temp)
+	for _, required := range []string{"node.exe", "npm.cmd", "npx.cmd"} {
+		if info, err := os.Stat(filepath.Join(root, required)); err != nil || info.IsDir() {
+			return root, "", fmt.Errorf("%s missing after Node.js extraction", required)
+		}
+	}
+	return root, "Portable Node.js LTS installed from the official distribution.\nSource: " + source, nil
+}
+
+func installPortableGitHubCLI(ctx context.Context) (string, string, error) {
+	if runtime.GOOS != "windows" {
+		return "", "", errors.New("portable GitHub CLI installation is currently supported on Windows only")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/cli/cli/releases/latest", nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("GitHub release API HTTP %d", resp.StatusCode)
+	}
+	var release githubRelease
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&release); err != nil {
+		return "", "", err
+	}
+	assetURL, assetName := "", ""
+	for _, asset := range release.Assets {
+		lower := strings.ToLower(asset.Name)
+		if strings.Contains(lower, "windows_amd64") && strings.HasSuffix(lower, ".zip") {
+			assetURL, assetName = asset.BrowserDownloadURL, asset.Name
+			break
+		}
+	}
+	if assetURL == "" {
+		return "", "", errors.New("official GitHub CLI release has no Windows amd64 ZIP")
+	}
+	archive := filepath.Join(appDataDir(), "downloads", assetName)
+	root := localToolDir("github-cli")
+	if err := downloadToFile(ctx, assetURL, archive); err != nil {
+		return "", "Download: " + assetURL, err
+	}
+	if err := extractZipSafe(archive, root); err != nil {
+		return "", "Archive: " + archive, err
+	}
+	var gh string
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr == nil && !entry.IsDir() && strings.EqualFold(entry.Name(), "gh.exe") {
+			gh = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if gh == "" {
+		return "", "", errors.New("gh.exe missing after extraction")
+	}
+	return gh, "Portable GitHub CLI installed from the official GitHub release.\nSource: " + assetURL, nil
 }

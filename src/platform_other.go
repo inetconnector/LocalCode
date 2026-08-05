@@ -12,9 +12,21 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
-func hideCommandWindow(cmd *exec.Cmd) {}
+func hideCommandWindow(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	// Give every managed subprocess its own process group. Cancellation can
+	// then terminate linters, test runners and model helper children together
+	// instead of leaving an inherited stdout/stderr pipe open.
+	cmd.SysProcAttr.Setpgid = true
+}
 
 func openBrowser(url string) error          { return exec.Command("xdg-open", url).Start() }
 func showFatal(title, message string)       { fmt.Printf("%s: %s\n", title, message) }
@@ -70,6 +82,8 @@ func openInteractiveTerminal(project, command string, cfg Config) error {
 
 func killProcessTree(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
+		// A negative pid targets the complete process group created above.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		_ = cmd.Process.Kill()
 	}
 }

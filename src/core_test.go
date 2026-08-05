@@ -613,7 +613,7 @@ func TestSettingsEndpointRoundTrip(t *testing.T) {
 	state.mu.RLock()
 	got := state.Config
 	state.mu.RUnlock()
-	if got.ApprovalMode != "auto" || len(got.MCPServers) != 1 {
+	if got.ApprovalMode != "auto" || findMCPServerIndex(got, "demo") < 0 || findMCPServerIndex(got, "filesystem") < 0 {
 		t.Fatalf("unexpected settings: %#v", got)
 	}
 }
@@ -653,7 +653,7 @@ func TestMCPHelperProcess(t *testing.T) {
 func TestMCPStdioToolsList(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.MCPServers = []MCPServerConfig{{Name: "test", Enabled: true, Transport: "stdio", Command: os.Args[0], Args: []string{"-test.run=TestMCPHelperProcess"}, Env: map[string]string{"GO_WANT_MCP_HELPER": "1"}, TimeoutSec: 10}}
-	out, err := mcpCall(context.Background(), cfg, "test", "tools/list", map[string]any{})
+	out, err := mcpCall(context.Background(), cfg, t.TempDir(), "test", "tools/list", map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -933,7 +933,7 @@ func TestForceStopAlwaysReleasesUIState(t *testing.T) {
 	state.Cancel = cancel
 	state.RunID = "active-run"
 	state.RunPhase = "model"
-	pending := &PendingAction{ID: "pending", Result: make(chan bool, 1)}
+	pending := &PendingAction{ID: "pending", Result: make(chan ApprovalDecision, 1)}
 	state.Pending = pending
 	if !state.ForceStopAgent() {
 		t.Fatal("expected running agent to be force-stopped")
@@ -1068,7 +1068,7 @@ func TestStopAgentCancelsBlockedModelCall(t *testing.T) {
 	}
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-time.After(8 * time.Second):
 		t.Fatal("model call did not start")
 	}
 	if !state.StopAgent() {

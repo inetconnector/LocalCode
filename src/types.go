@@ -10,25 +10,69 @@ import (
 )
 
 type MCPServerConfig struct {
-	Name       string            `json:"name"`
-	Enabled    bool              `json:"enabled"`
-	Transport  string            `json:"transport"` // stdio | http
-	Command    string            `json:"command,omitempty"`
-	Args       []string          `json:"args,omitempty"`
-	URL        string            `json:"url,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"`
-	TimeoutSec int               `json:"timeout_sec,omitempty"`
+	Name          string            `json:"name"`
+	DisplayName   string            `json:"display_name,omitempty"`
+	Description   string            `json:"description,omitempty"`
+	Enabled       bool              `json:"enabled"`
+	Transport     string            `json:"transport"` // builtin | stdio | streamable-http
+	Preset        string            `json:"preset,omitempty"`
+	Command       string            `json:"command,omitempty"`
+	Args          []string          `json:"args,omitempty"`
+	URL           string            `json:"url,omitempty"`
+	Env           map[string]string `json:"env,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
+	TimeoutSec    int               `json:"timeout_sec,omitempty"`
+	AutoInstall   bool              `json:"auto_install,omitempty"`
+	ProjectScoped bool              `json:"project_scoped,omitempty"`
+	AuthEnv       string            `json:"auth_env,omitempty"`
+	ReadOnly      bool              `json:"read_only,omitempty"`
+}
+
+type MCPServerStatus struct {
+	Name         string   `json:"name"`
+	DisplayName  string   `json:"display_name"`
+	Preset       string   `json:"preset,omitempty"`
+	Enabled      bool     `json:"enabled"`
+	Installed    bool     `json:"installed"`
+	Connected    bool     `json:"connected"`
+	AuthRequired bool     `json:"auth_required,omitempty"`
+	ToolCount    int      `json:"tool_count,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	Source       string   `json:"source,omitempty"`
+	Error        string   `json:"error,omitempty"`
 }
 
 type Config struct {
-	SchemaVersion  int    `json:"schema_version"`
-	RootProjectDir string `json:"root_project_dir"`
-	LastProject    string `json:"last_project"`
-	LastModel      string `json:"last_model"`
-	Port           int    `json:"port"`
+	SchemaVersion  int               `json:"schema_version"`
+	RootProjectDir string            `json:"root_project_dir"`
+	LastProject    string            `json:"last_project"`
+	LastModel      string            `json:"last_model"`
+	ProjectAliases map[string]string `json:"project_aliases,omitempty"`
+	PinnedProjects []string          `json:"pinned_projects,omitempty"`
+	HiddenProjects []string          `json:"hidden_projects,omitempty"`
+	Port           int               `json:"port"`
 
 	OllamaURL                         string `json:"ollama_url"`
+	EditingEngine                     string `json:"editing_engine"` // aider | native
+	AiderEnabled                      bool   `json:"aider_enabled"`
+	AiderAutoInstall                  bool   `json:"aider_auto_install"`
+	AiderVersion                      string `json:"aider_version"`
+	AiderExecutable                   string `json:"aider_executable,omitempty"`
+	AiderMainModel                    string `json:"aider_main_model,omitempty"`
+	AiderArchitectMode                bool   `json:"aider_architect_mode"`
+	AiderArchitectModel               string `json:"aider_architect_model,omitempty"`
+	AiderEditorModel                  string `json:"aider_editor_model,omitempty"`
+	AiderEditFormat                   string `json:"aider_edit_format"`
+	AiderEditorEditFormat             string `json:"aider_editor_edit_format"`
+	AiderMapTokens                    int    `json:"aider_map_tokens"`
+	AiderMaxChatHistoryTokens         int    `json:"aider_max_chat_history_tokens"`
+	AiderAutoLint                     bool   `json:"aider_auto_lint"`
+	AiderAutoTest                     bool   `json:"aider_auto_test"`
+	AiderLintCommand                  string `json:"aider_lint_command,omitempty"`
+	AiderTestCommand                  string `json:"aider_test_command,omitempty"`
+	AiderUseGit                       bool   `json:"aider_use_git"`
+	AiderAutoCommits                  bool   `json:"aider_auto_commits"`
 	ContextLength                     int    `json:"context_length"`
 	ContextCompactionEnabled          bool   `json:"context_compaction_enabled"`
 	ContextCompactionThresholdPercent int    `json:"context_compaction_threshold_percent"`
@@ -51,6 +95,7 @@ type Config struct {
 
 	AllowedRoots           []string          `json:"allowed_roots"`
 	BlockedCommandPatterns []string          `json:"blocked_command_patterns"`
+	ApprovalRules          []ApprovalRule    `json:"approval_rules"`
 	MCPServers             []MCPServerConfig `json:"mcp_servers"`
 
 	// Desktop UI and workflow preferences. These values are persisted and
@@ -113,6 +158,9 @@ type Status struct {
 	OllamaOnline       bool        `json:"ollama_online"`
 	OllamaURL          string      `json:"ollama_url,omitempty"`
 	OllamaError        string      `json:"ollama_error,omitempty"`
+	EditingEngine      string      `json:"editing_engine"`
+	AiderInstalled     bool        `json:"aider_installed"`
+	AiderVersion       string      `json:"aider_version,omitempty"`
 	Models             []ModelInfo `json:"models"`
 	SelectedModel      string      `json:"selected_model"`
 	GPU                string      `json:"gpu,omitempty"`
@@ -132,6 +180,7 @@ type Status struct {
 
 type UIEvent struct {
 	ID          string              `json:"id"`
+	ThreadID    string              `json:"thread_id,omitempty"`
 	Type        string              `json:"type"`
 	Message     string              `json:"message,omitempty"`
 	Detail      string              `json:"detail,omitempty"`
@@ -147,7 +196,7 @@ type PendingAction struct {
 	ID      string
 	Action  AgentAction
 	Preview string
-	Result  chan bool
+	Result  chan ApprovalDecision
 }
 
 type AgentContinuation struct {
@@ -182,9 +231,10 @@ type AppState struct {
 	Threads       map[string]*ChatThread
 	CurrentThread string
 
-	LastTask    string
-	LastSummary string
-	ActionLog   []string
+	LastTask        string
+	LastSummary     string
+	ActionLog       []string
+	LastAiderBackup string
 
 	subscribers         map[chan UIEvent]struct{}
 	threadSaveCh        chan map[string]*ChatThread
@@ -227,6 +277,9 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 
 func (s *AppState) AddEvent(ev UIEvent) {
 	s.mu.Lock()
+	if ev.ThreadID == "" {
+		ev.ThreadID = s.CurrentThread
+	}
 	if s.Running {
 		s.LastProgressAt = time.Now()
 	}
@@ -363,6 +416,7 @@ func (s *AppState) threadSaveWorker() {
 // Close flushes the newest queued chat snapshot and stops the persistence
 // worker. It is safe to call more than once.
 func (s *AppState) Close() {
+	defaultMCPManager.Close()
 	if s == nil || s.threadSaveStop == nil || s.threadSaveDone == nil {
 		return
 	}

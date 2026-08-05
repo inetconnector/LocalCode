@@ -15,25 +15,28 @@ import (
 )
 
 type AgentAction struct {
-	Action      string         `json:"action"`
-	Message     string         `json:"message"`
-	Path        string         `json:"path,omitempty"`
-	Query       string         `json:"query,omitempty"`
-	Content     string         `json:"content,omitempty"`
-	OldText     string         `json:"old_text,omitempty"`
-	NewText     string         `json:"new_text,omitempty"`
-	Command     string         `json:"command,omitempty"`
-	MaxDepth    int            `json:"max_depth,omitempty"`
-	URL         string         `json:"url,omitempty"`
-	MaxResults  int            `json:"max_results,omitempty"`
-	Server      string         `json:"server,omitempty"`
-	Tool        string         `json:"tool,omitempty"`
-	URI         string         `json:"uri,omitempty"`
-	PromptName  string         `json:"prompt_name,omitempty"`
-	Arguments   map[string]any `json:"arguments,omitempty"`
-	Args        []string       `json:"args,omitempty"`
-	Source      string         `json:"source,omitempty"`
-	Destination string         `json:"destination,omitempty"`
+	Action        string         `json:"action"`
+	Message       string         `json:"message"`
+	Path          string         `json:"path,omitempty"`
+	Query         string         `json:"query,omitempty"`
+	Content       string         `json:"content,omitempty"`
+	OldText       string         `json:"old_text,omitempty"`
+	NewText       string         `json:"new_text,omitempty"`
+	Command       string         `json:"command,omitempty"`
+	MaxDepth      int            `json:"max_depth,omitempty"`
+	URL           string         `json:"url,omitempty"`
+	MaxResults    int            `json:"max_results,omitempty"`
+	Server        string         `json:"server,omitempty"`
+	Tool          string         `json:"tool,omitempty"`
+	URI           string         `json:"uri,omitempty"`
+	PromptName    string         `json:"prompt_name,omitempty"`
+	Arguments     map[string]any `json:"arguments,omitempty"`
+	Args          []string       `json:"args,omitempty"`
+	Source        string         `json:"source,omitempty"`
+	Destination   string         `json:"destination,omitempty"`
+	CommitMessage string         `json:"commit_message,omitempty"`
+	StageAll      bool           `json:"stage_all,omitempty"`
+	Task          string         `json:"task,omitempty"`
 }
 
 var actionSchema = map[string]any{
@@ -41,7 +44,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file",
-			"project_info", "build_project", "deploy_android", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "web_search", "web_fetch",
+			"project_info", "build_project", "deploy_android", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"finish", "ask_user",
 		}},
@@ -54,6 +57,8 @@ var actionSchema = map[string]any{
 		"prompt_name": map[string]any{"type": "string"}, "arguments": map[string]any{"type": "object"},
 		"args":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"source": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"},
+		"commit_message": map[string]any{"type": "string"}, "stage_all": map[string]any{"type": "boolean"},
+		"task": map[string]any{"type": "string"},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 }
@@ -66,11 +71,12 @@ Arbeitsweise:
 - AGENTS.md, README.md, STATE.md, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
-- Halte Änderungen klein und kohärent. Nutze replace_text für eindeutige kleine Änderungen und write_file für neue oder vollständig neu geschriebene Dateien.
+- Für echte Quellcodeänderungen ist aider_edit die bevorzugte Editing Engine. Aider liefert Repository Map, robuste Edit-Formate, Chat-Verlauf, Lint/Test-Schleifen und Git-Integration. Verwende replace_text/write_file nur für sehr kleine, eindeutig deterministische Verwaltungsänderungen.
+- Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
-- MCP-Server können Tools, Ressourcen und Prompts bereitstellen. Liste zuerst Fähigkeiten, bevor du ein MCP-Tool aufrufst.
+- LocalCode verwaltet die MCP-Server filesystem, powershell, git, fetch, github und playwright. Liste bei einem noch unbekannten Server zuerst seine Fähigkeiten. Nutze filesystem für sichere Projektdateien, powershell für PowerShell-spezifische Aufgaben, git für strukturierte Git-Aktionen, fetch für Webinhalte, github für GitHub-Objekte und playwright für zustandsbehaftete Browserautomation. Wenn eine Laufzeit oder Anmeldung fehlt, löst LocalCode Installation beziehungsweise Login kontrolliert aus; gib nicht vorschnell auf.
 - Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Android SDK, Visual-Studio-Installationen, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR. Fehlt ein unterstütztes Werkzeug, bietet LocalCode dem Nutzer automatisch eine kontrollierte Installation an und wiederholt danach exakt den ursprünglichen Aufruf; frage dafür nicht zusätzlich mit ask_user.
 - Bevor du wegen eines Werkzeugfehlers den Nutzer fragst: Werkzeug entdecken, genaue Ausgabe auswerten, eine andere sichere Diagnose versuchen und bei unbekannter Bedienung offizielle Dokumentation mit web_search/web_fetch recherchieren. Wiederhole niemals denselben fehlgeschlagenen Befehl oder dieselbe Frage ohne neue Information.
 - Nutze project_info für eine deterministische Erkennung des Buildsystems. Wenn der Nutzer kompilieren oder bauen verlangt, bevorzuge build_project statt einen geratenen Shell-Befehl. Für Android-Deployment auf ein verbundenes Gerät bevorzuge deploy_android; es baut zuerst, findet die APK, diagnostiziert ADB und installiert mit adb install -r.
@@ -87,10 +93,13 @@ Werkzeuge:
 - list_files, read_file, search_text
 - replace_text, write_file, delete_file
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
+- aider_edit(task) für robuste mehrdateilige Codeänderungen mit Repository Map, Backup, Edit-Format, Lint und Tests
+- aider_repo_map für die Aider-Repository-Map, aider_lint und aider_test für gezielte Aider-Qualitätsläufe
 - discover_tool(tool), tool_inventory, run_tool(tool,args)
 - run_command (komplexe Shell-Befehle, nicht-interaktiv), open_terminal (interaktiv sichtbar)
 - copy_path, move_path
 - git mit args als Argumentliste, z. B. ["status","--short"]
+- git_commit für einen vollständigen, verifizierten Commit-Ablauf (Git initialisieren falls ausdrücklich verlangt, .gitignore ergänzen, Änderungen stagen, Commit ausführen und Ergebnis prüfen)
 - web_search mit query/max_results, web_fetch mit url
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
@@ -98,6 +107,14 @@ Werkzeuge:
 - finish, ask_user`
 
 func (s *AppState) StartAgent(userMessage, model string, attachments []Attachment) error {
+	return s.StartAgentForThread(userMessage, model, attachments, "", "")
+}
+
+// StartAgentForThread starts a run in the explicitly requested task. This keeps
+// multiple LocalCode windows from accidentally sending a prompt to whichever
+// task another window selected most recently. An empty project/thread pair
+// preserves the legacy single-window behavior.
+func (s *AppState) StartAgentForThread(userMessage, model string, attachments []Attachment, projectOverride, threadID string) error {
 	userMessage = strings.TrimSpace(userMessage)
 	if userMessage == "" && len(attachments) == 0 {
 		return errors.New("prompt is empty")
@@ -110,6 +127,26 @@ func (s *AppState) StartAgent(userMessage, model string, attachments []Attachmen
 	if s.Running {
 		s.mu.Unlock()
 		return errors.New("agent is already running")
+	}
+	if threadID != "" {
+		t := s.Threads[threadID]
+		if t == nil || t.Archived {
+			s.mu.Unlock()
+			return errors.New("Chat nicht gefunden")
+		}
+		if projectOverride != "" && !strings.EqualFold(filepath.Clean(projectOverride), filepath.Clean(t.Project)) {
+			s.mu.Unlock()
+			return errors.New("task does not belong to the requested project")
+		}
+		s.CurrentThread = threadID
+		s.Project = t.Project
+		s.Events = append([]UIEvent(nil), t.Events...)
+		if model == "" && t.Model != "" {
+			model = t.Model
+		}
+	}
+	if projectOverride != "" {
+		s.Project = projectOverride
 	}
 	project := s.Project
 	if model == "" {
@@ -226,7 +263,7 @@ func (s *AppState) ForceStopAgent() bool {
 	}
 	if pending != nil {
 		select {
-		case pending.Result <- false:
+		case pending.Result <- ApprovalDecision{Approved: false}:
 		default:
 		}
 	}
@@ -437,7 +474,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		var action AgentAction
 		usedModel := model
 		var err error
-		if forced := forcedActionForIntent(intent, completedActions); forced != nil {
+		if forced := forcedActionForIntent(intent, completedActions, cfg); forced != nil {
 			action = *forced
 			s.AddEvent(UIEvent{Type: "agent_step", Message: "Deterministische Aufgabensteuerung: " + action.Message, Action: action.Action})
 		} else {
@@ -742,28 +779,42 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 			return s.performApproved(ctx, project, a)
 		}
 	case "web_search":
-		if actionNeedsApproval(cfg, a) {
+		if actionNeedsApproval(cfg, project, a) {
 			return s.performApproved(ctx, project, a)
 		}
 		var r []WebResult
 		r, err = webSearch(ctx, cfg, a.Query, a.MaxResults)
 		result = formatWebResults(r)
 	case "web_fetch":
-		if actionNeedsApproval(cfg, a) {
+		if actionNeedsApproval(cfg, project, a) {
 			return s.performApproved(ctx, project, a)
 		}
 		result, err = webFetch(ctx, cfg, a.URL)
-	case "mcp_list_tools":
-		result, err = mcpCall(ctx, cfg, a.Server, "tools/list", map[string]any{})
-	case "mcp_list_resources":
-		result, err = mcpCall(ctx, cfg, a.Server, "resources/list", map[string]any{})
-	case "mcp_read_resource":
-		result, err = mcpCall(ctx, cfg, a.Server, "resources/read", map[string]any{"uri": a.URI})
-	case "mcp_list_prompts":
-		result, err = mcpCall(ctx, cfg, a.Server, "prompts/list", map[string]any{})
-	case "mcp_get_prompt":
-		result, err = mcpCall(ctx, cfg, a.Server, "prompts/get", map[string]any{"name": a.PromptName, "arguments": a.Arguments})
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "run_tool", "run_command", "open_terminal", "copy_path", "move_path":
+	case "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+		var preparation string
+		var wait bool
+		cfg, preparation, wait, err = s.prepareMCPServer(ctx, project, cfg, a)
+		if err != nil {
+			break
+		}
+		if wait {
+			s.AddEvent(UIEvent{Type: "question", Message: preparation})
+			return preparation, true
+		}
+		if preparation != "" {
+			return preparation, false
+		}
+		method := map[string]string{"mcp_list_tools": "tools/list", "mcp_list_resources": "resources/list", "mcp_read_resource": "resources/read", "mcp_list_prompts": "prompts/list", "mcp_get_prompt": "prompts/get"}[a.Action]
+		params := map[string]any{}
+		if a.Action == "mcp_read_resource" {
+			params["uri"] = a.URI
+		}
+		if a.Action == "mcp_get_prompt" {
+			params["name"] = a.PromptName
+			params["arguments"] = a.Arguments
+		}
+		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -800,6 +851,22 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
+	if a.Action == "mcp_call_tool" {
+		var preparation string
+		var wait bool
+		var prepareErr error
+		cfg, preparation, wait, prepareErr = s.prepareMCPServer(ctx, project, cfg, a)
+		if prepareErr != nil {
+			return strings.TrimSpace(preparation + "\n\nERROR: " + prepareErr.Error()), false
+		}
+		if wait {
+			s.AddEvent(UIEvent{Type: "question", Message: preparation})
+			return preparation, true
+		}
+		if preparation != "" {
+			return preparation, false
+		}
+	}
 	if missing := missingToolForAction(project, cfg, a); missing != nil && missing.Info.InstallSupported {
 		newCfg, installDetail, installed, installErr := s.offerInstallMissingTool(ctx, project, cfg, missing)
 		if installErr != nil {
@@ -815,8 +882,8 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 		return "ERROR: " + err.Error(), false
 	}
 	approved := true
-	if actionNeedsApproval(cfg, a) {
-		approved, err = s.requestApprovalWithPreview(ctx, a, preview)
+	if actionNeedsApproval(cfg, project, a) {
+		approved, err = s.requestApprovalWithPreview(ctx, project, a, preview)
 		if err != nil {
 			return "ERROR: " + err.Error(), false
 		}
@@ -844,7 +911,10 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	return result, false
 }
 
-func actionNeedsApproval(cfg Config, a AgentAction) bool {
+func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
+	if decision, _, matched := approvalRuleDecision(cfg, project, a); matched {
+		return decision != "allow"
+	}
 	if cfg.ApprovalMode == "dangerous" {
 		return false
 	}
@@ -853,12 +923,16 @@ func actionNeedsApproval(cfg Config, a AgentAction) bool {
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
-	case "replace_text", "write_file":
+	case "replace_text", "write_file", "aider_edit":
 		return cfg.ApprovalMode != "auto"
+	case "aider_repo_map", "aider_lint", "aider_test":
+		return cfg.ApprovalMode == "strict"
 	case "git":
 		if gitActionIsReadOnly(a.Args) {
 			return false
 		}
+		return true
+	case "git_commit":
 		return true
 	case "run_tool":
 		if cfg.ApprovalMode == "auto" && toolActionLooksReadOnly(a.Tool, a.Args) {
@@ -901,11 +975,24 @@ func toolActionLooksReadOnly(tool string, args []string) bool {
 	return false
 }
 
-func (s *AppState) requestApprovalWithPreview(ctx context.Context, a AgentAction, preview string) (bool, error) {
-	pending := &PendingAction{ID: newID(), Action: a, Preview: preview, Result: make(chan bool, 1)}
+func (s *AppState) requestApprovalWithPreview(ctx context.Context, project string, a AgentAction, preview string) (bool, error) {
+	s.mu.RLock()
+	cfg := s.Config
+	s.mu.RUnlock()
+	if decision, justification, matched := approvalRuleDecision(cfg, project, a); matched {
+		switch decision {
+		case "allow":
+			s.AddEvent(UIEvent{Type: "approval", Message: localizeConfigText(cfg, "Durch dauerhafte Regel genehmigt", "Approved by persistent rule"), Detail: justification, Action: a.Action, Path: a.Path})
+			return true, nil
+		case "forbidden":
+			s.AddEvent(UIEvent{Type: "approval", Message: localizeConfigText(cfg, "Durch dauerhafte Regel blockiert", "Blocked by persistent rule"), Detail: justification, Action: a.Action, Path: a.Path})
+			return false, errors.New("action forbidden by approval rule")
+		}
+	}
+	pending := &PendingAction{ID: newID(), Action: a, Preview: preview, Result: make(chan ApprovalDecision, 1)}
 	s.mu.Lock()
 	s.Pending = pending
-	cfg := s.Config
+	cfg = s.Config
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -916,13 +1003,21 @@ func (s *AppState) requestApprovalWithPreview(ctx context.Context, a AgentAction
 	}()
 	s.AddEvent(UIEvent{ID: pending.ID, Type: "approval_required", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
 	select {
-	case approved := <-pending.Result:
+	case response := <-pending.Result:
+		if response.Approved && response.Persist {
+			rule, ruleErr := s.addApprovalRule(project, a, response.Scope)
+			if ruleErr != nil {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Dauerhafte Freigabe konnte nicht gespeichert werden", "Persistent approval could not be saved"), Detail: ruleErr.Error(), Action: a.Action, Path: a.Path})
+				return false, ruleErr
+			}
+			s.AddEvent(UIEvent{Type: "approval_rule", Message: localizeConfigText(cfg, "Dauerhafte Freigabe gespeichert", "Persistent approval saved"), Detail: strings.Join(rule.Pattern, " "), Action: a.Action, Path: a.Path})
+		}
 		msg := localizeConfigText(cfg, "Abgelehnt", "Rejected")
-		if approved {
+		if response.Approved {
 			msg = localizeConfigText(cfg, "Genehmigt", "Approved")
 		}
 		s.AddEvent(UIEvent{Type: "approval", Message: msg, Action: a.Action, Path: a.Path})
-		return approved, nil
+		return response.Approved, nil
 	case <-ctx.Done():
 		s.AddEvent(UIEvent{Type: "approval", Message: localizeConfigText(cfg, "Genehmigung abgebrochen", "Approval cancelled"), Action: a.Action, Path: a.Path})
 		return false, ctx.Err()
@@ -997,10 +1092,32 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return previewGit(a.Args), nil
+	case "git_commit":
+		message := strings.TrimSpace(a.CommitMessage)
+		if message == "" {
+			message = deriveCommitMessage(a.Message)
+		}
+		return "Git-Commit-Ablauf:\n1. Repository und .gitignore prüfen\n2. Änderungen sicher stagen (Visual-Studio-.vs ausgeschlossen)\n3. Commit mit Nachricht: " + message + "\n4. Commit und Arbeitsbaum verifizieren", nil
 	case "web_search":
 		return "Web search: " + a.Query, nil
 	case "web_fetch":
 		return "Web fetch: " + a.URL, nil
+	case "aider_edit":
+		task := strings.TrimSpace(a.Task)
+		if task == "" {
+			task = strings.TrimSpace(a.Message)
+		}
+		if task == "" {
+			return "", errors.New("Aider task is empty")
+		}
+		files := relevantFilesForAider(project, task, 12)
+		return "Aider Editing Engine ausführen\nAufgabe: " + task + "\nModell: " + cfg.AiderMainModel + "\nVorausgewählte Dateien: " + strings.Join(files, ", ") + "\nVor Änderungen wird ein lokales Backup erzeugt; anschließend laufen konfigurierte Linter und Tests.", nil
+	case "aider_repo_map":
+		return "Aider Repository Map erzeugen und anzeigen. Es werden keine Dateien verändert.", nil
+	case "aider_lint":
+		return "Aider-Lintlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
+	case "aider_test":
+		return "Aider-Testlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
 	case "build_project":
 		return "Projekt mit dem automatisch erkannten Buildsystem bauen. Fehlende bekannte Werkzeuge werden nach separater Genehmigung installiert.", nil
 	case "deploy_android":
@@ -1055,6 +1172,14 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return copyPath(cfg, project, a.Source, a.Destination)
 	case "move_path":
 		return movePath(cfg, project, a.Source, a.Destination)
+	case "git_commit":
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout <= 0 {
+			timeout = 5 * time.Minute
+		}
+		gctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return commitGitChanges(gctx, project, cfg, a.CommitMessage, a.StageAll)
 	case "git":
 		timeout := time.Duration(cfg.CommandTimeout) * time.Second
 		if timeout <= 0 {
@@ -1072,7 +1197,7 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 	case "web_fetch":
 		return webFetch(ctx, cfg, a.URL)
 	case "mcp_call_tool":
-		return mcpCall(ctx, cfg, a.Server, "tools/call", map[string]any{"name": a.Tool, "arguments": a.Arguments})
+		return mcpCall(ctx, cfg, project, a.Server, "tools/call", map[string]any{"name": a.Tool, "arguments": a.Arguments})
 	default:
 		return "", errors.New("unsupported approved action")
 	}

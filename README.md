@@ -1,4 +1,4 @@
-# LocalCode 4.8.0
+# LocalCode 6.0.0
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -24,6 +24,16 @@ Voraussetzung: Eine erreichbare lokale Ollama-Installation mit mindestens einem 
 - Oberfläche, Dialoge, Genehmigungen, Statusmeldungen, Projektvorlagen und zentrale Dokumentation werden in beiden Sprachen gepflegt.
 - Ein automatischer Test stellt sicher, dass alle Sprachkataloge dieselben Schlüssel enthalten.
 
+
+### Projekte, Aufgaben und Kontextmenüs
+
+- Unter jedem aufgeklappten Projekt steht dauerhaft **Neue Aufgabe starten**. Zusätzlich gibt es den Plus-Knopf in der Projektzeile und **Neue Aufgabe** im Kontextmenü.
+- Ein Rechtsklick oder der Drei-Punkte-Knopf am Projekt öffnet funktionierende Aktionen für neue Aufgaben, Anzeigenamen, Standardeditor, Visual Studio, Visual Studio Code, integriertes Terminal, Datei-Explorer, Anheften/Lösen und Entfernen aus der Seitenleiste. Entfernte Projekte können unter **Einstellungen → Archiviert** wiederhergestellt werden.
+- Ein Rechtsklick oder der Drei-Punkte-Knopf an einer Aufgabe ermöglicht Umbenennen, Öffnen in einem neuen LocalCode-Fenster, Duplizieren, Archivieren und Löschen.
+- Neue Aufgabenfenster laden ihren eigenen Aufgabenverlauf. Prompts enthalten immer die konkrete Projekt- und Aufgaben-ID, damit ein zweites Fenster nicht versehentlich in die zuletzt von einem anderen Fenster ausgewählte Aufgabe schreibt. Werkzeugläufe bleiben absichtlich global auf einen aktiven Agenten begrenzt.
+- Kontextmenüs unterstützen Maus, Rechtsklick, Fokus, Pfeiltasten, Enter und Escape. Untermenüs werden am Fensterrand automatisch auf die andere Seite gespiegelt.
+- Genehmigungen bieten **Einmal zulassen**, **Immer für dieses Projekt zulassen**, **Immer global zulassen** und **Ablehnen**. Dauerhafte Regeln können in den Einstellungen geprüft und gelöscht werden.
+
 ### Bedienung und Kontrolle
 
 - Projekt- und Chatnavigation links, Arbeitsverlauf in der Mitte, Ausgaben und Quellen rechts.
@@ -38,6 +48,21 @@ Voraussetzung: Eine erreichbare lokale Ollama-Installation mit mindestens einem 
 
 Der Supervisor erkennt typische Aufgaben wie Analyse, Build, Android-Deployment, Git-Initialisierung und Webrecherche. Wiederholte identische Fragen oder Werkzeugaktionen werden blockiert. Vor Erreichen des Kontextlimits wird der Verlauf komprimiert; erhalten bleiben Aufgabe, Entscheidungen, gelesene und geänderte Dateien, Befehle, Fehler, offene Punkte und die nächste geplante Aktion.
 
+### Aider Editing Engine
+
+LocalCode 6.0.0 verwendet standardmäßig **Aider 0.86.2 als produktive Bearbeitungs-Engine**. LocalCode bleibt für Oberfläche, Projekt- und Aufgabenverwaltung, Genehmigungen, Abbruch, MCP, Terminal, Webrecherche, Anhänge, Backups und Kontextkomprimierung verantwortlich. Aider übernimmt die eigentliche mehrdateilige Codebearbeitung.
+
+- Aider wird nicht in die EXE eingebettet. Beim ersten echten Bearbeitungsauftrag fragt LocalCode nach Zustimmung und installiert die fest angeheftete Version benutzerlokal über eine isolierte `uv tool`-Umgebung mit Python 3.12.
+- Ollama-Modelle werden im von Aider empfohlenen Format `ollama_chat/<modell>` angesprochen.
+- Repository Map, relevante Edit-Dateien, Read-only-Dokumente, Chat-Verlauf, Edit-Format, Architect/Editor-Modus, Lint und Tests sind über **Einstellungen → Konfiguration → Aider Editing Engine** steuerbar.
+- Vor jedem Aider-Bearbeitungs-, Lint- oder Testlauf erstellt LocalCode ein lokales Backup. **Letzte Aider-Änderung zurücksetzen** stellt nur dann wieder her, wenn die Dateien seit dem Lauf nicht manuell verändert wurden.
+- LocalCode übergibt eine leere verwaltete Aider-Konfiguration und eine leere `.env`, damit Projekt- oder Benutzerkonfigurationen und Projektschlüssel den kontrollierten Lauf nicht unbemerkt verändern. Gewollte Umgebungsvariablen werden ausschließlich über LocalCode verwaltet.
+- Aider-interne Bestätigungen werden im nichtinteraktiven Lauf automatisch beantwortet, aber LocalCodes eigene Genehmigungsgrenze bleibt davor vollständig aktiv.
+- Git wird nur verwendet, wenn das Projekt bereits ein Git-Repository ist und die Aider-Git-Option aktiviert wurde. Automatische Aider-Commits sind standardmäßig ausgeschaltet.
+- Falls die lokale Modellqualität mit `diff` nicht ausreicht, können `whole` oder der zweistufige Architect/Editor-Modus gewählt werden.
+
+Technische Details, Sicherheitsgrenzen, Datenpfade und Wiederherstellung stehen in `docs/AIDER-INTEGRATION.md`.
+
 ### Werkzeuge
 
 LocalCode sucht Werkzeuge über:
@@ -51,6 +76,20 @@ LocalCode sucht Werkzeuge über:
 - den benutzerlokalen LocalCode-Werkzeugordner
 
 Fehlende unterstützte Werkzeuge werden nicht nur behauptet: LocalCode zeigt die durchsuchten Pfade, fragt nach Installationsgenehmigung, installiert das Werkzeug aus einer dokumentierten Quelle, verifiziert es und setzt anschließend die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
+
+
+### Verwaltete MCP-Suite
+
+LocalCode 6.0.0 enthält sechs verwaltete MCP-Funktionsbereiche:
+
+- **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
+- **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
+- **Git MCP** – integrierte Git-Werkzeuge mit sicherer Argumentübergabe, Genehmigungen und Blockierung destruktiver Befehle.
+- **Fetch MCP** – offizieller Referenzserver über `uvx mcp-server-fetch`.
+- **GitHub MCP** – offizieller gehosteter Streamable-HTTP-Server mit PAT oder GitHub-CLI-Anmeldung.
+- **Playwright MCP** – offizieller Microsoft-Server mit persistentem Browserprofil und persistenter stdio-Sitzung.
+
+Unter **Einstellungen → Plugins** lassen sich Installation, Anmeldung, Aktivierung, Verbindungstest und Sitzungsreset pro Server steuern. LocalCode kann fehlendes uv, portables Node.js LTS und GitHub CLI nach ausdrücklicher Genehmigung benutzerlokal installieren. Eigene stdio- und Streamable-HTTP-Server bleiben über die erweiterte JSON-Konfiguration möglich. Details stehen in `docs/MCP-SUITE.md`.
 
 ### Dateien und Anhänge
 
@@ -111,6 +150,16 @@ Requirement: a reachable local Ollama installation with at least one suitable mo
 - The interface, dialogs, approvals, status messages, project templates, and central documentation are maintained in both languages.
 - An automated test enforces identical keys in all language catalogs.
 
+
+### Projects, tasks, and context menus
+
+- Every expanded project permanently shows **Start new task**. The project row also provides a plus button, and the context menu contains **New task**.
+- Right-clicking a project or using its ellipsis opens working actions for a new task, display-name editing, the default editor, Visual Studio, Visual Studio Code, the integrated terminal, File Explorer, pin/unpin, and removing the project from the sidebar. Removed projects can be restored under **Settings → Archived**.
+- Right-clicking a task or using its ellipsis provides rename, open in a new LocalCode window, duplicate, archive, and delete actions.
+- New task windows load their own task history. Prompts always carry the explicit project and task ID so a second window cannot accidentally write to the task most recently selected by another window. Tool execution intentionally remains limited to one globally active agent run.
+- Context menus support mouse input, right-click, focus, arrow keys, Enter, and Escape. Submenus automatically flip near the edge of the window.
+- Approvals provide **Allow once**, **Always allow for this project**, **Always allow globally**, and **Reject**. Persistent rules can be reviewed and deleted in Settings.
+
 ### Operation and control
 
 - Project and chat navigation on the left, work history in the center, output and sources on the right.
@@ -125,6 +174,21 @@ Requirement: a reachable local Ollama installation with at least one suitable mo
 
 The supervisor detects common tasks such as analysis, builds, Android deployment, Git initialization, and web research. Repeated identical questions or tool actions are blocked. Before the context limit is reached, older history is compacted while preserving the task, decisions, files read or changed, commands, failures, open items, and the next planned action.
 
+### Aider editing engine
+
+LocalCode 6.0.0 uses **Aider 0.86.2 as its default production editing engine**. LocalCode remains responsible for the UI, project and task management, approvals, cancellation, MCP, terminal access, web research, attachments, backups, and context compaction. Aider performs the actual multi-file code editing.
+
+- Aider is not embedded into the executable. On the first real editing task, LocalCode asks for approval and installs the pinned version for the current user through an isolated `uv tool` environment using Python 3.12.
+- Ollama models are addressed using Aider's recommended `ollama_chat/<model>` form.
+- Repository map, selected edit files, read-only documents, history, edit format, architect/editor mode, linting, and tests are configurable under **Settings → Configuration → Aider editing engine**.
+- LocalCode creates a local backup before every Aider edit, lint, or test run. **Restore last Aider edit** only restores files when they still match the exact post-run hashes, protecting later manual work.
+- LocalCode supplies an empty managed Aider configuration and an empty `.env` file so repository or home configuration and repository secrets cannot silently alter the controlled run. Intended environment variables are managed only through LocalCode.
+- Aider's internal prompts are accepted for the non-interactive subprocess, while LocalCode's own approval boundary remains fully active before the subprocess starts.
+- Git is used only when the project is already a Git repository and Aider Git integration is enabled. Automatic Aider commits are disabled by default.
+- If a local model performs poorly with `diff`, users can select `whole` or the two-stage architect/editor mode.
+
+See `docs/AIDER-INTEGRATION.md` for implementation details, security boundaries, data paths, and recovery behavior.
+
 ### Tools
 
 LocalCode searches for tools through:
@@ -138,6 +202,20 @@ LocalCode searches for tools through:
 - the per-user LocalCode tools directory
 
 For supported missing tools, LocalCode shows every searched path, requests installation approval, installs from a documented source, verifies the result, and then retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
+
+
+### Managed MCP suite
+
+LocalCode 6.0.0 includes six managed MCP capability areas:
+
+- **Filesystem MCP** – built-in, project-scoped file and directory tools.
+- **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.
+- **Git MCP** – built-in Git tools with safe argument passing, approvals, and destructive-command blocking.
+- **Fetch MCP** – official reference server through `uvx mcp-server-fetch`.
+- **GitHub MCP** – official hosted Streamable HTTP server using a PAT or GitHub CLI sign-in.
+- **Playwright MCP** – official Microsoft server with a persistent browser profile and persistent stdio session.
+
+Under **Settings → Plugins**, installation, sign-in, enablement, connection testing, and session reset can be controlled per server. After explicit approval, LocalCode can install missing uv, portable Node.js LTS, and GitHub CLI for the current user. Custom stdio and Streamable HTTP servers remain available through the advanced JSON configuration. See `docs/MCP-SUITE.md` for details.
 
 ### Files and attachments
 

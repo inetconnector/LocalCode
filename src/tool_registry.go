@@ -61,10 +61,11 @@ var toolProfiles = []toolProfile{
 	{Name: "keytool", DisplayName: "Java Keytool", Aliases: []string{"keytool", "keytool.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/keytool.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
 	{Name: "jarsigner", DisplayName: "Java JAR Signer", Aliases: []string{"jarsigner", "jarsigner.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/jarsigner.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
 	{Name: "git", DisplayName: "Git", Aliases: []string{"git", "git.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://git-scm.com/docs", InstallHint: "Git for Windows oder eine portable MinGit-Version installieren.", InstallKind: "mingit", WingetID: "Git.Git"},
-	{Name: "gh", DisplayName: "GitHub CLI", Aliases: []string{"gh", "gh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cli.github.com/manual/", InstallHint: "GitHub CLI installieren; Login interaktiv mit gh auth login.", InstallKind: "winget", WingetID: "GitHub.cli"},
-	{Name: "node", DisplayName: "Node.js", Aliases: []string{"node", "node.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://nodejs.org/docs/latest/api/", InstallHint: "Node.js LTS installieren.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
-	{Name: "npm", DisplayName: "npm", Aliases: []string{"npm", "npm.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/", InstallHint: "Wird mit Node.js installiert.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
-	{Name: "npx", DisplayName: "npx", Aliases: []string{"npx", "npx.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/commands/npx", InstallHint: "Wird mit npm installiert.", InstallKind: "winget", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "powershell", DisplayName: "PowerShell", Aliases: []string{"powershell", "powershell.exe", "pwsh", "pwsh.exe"}, VersionArgs: []string{"-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"}, DocsURL: "https://learn.microsoft.com/powershell/", InstallHint: "Windows PowerShell aktivieren oder PowerShell 7 installieren.", InstallKind: "winget", WingetID: "Microsoft.PowerShell"},
+	{Name: "gh", DisplayName: "GitHub CLI", Aliases: []string{"gh", "gh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cli.github.com/manual/", InstallHint: "GitHub CLI installieren; Login interaktiv mit gh auth login.", InstallKind: "gh-portable", WingetID: "GitHub.cli"},
+	{Name: "node", DisplayName: "Node.js", Aliases: []string{"node", "node.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://nodejs.org/docs/latest/api/", InstallHint: "Node.js LTS installieren.", InstallKind: "node-portable", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "npm", DisplayName: "npm", Aliases: []string{"npm", "npm.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/", InstallHint: "Wird mit Node.js installiert.", InstallKind: "node-portable", WingetID: "OpenJS.NodeJS.LTS"},
+	{Name: "npx", DisplayName: "npx", Aliases: []string{"npx", "npx.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/commands/npx", InstallHint: "Wird mit npm installiert.", InstallKind: "node-portable", WingetID: "OpenJS.NodeJS.LTS"},
 	{Name: "python", DisplayName: "Python", Aliases: []string{"python", "python.exe", "py", "py.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.python.org/3/", InstallHint: "Python installieren und dem PATH hinzufügen.", InstallKind: "winget", WingetID: "Python.Python.3.13"},
 	{Name: "pip", DisplayName: "pip", Aliases: []string{"pip", "pip.exe", "pip3", "pip3.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://pip.pypa.io/en/stable/cli/", InstallHint: "pip mit Python installieren.", InstallKind: "winget", WingetID: "Python.Python.3.13"},
 	{Name: "go", DisplayName: "Go", Aliases: []string{"go", "go.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://go.dev/doc/", InstallHint: "Go installieren.", InstallKind: "winget", WingetID: "GoLang.Go"},
@@ -722,7 +723,7 @@ func actionSignature(a AgentAction) string {
 	if a.Action == "ask_user" {
 		return "ask_user|" + normalizedQuestion(a.Message)
 	}
-	return strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination))
+	return strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination + "|" + a.Task))
 }
 
 func normalizedQuestion(s string) string {

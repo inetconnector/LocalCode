@@ -245,7 +245,7 @@ exit /b 0`
 
 func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 2})
-	if cfg.SchemaVersion != 5 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
+	if cfg.SchemaVersion != 7 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
 		t.Fatalf("tool and compaction settings were not migrated: %#v", cfg)
 	}
 	if cfg.ToolOverrides == nil {

@@ -191,3 +191,11 @@ Icon?
 !CHECKSUMS-SHA256.txt
 !SOURCE-MANIFEST.txt
 !TEST-REPORT.txt
+
+# Aider and LocalCode managed runtime files
+.aider*
+!.aiderignore.example
+localcode-aider-*.tmp
+.aider.chat.history.md
+.aider.input.history
+.aider.llm.history

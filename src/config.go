@@ -50,9 +50,68 @@ func defaultBlockedPatterns() []string {
 	}
 }
 
+func defaultMCPServers() []MCPServerConfig {
+	return []MCPServerConfig{
+		{
+			Name: "filesystem", DisplayName: "Filesystem", Description: "Sichere Datei- und Verzeichnisoperationen innerhalb des aktiven Projekts.",
+			Enabled: true, Transport: "builtin", Preset: "filesystem", ProjectScoped: true, TimeoutSec: 60,
+		},
+		{
+			Name: "powershell", DisplayName: "PowerShell", Description: "PowerShell-Befehle, Cmdlet-Erkennung und Hilfetexte mit LocalCode-Genehmigungen.",
+			Enabled: true, Transport: "builtin", Preset: "powershell", ProjectScoped: true, AutoInstall: true, TimeoutSec: 300,
+		},
+		{
+			Name: "git", DisplayName: "Git", Description: "Git-Status, Diff, Historie, Branches, Staging und Commits mit sicherer Argumentübergabe.",
+			Enabled: true, Transport: "builtin", Preset: "git", ProjectScoped: true, AutoInstall: true, TimeoutSec: 300,
+		},
+		{
+			Name: "fetch", DisplayName: "Fetch", Description: "Offizieller MCP-Referenzserver zum Abrufen und Umwandeln von Webseiten.",
+			Enabled: true, Transport: "stdio", Preset: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"},
+			Env: map[string]string{"PYTHONIOENCODING": "utf-8"}, AutoInstall: true, TimeoutSec: 120,
+		},
+		{
+			Name: "github", DisplayName: "GitHub", Description: "Offizieller GitHub MCP Server für Repositories, Issues, Pull Requests und Actions.",
+			Enabled: false, Transport: "streamable-http", Preset: "github", URL: "https://api.githubcopilot.com/mcp/x/all",
+			Headers: map[string]string{"Authorization": "Bearer ${GITHUB_PAT_TOKEN}"}, AuthEnv: "GITHUB_PAT_TOKEN", TimeoutSec: 120,
+		},
+		{
+			Name: "playwright", DisplayName: "Playwright Browser", Description: "Offizieller Microsoft Playwright MCP Server für Browserautomation; ersetzt den archivierten Puppeteer-Server.",
+			Enabled: true, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@latest", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
+			AutoInstall: true, ProjectScoped: true, TimeoutSec: 180,
+		},
+	}
+}
+
+func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
+	defaults := defaultMCPServers()
+	if len(existing) == 0 {
+		return defaults
+	}
+	seen := map[string]bool{}
+	out := make([]MCPServerConfig, 0, len(existing)+len(defaults))
+	for _, server := range existing {
+		name := strings.ToLower(strings.TrimSpace(server.Name))
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, server)
+	}
+	for _, server := range defaults {
+		name := strings.ToLower(server.Name)
+		if !seen[name] {
+			out = append(out, server)
+		}
+	}
+	return out
+}
+
 func defaultConfig() Config {
 	return Config{
-		RootProjectDir: preferredProjectRoot(), Port: 32145,
+		RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
+		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
+		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
@@ -69,6 +128,7 @@ func defaultConfig() Config {
 			"newline": "Shift+Enter", "toggle_left": "Ctrl+Shift+L", "toggle_right": "Ctrl+Shift+R",
 		},
 		EnvironmentVars:   map[string]string{},
+		MCPServers:        defaultMCPServers(),
 		AutoDiscoverTools: true, AutoResearchToolHelp: true, ToolOverrides: map[string]string{},
 	}
 }
@@ -192,19 +252,116 @@ func suspiciousProjectRoot(root string) bool {
 	return false
 }
 
+func normalizeProjectAliases(values map[string]string) map[string]string {
+	out := map[string]string{}
+	for path, alias := range values {
+		path = strings.TrimSpace(path)
+		alias = strings.TrimSpace(alias)
+		if path == "" || alias == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(path); err == nil {
+			path = filepath.Clean(abs)
+		}
+		runes := []rune(alias)
+		if len(runes) > 120 {
+			alias = strings.TrimSpace(string(runes[:120]))
+		}
+		if alias != "" {
+			out[path] = alias
+		}
+	}
+	return out
+}
+
+func normalizeProjectPathList(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(value); err == nil {
+			value = filepath.Clean(abs)
+		}
+		key := strings.ToLower(value)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
+}
+
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 5 {
-		cfg.SchemaVersion = 5
+	if cfg.SchemaVersion < 7 {
+		cfg.SchemaVersion = 7
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
 		cfg.AutoResearchToolHelp = true
+		// These fields did not exist in early schemas. Preserve the historical
+		// secure defaults instead of interpreting the zero-value as an explicit
+		// opt-out during in-memory migrations and tests.
+		cfg.GitEnabled = d.GitEnabled
+		cfg.AutoStateUpdate = d.AutoStateUpdate
+		cfg.CreateProjectDocs = d.CreateProjectDocs
+		cfg.NetworkEnabled = d.NetworkEnabled
 	}
 	if cfg.Port == 0 {
 		cfg.Port = d.Port
 	}
+	if strings.TrimSpace(cfg.EditingEngine) == "" {
+		cfg.EditingEngine = d.EditingEngine
+	}
+	if cfg.EditingEngine != "aider" && cfg.EditingEngine != "native" {
+		cfg.EditingEngine = d.EditingEngine
+	}
+	if strings.TrimSpace(cfg.AiderVersion) == "" {
+		cfg.AiderVersion = aiderPinnedVersion
+	}
+	if strings.TrimSpace(cfg.AiderEditFormat) == "" {
+		cfg.AiderEditFormat = d.AiderEditFormat
+	}
+	if strings.TrimSpace(cfg.AiderEditorEditFormat) == "" {
+		cfg.AiderEditorEditFormat = d.AiderEditorEditFormat
+	}
+	if cfg.AiderMapTokens < 0 || cfg.AiderMapTokens > 32768 {
+		cfg.AiderMapTokens = d.AiderMapTokens
+	}
+	if cfg.AiderMapTokens == 0 && oldSchema < 7 {
+		cfg.AiderMapTokens = d.AiderMapTokens
+	}
+	if cfg.AiderMaxChatHistoryTokens < 1024 || cfg.AiderMaxChatHistoryTokens > 131072 {
+		cfg.AiderMaxChatHistoryTokens = d.AiderMaxChatHistoryTokens
+	}
+	validAiderFormats := map[string]bool{"auto": true, "diff": true, "whole": true, "udiff": true, "editor-diff": true, "editor-whole": true}
+	if !validAiderFormats[cfg.AiderEditFormat] {
+		cfg.AiderEditFormat = d.AiderEditFormat
+	}
+	if !validAiderFormats[cfg.AiderEditorEditFormat] {
+		cfg.AiderEditorEditFormat = d.AiderEditorEditFormat
+	}
+	if !cfg.AiderUseGit {
+		cfg.AiderAutoCommits = false
+	}
+	if oldSchema < 7 {
+		cfg.AiderEnabled = true
+		cfg.AiderAutoInstall = true
+		cfg.AiderAutoLint = true
+		cfg.AiderAutoTest = true
+		cfg.AiderUseGit = true
+	}
+	if cfg.ProjectAliases == nil {
+		cfg.ProjectAliases = map[string]string{}
+	}
+	cfg.ProjectAliases = normalizeProjectAliases(cfg.ProjectAliases)
+	cfg.PinnedProjects = normalizeProjectPathList(cfg.PinnedProjects)
+	cfg.HiddenProjects = normalizeProjectPathList(cfg.HiddenProjects)
 	if cfg.ContextLength < 4096 {
 		cfg.ContextLength = d.ContextLength
 	}
@@ -268,8 +425,36 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.AllowedRoots == nil {
 		cfg.AllowedRoots = []string{}
 	}
-	if cfg.MCPServers == nil {
-		cfg.MCPServers = []MCPServerConfig{}
+	if cfg.ApprovalRules == nil {
+		cfg.ApprovalRules = []ApprovalRule{}
+	}
+	cfg.ApprovalRules = normalizeApprovalRules(cfg.ApprovalRules)
+	cfg.MCPServers = mergeDefaultMCPServers(cfg.MCPServers)
+	for index := range cfg.MCPServers {
+		server := &cfg.MCPServers[index]
+		server.Name = strings.TrimSpace(server.Name)
+		if strings.TrimSpace(server.DisplayName) == "" {
+			server.DisplayName = server.Name
+		}
+		server.Transport = strings.ToLower(strings.TrimSpace(server.Transport))
+		if server.Transport == "http" {
+			server.Transport = "streamable-http"
+		}
+		if server.TimeoutSec <= 0 {
+			server.TimeoutSec = 60
+		}
+		if server.Env == nil {
+			server.Env = map[string]string{}
+		}
+		if server.Headers == nil {
+			server.Headers = map[string]string{}
+		}
+		if strings.EqualFold(server.Preset, "playwright") && (strings.EqualFold(filepath.Base(server.Command), "cmd.exe") || strings.EqualFold(server.Command, "cmd")) {
+			if len(server.Args) >= 2 && strings.EqualFold(server.Args[0], "/c") && strings.EqualFold(server.Args[1], "npx") {
+				server.Command = "npx"
+				server.Args = append([]string(nil), server.Args[2:]...)
+			}
+		}
 	}
 	if cfg.UITheme == "" {
 		cfg.UITheme = d.UITheme
@@ -399,7 +584,15 @@ func normalizeConfig(cfg Config) Config {
 
 	for i := range cfg.MCPServers {
 		cfg.MCPServers[i].Name = strings.TrimSpace(cfg.MCPServers[i].Name)
+		cfg.MCPServers[i].DisplayName = strings.TrimSpace(cfg.MCPServers[i].DisplayName)
+		if cfg.MCPServers[i].DisplayName == "" {
+			cfg.MCPServers[i].DisplayName = cfg.MCPServers[i].Name
+		}
+		cfg.MCPServers[i].Preset = strings.ToLower(strings.TrimSpace(cfg.MCPServers[i].Preset))
 		cfg.MCPServers[i].Transport = strings.ToLower(strings.TrimSpace(cfg.MCPServers[i].Transport))
+		if cfg.MCPServers[i].Transport == "http" {
+			cfg.MCPServers[i].Transport = "streamable-http"
+		}
 		if cfg.MCPServers[i].TimeoutSec <= 0 {
 			cfg.MCPServers[i].TimeoutSec = 60
 		}

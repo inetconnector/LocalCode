@@ -23,7 +23,7 @@ func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, 
 	if strings.TrimSpace(missing.Detail) != "" {
 		preview += localizeConfigText(cfg, "\n\nBisherige Suche:\n", "\n\nPrevious search:\n") + truncateText(missing.Detail, 18000)
 	}
-	approved, approvalErr := s.requestApprovalWithPreview(ctx, installAction, preview)
+	approved, approvalErr := s.requestApprovalWithPreview(ctx, project, installAction, preview)
 	if approvalErr != nil {
 		return cfg, "", false, approvalErr
 	}
@@ -73,7 +73,7 @@ func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, 
 func missingToolForAction(project string, cfg Config, a AgentAction) *ToolNotFoundError {
 	name := ""
 	switch a.Action {
-	case "git":
+	case "git", "git_commit":
 		name = "git"
 	case "build_project":
 		name = detectProjectPlan(project).BuildTool
@@ -114,6 +114,28 @@ func missingToolForAction(project string, cfg Config, a AgentAction) *ToolNotFou
 }
 
 func (s *AppState) executeActionWithToolRepair(ctx context.Context, project string, cfg Config, a AgentAction) (string, error) {
+	if a.Action == "aider_edit" || a.Action == "aider_repo_map" || a.Action == "aider_lint" || a.Action == "aider_test" {
+		currentCfg := cfg
+		for attempt := 0; attempt < 2; attempt++ {
+			result, err := s.executeAiderAction(ctx, project, currentCfg, a)
+			if err == nil {
+				return result, nil
+			}
+			var missing *AiderNotInstalledError
+			if !errors.As(err, &missing) {
+				return result, err
+			}
+			newCfg, installDetail, installed, installErr := s.offerInstallAider(ctx, project, currentCfg)
+			if installErr != nil {
+				return strings.TrimSpace(result + "\n\n" + installDetail), installErr
+			}
+			if !installed {
+				return strings.TrimSpace(result + "\n\n" + installDetail), err
+			}
+			currentCfg = newCfg
+		}
+		return "", errors.New("Aider installation retry limit reached")
+	}
 	currentCfg := cfg
 	var installLog []string
 	for attempt := 0; attempt < 4; attempt++ {

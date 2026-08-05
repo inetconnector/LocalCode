@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,8 +19,8 @@ import (
 
 func TestLanguageSettingsAndResponseLanguage(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 4, Language: "de", PreferredLanguage: "Deutsch"})
-	if cfg.SchemaVersion != 5 {
-		t.Fatalf("schema = %d, want 5", cfg.SchemaVersion)
+	if cfg.SchemaVersion != 7 {
+		t.Fatalf("schema = %d, want 7", cfg.SchemaVersion)
 	}
 	if cfg.Language != "auto" || cfg.PreferredLanguage != "auto" {
 		t.Fatalf("legacy implicit German default was not migrated: %#v", cfg)
@@ -43,7 +44,7 @@ func TestApprovalPendingIsClearedWhenContextIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
-		_, err := state.requestApprovalWithPreview(ctx, AgentAction{Action: "run_command", Message: "Run tests", Command: "go test ./..."}, "preview")
+		_, err := state.requestApprovalWithPreview(ctx, t.TempDir(), AgentAction{Action: "run_command", Message: "Run tests", Command: "go test ./..."}, "preview")
 		result <- err
 	}()
 	deadline := time.Now().Add(2 * time.Second)
@@ -94,14 +95,17 @@ func TestProjectRootCanBeAppliedAndEnumerated(t *testing.T) {
 		t.Fatalf("projects status = %d: %s", rr.Code, rr.Body.String())
 	}
 	var response struct {
-		Root     string   `json:"root"`
-		Projects []string `json:"projects"`
+		Root     string           `json:"root"`
+		Projects []ProjectSummary `json:"projects"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
 	if response.Root != root || len(response.Projects) != 2 {
 		t.Fatalf("unexpected projects response: %#v", response)
+	}
+	if response.Projects[0].Name != "Alpha" || response.Projects[1].Name != "Beta" {
+		t.Fatalf("unexpected project ordering: %#v", response.Projects)
 	}
 }
 
@@ -115,6 +119,8 @@ func TestEmbeddedUIContainsPersistentApprovalAndRootControls(t *testing.T) {
 		`id="approvalDock"`, `id="approvalApproveBtn"`, `id="approvalRejectBtn"`,
 		`id="rootModal"`, `id="rootModalInput"`, `value="auto">Automatisch (Windows)`,
 		`<script src="/i18n.js"></script>`, `renderApprovalDock()`,
+		`id="contextMenu"`, `id="actionModal"`, `showProjectMenu(`, `showThreadMenu(`,
+		`Neue Aufgabe starten`, `project-new-task`, `thread-more`,
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("embedded UI is missing %q", fragment)
@@ -343,5 +349,247 @@ func TestServerRejectsNonLoopbackHostAndCrossOriginMutation(t *testing.T) {
 	server.ServeHTTP(trustedResult, trusted)
 	if trustedResult.Code != http.StatusOK {
 		t.Fatalf("loopback request should succeed, got %d: %s", trustedResult.Code, trustedResult.Body.String())
+	}
+}
+
+func TestProjectCatalogActionsAndOrdering(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	alpha := filepath.Join(root, "Alpha")
+	beta := filepath.Join(root, "Beta")
+	for _, path := range []string{alpha, beta} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
+	if _, err := state.ProjectAction(beta, "rename", "My Beta"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.ProjectAction(beta, "pin", ""); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.RLock()
+	cfg = state.Config
+	state.mu.RUnlock()
+	projects, err := listProjects(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 2 || projects[0].Path != beta || projects[0].Name != "My Beta" || !projects[0].Pinned {
+		t.Fatalf("unexpected pinned catalog: %#v", projects)
+	}
+	if _, err := state.ProjectAction(beta, "remove", ""); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.RLock()
+	cfg = state.Config
+	state.mu.RUnlock()
+	projects, err = listProjects(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 || projects[0].Path != alpha {
+		t.Fatalf("removed project still visible: %#v", projects)
+	}
+}
+
+func TestThreadContextActionsPersist(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := NewAppState(defaultConfig(), NewOllamaClient())
+	t.Cleanup(state.Close)
+	thread, err := state.NewChat(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.RenameChat(thread.ID, "Renamed task"); err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := state.DuplicateChat(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(duplicate.Title, "Kopie") && !strings.Contains(duplicate.Title, "Copy") {
+		t.Fatalf("unexpected duplicate title: %q", duplicate.Title)
+	}
+	if err := state.DeleteChat(thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.RLock()
+	_, exists := state.Threads[thread.ID]
+	_, duplicateExists := state.Threads[duplicate.ID]
+	state.mu.RUnlock()
+	if exists || !duplicateExists {
+		t.Fatalf("thread actions were not applied: deleted=%v duplicate=%v", exists, duplicateExists)
+	}
+}
+
+func TestProjectAndThreadContextAPIs(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	project := filepath.Join(root, "Demo")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
+	server := NewServer(state)
+
+	post := func(path string, body any) *httptest.ResponseRecorder {
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145"+path, strings.NewReader(string(data)))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+		return rr
+	}
+
+	if rr := post("/api/project-action", map[string]any{"path": project, "action": "rename", "value": "Demo Alias"}); rr.Code != http.StatusOK {
+		t.Fatalf("project rename failed: %d %s", rr.Code, rr.Body.String())
+	}
+	projectsReq := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:32145/api/projects", nil)
+	projectsRR := httptest.NewRecorder()
+	server.ServeHTTP(projectsRR, projectsReq)
+	if !strings.Contains(projectsRR.Body.String(), "Demo Alias") {
+		t.Fatalf("project alias missing from list: %s", projectsRR.Body.String())
+	}
+
+	thread, err := state.NewChat(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rr := post("/api/rename-chat", map[string]any{"id": thread.ID, "title": "New title"}); rr.Code != http.StatusOK {
+		t.Fatalf("thread rename failed: %d %s", rr.Code, rr.Body.String())
+	}
+	duplicateRR := post("/api/duplicate-chat", map[string]any{"id": thread.ID})
+	if duplicateRR.Code != http.StatusOK || !strings.Contains(duplicateRR.Body.String(), "thread") {
+		t.Fatalf("thread duplicate failed: %d %s", duplicateRR.Code, duplicateRR.Body.String())
+	}
+	if rr := post("/api/delete-chat", map[string]any{"id": thread.ID}); rr.Code != http.StatusOK {
+		t.Fatalf("thread delete failed: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestApprovalDockProvidesProjectAndGlobalPersistentScopes(t *testing.T) {
+	data, err := fs.ReadFile(staticFS, "static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, fragment := range []string{
+		`id="approvalAlwaysBtn"`, `approveAction('project')`,
+		`id="approvalGlobalBtn"`, `approveAction('global')`,
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("persistent approval scope missing from client: %s", fragment)
+		}
+	}
+}
+
+func TestSnapshotCanTargetIndependentThread(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := NewAppState(defaultConfig(), NewOllamaClient())
+	t.Cleanup(state.Close)
+	first, err := state.NewChat(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.AddEvent(UIEvent{Type: "final", Message: "first task"})
+	second, err := state.NewChat(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.AddEvent(UIEvent{Type: "final", Message: "second task"})
+	server := NewServer(state)
+
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:32145/api/snapshot?thread_id="+url.QueryEscape(first.ID), nil)
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("targeted snapshot failed: %d %s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Events        []UIEvent `json:"events"`
+		CurrentThread string    `json:"current_thread"`
+		Running       bool      `json:"running"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.CurrentThread != first.ID || len(payload.Events) != 1 || payload.Events[0].Message != "first task" {
+		t.Fatalf("wrong task snapshot: %#v", payload)
+	}
+	if payload.Running {
+		t.Fatal("inactive task window must not report another task as running")
+	}
+	if payload.Events[0].ThreadID != first.ID {
+		t.Fatalf("event was not tagged with its task: %#v", payload.Events[0])
+	}
+	_ = second
+}
+
+func TestContextMenusExposeCodexStyleProjectAndTaskActions(t *testing.T) {
+	data, err := fs.ReadFile(staticFS, "static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, fragment := range []string{
+		`class="new-task-row"`, `project-new-task`, `project-rename`, `project-open-visualstudio`,
+		`project-open-explorer`, `project-pin`, `project-remove`, `thread-rename`,
+		`thread-open-window`, `thread-archive`, `/api/open-chat-window`,
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("context action missing from client: %s", fragment)
+		}
+	}
+}
+
+func TestOpenChatWindowAPIUsesTaskURL(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	project := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := NewAppState(defaultConfig(), NewOllamaClient())
+	t.Cleanup(state.Close)
+	thread, err := state.NewChat(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldLauncher := launchTaskWindow
+	defer func() { launchTaskWindow = oldLauncher }()
+	var launched string
+	launchTaskWindow = func(value string) error {
+		launched = value
+		return nil
+	}
+	server := NewServer(state)
+	body, _ := json.Marshal(map[string]string{"id": thread.ID})
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/open-chat-window", strings.NewReader(string(body)))
+	req.Host = "127.0.0.1:32145"
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("open task window failed: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(launched, "?thread="+url.QueryEscape(thread.ID)) {
+		t.Fatalf("task ID missing from launched URL: %q", launched)
 	}
 }

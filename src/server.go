@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -14,7 +15,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -26,6 +26,8 @@ type Server struct {
 	state *AppState
 	mux   *http.ServeMux
 }
+
+var launchTaskWindow = openBrowser
 
 func NewServer(state *AppState) *Server {
 	s := &Server{state: state, mux: http.NewServeMux()}
@@ -40,6 +42,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/projects", s.handleProjects)
 	s.mux.HandleFunc("/api/select-project", s.handleSelectProject)
+	s.mux.HandleFunc("/api/project-action", s.handleProjectAction)
 	s.mux.HandleFunc("/api/root", s.handleRoot)
 	s.mux.HandleFunc("/api/browse-root", s.handleBrowseRoot)
 	s.mux.HandleFunc("/api/reset-root", s.handleResetRoot)
@@ -48,6 +51,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/new-chat", s.handleNewChat)
 	s.mux.HandleFunc("/api/select-chat", s.handleSelectChat)
 	s.mux.HandleFunc("/api/archive-chat", s.handleArchiveChat)
+	s.mux.HandleFunc("/api/rename-chat", s.handleRenameChat)
+	s.mux.HandleFunc("/api/duplicate-chat", s.handleDuplicateChat)
+	s.mux.HandleFunc("/api/delete-chat", s.handleDeleteChat)
+	s.mux.HandleFunc("/api/open-chat-window", s.handleOpenChatWindow)
 	s.mux.HandleFunc("/api/stop", s.handleStop)
 	s.mux.HandleFunc("/api/force-stop", s.handleForceStop)
 	s.mux.HandleFunc("/api/approve", s.handleApprove)
@@ -56,12 +63,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/mcp/test", s.handleMCPTest)
+	s.mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
+	s.mux.HandleFunc("/api/mcp/setup", s.handleMCPSetup)
 	s.mux.HandleFunc("/api/open-terminal", s.handleOpenTerminal)
 	s.mux.HandleFunc("/api/terminal-command", s.handleTerminalCommand)
 	s.mux.HandleFunc("/api/open-project", s.handleOpenProject)
 	s.mux.HandleFunc("/api/git-overview", s.handleGitOverview)
 	s.mux.HandleFunc("/api/tools", s.handleTools)
 	s.mux.HandleFunc("/api/tools/diagnose", s.handleToolDiagnose)
+	s.mux.HandleFunc("/api/aider/status", s.handleAiderStatus)
+	s.mux.HandleFunc("/api/aider/setup", s.handleAiderSetup)
+	s.mux.HandleFunc("/api/aider/undo", s.handleAiderUndo)
 }
 
 func loopbackRequestHost(value string) bool {
@@ -140,27 +152,34 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	models, err := s.state.Ollama.Tags(ctx)
 	s.state.mu.RLock()
+	cfg := s.state.Config
 	st := Status{
 		Version:            version,
+		EditingEngine:      cfg.EditingEngine,
 		OllamaOnline:       err == nil,
 		OllamaURL:          s.state.Ollama.BaseURL,
 		Models:             models,
 		SelectedModel:      s.state.Model,
 		GPU:                detectGPU(),
-		RootDir:            s.state.Config.RootProjectDir,
+		RootDir:            cfg.RootProjectDir,
 		Project:            s.state.Project,
 		Running:            s.state.Running,
-		GitAvailable:       gitAvailable(s.state.Project, s.state.Config),
-		MCPCount:           enabledMCPCount(s.state.Config),
+		GitAvailable:       gitAvailable(s.state.Project, cfg),
+		MCPCount:           enabledMCPCount(cfg),
 		RunID:              s.state.RunID,
 		RunPhase:           s.state.RunPhase,
 		RunStartedAt:       s.state.RunStartedAt,
 		LastProgressAt:     s.state.LastProgressAt,
-		ResolvedLanguage:   resolvedLanguage(s.state.Config),
+		ResolvedLanguage:   resolvedLanguage(cfg),
 		SystemLanguage:     detectSystemLanguage(),
 		SupportedLanguages: append([]string(nil), supportedLanguages...),
 	}
 	s.state.mu.RUnlock()
+	if cfg.EditingEngine == "aider" && cfg.AiderEnabled {
+		aider := aiderStatus(ctx, cfg)
+		st.AiderInstalled = aider.Installed
+		st.AiderVersion = aider.Version
+	}
 	if err != nil {
 		st.OllamaError = err.Error()
 	}
@@ -174,22 +193,38 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.state.mu.RLock()
-	root := s.state.Config.RootProjectDir
+	cfg := s.state.Config
 	s.state.mu.RUnlock()
-	entries, err := os.ReadDir(root)
+	projects, err := listProjects(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	projects := make([]string, 0)
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			projects = append(projects, filepath.Join(root, e.Name()))
-		}
-	}
-	sort.Slice(projects, func(i, j int) bool { return strings.ToLower(projects[i]) < strings.ToLower(projects[j]) })
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"root": root, "projects": projects})
+	_ = writeJSON(w, map[string]any{"root": cfg.RootProjectDir, "projects": projects, "hidden_projects": listHiddenProjects(cfg)})
+}
+
+func (s *Server) handleProjectAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		Path   string `json:"path"`
+		Action string `json:"action"`
+		Value  string `json:"value"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	project, err := s.state.ProjectAction(req.Path, req.Action, req.Value)
+	if err != nil {
+		http.Error(w, err.Error(), 409)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "project": project})
 }
 
 func (s *Server) handleSelectProject(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +387,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Message     string       `json:"message"`
 		Model       string       `json:"model"`
+		Project     string       `json:"project,omitempty"`
+		ThreadID    string       `json:"thread_id,omitempty"`
 		Attachments []Attachment `json:"attachments"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
@@ -363,7 +400,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	if err := s.state.StartAgent(req.Message, req.Model, attachments); err != nil {
+	if err := s.state.StartAgentForThread(req.Message, req.Model, attachments, req.Project, req.ThreadID); err != nil {
 		http.Error(w, err.Error(), 409)
 		return
 	}
@@ -445,6 +482,96 @@ func (s *Server) handleArchiveChat(w http.ResponseWriter, r *http.Request) {
 	_ = writeJSON(w, map[string]any{"ok": true})
 }
 
+func (s *Server) handleRenameChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := s.state.RenameChat(req.ID, req.Title); err != nil {
+		http.Error(w, err.Error(), 409)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleDuplicateChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	thread, err := s.state.DuplicateChat(req.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 409)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "thread": thread})
+}
+
+func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := s.state.DeleteChat(req.ID); err != nil {
+		http.Error(w, err.Error(), 409)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleOpenChatWindow(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	s.state.mu.RLock()
+	thread := s.state.Threads[req.ID]
+	s.state.mu.RUnlock()
+	if thread == nil || thread.Archived {
+		http.Error(w, "Chat nicht gefunden", 404)
+		return
+	}
+	windowURL := "http://" + r.Host + "/?thread=" + url.QueryEscape(req.ID)
+	if err := launchTaskWindow(windowURL); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "url": windowURL})
+}
+
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", 405)
@@ -471,8 +598,9 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ID      string `json:"id"`
-		Approve bool   `json:"approve"`
+		ID       string `json:"id"`
+		Approve  bool   `json:"approve"`
+		Decision string `json:"decision"` // reject | once | project | global
 	}
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -485,8 +613,26 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "pending action not found", 404)
 		return
 	}
+	decision := ApprovalDecision{Approved: req.Approve}
+	switch strings.ToLower(strings.TrimSpace(req.Decision)) {
+	case "project":
+		decision.Approved = true
+		decision.Persist = true
+		decision.Scope = "project"
+	case "global":
+		decision.Approved = true
+		decision.Persist = true
+		decision.Scope = "global"
+	case "once", "":
+		decision.Approved = req.Approve
+	case "reject":
+		decision.Approved = false
+	default:
+		http.Error(w, "invalid approval decision", 400)
+		return
+	}
 	select {
-	case pending.Result <- req.Approve:
+	case pending.Result <- decision:
 	default:
 		http.Error(w, "approval already handled", 409)
 		return
@@ -500,6 +646,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
+	requestedThread := strings.TrimSpace(r.URL.Query().Get("thread_id"))
 	s.state.mu.RLock()
 	events := append([]UIEvent(nil), s.state.Events...)
 	project := s.state.Project
@@ -510,10 +657,27 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	runPhase := s.state.RunPhase
 	runStartedAt := s.state.RunStartedAt
 	lastProgressAt := s.state.LastProgressAt
+	if requestedThread != "" {
+		if t := s.state.Threads[requestedThread]; t != nil && !t.Archived {
+			events = append([]UIEvent(nil), t.Events...)
+			project = t.Project
+			if t.Model != "" {
+				model = t.Model
+			}
+			currentThread = requestedThread
+			if s.state.CurrentThread != requestedThread {
+				running = false
+				runID = ""
+				runPhase = "idle"
+				runStartedAt = time.Time{}
+				lastProgressAt = time.Time{}
+			}
+		}
+	}
 	var pending any
-	if s.state.Pending != nil {
+	if s.state.Pending != nil && (requestedThread == "" || s.state.CurrentThread == requestedThread) {
 		p := s.state.Pending
-		pending = UIEvent{ID: p.ID, Type: "approval_required", Message: p.Action.Message, Action: p.Action.Action, Path: p.Action.Path, Command: p.Action.Command, Preview: p.Preview, Timestamp: time.Now()}
+		pending = UIEvent{ID: p.ID, ThreadID: s.state.CurrentThread, Type: "approval_required", Message: p.Action.Message, Action: p.Action.Action, Path: p.Action.Path, Command: p.Action.Command, Preview: p.Preview, Timestamp: time.Now()}
 	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
@@ -631,6 +795,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		s.state.Ollama.ContextLength = cfg.ContextLength
 		s.state.mu.Unlock()
+		defaultMCPManager.Close()
 		s.state.UpdateProjectState(localizeConfigText(cfg, "Einstellungen geändert", "Settings changed"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = writeJSON(w, map[string]any{"ok": true, "settings": cfg})
@@ -653,6 +818,7 @@ func (s *Server) handleMCPTest(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RLock()
 	cfg := s.state.Config
+	project := s.state.Project
 	s.state.mu.RUnlock()
 	results := map[string]any{}
 	for _, server := range cfg.MCPServers {
@@ -660,7 +826,7 @@ func (s *Server) handleMCPTest(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(server.TimeoutSec)*time.Second)
-		out, err := mcpCall(ctx, cfg, server.Name, "tools/list", map[string]any{})
+		out, err := mcpCall(ctx, cfg, project, server.Name, "tools/list", map[string]any{})
 		cancel()
 		if err != nil {
 			results[server.Name] = map[string]any{"ok": false, "error": err.Error()}
@@ -679,6 +845,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Command string `json:"command"`
+		Path    string `json:"path"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -688,6 +855,14 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	project := s.state.Project
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
+	if strings.TrimSpace(req.Path) != "" {
+		resolved, err := ensureWithinRoot(cfg.RootProjectDir, req.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		project = resolved
+	}
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
@@ -713,6 +888,7 @@ func (s *Server) handleTerminalCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Command string `json:"command"`
+		Path    string `json:"path"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -722,6 +898,14 @@ func (s *Server) handleTerminalCommand(w http.ResponseWriter, r *http.Request) {
 	project := s.state.Project
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
+	if strings.TrimSpace(req.Path) != "" {
+		resolved, err := ensureWithinRoot(cfg.RootProjectDir, req.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		project = resolved
+	}
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
@@ -745,6 +929,7 @@ func (s *Server) handleOpenProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Target string `json:"target"`
+		Path   string `json:"path"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -754,6 +939,14 @@ func (s *Server) handleOpenProject(w http.ResponseWriter, r *http.Request) {
 	project := s.state.Project
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
+	if strings.TrimSpace(req.Path) != "" {
+		resolved, err := ensureWithinRoot(cfg.RootProjectDir, req.Path)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		project = resolved
+	}
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
@@ -910,4 +1103,107 @@ func (s *Server) handleToolDiagnose(w http.ResponseWriter, r *http.Request) {
 	info := discoverTool(project, req.Tool, cfg, true)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, info)
+}
+
+func (s *Server) handleMCPStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	project := s.state.Project
+	s.state.mu.RUnlock()
+	connect := r.URL.Query().Get("connect") == "1"
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+	statuses := allMCPStatuses(ctx, cfg, project, connect)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"servers": statuses})
+}
+
+func (s *Server) handleMCPSetup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var request struct {
+		Name   string `json:"name"`
+		Action string `json:"action"`
+	}
+	if err := readJSON(r.Body, &request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	project := s.state.Project
+	s.state.mu.RUnlock()
+	index := findMCPServerIndex(cfg, request.Name)
+	if index < 0 {
+		http.Error(w, "MCP server not found", http.StatusNotFound)
+		return
+	}
+	server := cfg.MCPServers[index]
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
+	defer cancel()
+	var detail string
+	var err error
+	switch strings.ToLower(strings.TrimSpace(request.Action)) {
+	case "enable":
+		cfg.MCPServers[index].Enabled = true
+	case "disable":
+		cfg.MCPServers[index].Enabled = false
+		defaultMCPManager.ResetServer(server.Name)
+	case "reset":
+		defaultMCPManager.ResetServer(server.Name)
+		detail = localizeConfigText(cfg, "MCP-Sitzung wurde zurückgesetzt.", "MCP session was reset.")
+	case "install":
+		cfg, detail, err = installMCPDependency(ctx, project, cfg, server)
+	case "authenticate":
+		if !strings.EqualFold(server.Preset, "github") {
+			err = errors.New("authentication is only managed for GitHub MCP")
+			break
+		}
+		gh := discoverTool(project, "gh", cfg, false)
+		if !gh.Available {
+			cfg, detail, err = installKnownTool(ctx, project, "gh", cfg)
+			if err != nil {
+				break
+			}
+			gh = discoverTool(project, "gh", cfg, false)
+		}
+		if !gh.Available {
+			err = errors.New("GitHub CLI is still unavailable")
+			break
+		}
+		if err = openInteractiveTerminal(project, fmt.Sprintf("\"%s\" auth login", gh.Path), cfg); err == nil {
+			detail = localizeConfigText(cfg, "GitHub-Anmeldung wurde in einem interaktiven Terminal geöffnet. Schließe die Anmeldung dort ab und klicke anschließend auf Testen.", "GitHub sign-in was opened in an interactive terminal. Complete sign-in there, then click Test.")
+		}
+	case "test":
+		cfg.MCPServers[index].Enabled = true
+		status := mcpServerStatus(ctx, cfg, project, cfg.MCPServers[index], true)
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": status.Connected, "status": status})
+		return
+	default:
+		http.Error(w, "unsupported MCP setup action", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error()+"\n\n"+detail, http.StatusInternalServerError)
+		return
+	}
+	cfg = normalizeConfig(cfg)
+	if err := saveConfig(cfg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.state.mu.Lock()
+	s.state.Config = cfg
+	s.state.mu.Unlock()
+	defaultMCPManager.ResetServer(server.Name)
+	status := mcpServerStatus(ctx, cfg, project, cfg.MCPServers[index], false)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "detail": detail, "status": status, "settings": cfg})
 }

@@ -41,6 +41,8 @@ func classifyTaskIntent(task string) taskIntent {
 	case containsAny("initialisiere git", "git init", "repository anlegen", "repo anlegen"):
 		intent.Kind = "git_init"
 		intent.GitRequested = true
+	case containsAny("implementiere", "baue ein", "entwickle", "erstelle die app", "erstelle eine app", "fixe", "behebe", "repariere", "ändere", "aendere", "ergänze", "ergaenze", "füge hinzu", "fuege hinzu", "portiere", "refaktoriere", "übersetze", "uebersetze", "implement", "develop", "fix", "repair", "change", "add feature", "refactor", "translate"):
+		intent.Kind = "edit"
 	case containsAny("analysiere das projekt", "analysiere projekt", "pruefe das projekt", "untersuche das projekt", "projekt analysieren"):
 		intent.Kind = "analyze"
 	}
@@ -127,7 +129,7 @@ func suggestedActionForQuestion(question string) *AgentAction {
 	return nil
 }
 
-func forcedActionForIntent(intent taskIntent, completed map[string]bool) *AgentAction {
+func forcedActionForIntent(intent taskIntent, completed map[string]bool, cfg Config) *AgentAction {
 	switch intent.Kind {
 	case "analyze":
 		if !completed["project_info"] {
@@ -154,6 +156,10 @@ func forcedActionForIntent(intent taskIntent, completed map[string]bool) *AgentA
 	case "git_init":
 		if !completed["git"] {
 			return &AgentAction{Action: "git", Message: "Git-Repository initialisieren", Args: []string{"init"}}
+		}
+	case "edit":
+		if cfg.EditingEngine == "aider" && cfg.AiderEnabled && !completed["aider_edit"] {
+			return &AgentAction{Action: "aider_edit", Message: "Codeänderungen mit der Aider Editing Engine umsetzen", Task: intent.OriginalTask}
 		}
 	}
 	return nil
@@ -204,7 +210,7 @@ func (s *AppState) executeConfirmedContinuationAction(ctx context.Context, proje
 func actionAllowedForIntent(intent taskIntent, action AgentAction) (bool, string) {
 	if intent.Kind == "analyze" {
 		switch action.Action {
-		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "finish", "ask_user":
+		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "finish", "ask_user":
 			return true, ""
 		case "git":
 			if gitActionIsReadOnly(action.Args) {

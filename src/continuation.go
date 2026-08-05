@@ -56,6 +56,39 @@ func normalizeAgentAction(a AgentAction, fallbackTask string) AgentAction {
 		}
 		a.Query = deriveWebQuery(fallbackTask, candidate)
 	}
+	if a.Action == "git" && len(a.Args) == 0 {
+		intent := normalizedQuestion(strings.TrimSpace(a.Message + " " + fallbackTask))
+		switch {
+		case strings.Contains(intent, "commit") || strings.Contains(intent, "committe") || strings.Contains(intent, "eincheck"):
+			a.Action = "git_commit"
+			a.StageAll = true
+			a.CommitMessage = deriveCommitMessage(fallbackTask)
+		case strings.Contains(intent, "status"):
+			a.Args = []string{"status", "--short", "--branch"}
+		case strings.Contains(intent, "diff"):
+			a.Args = []string{"diff", "--stat"}
+		case strings.Contains(intent, "initialis") || strings.Contains(intent, "git init") || strings.Contains(intent, "repository anlegen"):
+			a.Args = []string{"init"}
+		case strings.Contains(intent, "push"):
+			a.Args = []string{"push"}
+		case strings.Contains(intent, "pull"):
+			a.Args = []string{"pull", "--ff-only"}
+		case strings.Contains(intent, "add") || strings.Contains(intent, "stage") || strings.Contains(intent, "hinzuf"):
+			if strings.Contains(intent, ".gitignore") {
+				a.Args = []string{"add", "--", ".gitignore"}
+			} else {
+				a.Args = []string{"add", "-A", "--", ".", ":(exclude).vs/**"}
+			}
+		default:
+			a.Args = []string{"status", "--short", "--branch"}
+		}
+	}
+	if a.Action == "git_commit" {
+		a.StageAll = true
+		if strings.TrimSpace(a.CommitMessage) == "" {
+			a.CommitMessage = deriveCommitMessage(fallbackTask)
+		}
+	}
 	return a
 }
 

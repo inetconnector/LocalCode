@@ -285,3 +285,112 @@ func (s *AppState) ArchiveChat(id string, archived bool) error {
 	s.mu.Unlock()
 	return saveThreads(threads)
 }
+
+func (s *AppState) RenameChat(id, title string) error {
+	title = strings.Join(strings.Fields(strings.TrimSpace(title)), " ")
+	if title == "" {
+		return fmt.Errorf("Chatname fehlt")
+	}
+	if runes := []rune(title); len(runes) > 120 {
+		title = strings.TrimSpace(string(runes[:120]))
+	}
+	s.mu.Lock()
+	if s.Running {
+		s.mu.Unlock()
+		return fmt.Errorf("Agent läuft gerade")
+	}
+	t := s.Threads[id]
+	if t == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("Chat nicht gefunden")
+	}
+	t.Title = title
+	t.UpdatedAt = time.Now()
+	threads := cloneThreads(s.Threads)
+	s.mu.Unlock()
+	return saveThreads(threads)
+}
+
+func (s *AppState) DuplicateChat(id string) (ChatThreadSummary, error) {
+	s.mu.Lock()
+	if s.Running {
+		s.mu.Unlock()
+		return ChatThreadSummary{}, fmt.Errorf("Agent läuft gerade")
+	}
+	original := s.Threads[id]
+	if original == nil {
+		s.mu.Unlock()
+		return ChatThreadSummary{}, fmt.Errorf("Chat nicht gefunden")
+	}
+	now := time.Now()
+	copyThread := &ChatThread{
+		ID:        newID(),
+		Project:   original.Project,
+		Title:     original.Title + localizeConfigText(s.Config, " – Kopie", " – Copy"),
+		Model:     original.Model,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Events:    append([]UIEvent(nil), original.Events...),
+	}
+	s.Threads[copyThread.ID] = copyThread
+	s.Project = copyThread.Project
+	s.CurrentThread = copyThread.ID
+	s.Events = append([]UIEvent(nil), copyThread.Events...)
+	s.Pending = nil
+	s.Continuation = nil
+	threads := cloneThreads(s.Threads)
+	s.mu.Unlock()
+	if err := saveThreads(threads); err != nil {
+		return ChatThreadSummary{}, err
+	}
+	return ChatThreadSummary{ID: copyThread.ID, Project: copyThread.Project, Title: copyThread.Title, Model: copyThread.Model, UpdatedAt: copyThread.UpdatedAt}, nil
+}
+
+func (s *AppState) DeleteChat(id string) error {
+	s.mu.Lock()
+	if s.Running {
+		s.mu.Unlock()
+		return fmt.Errorf("Agent läuft gerade")
+	}
+	removed := s.Threads[id]
+	if removed == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("Chat nicht gefunden")
+	}
+	delete(s.Threads, id)
+	if s.CurrentThread == id {
+		s.CurrentThread = ""
+		s.Events = nil
+		s.Pending = nil
+		s.Continuation = nil
+		var latest *ChatThread
+		for _, candidate := range s.Threads {
+			if candidate.Project == removed.Project && !candidate.Archived && (latest == nil || candidate.UpdatedAt.After(latest.UpdatedAt)) {
+				latest = candidate
+			}
+		}
+		if latest == nil {
+			latest = newThread(removed.Project, s.Model)
+			s.Threads[latest.ID] = latest
+		}
+		s.CurrentThread = latest.ID
+		s.Project = latest.Project
+		s.Events = append([]UIEvent(nil), latest.Events...)
+	}
+	threads := cloneThreads(s.Threads)
+	s.mu.Unlock()
+	return saveThreads(threads)
+}
+
+func cloneThreads(source map[string]*ChatThread) map[string]*ChatThread {
+	threads := make(map[string]*ChatThread, len(source))
+	for id, item := range source {
+		if item == nil {
+			continue
+		}
+		copy := *item
+		copy.Events = append([]UIEvent(nil), item.Events...)
+		threads[id] = &copy
+	}
+	return threads
+}

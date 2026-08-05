@@ -1,11 +1,8 @@
-feat: add complete bilingual UI and persistent approval workflow
+feat: integrate Aider as the production editing engine
 
-- detect the Windows display language and default to German or English
-- add manual language selection and synchronized translation catalogs
-- translate project templates, Git setup, documentation, and runtime UI
-- keep pending approvals visible in a bottom-center decision bar across views
-- improve project-root selection with direct path entry and a foreground dialog
-- normalize numeric settings before saving
-- persist config and chat history with recoverable atomic replacement
-- move chat event persistence to a coalescing background writer
-- add race, localization, approval, root-selection, and persistence tests
+- install pinned Aider 0.86.2 through an isolated user-local uv tool environment
+- route multi-file source changes through Aider repository maps and edit formats
+- add architect/editor, lint, test, Git, history, status, repair and undo settings
+- preserve LocalCode approvals, cancellation, MCP, tool discovery and context compaction
+- add hash-guarded backups for edit, lint and test repair runs
+- add complete German and English documentation, licensing notices and integration tests
