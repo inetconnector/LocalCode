@@ -1,130 +1,179 @@
-# LocalCode 4.7.0
+# LocalCode 4.8.0
 
-LocalCode ist ein eigenständiger lokaler Windows-Coding-Agent für Ollama. Die Anwendung bietet eine desktopartige Projekt- und Chatoberfläche, persistente Chats, Datei- und Bildanhänge, Git, Befehlsausführung, Webrecherche, MCP, Genehmigungen und eine zentrale Einstellungsseite.
+[Deutsch](#deutsch) · [English](#english)
 
-## Schnellstart
+LocalCode is a local Windows coding-agent application for Ollama. It provides project-based chats, controlled tool execution, Git, builds, Android deployment, web research, MCP, attachments, approvals, context compaction, and a desktop-style user interface. LocalCode is an independent project and is not OpenAI Codex.
 
-1. ZIP vollständig entpacken.
+---
+
+## Deutsch
+
+### Schnellstart
+
+1. Das ZIP vollständig in einen neuen Ordner entpacken.
 2. `BUILD-AND-RUN.bat` doppelklicken.
-3. Beim ersten Build lädt das Skript bei Bedarf eine portable offizielle Go-Version.
-4. LocalCode öffnet sich unter Windows bevorzugt als Edge-/Chrome-App-Fenster ohne Browser-Tabs und Adressleiste.
+3. Falls Go fehlt, lädt das Skript eine portable offizielle Go-Version.
+4. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
 
+Voraussetzung: Eine erreichbare lokale Ollama-Installation mit mindestens einem geeigneten Modell, beispielsweise `qwen2.5-coder:14b` oder `gpt-oss:20b`.
 
+### Sprache
 
-## Umbenennung und Datenmigration
+- `Automatisch (Windows)` verwendet die Windows-Anzeigesprache: Deutsch bei einem deutschen Windows, andernfalls Englisch.
+- Deutsch und Englisch können in **Einstellungen → Allgemein → Sprache** manuell gewählt werden.
+- Oberfläche, Dialoge, Genehmigungen, Statusmeldungen, Projektvorlagen und zentrale Dokumentation werden in beiden Sprachen gepflegt.
+- Ein automatischer Test stellt sicher, dass alle Sprachkataloge dieselben Schlüssel enthalten.
 
-Die Anwendung heißt vollständig **LocalCode**. Programmdateien, UI, API-Kennung, Konfigurationsordner, Chats, Logs, Sicherungen, MCP-Clientinfo und Build-Artefakte verwenden diesen Namen.
+### Bedienung und Kontrolle
 
-Beim ersten Start übernimmt LocalCode vorhandene Konfigurationen, Chatverläufe und Sicherungen der vorherigen Produktbezeichnung automatisch, falls im neuen LocalCode-Datenordner noch keine entsprechenden Dateien liegen. Die alten Dateien werden aus Sicherheitsgründen nicht gelöscht. Verwaltete ältere `STATE.md`-Marker werden beim nächsten Statusupdate in die neuen `LOCALCODE:STATE:BEGIN/END`-Marker überführt, ohne manuelle Inhalte anzutasten.
+- Projekt- und Chatnavigation links, Arbeitsverlauf in der Mitte, Ausgaben und Quellen rechts.
+- Verschiebbare Splitter für linke und rechte Seitenleiste sowie das integrierte Terminal.
+- Offene Genehmigungen erscheinen dauerhaft zusätzlich als Leiste unten in der Mitte – auch in Einstellungen oder anderen Ansichten.
+- Der Projektordner kann über einen sichtbaren Windows-Ordnerdialog oder durch direkte Pfadeingabe geändert werden.
+- Enter sendet; Umschalt+Enter erzeugt eine neue Zeile.
+- Nach Abschluss oder kontrolliertem Abbruch wird das Eingabefeld wieder fokussiert.
+- Modell- und Werkzeugaufrufe besitzen Zeitlimits und können kontrolliert beendet werden.
 
-## Intelligente Aufgabensteuerung und Kontextkomprimierung in 4.7.0
+### Agent und Kontext
 
-- Der Agent Supervisor klassifiziert Analyse, Build, Android-Deployment, Webrecherche und Git-Initialisierung und startet die jeweils sichere deterministische Aktion.
-- Eine Analyse ist ausdrücklich schreibgeschützt: fehlendes Git ist kein Blocker, mutierende Git- und Dateiaktionen werden blockiert.
-- Bestätigte Rückfragen enthalten eine ausführbare Folgeaktion. Ein „ja“ zu `git init` führt die Aktion aus und setzt den vorhandenen Kontext fort.
-- Leere Webanfragen werden serverseitig aus der Originalaufgabe erzeugt; DuckDuckGo besitzt einen Bing-RSS-Fallback.
-- Wiederholte Agentendrift wird kontrolliert beendet, statt Fragen oder Aktionen bis zum Schrittlimit zu wiederholen.
-- Langer Verlauf wird vor Erreichen des Kontextlimits verdichtet. Erhalten bleiben Aufgabe, Entscheidungen, Projektfakten, Dateien, Befehle, Fehler, offene Punkte und die nächste Aktion.
-- Die Komprimierung ist unter **Einstellungen > Konfiguration** aktivierbar und in Schwelle sowie Zahl der unverändert beibehaltenen Nachrichten einstellbar.
+Der Supervisor erkennt typische Aufgaben wie Analyse, Build, Android-Deployment, Git-Initialisierung und Webrecherche. Wiederholte identische Fragen oder Werkzeugaktionen werden blockiert. Vor Erreichen des Kontextlimits wird der Verlauf komprimiert; erhalten bleiben Aufgabe, Entscheidungen, gelesene und geänderte Dateien, Befehle, Fehler, offene Punkte und die nächste geplante Aktion.
 
-## Werkzeugerkennung, Installation und Projekt-Automation in 4.7.0
+### Werkzeuge
 
-- Externe Entwicklungswerkzeuge werden über Projekt-Wrapper, feste Pfade, `PATH`, Android-SDK-Verzeichnisse, Umgebungsvariablen, Visual-Studio-Installationen und `vswhere.exe` gesucht.
-- Visual-Studio-Bestandteile wie MSBuild, das gebündelte Git, CMake, Ninja, NuGet und `devenv.exe` werden auch dann gefunden, wenn sie nicht im globalen `PATH` stehen.
-- Für fehlendes Git installiert LocalCode nach ausdrücklicher Genehmigung eine offizielle portable MinGit-Ausgabe benutzerlokal. Für fehlendes ADB/Fastboot werden nach Genehmigung die offiziellen Android SDK Platform-Tools benutzerlokal installiert.
-- Für Java nutzt LocalCode nach Genehmigung die offizielle Microsoft-OpenJDK-Paketierung, für .NET das offizielle benutzerlokale `dotnet-install.ps1` und für MSBuild den offiziellen Visual-Studio-Build-Tools-Bootstrapper mit dem MSBuild-Workload. Weitere bekannte Werkzeuge können über WinGet installiert werden. Jede Installation wird separat angezeigt, muss bestätigt und anschließend verifiziert werden.
-- Nach einer erfolgreichen Installation wird exakt die ursprüngliche Aktion automatisch erneut ausgeführt. Bis zu vier nacheinander fehlende, unterstützte Werkzeuge können innerhalb eines Vorgangs repariert werden.
-- `project_info`, `build_project` und `deploy_android` bieten deterministische Abläufe für Projekterkennung, Build und Android-Verteilung. Android-Deployment baut zuerst, sucht die aktuelle Debug-APK, prüft autorisierte Geräte und verwendet `adb install -r`.
-- ADB prüft alle gefundenen SDK-Kopien, startet den Server kontrolliert neu, unterscheidet `device`, `unauthorized` und `offline` und ergänzt eine Windows-Plug-and-Play-Diagnose.
-- Neue Aufgaben überschreiben alte Rückfragen. Unnötige Fragen nach `git init`, manueller Werkzeugeingabe oder einer bloßen Bestätigung, ob ADB installiert ist, werden blockiert, wenn LocalCode dies selbst prüfen kann.
-- Leere Websuchanfragen werden deterministisch aus der aktuellen Aufgabe ergänzt; erwartbare Git- und ADB-Zustände lösen keine sinnlose Webrecherche aus.
-- Details stehen in `docs/TOOLS.md`.
+LocalCode sucht Werkzeuge über:
 
-## Stabilität und Kontrolle in 4.7.0
+- Projekt-Wrapper und lokale Binärdateien
+- konfigurierte absolute Werkzeugpfade
+- `PATH` und relevante Umgebungsvariablen
+- Android-SDK-Verzeichnisse
+- Visual-Studio-Installationen und `vswhere.exe`
+- bekannte Windows-Installationsorte
+- den benutzerlokalen LocalCode-Werkzeugordner
 
-- Hintergrundbefehle unter Windows laufen ohne aufblinkende Konsolenfenster.
-- Werkzeug-, Git-, Diff-, Befehls- und Fehlerausgaben sind im Chat und im rechten Ausgabenbereich vollständig aufklappbar.
-- Rückfragen werden innerhalb desselben Agentenkontexts fortgesetzt.
-- Während der Ausführung bleiben Eingabe und Abbruch erreichbar. Nach einem normalen Abbruch steht zusätzlich ein kontrollierter Zwangsreset zur Verfügung.
-- Modellaufrufe besitzen ein eigenes, konfigurierbares Zeitlimit.
-- Die Oberfläche gleicht den Laufzustand regelmäßig mit dem Backend ab, auch wenn eine Ereignisverbindung kurz unterbrochen wurde.
-- Einstellungen werden als vorwärtskompatibler Patch gespeichert; Fehler enthalten die konkrete Servermeldung.
+Fehlende unterstützte Werkzeuge werden nicht nur behauptet: LocalCode zeigt die durchsuchten Pfade, fragt nach Installationsgenehmigung, installiert das Werkzeug aus einer dokumentierten Quelle, verifiziert es und setzt anschließend die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
 
-## Oberfläche
+### Dateien und Anhänge
 
-- Linke Spalte: neuer Chat, Git-Übersicht, Terminal, Einstellungen, Projektsuche, Projekte und persistente Chats.
-- Mitte: aktiver Chat und Arbeitsverlauf.
-- Rechte Spalte: Genehmigungen, Befehle, Git-Ausgaben und Webquellen.
-- Unterer Composer: Dateien, Genehmigungsmodus, Modell und Senden.
+Bis zu 20 Dateien pro Anfrage, insgesamt bis 96 MiB:
 
-Alle sichtbaren Navigationspunkte sind an echte Funktionen angebunden. Es gibt keine absichtlich eingebauten Platzhalterseiten.
+- Bilder über ein lokales Vision-Modell
+- Text, Quellcode, JSON, XML, CSV, Markdown und Konfigurationen
+- DOCX, PPTX, XLSX/XLSM
+- ZIP, JAR, APK, AAB
+- PDF über `pdftotext`, sofern vorhanden, sonst konservativer lokaler Fallback
 
+Dateien können ausgewählt, per Drag-and-drop oder aus der Zwischenablage eingefügt werden.
 
-## Layout und Einstellungen
+### Git und Projektstatus
 
-Die drei Hauptbereiche können mit der Maus verschoben werden. Das integrierte Terminal besitzt einen eigenen horizontalen Splitter und kann in **Einstellungen > Allgemein** unten oder rechts angedockt werden. Die Größen werden dauerhaft gespeichert.
+Das Quellpaket enthält `.gitignore`, `.gitattributes`, `.editorconfig`, `GIT-SETUP.md` und `COMMIT_MESSAGE.txt`. LocalCode kann in Projekten fehlende `README.md` und `AGENTS.md` anlegen und einen markierten Bereich in `STATE.md` aktuell halten, ohne manuelle Abschnitte zu überschreiben.
 
-Die Einstellungsseite entspricht dem Aufbau einer modernen Desktop-Entwicklungsanwendung und enthält nur verdrahtete Funktionen. Dazu gehören Berechtigungen, Ausführungsumgebung, Terminal, Appearance, Personalisierung, Tastaturkürzel, MCP, Webrecherche, Pfad-/Befehlsregeln, Hooks, Verbindungen, Git, Worktrees und archivierte Chats.
+### Build und Qualität
 
-## Dateianhänge
+`BUILD.bat` führt aus:
 
-Pro Anfrage können bis zu 20 Dateien mit insgesamt höchstens 96 MiB aus der Oberfläche übertragen werden. Der Server akzeptiert bis zu 128 MiB dekodierte Dateidaten.
+```text
+go fmt ./...
+go test -count=1 ./...
+go vet ./...
+Windows-amd64-GUI-Build
+Windows-amd64-Diagnose-Build
+SHA-256-Erzeugung
+```
 
-Unterstützte Verarbeitung:
+Der Release-Testbericht befindet sich in `TEST-REPORT.txt`.
 
-- Bilder: PNG, JPEG, WebP, GIF über ein lokales Vision-Modell.
-- Text, Quellcode, JSON, XML, CSV, Markdown und Konfigurationsdateien: direkte UTF-8-Extraktion.
-- DOCX, PPTX, XLSX/XLSM: lokale XML-Extraktion aus dem Office-Container.
-- ZIP, JAR, APK, AAB: Inhaltsliste.
-- PDF: `pdftotext`, wenn installiert; andernfalls konservativer Rohtextversuch.
-- Andere Binärformate: lokales Zwischenspeichern mit Pfad und Metadaten für genehmigte lokale Werkzeuge.
+### Sicherheit und Grenzen
 
-Dateien können über den Plus-Button, Drag-and-drop oder die Zwischenablage eingefügt werden. Enter sendet; Umschalt+Enter erzeugt eine neue Zeile. Nach Abschluss springt der Fokus wieder in ein leeres Eingabefeld.
+Standardmäßig gelten projektbezogene Pfadgrenzen und Genehmigungen für Änderungen, Befehle und Netzwerkaktionen. Destruktive Git- und Systembefehle werden blockiert oder in ein sichtbares interaktives Terminal ausgelagert. Die native Anwendungssandbox ist nicht identisch mit der proprietären Codex-Infrastruktur. Eine vollständige Modell- oder Cloud-Parität kann mit einem lokalen 14B-/20B-Modell nicht seriös garantiert werden.
 
-## Projekt- und Chatverlauf
+### Lizenz
 
-Chats werden lokal unter dem LocalCode-Konfigurationsordner gespeichert und nach Projekt gruppiert. Der Verlauf enthält Benutzeraufgaben, Agentenschritte, Ergebnisse und Dateianhänge als Metadaten. Binärdaten der Anhänge werden nicht dauerhaft in den Chatverlauf eingebettet.
+Apache License 2.0. Siehe `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
 
-## Git, MCP, Web und Befehle
+---
 
-- Strukturierte Werkzeugerkennung und direkte Ausführung über `discover_tool`, `tool_inventory` und `run_tool`.
-- Git-Status, Diff, Log, Branches, Commits und weitere freigegebene Git-Operationen.
-- Nicht-interaktive Befehle sowie sichtbare interaktive Terminals für Logins.
-- Websuche und Seitenabruf nach den konfigurierten Netzwerk- und Freigaberegeln.
-- MCP über stdio und Streamable HTTP.
-- Kopieren und Verschieben innerhalb der konfigurierten Pfadregeln.
+## English
 
-## Projektdokumentation
+### Quick start
 
-Der Quellcode enthält:
+1. Extract the ZIP completely into a new directory.
+2. Double-click `BUILD-AND-RUN.bat`.
+3. If Go is missing, the script downloads an official portable Go distribution.
+4. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
 
-- `README.md`
-- `AGENTS.md`
-- `STATE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/SECURITY.md`
-- `docs/MCP-EXAMPLES.md`
-- `docs/RESEARCH-NOTES.md`
+Requirement: a reachable local Ollama installation with at least one suitable model, for example `qwen2.5-coder:14b` or `gpt-oss:20b`.
 
-In ausgewählten Projekten kann LocalCode fehlende `README.md` und `AGENTS.md` anlegen und einen klar markierten Bereich in `STATE.md` automatisch aktuell halten.
+### Language
 
-## Sicherheit
+- `Automatic (Windows)` follows the Windows display language: German on German Windows, English otherwise.
+- German and English can be selected manually under **Settings → General → Language**.
+- The interface, dialogs, approvals, status messages, project templates, and central documentation are maintained in both languages.
+- An automated test enforces identical keys in all language catalogs.
 
-Standardmäßig arbeitet LocalCode mit strikten Genehmigungen und auf das ausgewählte Projekt begrenzten Dateizugriffen. Der native Windows-Modus verwendet anwendungseigene Pfad-, Befehls- und Freigaberegeln. Er ist keine identische Kopie der proprietären Codex-Sandbox.
+### Operation and control
 
-## Abgrenzung
+- Project and chat navigation on the left, work history in the center, output and sources on the right.
+- Resizable split panels for both sidebars and the integrated terminal.
+- Pending approvals are always duplicated in a persistent bottom-center decision bar, including while Settings or another view is open.
+- The project root can be changed through a visible Windows folder dialog or by entering a path directly.
+- Enter sends; Shift+Enter inserts a new line.
+- The prompt is focused again after completion or controlled cancellation.
+- Model and tool calls have time limits and can be stopped in a controlled manner.
 
-LocalCode ist nicht OpenAI Codex und verwendet keine OpenAI-Logos oder proprietären UI-Assets. Eine exakte Funktions- oder Modellparität mit einem gehosteten Frontier-Modell kann mit einem lokalen 14B-/20B-Modell nicht seriös zugesichert werden. Version 4.7.0 erweitert diese Arbeitsabläufe um verifizierte Werkzeugreparatur und deterministische Build-/Android-Deployment-Aktionen; eine Modellparität mit einem gehosteten Frontier-Modell wird weiterhin nicht behauptet.
+### Agent and context
 
-## Lizenz
+The supervisor detects common tasks such as analysis, builds, Android deployment, Git initialization, and web research. Repeated identical questions or tool actions are blocked. Before the context limit is reached, older history is compacted while preserving the task, decisions, files read or changed, commands, failures, open items, and the next planned action.
 
-LocalCode steht unter der **Apache License 2.0**. Der vollständige Lizenztext befindet sich in [`LICENSE`](LICENSE); produktspezifische Hinweise stehen in [`NOTICE`](NOTICE), Hinweise zu externen Komponenten in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+### Tools
 
-Die Apache-2.0-Lizenz erlaubt Nutzung, Veränderung und Verteilung, verlangt dabei aber die Beibehaltung der Lizenz- und Hinweistexte. Für externe Programme, Modelle, MCP-Server und Webinhalte gelten jeweils deren eigene Lizenzen und Nutzungsbedingungen.
+LocalCode searches for tools through:
 
-## Git and Visual Studio
+- project wrappers and project-local binaries
+- configured absolute tool paths
+- `PATH` and relevant environment variables
+- Android SDK directories
+- Visual Studio installations and `vswhere.exe`
+- known Windows installation locations
+- the per-user LocalCode tools directory
 
-The source package includes `.gitignore`, `.gitattributes`, `.editorconfig`,
-`GIT-SETUP.md` and `COMMIT_MESSAGE.txt`. Open the folder in Visual Studio and use
-the included commit message for the first Git commit.
+For supported missing tools, LocalCode shows every searched path, requests installation approval, installs from a documented source, verifies the result, and then retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
 
+### Files and attachments
+
+Up to 20 files per request with a combined 96 MiB limit:
+
+- images through a local vision model
+- text, source code, JSON, XML, CSV, Markdown, and configuration files
+- DOCX, PPTX, XLSX/XLSM
+- ZIP, JAR, APK, and AAB
+- PDF through `pdftotext` when available, otherwise a conservative local fallback
+
+Files can be selected, dragged and dropped, or pasted from the clipboard.
+
+### Git and project state
+
+The source package includes `.gitignore`, `.gitattributes`, `.editorconfig`, `GIT-SETUP.md`, and `COMMIT_MESSAGE.txt`. LocalCode can create missing `README.md` and `AGENTS.md` files in projects and keep a marked section of `STATE.md` current without overwriting manual sections.
+
+### Build and quality
+
+`BUILD.bat` runs:
+
+```text
+go fmt ./...
+go test -count=1 ./...
+go vet ./...
+Windows-amd64 GUI build
+Windows-amd64 diagnostic build
+SHA-256 generation
+```
+
+The release verification report is stored in `TEST-REPORT.txt`.
+
+### Security and limitations
+
+Project path boundaries and approvals for changes, commands, and network actions are enabled by default. Destructive Git and system commands are blocked or moved to a visible interactive terminal. The native application-level sandbox is not identical to proprietary Codex infrastructure. Complete model or cloud-service parity cannot be honestly guaranteed with a local 14B/20B model.
+
+### License
+
+Apache License 2.0. See `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.

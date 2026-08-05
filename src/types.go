@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -108,22 +109,25 @@ type ModelInfo struct {
 }
 
 type Status struct {
-	Version        string      `json:"version"`
-	OllamaOnline   bool        `json:"ollama_online"`
-	OllamaURL      string      `json:"ollama_url,omitempty"`
-	OllamaError    string      `json:"ollama_error,omitempty"`
-	Models         []ModelInfo `json:"models"`
-	SelectedModel  string      `json:"selected_model"`
-	GPU            string      `json:"gpu,omitempty"`
-	RootDir        string      `json:"root_dir"`
-	Project        string      `json:"project,omitempty"`
-	Running        bool        `json:"running"`
-	GitAvailable   bool        `json:"git_available"`
-	MCPCount       int         `json:"mcp_count"`
-	RunID          string      `json:"run_id,omitempty"`
-	RunPhase       string      `json:"run_phase,omitempty"`
-	RunStartedAt   time.Time   `json:"run_started_at,omitempty"`
-	LastProgressAt time.Time   `json:"last_progress_at,omitempty"`
+	Version            string      `json:"version"`
+	OllamaOnline       bool        `json:"ollama_online"`
+	OllamaURL          string      `json:"ollama_url,omitempty"`
+	OllamaError        string      `json:"ollama_error,omitempty"`
+	Models             []ModelInfo `json:"models"`
+	SelectedModel      string      `json:"selected_model"`
+	GPU                string      `json:"gpu,omitempty"`
+	RootDir            string      `json:"root_dir"`
+	Project            string      `json:"project,omitempty"`
+	Running            bool        `json:"running"`
+	GitAvailable       bool        `json:"git_available"`
+	MCPCount           int         `json:"mcp_count"`
+	RunID              string      `json:"run_id,omitempty"`
+	RunPhase           string      `json:"run_phase,omitempty"`
+	RunStartedAt       time.Time   `json:"run_started_at,omitempty"`
+	LastProgressAt     time.Time   `json:"last_progress_at,omitempty"`
+	ResolvedLanguage   string      `json:"resolved_language"`
+	SystemLanguage     string      `json:"system_language"`
+	SupportedLanguages []string    `json:"supported_languages"`
 }
 
 type UIEvent struct {
@@ -182,19 +186,27 @@ type AppState struct {
 	LastSummary string
 	ActionLog   []string
 
-	subscribers map[chan UIEvent]struct{}
+	subscribers         map[chan UIEvent]struct{}
+	threadSaveCh        chan map[string]*ChatThread
+	threadSaveStop      chan struct{}
+	threadSaveDone      chan struct{}
+	threadSaveCloseOnce sync.Once
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 	threads := loadThreads()
 	state := &AppState{
-		Config:      cfg,
-		Ollama:      ollama,
-		Project:     cfg.LastProject,
-		Model:       cfg.LastModel,
-		Threads:     threads,
-		subscribers: make(map[chan UIEvent]struct{}),
+		Config:         cfg,
+		Ollama:         ollama,
+		Project:        cfg.LastProject,
+		Model:          cfg.LastModel,
+		Threads:        threads,
+		subscribers:    make(map[chan UIEvent]struct{}),
+		threadSaveCh:   make(chan map[string]*ChatThread, 1),
+		threadSaveStop: make(chan struct{}),
+		threadSaveDone: make(chan struct{}),
 	}
+	go state.threadSaveWorker()
 	if cfg.LastProject != "" {
 		var latest *ChatThread
 		for _, t := range threads {
@@ -251,7 +263,7 @@ func (s *AppState) AddEvent(ev UIEvent) {
 		subs = append(subs, ch)
 	}
 	s.mu.Unlock()
-	_ = saveThreads(threadSnapshot)
+	s.queueThreadSave(threadSnapshot)
 
 	for _, ch := range subs {
 		select {
@@ -259,6 +271,105 @@ func (s *AppState) AddEvent(ev UIEvent) {
 		default:
 		}
 	}
+}
+
+func (s *AppState) queueThreadSave(snapshot map[string]*ChatThread) {
+	if s.threadSaveCh == nil || s.threadSaveStop == nil {
+		if err := saveThreads(snapshot); err != nil {
+			log.Printf("saving chat threads failed: %v", err)
+		}
+		return
+	}
+	select {
+	case <-s.threadSaveStop:
+		return
+	default:
+	}
+	select {
+	case s.threadSaveCh <- snapshot:
+		return
+	default:
+	}
+	// Replace an older pending snapshot with the newest complete state. The
+	// background writer is the sole file writer, so temporary files never race.
+	select {
+	case <-s.threadSaveCh:
+	default:
+	}
+	select {
+	case <-s.threadSaveStop:
+		return
+	case s.threadSaveCh <- snapshot:
+	default:
+	}
+}
+
+func (s *AppState) threadSaveWorker() {
+	defer close(s.threadSaveDone)
+	for {
+		select {
+		case snapshot := <-s.threadSaveCh:
+			// Briefly coalesce event bursts without delaying the agent or the UI.
+			timer := time.NewTimer(120 * time.Millisecond)
+		coalesce:
+			for {
+				select {
+				case newer := <-s.threadSaveCh:
+					snapshot = newer
+				case <-timer.C:
+					break coalesce
+				case <-s.threadSaveStop:
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					for {
+						select {
+						case newer := <-s.threadSaveCh:
+							snapshot = newer
+						default:
+							if err := saveThreads(snapshot); err != nil {
+								log.Printf("saving chat threads failed during shutdown: %v", err)
+							}
+							return
+						}
+					}
+				}
+			}
+			if err := saveThreads(snapshot); err != nil {
+				log.Printf("saving chat threads failed: %v", err)
+			}
+		case <-s.threadSaveStop:
+			var latest map[string]*ChatThread
+			for {
+				select {
+				case snapshot := <-s.threadSaveCh:
+					latest = snapshot
+				default:
+					if latest != nil {
+						if err := saveThreads(latest); err != nil {
+							log.Printf("saving chat threads failed during shutdown: %v", err)
+						}
+					}
+					return
+				}
+			}
+		}
+	}
+}
+
+// Close flushes the newest queued chat snapshot and stops the persistence
+// worker. It is safe to call more than once.
+func (s *AppState) Close() {
+	if s == nil || s.threadSaveStop == nil || s.threadSaveDone == nil {
+		return
+	}
+	s.threadSaveCloseOnce.Do(func() {
+		close(s.threadSaveStop)
+		<-s.threadSaveDone
+	})
 }
 
 func (s *AppState) Subscribe() chan UIEvent {

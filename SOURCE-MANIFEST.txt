@@ -19,6 +19,7 @@ RELEASE-NOTES-4.4.0.md
 RELEASE-NOTES-4.5.0.md
 RELEASE-NOTES-4.6.0.md
 RELEASE-NOTES-4.7.0.md
+RELEASE-NOTES-4.8.0.md
 RESET-PROJECT-ROOT.bat
 SOURCE-MANIFEST.txt
 START.bat
@@ -26,6 +27,8 @@ STATE.md
 TEST-REPORT.txt
 THIRD_PARTY_NOTICES.md
 VERSION.txt
+dist/LocalCode-Debug.exe
+dist/LocalCode.exe
 docs/ARCHITECTURE.md
 docs/MCP-EXAMPLES.md
 docs/RESEARCH-NOTES.md
@@ -43,6 +46,8 @@ src/core_test.go
 src/git_tools.go
 src/go.mod
 src/history.go
+src/locale.go
+src/locale_other.go
 src/main.go
 src/mcp.go
 src/ollama.go
@@ -50,8 +55,10 @@ src/path_tools.go
 src/platform_other.go
 src/platform_windows.go
 src/project_automation.go
+src/quality_test.go
 src/server.go
 src/state_doc.go
+src/static/i18n.js
 src/static/index.html
 src/tool_install.go
 src/tool_registry.go

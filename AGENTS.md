@@ -1,14 +1,27 @@
-# LocalCode Repository Instructions
-- Externe Programme dürfen erst nach `discover_tool`/`run_tool` oder gleichwertiger absoluter Pfadauflösung als fehlend bezeichnet werden.
-- Werkzeugfehler müssen mit Pfad, Exitcode, STDOUT und STDERR diagnostiziert werden; identische Aktionen und Rückfragen dürfen nicht ohne neue Evidenz wiederholt werden.
-- Bei unbekannter Bedienung ist zuerst offizielle Herstellerdokumentation zu recherchieren; Drittquellen sind nur ergänzend zulässig.
+# LocalCode repository instructions / Repository-Regeln
 
-- Lies `README.md`, `STATE.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md` vor Änderungen.
+## Deutsch
+
+- Lies vor Änderungen `README.md`, `STATE.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`.
 - Halte `STATE.md` nach jeder abgeschlossenen Änderung vollständig aktuell.
-- Verwende ausschließlich die Go-Standardbibliothek, sofern eine neue Abhängigkeit nicht ausdrücklich begründet und dokumentiert wird.
-- Führe vor Abschluss `go fmt ./...`, `go test ./...`, `go vet ./...` und einen Windows-amd64-Cross-Build aus.
-- Erhalte die Ein-Datei-Weboberfläche unter `src/static/index.html`, sofern keine bewusste Build-Pipeline eingeführt wird.
-- Speichere keine Passwörter, Tokens oder privaten Schlüssel in Konfigurationsdateien. Nutze Umgebungsvariablenreferenzen.
-- Änderungen an Datei-, Shell-, Git-, Netzwerk- oder MCP-Zugriff müssen Genehmigungen, Sandboxgrenzen, Timeouts und Protokollierung berücksichtigen.
-- Destruktive Git- und Systembefehle bleiben blockiert oder müssen in ein sichtbares, interaktives Terminal ausgelagert werden.
-- Behaupte keine Codex-Parität ohne nachprüfbare Tests. Dokumentiere Grenzen offen.
+- **Sprachpflege ist verpflichtend:** Jede neue oder geänderte sichtbare Zeichenfolge muss gleichzeitig auf Deutsch und Englisch gepflegt werden. Alle Sprachkataloge müssen identische Schlüssel besitzen. Neue Sprachen müssen in Tests, Dokumentation, Systemerkennung und manueller Auswahl vollständig ergänzt werden.
+- Standardverhalten: Windows-Anzeigesprache verwenden; Deutsch bei deutschem Windows, sonst Englisch. Die manuelle Auswahl muss diese Automatik überschreiben können.
+- Bezeichne externe Programme erst nach vollständiger Werkzeugerkennung als fehlend. Dokumentiere Pfad, Exitcode, STDOUT, STDERR und durchsuchte Orte.
+- Recherchiere bei unbekannter Werkzeugbedienung zuerst offizielle Herstellerdokumentation.
+- Führe vor Abschluss `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript-Syntaxprüfungen und Windows-amd64-Builds aus.
+- Änderungen an Datei-, Shell-, Git-, Netzwerk- oder MCP-Zugriff müssen Genehmigungen, Sandboxgrenzen, Timeouts, Abbruch und Protokollierung berücksichtigen.
+- Destruktive Git- und Systembefehle bleiben blockiert oder werden in ein sichtbares interaktives Terminal ausgelagert.
+- Behaupte keine vollständige Codex-Parität ohne nachprüfbare Tests; dokumentiere Grenzen offen.
+
+## English
+
+- Read `README.md`, `STATE.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` before changing code.
+- Keep `STATE.md` fully current after every completed change.
+- **Localization maintenance is mandatory:** every new or changed user-visible string must be maintained in German and English at the same time. All language catalogs must contain identical keys. New languages must be added completely to tests, documentation, system detection, and manual selection.
+- Default behavior: follow the Windows display language; use German on German Windows and English otherwise. Manual selection must override automatic detection.
+- Do not declare an external tool missing before full tool discovery. Record path, exit code, STDOUT, STDERR, and searched locations.
+- When tool usage is unknown, research official vendor documentation first.
+- Before completion, run `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript syntax checks, and Windows-amd64 builds.
+- Changes to file, shell, Git, network, or MCP access must preserve approvals, sandbox boundaries, timeouts, cancellation, and logging.
+- Destructive Git and system commands remain blocked or are delegated to a visible interactive terminal.
+- Do not claim full Codex parity without verifiable tests; document limitations honestly.

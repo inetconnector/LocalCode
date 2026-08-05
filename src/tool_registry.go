@@ -351,7 +351,7 @@ func scriptName(name string) string {
 
 func discoverTool(project, name string, cfg Config, withVersion bool) ToolInfo {
 	profile := profileForTool(name)
-	info := ToolInfo{Name: profile.Name, DisplayName: profile.DisplayName, DocsURL: profile.DocsURL, InstallHint: profile.InstallHint, InstallSupported: toolInstallSupported(profile.Name), InstallPreview: toolInstallPreview(profile.Name)}
+	info := ToolInfo{Name: profile.Name, DisplayName: profile.DisplayName, DocsURL: profile.DocsURL, InstallHint: localizedToolInstallHint(cfg, profile.InstallHint), InstallSupported: toolInstallSupported(profile.Name), InstallPreview: toolInstallPreview(profile.Name, cfg)}
 	candidates := toolCandidatePaths(project, profile, cfg)
 	for _, c := range candidates {
 		info.SearchedPath = append(info.SearchedPath, c.path)
@@ -547,18 +547,18 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 	info := discoverTool(project, name, cfg, false)
 	if !info.Available {
 		var b strings.Builder
-		fmt.Fprintf(&b, "%s wurde nicht gefunden.\n", info.DisplayName)
+		fmt.Fprintf(&b, localizeConfigText(cfg, "%s wurde nicht gefunden.\n", "%s was not found.\n"), info.DisplayName)
 		if len(info.SearchedPath) > 0 {
-			b.WriteString("Durchsuchte Pfade:\n")
+			b.WriteString(localizeConfigText(cfg, "Durchsuchte Pfade:\n", "Searched paths:\n"))
 			for _, p := range info.SearchedPath {
 				b.WriteString("- " + p + "\n")
 			}
 		}
 		if info.InstallHint != "" {
-			b.WriteString("Installationshinweis: " + info.InstallHint + "\n")
+			b.WriteString(localizeConfigText(cfg, "Installationshinweis: ", "Installation guidance: ") + info.InstallHint + "\n")
 		}
 		if info.DocsURL != "" {
-			b.WriteString("Offizielle Dokumentation: " + info.DocsURL + "\n")
+			b.WriteString(localizeConfigText(cfg, "Offizielle Dokumentation: ", "Official documentation: ") + info.DocsURL + "\n")
 		}
 		if cfg.AutoResearchToolHelp && cfg.NetworkEnabled && cfg.WebSearchProvider != "disabled" {
 			researchCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -567,7 +567,7 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 				query = "site:" + u.Hostname() + " " + query
 			}
 			if results, searchErr := webSearch(researchCtx, cfg, query, 3); searchErr == nil && len(results) > 0 {
-				b.WriteString("\nAutomatisch recherchierte offizielle Hilfe:\n" + formatWebResults(results))
+				b.WriteString(localizeConfigText(cfg, "\nAutomatisch recherchierte offizielle Hilfe:\n", "\nAutomatically researched official guidance:\n") + formatWebResults(results))
 			}
 			cancel()
 		}
@@ -582,7 +582,7 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 		if res.Diagnostic != "" {
 			res.Diagnostic += "\n"
 		}
-		res.Diagnostic += "Offizielle Dokumentation: " + info.DocsURL
+		res.Diagnostic += localizeConfigText(cfg, "Offizielle Dokumentation: ", "Official documentation: ") + info.DocsURL
 		if cfg.AutoResearchToolHelp && cfg.NetworkEnabled && cfg.WebSearchProvider != "disabled" {
 			researchCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			query := info.DisplayName + " official documentation " + strings.Join(args, " ")

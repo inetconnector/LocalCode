@@ -1,26 +1,33 @@
-# Security Model
+# Security model / Sicherheitsmodell
 
-LocalCode uses layered controls:
+## Deutsch
 
-- configurable approval modes
-- project/workspace/unrestricted path policy
-- additional explicit allowed roots
-- command regex denylist
-- hard Git guards for destructive history/worktree operations
-- network enable switch
-- SSRF checks for web fetch
-- MCP server allowlist through settings
-- explicit approval for MCP tool calls
-- timeouts and response size limits
-- local file backups before edits
+LocalCode kombiniert:
 
-## Approval modes
+- Genehmigungsmodi für Änderungen, Befehle und Netzwerkaktionen
+- Projekt-, Workspace- und unbeschränkte Pfadmodi
+- zusätzliche freigegebene Verzeichniswurzeln
+- blockierte Befehlsmuster und harte Schutzregeln für destruktive Git-Aktionen
+- Zeitlimits und kontrollierten Prozessbaum-Abbruch
+- einen Netzwerk-Hauptschalter
+- Schutz vor Abrufen lokaler und privater Netzwerkadressen
+- explizite MCP-Konfiguration
+- keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen
 
-- `strict`: network requests and all changes/commands require approval.
-- `balanced`: reads and web research can run; mutations, commands, Git mutations and MCP tool calls require approval.
-- `auto`: project file edits and recognized read-only commands can run; external/risky actions still require approval.
-- `dangerous`: no approval prompts. Not recommended.
+Hintergrundbefehle werden unter Windows ohne sichtbare Konsolenfenster gestartet. Interaktive Logins werden bewusst in einem sichtbaren Terminal geöffnet. Die Schutzschicht ist anwendungsbasiert und keine identische Betriebssystem-Sandbox der proprietären Codex-Infrastruktur.
 
-## Not an OS sandbox
+## English
 
-The native Windows backend does not isolate commands in a separate Windows sandbox token or container. Path checks apply to built-in file tools, but arbitrary shell commands can access whatever the user account can access. Use strict approval, a non-administrator account and trusted repositories. An OS-enforced WSL2/bubblewrap or Windows sandbox backend remains future work.
+LocalCode combines:
+
+- approval modes for changes, commands, and network actions
+- project, workspace, and unrestricted path modes
+- additional explicitly allowed roots
+- blocked command patterns and hard guards for destructive Git operations
+- time limits and controlled process-tree termination
+- a global network switch
+- protection against fetching loopback and private-network addresses
+- explicit MCP configuration
+- no normal settings storage for passwords or tokens
+
+Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system sandbox to proprietary Codex infrastructure.

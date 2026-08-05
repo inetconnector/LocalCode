@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -63,10 +64,61 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/tools/diagnose", s.handleToolDiagnose)
 }
 
+func loopbackRequestHost(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	host := value
+	if parsedHost, _, err := net.SplitHostPort(value); err == nil {
+		host = parsedHost
+	} else if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		host = strings.Trim(value, "[]")
+	} else if i := strings.LastIndex(value, ":"); i > 0 && !strings.Contains(value[:i], ":") {
+		host = value[:i]
+	}
+	host = strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func trustedBrowserOrigin(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "null" {
+		return value == ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+	return loopbackRequestHost(parsed.Host)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), payment=(), usb=()")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+	if !loopbackRequestHost(r.Host) {
+		http.Error(w, "forbidden host", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		if origin := r.Header.Get("Origin"); origin != "" && !trustedBrowserOrigin(origin) {
+			http.Error(w, "forbidden origin", http.StatusForbidden)
+			return
+		}
+		fetchSite := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")))
+		if fetchSite != "" && fetchSite != "same-origin" && fetchSite != "none" {
+			http.Error(w, "forbidden fetch site", http.StatusForbidden)
+			return
+		}
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -89,21 +141,24 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	models, err := s.state.Ollama.Tags(ctx)
 	s.state.mu.RLock()
 	st := Status{
-		Version:        version,
-		OllamaOnline:   err == nil,
-		OllamaURL:      s.state.Ollama.BaseURL,
-		Models:         models,
-		SelectedModel:  s.state.Model,
-		GPU:            detectGPU(),
-		RootDir:        s.state.Config.RootProjectDir,
-		Project:        s.state.Project,
-		Running:        s.state.Running,
-		GitAvailable:   gitAvailable(s.state.Project, s.state.Config),
-		MCPCount:       enabledMCPCount(s.state.Config),
-		RunID:          s.state.RunID,
-		RunPhase:       s.state.RunPhase,
-		RunStartedAt:   s.state.RunStartedAt,
-		LastProgressAt: s.state.LastProgressAt,
+		Version:            version,
+		OllamaOnline:       err == nil,
+		OllamaURL:          s.state.Ollama.BaseURL,
+		Models:             models,
+		SelectedModel:      s.state.Model,
+		GPU:                detectGPU(),
+		RootDir:            s.state.Config.RootProjectDir,
+		Project:            s.state.Project,
+		Running:            s.state.Running,
+		GitAvailable:       gitAvailable(s.state.Project, s.state.Config),
+		MCPCount:           enabledMCPCount(s.state.Config),
+		RunID:              s.state.RunID,
+		RunPhase:           s.state.RunPhase,
+		RunStartedAt:       s.state.RunStartedAt,
+		LastProgressAt:     s.state.LastProgressAt,
+		ResolvedLanguage:   resolvedLanguage(s.state.Config),
+		SystemLanguage:     detectSystemLanguage(),
+		SupportedLanguages: append([]string(nil), supportedLanguages...),
 	}
 	s.state.mu.RUnlock()
 	if err != nil {
@@ -167,16 +222,27 @@ func (s *Server) handleSelectProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "project directory not found", 400)
 		return
 	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+	cfg.LastProject = full
+	if err := ensureProjectDocs(full, cfg); err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := saveConfig(cfg); err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektauswahl konnte nicht gespeichert werden: ", "Project selection could not be saved: ")+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	s.state.selectProjectThread(full)
 	s.state.mu.Lock()
-	s.state.Config.LastProject = full
-	cfg := s.state.Config
+	s.state.Config = cfg
 	s.state.mu.Unlock()
-	_ = saveConfig(cfg)
-	_ = ensureProjectDocs(full, cfg)
-	s.state.UpdateProjectState("Projekt ausgewählt")
+	s.state.UpdateProjectState(localizeConfigText(cfg, "Projekt ausgewählt", "Project selected"))
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "project": full})
+	if err := writeJSON(w, map[string]any{"ok": true, "project": full}); err != nil {
+		log.Printf("writing project selection response failed: %v", err)
+	}
 }
 
 func (s *Server) applyRoot(root string) (string, error) {
@@ -238,13 +304,14 @@ func (s *Server) handleBrowseRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RLock()
 	initial := s.state.Config.RootProjectDir
+	language := resolvedLanguage(s.state.Config)
 	running := s.state.Running
 	s.state.mu.RUnlock()
 	if running {
 		http.Error(w, "Agent läuft gerade", 409)
 		return
 	}
-	selected, err := selectDirectory(initial)
+	selected, err := selectDirectory(initial, language)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -462,6 +529,7 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	_ = writeJSON(w, map[string]any{"ok": true})
 	go func() {
 		time.Sleep(300 * time.Millisecond)
+		s.state.Close()
 		os.Exit(0)
 	}()
 }
@@ -549,6 +617,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		incoming.LastModel = current.LastModel
 		incoming.Port = current.Port
 		cfg := normalizeConfig(incoming)
+		s.state.mu.Unlock()
+		if err := saveConfig(cfg); err != nil {
+			http.Error(w, localizeConfigText(current, "Einstellungen konnten nicht gespeichert werden: ", "Settings could not be saved: ")+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.state.mu.Lock()
 		s.state.Config = cfg
 		if cfg.OllamaURL != "" {
 			s.state.Ollama.BaseURL = cfg.OllamaURL
@@ -557,11 +631,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		s.state.Ollama.ContextLength = cfg.ContextLength
 		s.state.mu.Unlock()
-		if err := saveConfig(cfg); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		s.state.UpdateProjectState("Einstellungen geändert")
+		s.state.UpdateProjectState(localizeConfigText(cfg, "Einstellungen geändert", "Settings changed"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = writeJSON(w, map[string]any{"ok": true, "settings": cfg})
 	default:
@@ -692,7 +762,7 @@ func (s *Server) handleOpenProject(w http.ResponseWriter, r *http.Request) {
 	if target == "" {
 		target = cfg.DefaultOpenTarget
 	}
-	if err := openProjectTarget(project, target); err != nil {
+	if err := openProjectTarget(project, target, cfg); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}

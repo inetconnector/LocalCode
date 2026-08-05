@@ -17,20 +17,20 @@ func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, 
 	installAction := AgentAction{
 		Action:  "install_tool",
 		Tool:    missing.Info.Name,
-		Message: fmt.Sprintf("%s wurde auf diesem Computer nicht gefunden. Soll LocalCode das Werkzeug jetzt installieren und den ursprünglichen Vorgang danach automatisch fortsetzen?", missing.Info.DisplayName),
+		Message: localizeConfigText(cfg, fmt.Sprintf("%s wurde auf diesem Computer nicht gefunden. Soll LocalCode das Werkzeug jetzt installieren und den ursprünglichen Vorgang danach automatisch fortsetzen?", missing.Info.DisplayName), fmt.Sprintf("%s was not found on this computer. Should LocalCode install the tool now and automatically continue the original operation afterwards?", missing.Info.DisplayName)),
 	}
-	preview := toolInstallPreview(missing.Info.Name)
+	preview := toolInstallPreview(missing.Info.Name, cfg)
 	if strings.TrimSpace(missing.Detail) != "" {
-		preview += "\n\nBisherige Suche:\n" + truncateText(missing.Detail, 18000)
+		preview += localizeConfigText(cfg, "\n\nBisherige Suche:\n", "\n\nPrevious search:\n") + truncateText(missing.Detail, 18000)
 	}
 	approved, approvalErr := s.requestApprovalWithPreview(ctx, installAction, preview)
 	if approvalErr != nil {
 		return cfg, "", false, approvalErr
 	}
 	if !approved {
-		return cfg, "Installation wurde vom Nutzer abgelehnt.", false, nil
+		return cfg, localizeConfigText(cfg, "Installation wurde vom Nutzer abgelehnt.", "Installation was declined by the user."), false, nil
 	}
-	s.AddEvent(UIEvent{Type: "action_running", Message: "Installiere " + missing.Info.DisplayName, Action: "install_tool", Path: missing.Info.Name, Preview: preview})
+	s.AddEvent(UIEvent{Type: "action_running", Message: localizeConfigText(cfg, "Installiere ", "Installing ") + missing.Info.DisplayName, Action: "install_tool", Path: missing.Info.Name, Preview: preview})
 	installTimeout := 20 * time.Minute
 	if profileForTool(missing.Info.Name).InstallKind == "vs-build-tools" {
 		installTimeout = 90 * time.Minute
@@ -43,8 +43,8 @@ func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, 
 		if detail != "" {
 			detail += "\n\n"
 		}
-		detail += "ERROR: " + installErr.Error()
-		s.AddEvent(UIEvent{Type: "tool_error", Message: missing.Info.DisplayName + " konnte nicht installiert werden", Detail: detail, Action: "install_tool", Path: missing.Info.Name})
+		detail += localizeConfigText(cfg, "FEHLER: ", "ERROR: ") + installErr.Error()
+		s.AddEvent(UIEvent{Type: "tool_error", Message: localizeConfigText(cfg, missing.Info.DisplayName+" konnte nicht installiert werden", "Could not install "+missing.Info.DisplayName), Detail: detail, Action: "install_tool", Path: missing.Info.Name})
 		return cfg, detail, false, installErr
 	}
 	newCfg = normalizeConfig(newCfg)
@@ -56,17 +56,17 @@ func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, 
 	}
 	verified := discoverTool(project, missing.Info.Name, newCfg, true)
 	if !verified.Available {
-		detail := installOutput + "\n\nInstallation meldete Erfolg, aber das Werkzeug wurde bei der anschließenden Prüfung nicht gefunden."
-		s.AddEvent(UIEvent{Type: "tool_error", Message: "Installation konnte nicht verifiziert werden", Detail: detail, Action: "install_tool", Path: missing.Info.Name})
+		detail := installOutput + localizeConfigText(newCfg, "\n\nInstallation meldete Erfolg, aber das Werkzeug wurde bei der anschließenden Prüfung nicht gefunden.", "\n\nThe installer reported success, but the tool was not found during the follow-up verification.")
+		s.AddEvent(UIEvent{Type: "tool_error", Message: localizeConfigText(newCfg, "Installation konnte nicht verifiziert werden", "Installation could not be verified"), Detail: detail, Action: "install_tool", Path: missing.Info.Name})
 		return cfg, detail, false, errors.New("installed tool could not be rediscovered")
 	}
-	installDetail := installOutput + "\n\nVerifiziert: " + verified.Path
+	installDetail := installOutput + localizeConfigText(newCfg, "\n\nVerifiziert: ", "\n\nVerified: ") + verified.Path
 	if verified.Version != "" {
 		installDetail += "\nVersion: " + verified.Version
 	}
-	s.AddEvent(UIEvent{Type: "action_done", Message: missing.Info.DisplayName + " installiert", Detail: truncateText(installDetail, 30000), Action: "install_tool", Path: verified.Path})
+	s.AddEvent(UIEvent{Type: "action_done", Message: localizeConfigText(newCfg, missing.Info.DisplayName+" installiert", missing.Info.DisplayName+" installed"), Detail: truncateText(installDetail, 30000), Action: "install_tool", Path: verified.Path})
 	s.recordAction("install_tool: " + missing.Info.Name)
-	s.UpdateProjectState("Werkzeug " + missing.Info.Name + " installiert")
+	s.UpdateProjectState(localizeConfigText(newCfg, "Werkzeug "+missing.Info.Name+" installiert", "Tool "+missing.Info.Name+" installed"))
 	return newCfg, installDetail, true, nil
 }
 
@@ -103,9 +103,9 @@ func missingToolForAction(project string, cfg Config, a AgentAction) *ToolNotFou
 		return nil
 	}
 	var detail strings.Builder
-	fmt.Fprintf(&detail, "%s wurde vor der genehmigten Aktion nicht gefunden.\n", info.DisplayName)
+	fmt.Fprintf(&detail, localizeConfigText(cfg, "%s wurde vor der genehmigten Aktion nicht gefunden.\n", "%s was not found before the approved action.\n"), info.DisplayName)
 	if len(info.SearchedPath) > 0 {
-		detail.WriteString("Durchsuchte Pfade:\n")
+		detail.WriteString(localizeConfigText(cfg, "Durchsuchte Pfade:\n", "Searched paths:\n"))
 		for _, candidate := range info.SearchedPath {
 			detail.WriteString("- " + candidate + "\n")
 		}

@@ -36,21 +36,21 @@ func toolInstallSupported(name string) bool {
 	return runtime.GOOS == "windows" && strings.TrimSpace(p.InstallKind) != ""
 }
 
-func toolInstallPreview(name string) string {
+func toolInstallPreview(name string, cfg Config) string {
 	p := profileForTool(name)
 	switch p.InstallKind {
 	case "android-platform-tools":
-		return "Installiert die offiziellen Android SDK Platform-Tools (adb/fastboot) benutzerlokal unter LocalCode\\tools. Keine Administratorrechte erforderlich. Mit der Genehmigung bestätigst du, dass du die auf der offiziellen Android-Downloadseite angezeigten SDK-Lizenzbedingungen akzeptierst."
+		return localizeConfigText(cfg, "Installiert die offiziellen Android SDK Platform-Tools (adb/fastboot) benutzerlokal unter LocalCode\\tools. Keine Administratorrechte erforderlich. Mit der Genehmigung bestätigst du, dass du die auf der offiziellen Android-Downloadseite angezeigten SDK-Lizenzbedingungen akzeptierst.", "Installs the official Android SDK Platform-Tools (adb/fastboot) for the current user under LocalCode\\tools. Administrator rights are not required. By approving, you confirm acceptance of the SDK license terms shown on the official Android download page.")
 	case "mingit":
-		return "Installiert die offizielle portable MinGit-Ausgabe benutzerlokal unter LocalCode\\tools. Falls verfügbar, kann alternativ Git for Windows über WinGet installiert werden."
+		return localizeConfigText(cfg, "Installiert die offizielle portable MinGit-Ausgabe benutzerlokal unter LocalCode\\tools. Falls verfügbar, kann alternativ Git for Windows über WinGet installiert werden.", "Installs the official portable MinGit distribution for the current user under LocalCode\\tools. If available, Git for Windows can be installed through WinGet as a fallback.")
 	case "dotnet-sdk":
-		return "Installiert das passende .NET SDK benutzerlokal mit dem offiziellen dotnet-install.ps1. Wenn global.json vorhanden ist, wird dessen SDK-Version verwendet; andernfalls der aktuelle LTS-Kanal."
+		return localizeConfigText(cfg, "Installiert das passende .NET SDK benutzerlokal mit dem offiziellen dotnet-install.ps1. Wenn global.json vorhanden ist, wird dessen SDK-Version verwendet; andernfalls der aktuelle LTS-Kanal.", "Installs the appropriate .NET SDK for the current user with the official dotnet-install.ps1 script. If global.json exists, its SDK version is used; otherwise the current LTS channel is installed.")
 	case "vs-build-tools":
-		return "Installiert die offiziellen Visual Studio Build Tools mit dem Workload Microsoft.VisualStudio.Workload.MSBuildTools. Die Installation benötigt Administratorrechte, kann mehrere Gigabyte herunterladen und zeigt gegebenenfalls eine UAC-Abfrage."
+		return localizeConfigText(cfg, "Installiert die offiziellen Visual Studio Build Tools mit dem Workload Microsoft.VisualStudio.Workload.MSBuildTools. Die Installation benötigt Administratorrechte, kann mehrere Gigabyte herunterladen und zeigt gegebenenfalls eine UAC-Abfrage.", "Installs the official Visual Studio Build Tools with the Microsoft.VisualStudio.Workload.MSBuildTools workload. Installation requires administrator rights, may download several gigabytes, and can display a UAC prompt.")
 	case "winget":
-		return fmt.Sprintf("Installiert %s über Windows Package Manager (Paket %s). Windows kann dafür eine UAC-Bestätigung anzeigen.", p.DisplayName, p.WingetID)
+		return localizeConfigText(cfg, fmt.Sprintf("Installiert %s über Windows Package Manager (Paket %s). Windows kann dafür eine UAC-Bestätigung anzeigen.", p.DisplayName, p.WingetID), fmt.Sprintf("Installs %s through Windows Package Manager (package %s). Windows may display a UAC confirmation.", p.DisplayName, p.WingetID))
 	default:
-		return "Für dieses Werkzeug ist keine sichere automatische Installation hinterlegt."
+		return localizeConfigText(cfg, "Für dieses Werkzeug ist keine sichere automatische Installation hinterlegt.", "No safe automatic installer is configured for this tool.")
 	}
 }
 
@@ -77,14 +77,14 @@ func installKnownTool(ctx context.Context, project, name string, cfg Config) (Co
 		if _, err := os.Stat(fastboot); err == nil {
 			cfg.ToolOverrides["fastboot"] = fastboot
 		}
-		return cfg, out + "\nADB-Pfad: " + adb, nil
+		return cfg, out + localizeConfigText(cfg, "\nADB-Pfad: ", "\nADB path: ") + adb, nil
 	case "mingit":
 		git, out, err := installPortableGit(ctx)
 		if err != nil {
 			// WinGet is a useful fallback when GitHub download is temporarily unavailable.
 			if profile.WingetID != "" {
 				wingetOut, wingetErr := installWithWinget(ctx, profile.WingetID)
-				out += "\n\nPortable Installation fehlgeschlagen; WinGet-Fallback:\n" + wingetOut
+				out += localizeConfigText(cfg, "\n\nPortable Installation fehlgeschlagen; WinGet-Fallback:\n", "\n\nPortable installation failed; WinGet fallback:\n") + wingetOut
 				if wingetErr == nil {
 					return cfg, out, nil
 				}
@@ -93,21 +93,21 @@ func installKnownTool(ctx context.Context, project, name string, cfg Config) (Co
 			return cfg, out, err
 		}
 		cfg.ToolOverrides["git"] = git
-		return cfg, out + "\nGit-Pfad: " + git, nil
+		return cfg, out + localizeConfigText(cfg, "\nGit-Pfad: ", "\nGit path: ") + git, nil
 	case "dotnet-sdk":
 		dotnet, out, err := installDotnetSDK(ctx, project)
 		if err != nil {
 			return cfg, out, err
 		}
 		cfg.ToolOverrides["dotnet"] = dotnet
-		return cfg, out + "\n.NET-Pfad: " + dotnet, nil
+		return cfg, out + localizeConfigText(cfg, "\n.NET-Pfad: ", "\n.NET path: ") + dotnet, nil
 	case "vs-build-tools":
 		msbuild, out, err := installVisualStudioBuildTools(ctx)
 		if err != nil {
 			return cfg, out, err
 		}
 		cfg.ToolOverrides["msbuild"] = msbuild
-		return cfg, out + "\nMSBuild-Pfad: " + msbuild, nil
+		return cfg, out + localizeConfigText(cfg, "\nMSBuild-Pfad: ", "\nMSBuild path: ") + msbuild, nil
 	case "winget":
 		if profile.WingetID == "" {
 			return cfg, "", errors.New("winget package id is missing")
@@ -117,7 +117,7 @@ func installKnownTool(ctx context.Context, project, name string, cfg Config) (Co
 			info := discoverTool(project, profile.Name, cfg, false)
 			if info.Available {
 				cfg.ToolOverrides[profile.Name] = info.Path
-				out += "\nVerifizierter Pfad: " + info.Path
+				out += localizeConfigText(cfg, "\nVerifizierter Pfad: ", "\nVerified path: ") + info.Path
 			}
 		}
 		return cfg, out, err
@@ -138,7 +138,7 @@ func downloadToFile(ctx context.Context, rawURL, target string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/4.6 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/4.8 tool-installer")
 	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -254,7 +254,7 @@ func latestMinGitURL(ctx context.Context) (string, string, error) {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "LocalCode/4.6 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/4.8 tool-installer")
 	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", err

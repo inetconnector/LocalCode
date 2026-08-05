@@ -61,9 +61,9 @@ func defaultConfig() Config {
 		UITheme: "dark", UIAccent: "#2f81f7", UIBackground: "#171717", UIForeground: "#f3f4f6",
 		UIFont: "Segoe UI", CodeFont: "Cascadia Mono", UILeftWidth: 296, UIRightWidth: 340,
 		UITerminalHeight: 260, ShowBottomBar: true, TerminalDock: "bottom", TerminalShell: "powershell",
-		AgentEnvironment: "windows-native", DefaultOpenTarget: "vscode", Language: "de",
+		AgentEnvironment: "windows-native", DefaultOpenTarget: "vscode", Language: "auto",
 		ResponseSpeed: "balanced", ProfileName: "Local user", AvatarInitials: "LC",
-		PreferredLanguage: "Deutsch", VoiceEnabled: false, PetEnabled: false, PetName: "Codey",
+		PreferredLanguage: "auto", VoiceEnabled: false, PetEnabled: false, PetName: "Codey",
 		Shortcuts: map[string]string{
 			"new_chat": "Ctrl+N", "settings": "Ctrl+,", "terminal": "Ctrl+`", "send": "Enter",
 			"newline": "Shift+Enter", "toggle_left": "Ctrl+Shift+L", "toggle_right": "Ctrl+Shift+R",
@@ -195,8 +195,8 @@ func suspiciousProjectRoot(root string) bool {
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 4 {
-		cfg.SchemaVersion = 4
+	if cfg.SchemaVersion < 5 {
+		cfg.SchemaVersion = 5
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -331,9 +331,14 @@ func normalizeConfig(cfg Config) Config {
 	default:
 		cfg.DefaultOpenTarget = d.DefaultOpenTarget
 	}
-	if cfg.Language == "" {
-		cfg.Language = d.Language
+	if oldSchema < 5 && strings.EqualFold(strings.TrimSpace(cfg.Language), "de") && strings.EqualFold(strings.TrimSpace(cfg.PreferredLanguage), "Deutsch") {
+		// Previous releases hard-coded German as the default. Migrate that
+		// implicit default to Windows language detection while preserving any
+		// explicit English or custom response-language selection.
+		cfg.Language = "auto"
+		cfg.PreferredLanguage = "auto"
 	}
+	cfg.Language = normalizeLanguageSetting(cfg.Language)
 	if cfg.ResponseSpeed == "" {
 		cfg.ResponseSpeed = d.ResponseSpeed
 	}
@@ -467,7 +472,43 @@ func saveConfig(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "config-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// Windows does not replace an existing file with os.Rename. Keep a
+	// recoverable backup while replacing the configuration atomically enough
+	// for a local desktop application.
+	backup := path + ".bak"
+	_ = os.Remove(backup)
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Rename(path, backup); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Rename(backup, path)
+		return err
+	}
+	_ = os.Remove(backup)
+	return nil
 }
 
 func logPath() string {

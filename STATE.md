@@ -1,92 +1,69 @@
-# LocalCode Entwicklungsstand
+# LocalCode project state / Projektstatus
 
-**Version:** 4.7.0  
-**Status:** Build-, test- und paketierfähig  
-**Zielplattform:** Windows x64  
-**Backend:** Go, lokaler HTTP-Server, Ollama  
-**Frontend:** eingebettetes HTML/CSS/JavaScript im Edge-/Chrome-App-Modus
+**Version:** 4.8.0  
+**License / Lizenz:** Apache-2.0  
+**Status:** release candidate after code review and automated verification
 
-## Agent Supervisor und Kontextverwaltung in 4.7.0
+## Deutsch
 
-- Aufgabenklassifikation für Analyse, Build, Android-Deployment, Webrecherche und Git-Initialisierung.
-- Read-only-Policy für Analyseaufgaben; fehlendes Git ist kein Blocker.
-- Direkt ausführbare Fortsetzungen für bestätigte Rückfragen, einschließlich verifiziertem `git init`.
-- Wiederholungs- und Driftkontrolle mit deterministischem Abschlussbericht.
-- Nicht leere Webquery an der Werkzeuggrenze und Bing-RSS-Fallback.
-- Kontextkomprimierung standardmäßig bei 68 Prozent; aktuelle 12 Nachrichten bleiben unverändert.
-- Modellgestützte strukturierte Verdichtung mit deterministischem Fallback.
-- UI-Einstellungen und sichtbares Ereignis für jede Komprimierung.
-- Regressionstests für Analyse ohne Mutation, Git-Fortsetzung und Langkontext-Fortsetzung.
+### Abgeschlossene Änderungen in 4.8.0
 
-## Werkzeugreparatur und deterministische Abläufe in 4.7.0
+- Vollständige UI-Sprachumschaltung Deutsch/Englisch.
+- Automatische Sprache nach Windows-Anzeigesprache: Deutsch bei deutschem Windows, sonst Englisch.
+- Manuelle Sprachwahl und bevorzugte Antwortsprache.
+- Identische Schlüssel in allen Sprachkatalogen werden automatisiert geprüft.
+- Zweisprachige Projektvorlagen für `README.md` und `AGENTS.md`.
+- Zweisprachige Hauptdokumentation und Git-Anleitung.
+- Offene Genehmigungen erscheinen als dauerhafte Leiste unten mittig, unabhängig von aktiver Ansicht oder rechtem Tab.
+- Genehmigungen werden nach Abbruch oder Timeout zuverlässig aus dem Backendzustand entfernt.
+- Projektwurzel kann über ein modales Eingabefeld oder einen sichtbaren, im Vordergrund gehaltenen Windows-Ordnerdialog geändert werden.
+- Splitterwerte und numerische Einstellungen werden vor dem Speichern auf Ganzzahlen normalisiert.
+- Konfiguration und Chatverlauf werden mit temporärer Datei, Synchronisation, Backup und Wiederherstellung ersetzt.
+- Chatereignisse werden nicht mehr synchron bei jedem Ereignis auf die Festplatte geschrieben; ein einzelner zusammenfassender Hintergrundschreiber verhindert UI-/Agentenblockaden und konkurrierende Schreibvorgänge.
+- Ollama-Modellabfrage beim Start besitzt ein festes Zeitlimit.
+- Vollständige Race-, Vet-, Syntax-, UI-Mock- und Cross-Build-Prüfung ergänzt.
 
-- Vollständige Werkzeugerkennung über Projekt-Wrapper, konfigurierte Pfade, `PATH`, Android SDK, Windows-Standardpfade sowie Visual Studio und `vswhere.exe`.
-- Verifizierte, benutzerlokale Installation der offiziellen Android SDK Platform-Tools und der offiziellen portablen MinGit-Ausgabe nach separater Genehmigung.
-- WinGet-Fallback für bekannte Pakete; Hintergrundprozesse bleiben unsichtbar und besitzen Timeout sowie kontrollierten Abbruch.
-- Nach Installation wird die ursprüngliche Aktion ohne erneutes Modellraten wiederholt. Mehrere nacheinander fehlende unterstützte Werkzeuge werden begrenzt repariert.
-- Neue Aktionen `project_info`, `build_project` und `deploy_android` erkennen Buildsysteme, führen den passenden Build aus und verteilen Android-Debug-APKs an genau ein autorisiertes Gerät.
-- Visual-Studio-Werkzeuge MSBuild, Git, CMake, Ninja, NuGet und `devenv.exe` werden innerhalb installierter VS-Instanzen gesucht.
-- ADB probiert alternative Installationen, startet/reconnectet den Server einmal, wertet Gerätezustände aus und ergänzt Windows-PnP-Diagnose.
-- Alte Rückfragen werden bei neuen Aufgaben verworfen. Unnötige Git-Initialisierungs- und Werkzeug-Ausweichfragen werden serverseitig blockiert.
-- Websuchen erhalten bei leerer Modellanfrage automatisch die aktuelle Nutzeraufgabe als Query.
+### Bekannte Grenzen
 
-## Produktidentität, Lizenz und Git-Paket
+- Ein lokales 14B-/20B-Modell erreicht nicht zuverlässig die Modellqualität eines gehosteten Frontier-Modells.
+- Die native Schutzschicht ist anwendungsbasiert und keine identische OS-Sandbox der proprietären Codex-Infrastruktur.
+- Externe Werkzeuge, Geräte, Zugangsdaten und Netzwerkdienste können nur auf dem Zielsystem endgültig verifiziert werden.
 
-- Produktname und Binärdateien heißen **LocalCode**.
-- Lizenz: Apache License 2.0 mit `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
-- Git-fertiges Paket mit `.gitignore`, `.gitattributes`, `.editorconfig`, `GIT-SETUP.md` und `COMMIT_MESSAGE.txt`.
+## English
 
-## Verbindliche UI-Funktionen
+### Completed changes in 4.8.0
 
-- Codex-orientierte Desktopstruktur mit Menüleiste, Projekt-/Chatnavigation, Arbeitsbereich und Ausgaben-/Quellenbereich
-- verschiebbare linke und rechte vertikale Splitter
-- verschiebbarer Terminal-Splitter
-- Terminal wahlweise unten oder rechts angedockt
-- persistierte Panelgrößen, Sichtbarkeit, Farben und Fonts
-- Vollbild-Einstellungsseite mit Kategorien für Allgemein, Import, Profil, Aussehen, Stimme, Konfiguration, Personalisierung, Tastaturkürzel, Plugins/MCP, Browser/Web, Computernutzung, Hooks, Verbindungen, Git, Umgebungen, Worktrees und archivierte Chats
-- keine absichtlich funktionslosen Navigationspunkte
+- Complete German/English UI language switching.
+- Automatic language based on the Windows display language: German on German Windows, English otherwise.
+- Manual UI language and preferred response language selection.
+- Automated enforcement of identical keys in every language catalog.
+- Bilingual project templates for `README.md` and `AGENTS.md`.
+- Bilingual main documentation and Git guide.
+- Pending approvals are displayed in a persistent bottom-center bar regardless of the active view or right-side tab.
+- Approvals are reliably removed from backend state after cancellation or timeout.
+- The project root can be changed through a modal path field or a visible foreground-owned Windows folder dialog.
+- Splitter values and numeric settings are normalized to integers before saving.
+- Configuration and chat history use temporary files, synchronization, backup, and recovery during replacement.
+- Chat events are no longer written synchronously to disk for every event; one coalescing background writer prevents UI/agent stalls and concurrent file writers.
+- Startup model discovery has a fixed timeout.
+- Race, vet, syntax, UI mock, and cross-build verification were expanded.
 
-## Agenten- und Projektfunktionen
+### Known limitations
 
-- Projektwurzel und Projektauswahl
-- persistente Chats pro Projekt, Archivieren und Wiederherstellen
-- Enter zum Senden, Umschalt+Enter für neue Zeile und Fokus-Rückkehr
-- allgemeine Datei-, Bild-, Office-, PDF- und Archivanhänge
-- Zwischenablage und Drag-and-drop
-- lokale Bildanalyse über ein Vision-Modell
-- Git-Werkzeuge, Git-Übersicht und Worktree-Befehle
-- Dateiänderungen, Diffs, Genehmigungen und Befehle
-- Internetrecherche mit Quellenansicht
-- MCP über stdio und Streamable HTTP
-- integriertes und externes Terminal, interaktive Logins, Kopieren und Verschieben
-- automatische Projekt-README, AGENTS.md und vollständig aktualisierter verwalteter STATE.md-Bereich
-- Hooks, Umgebungsvariablen und personalisierte Agentenanweisungen
+- A local 14B/20B model cannot reliably match the model quality of a hosted frontier model.
+- Native protection is application-level and not an identical OS sandbox to proprietary Codex infrastructure.
+- External tools, devices, credentials, and network services can only be finally verified on the target machine.
 
-## Automatisch geprüfte Fehlerpfade
+<!-- LOCALCODE:STATE:BEGIN -->
+Managed runtime state is written here when this repository itself is selected in LocalCode.
+Verwalteter Laufzeitstatus wird hier geschrieben, wenn dieses Repository selbst in LocalCode ausgewählt ist.
+<!-- LOCALCODE:STATE:END -->
 
-- kontrollierter Abbruch eines blockierten Modellaufrufs
-- Modellzeitüberschreitung mit anschließender Freigabe der Oberfläche
-- erzwungener Reset eines festhängenden Laufs
-- Fortsetzung nach einer Rückfrage ohne Wiederholung der ursprünglichen Analyse
-- sichtbare Ergebnisse von Nur-Lese-Werkzeugen
-- vorwärtskompatibles Speichern der Einstellungen auch während eines Agentenlaufs
-- keine sichtbaren Windows-Konsolenfenster für Hintergrundbefehle
-- Einbettung der Laufsteuerung und der Ausgabekarten im Frontend
 
-## Prüfungen vor Veröffentlichung
+## 4.8.0 final review additions
 
-- `go fmt ./...`
-- `go test -count=1 ./...`
-- `go vet ./...`
-- JavaScript-Syntaxprüfung mit `node --check`
-- Windows-amd64-GUI-Build
-- Windows-amd64-Diagnose-Build
-- PE-Struktur- und SHA-256-Prüfung
-- ZIP-Integritätsprüfung
-
-## Technische Grenzen
-
-- LocalCode ist ein eigenständiger lokaler Client und nicht OpenAI Codex.
-- Ein lokales 14B-/20B-Modell kann die Modellqualität eines gehosteten Frontier-Modells nicht garantieren.
-- Die anwendungseigenen Pfad- und Freigaberegeln sind keine identische betriebssystemseitige Codex-Sandbox.
-- Computersteuerung fremder GUI-Anwendungen ist nur über ausdrücklich konfigurierte Werkzeuge oder MCP-Server möglich.
+- Tool installation guidance is localized in German and English.
+- Chat persistence has an explicit close/flush lifecycle.
+- Settings and project selection no longer report success before durable persistence succeeds.
+- The local HTTP server validates loopback Hosts and rejects cross-origin/cross-site mutations.
+- Build and bootstrap scripts follow the Windows UI language.

@@ -57,17 +57,19 @@ func main() {
 	cancel()
 	if err != nil {
 		log.Printf("Ollama unavailable: %v", err)
-		showFatal("LocalCode", "Ollama konnte nicht gestartet oder erreicht werden.\n\n"+err.Error()+"\n\nLog: "+logPath())
+		showFatal("LocalCode", localizeConfigText(cfg, "Ollama konnte nicht gestartet oder erreicht werden.", "Ollama could not be started or reached.")+"\n\n"+err.Error()+"\n\nLog: "+logPath())
 		return
 	}
 
-	models, err := ollama.Tags(context.Background())
+	modelsCtx, modelsCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	models, err := ollama.Tags(modelsCtx)
+	modelsCancel()
 	if err != nil {
-		showFatal("LocalCode", "Ollama-Modelle konnten nicht gelesen werden:\n\n"+err.Error())
+		showFatal("LocalCode", localizeConfigText(cfg, "Ollama-Modelle konnten nicht gelesen werden:", "Ollama models could not be read:")+"\n\n"+err.Error())
 		return
 	}
 	if len(models) == 0 {
-		showFatal("LocalCode", "In Ollama ist kein Modell installiert. Installiere mindestens gpt-oss:20b oder qwen2.5-coder:14b.")
+		showFatal("LocalCode", localizeConfigText(cfg, "In Ollama ist kein Modell installiert. Installiere mindestens gpt-oss:20b oder qwen2.5-coder:14b.", "No model is installed in Ollama. Install at least gpt-oss:20b or qwen2.5-coder:14b."))
 		return
 	}
 
@@ -84,25 +86,27 @@ func main() {
 	state := NewAppState(cfg, ollama)
 	url, err := startHTTPServer(state, cfg.Port)
 	if err != nil {
-		showFatal("LocalCode", fmt.Sprintf("Lokaler Server konnte nicht gestartet werden:\n\n%v", err))
+		showFatal("LocalCode", fmt.Sprintf(localizeConfigText(cfg, "Lokaler Server konnte nicht gestartet werden:\n\n%v", "The local server could not be started:\n\n%v"), err))
 		return
 	}
 	log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
 	if err := openBrowser(url); err != nil {
-		showFatal("LocalCode", "Browser konnte nicht geöffnet werden. Öffne manuell:\n"+url)
+		showFatal("LocalCode", localizeConfigText(cfg, "Browser konnte nicht geöffnet werden. Öffne manuell:", "The browser could not be opened. Open this address manually:")+"\n"+url)
 	}
 
 	select {}
 }
 
 func runDiagnostics() int {
-	fmt.Println("LocalCode Diagnose")
-	fmt.Println("Version:", version)
-	fmt.Println("Konfiguration:", configPath())
-	fmt.Println("Log:", logPath())
-	fmt.Println("Projektwurzel:", loadConfig().RootProjectDir)
+	cfg := loadConfig()
+	tr := func(de, en string) string { return localizeConfigText(cfg, de, en) }
+	fmt.Println(tr("LocalCode Diagnose", "LocalCode diagnostics"))
+	fmt.Println(tr("Version:", "Version:"), version)
+	fmt.Println(tr("Konfiguration:", "Configuration:"), configPath())
+	fmt.Println(tr("Log:", "Log:"), logPath())
+	fmt.Println(tr("Projektwurzel:", "Project root:"), cfg.RootProjectDir)
 	fmt.Println("OLLAMA_HOST:", os.Getenv("OLLAMA_HOST"))
-	fmt.Println("Geprüfte Ollama-Adressen:", strings.Join(ollamaCandidates(), ", "))
+	fmt.Println(tr("Geprüfte Ollama-Adressen:", "Checked Ollama addresses:"), strings.Join(ollamaCandidates(), ", "))
 	fmt.Println("Ollama.exe:", findOllamaExecutable())
 	fmt.Println("GPU:", detectGPU())
 
@@ -110,45 +114,45 @@ func runDiagnostics() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	if err := client.Discover(ctx); err != nil {
-		fmt.Println("FEHLER: Ollama nicht erreichbar:", err)
+		fmt.Println(tr("FEHLER: Ollama nicht erreichbar:", "ERROR: Ollama is not reachable:"), err)
 		return 1
 	}
-	fmt.Println("Ollama erreichbar:", client.BaseURL)
+	fmt.Println(tr("Ollama erreichbar:", "Ollama reachable:"), client.BaseURL)
 	models, err := client.Tags(ctx)
 	if err != nil {
-		fmt.Println("FEHLER beim Lesen der Modelle:", err)
+		fmt.Println(tr("FEHLER beim Lesen der Modelle:", "ERROR while reading models:"), err)
 		return 1
 	}
 	if len(models) == 0 {
-		fmt.Println("FEHLER: Keine Modelle installiert.")
+		fmt.Println(tr("FEHLER: Keine Modelle installiert.", "ERROR: No models installed."))
 		return 1
 	}
-	fmt.Println("Modelle:")
+	fmt.Println(tr("Modelle:", "Models:"))
 	for _, model := range models {
 		fmt.Println(" -", model.Name)
 	}
-	diagCfg := loadConfig()
-	fmt.Println("Standardmodell:", chooseDefaultModel(models, diagCfg.LastModel))
-	fmt.Println("Approval-Modus:", diagCfg.ApprovalMode)
-	fmt.Println("Sandbox-Modus:", diagCfg.SandboxMode)
-	fmt.Println("Netzwerk:", diagCfg.NetworkEnabled, "Websuche:", diagCfg.WebSearchProvider)
-	fmt.Println("Git verfügbar/aktiv:", gitAvailable(diagCfg.LastProject, diagCfg), diagCfg.GitEnabled)
-	fmt.Println("STATE.md automatisch:", diagCfg.AutoStateUpdate, diagCfg.StateFile)
-	fmt.Println("Aktive MCP-Server:", enabledMCPCount(diagCfg))
-	fmt.Println("Automatische Werkzeugerkennung:", diagCfg.AutoDiscoverTools)
-	fmt.Println("Automatische offizielle Werkzeughilfe:", diagCfg.AutoResearchToolHelp)
-	fmt.Println("Werkzeuge:")
+	diagCfg := cfg
+	fmt.Println(tr("Standardmodell:", "Default model:"), chooseDefaultModel(models, diagCfg.LastModel))
+	fmt.Println(tr("Approval-Modus:", "Approval mode:"), diagCfg.ApprovalMode)
+	fmt.Println(tr("Sandbox-Modus:", "Sandbox mode:"), diagCfg.SandboxMode)
+	fmt.Println(tr("Netzwerk:", "Network:"), diagCfg.NetworkEnabled, tr("Websuche:", "Web search:"), diagCfg.WebSearchProvider)
+	fmt.Println(tr("Git verfügbar/aktiv:", "Git available/enabled:"), gitAvailable(diagCfg.LastProject, diagCfg), diagCfg.GitEnabled)
+	fmt.Println(tr("STATE.md automatisch:", "Automatic STATE.md:"), diagCfg.AutoStateUpdate, diagCfg.StateFile)
+	fmt.Println(tr("Aktive MCP-Server:", "Active MCP servers:"), enabledMCPCount(diagCfg))
+	fmt.Println(tr("Automatische Werkzeugerkennung:", "Automatic tool discovery:"), diagCfg.AutoDiscoverTools)
+	fmt.Println(tr("Automatische offizielle Werkzeughilfe:", "Automatic official tool help:"), diagCfg.AutoResearchToolHelp)
+	fmt.Println(tr("Werkzeuge:", "Tools:"))
 	for _, tool := range toolInventory(diagCfg.LastProject, diagCfg, true) {
-		status := "NICHT GEFUNDEN"
+		status := tr("NICHT GEFUNDEN", "NOT FOUND")
 		if tool.Available {
 			status = "OK: " + tool.Path
 		}
 		fmt.Printf(" - %s: %s\n", tool.Name, status)
 		for _, line := range tool.Diagnostics {
-			fmt.Println("   Diagnose:", line)
+			fmt.Println(tr("   Diagnose:", "   Diagnostic:"), line)
 		}
 	}
-	fmt.Println("Diagnose erfolgreich.")
+	fmt.Println(tr("Diagnose erfolgreich.", "Diagnostics completed successfully."))
 	return 0
 }
 

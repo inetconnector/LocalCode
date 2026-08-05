@@ -1,5 +1,5 @@
 REM SPDX-License-Identifier: Apache-2.0
-﻿@echo off
+@echo off
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0"

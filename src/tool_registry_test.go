@@ -155,6 +155,7 @@ func TestContinuationBlocksRepeatedQuestion(t *testing.T) {
 	client.BaseURL = server.URL
 	cfg := normalizeConfig(Config{SchemaVersion: 3, RootProjectDir: project, LastProject: project, LastModel: "test-model", AutoDiscoverTools: false, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Prüfe Git", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +245,7 @@ exit /b 0`
 
 func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 2})
-	if cfg.SchemaVersion != 4 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
+	if cfg.SchemaVersion != 5 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
 		t.Fatalf("tool and compaction settings were not migrated: %#v", cfg)
 	}
 	if cfg.ToolOverrides == nil {
@@ -263,7 +264,7 @@ func TestMissingToolReturnsTypedError(t *testing.T) {
 	if !errors.As(err, &missing) {
 		t.Fatalf("expected ToolNotFoundError, got %T: %v", err, err)
 	}
-	if missing.Info.Name != "adb" || !strings.Contains(text, "Durchsuchte Pfade") {
+	if missing.Info.Name != "adb" || (!strings.Contains(text, "Durchsuchte Pfade") && !strings.Contains(text, "Searched paths")) {
 		t.Fatalf("unexpected missing tool detail: %#v\n%s", missing, text)
 	}
 }
@@ -319,7 +320,7 @@ func TestInstallMetadataForGitAndADB(t *testing.T) {
 		if strings.TrimSpace(profile.InstallKind) == "" {
 			t.Fatalf("%s should define controlled Windows installation metadata", name)
 		}
-		if strings.TrimSpace(toolInstallPreview(name)) == "" {
+		if strings.TrimSpace(toolInstallPreview(name, defaultConfig())) == "" {
 			t.Fatalf("%s install preview is empty", name)
 		}
 	}

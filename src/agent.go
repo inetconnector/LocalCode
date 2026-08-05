@@ -342,10 +342,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
 	}
-	language := strings.TrimSpace(cfg.PreferredLanguage)
-	if language == "" {
-		language = "Deutsch"
-	}
+	language := responseLanguage(cfg)
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(userMessage)
 	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, userMessage), userMessage, attachmentContext, automationHint)}}
@@ -908,24 +905,29 @@ func (s *AppState) requestApprovalWithPreview(ctx context.Context, a AgentAction
 	pending := &PendingAction{ID: newID(), Action: a, Preview: preview, Result: make(chan bool, 1)}
 	s.mu.Lock()
 	s.Pending = pending
+	cfg := s.Config
 	s.mu.Unlock()
-	s.AddEvent(UIEvent{ID: pending.ID, Type: "approval_required", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
-	select {
-	case approved := <-pending.Result:
+	defer func() {
 		s.mu.Lock()
 		if s.Pending != nil && s.Pending.ID == pending.ID {
 			s.Pending = nil
 		}
 		s.mu.Unlock()
-		msg := "Abgelehnt"
+	}()
+	s.AddEvent(UIEvent{ID: pending.ID, Type: "approval_required", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
+	select {
+	case approved := <-pending.Result:
+		msg := localizeConfigText(cfg, "Abgelehnt", "Rejected")
 		if approved {
-			msg = "Genehmigt"
+			msg = localizeConfigText(cfg, "Genehmigt", "Approved")
 		}
 		s.AddEvent(UIEvent{Type: "approval", Message: msg, Action: a.Action, Path: a.Path})
 		return approved, nil
 	case <-ctx.Done():
+		s.AddEvent(UIEvent{Type: "approval", Message: localizeConfigText(cfg, "Genehmigung abgebrochen", "Approval cancelled"), Action: a.Action, Path: a.Path})
 		return false, ctx.Err()
 	case <-time.After(30 * time.Minute):
+		s.AddEvent(UIEvent{Type: "approval", Message: localizeConfigText(cfg, "Genehmigung abgelaufen", "Approval expired"), Action: a.Action, Path: a.Path})
 		return false, errors.New("approval timed out")
 	}
 }

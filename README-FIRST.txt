@@ -1,27 +1,22 @@
-LOCALCODE 4.7.0 - SCHNELLSTART
+LOCALCODE 4.8.0 - SCHNELLSTART / QUICK START
 
-1. Dieses ZIP vollständig in einen neuen Ordner entpacken.
+DEUTSCH
+1. ZIP vollständig entpacken.
 2. BUILD-AND-RUN.bat doppelklicken.
-3. Der Build führt Formatierung, Tests, go vet und beide Windows-Builds aus.
-4. Danach öffnet sich LocalCode 4.7.0 bevorzugt als desktopartiges Edge-/Chrome-App-Fenster.
+3. LocalCode nutzt automatisch Deutsch auf einem deutschen Windows, sonst Englisch.
+4. Sprache kann unter Einstellungen > Allgemein geändert werden.
+5. Offene Genehmigungen erscheinen immer unten mittig.
+6. Projektordner über Ordner wählen oder direkte Pfadeingabe festlegen.
 
-WICHTIG
-- Ollama muss lokal laufen und mindestens ein Coding-Modell enthalten.
-- Standardmodell ist bevorzugt qwen2.5-coder:14b.
-- Alle Dateien bleiben lokal; Webzugriffe erfolgen nur nach den Einstellungen.
+ENGLISH
+1. Extract the ZIP completely.
+2. Double-click BUILD-AND-RUN.bat.
+3. LocalCode automatically uses German on German Windows and English otherwise.
+4. Change the language under Settings > General.
+5. Pending approvals always appear at the bottom center.
+6. Set the project root through Choose folder or direct path entry.
 
-NEU IN 4.7.0
-- Git, ADB, Java, .NET und MSBuild werden über Projekt, PATH, Android SDK, Visual Studio und bekannte Windows-Pfade gesucht
-- fehlendes Git und Android Platform-Tools können nach separater Genehmigung benutzerlokal installiert werden
-- .NET SDK und Visual Studio Build Tools besitzen offizielle, verifizierte Installationsabläufe
-- nach Installation wird exakt die ursprüngliche Aktion automatisch wiederholt
-- project_info, build_project und deploy_android vermeiden geratenes Build- und Deployment-Verhalten
-- Android-Deployment baut, sucht die APK, prüft das Gerät und installiert mit adb install -r
-- neue Aufgaben werden nicht mehr durch alte Git-/ADB-Rückfragen gekapert
-- leere Websuchanfragen werden aus der aktuellen Aufgabe ergänzt
-- Agent Supervisor verhindert Git-Fixierung und Dateiänderungen bei reiner Analyse
-- bestätigte Git-Rückfragen werden direkt ausgeführt und verifiziert
-- Websuche besitzt eine nicht leere Query-Garantie und einen zweiten Suchanbieter als Fallback
-- langer Verlauf wird bei 68 Prozent kontrolliert komprimiert und mit erhaltenem Arbeitszustand fortgesetzt
-- Komprimierungsschwelle und aktuelle Nachrichten sind in den Einstellungen konfigurierbar
-- Git-ready: .gitignore, .gitattributes, .editorconfig und COMMIT_MESSAGE.txt
+Build details: README.md
+Git setup: GIT-SETUP.md
+Verification: TEST-REPORT.txt
+License: LICENSE / NOTICE

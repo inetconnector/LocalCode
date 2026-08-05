@@ -1,101 +1,33 @@
-# Werkzeugauflösung und Ausführung
+# Tool discovery and execution / Werkzeugerkennung und Ausführung
 
-## Ziel
+## Deutsch
 
-LocalCode darf aus einem fehlgeschlagenen Shell-Aufruf nicht vorschnell schließen, dass ein Programm nicht installiert ist. Vor einer solchen Aussage wird das Werkzeug strukturiert gesucht, mit absolutem Pfad ausgeführt und anhand von Exitcode, Standardausgabe und Standardfehler diagnostiziert.
+LocalCode bezeichnet ein Programm erst nach strukturierter Suche als fehlend. Die Suchreihenfolge umfasst konfigurierte Overrides, Projekt-Wrapper, `PATH`, Umgebungsvariablen, Android SDK, Visual Studio und `vswhere`, bekannte Installationsorte und den LocalCode-Werkzeugordner.
 
-## Suchreihenfolge
+Jeder Aufruf dokumentiert soweit verfügbar:
 
-1. Fester Pfad aus `tool_overrides`
-2. Projektlokale Werkzeuge und Wrapper
-3. Projektspezifische Konfiguration, zum Beispiel `local.properties`
-4. Relevante Umgebungsvariablen
-5. Prozess-PATH
-6. Bekannte installationsspezifische Pfade
-
-Projektlokal geprüft werden insbesondere:
-
-- Projektwurzel
-- `bin`
-- `tools`
-- `.tools`
-- `scripts`
-- `node_modules/.bin`
-
-## Android-SDK
-
-Android-Werkzeuge werden aus folgenden SDK-Wurzeln gesucht:
-
-- `sdk.dir` in `local.properties`
-- `ANDROID_HOME`
-- `ANDROID_SDK_ROOT`
-- `%LOCALAPPDATA%\Android\Sdk`
-
-Relevante Unterordner:
-
-- `platform-tools` für `adb` und `fastboot`
-- `cmdline-tools\<Version>\bin` für `sdkmanager`
-- `emulator` für den Android Emulator
-- `cmake\<Version>\bin` für `ninja`
-
-## Ausführung
-
-`run_tool` startet das aufgelöste Programm direkt. Batch- und CMD-Werkzeuge werden unter Windows korrekt über `cmd.exe` aufgerufen. Jeder Lauf liefert:
-
-- Werkzeugname
-- absoluter Pfad
-- Argumentliste
-- Arbeitsordner
+- aufgelösten absoluten Pfad
+- Arbeitsverzeichnis
+- Argumente
 - Exitcode
-- Laufzeit
-- STDOUT
-- STDERR
-- Diagnose
+- Dauer
+- STDOUT und STDERR
+- Timeout oder Abbruch
 
-Hintergrundprozesse werden ohne sichtbares Konsolenfenster gestartet. Bei Abbruch oder Timeout wird unter Windows der gesamte Prozessbaum beendet.
+Unterstützte fehlende Werkzeuge lösen eine sichtbare Installationsgenehmigung aus. Nach Installation wird der Pfad verifiziert und die ursprüngliche Aktion erneut ausgeführt. Unbekannte Bedienungsfehler dürfen eine Recherche in offizieller Dokumentation auslösen, wenn Netzwerkzugriff aktiviert und genehmigt ist.
 
-## ADB-Diagnose
+## English
 
-Für `adb devices -l` werden folgende Zustände getrennt behandelt:
+LocalCode declares a program missing only after structured discovery. Search locations include configured overrides, project wrappers, `PATH`, environment variables, Android SDK installations, Visual Studio and `vswhere`, known install locations, and the LocalCode tools directory.
 
-- `device`: Gerät erreichbar
-- `unauthorized`: RSA-Freigabe am entsperrten Gerät fehlt
-- `offline`: ADB-Verbindung besteht, Gerät antwortet aber nicht korrekt
-- leere Liste: ADB funktioniert, aber kein Gerät wird aufgelistet
-- Start-/Daemonfehler: ADB-Serverproblem
+Each invocation records, when available:
 
-LocalCode führt höchstens einen automatischen Reparaturzyklus aus. Endlosschleifen und wiederholte identische Nutzerfragen sind blockiert.
+- resolved absolute path
+- working directory
+- arguments
+- exit code
+- duration
+- STDOUT and STDERR
+- timeout or cancellation
 
-## Automatische Dokumentationssuche
-
-Wenn `auto_research_tool_help` aktiviert ist und Netzwerkzugriff erlaubt wurde, ergänzt LocalCode Fehlerdiagnosen um Suchergebnisse aus offizieller Dokumentation. Die Suche ersetzt niemals die lokale Ausgabe; Pfad, Exitcode, STDOUT und STDERR bleiben die primäre Evidenz.
-
-## Grenzen
-
-Es gibt keine sichere Methode, jedes weltweit existierende Programm ohne Kontext und ohne vollständigen Datenträgerscan zu erkennen. LocalCode unterstützt bekannte Entwicklungswerkzeuge sowie beliebige projektlokale oder über PATH beziehungsweise feste Pfade erreichbare Programme. Neue Werkzeuge können ohne Codeänderung über `tool_overrides` eindeutig registriert werden.
-
-## Automatische Reparatur in 4.6.0
-
-Wenn eine bekannte Aktion ein fehlendes Werkzeug erkennt, zeigt LocalCode zuerst die durchsuchten Pfade und eine separate Installationsgenehmigung. Unterstützt sind insbesondere:
-
-- Git: offizielle portable MinGit-Ausgabe aus Git for Windows; App-lokal ohne globales PATH.
-- ADB/Fastboot: offizielles `platform-tools-latest-windows.zip` von Google; App-lokal.
-- Ausgewählte Werkzeuge: Installation über WinGet mit festen Paketkennungen.
-
-Nach der Installation wird das Programm erneut entdeckt, seine Version geprüft und die exakt gleiche ursprüngliche Aktion wiederholt. Installationsdownloads laufen mit Timeout und ZIP-Extraktion blockiert Pfadtraversierung.
-
-Visual-Studio-Werkzeuge werden über `vswhere.exe` und die bekannten Instanzpfade gesucht. Dazu gehören MSBuild, Visual-Studio-Git, CMake, Ninja, NuGet und `devenv.exe`.
-
-## Deterministische Projektaktionen
-
-- `project_info`: erkennt das Buildsystem und zeigt verfügbare Werkzeuge.
-- `build_project`: wählt einen reproduzierbaren Build für Android/Gradle, Go, Rust, Node, .NET/MSBuild, CMake oder Python.
-- `deploy_android`: baut ein Android-Projekt, wählt die neueste Debug-APK, verlangt genau ein autorisiertes Gerät und installiert mit `adb install -r`.
-## Supervisor-Regeln in 4.7.0
-
-- `analysiere das projekt`: startet `project_info`, bleibt schreibgeschützt und ignoriert einen fehlenden Git-Repository-Status.
-- `kompiliere das projekt`: startet `project_info` und danach `build_project`.
-- Android-Deployment: startet `project_info` und danach `deploy_android`; fehlende unterstützte Werkzeuge lösen die Installationsgenehmigung aus.
-- Internetrecherche: startet `web_search` mit einer serverseitig validierten, nicht leeren Query.
-- Git-Einrichtung: führt nach Genehmigung `git init` aus, verifiziert den Worktree und erstellt bei Bedarf `.gitignore`.
-
+Supported missing tools trigger a visible installation approval. After installation, the path is verified and the original action is retried. Unknown usage failures may trigger research in official documentation when network access is enabled and approved.

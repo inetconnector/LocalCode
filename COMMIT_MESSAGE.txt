@@ -1,11 +1,11 @@
-fix: add deterministic task supervision and context compaction
+feat: add complete bilingual UI and persistent approval workflow
 
-- route analysis, builds, Android deployment, Git setup and web research through verified actions
-- prevent irrelevant Git initialization and file mutations during read-only analysis
-- execute confirmed Git initialization directly and verify the repository
-- derive non-empty web queries and add a fallback search provider
-- discover, install, verify and retry supported development tools
-- compact long agent contexts while preserving task state, decisions, files, commands and failures
-- expose compaction controls and events in the settings and output UI
-- add regression tests for agent drift, Git continuation and long-context recovery
-- update documentation, STATE.md and release metadata for LocalCode 4.7.0
+- detect the Windows display language and default to German or English
+- add manual language selection and synchronized translation catalogs
+- translate project templates, Git setup, documentation, and runtime UI
+- keep pending approvals visible in a bottom-center decision bar across views
+- improve project-root selection with direct path entry and a foreground dialog
+- normalize numeric settings before saving
+- persist config and chat history with recoverable atomic replacement
+- move chat event persistence to a coalescing background writer
+- add race, localization, approval, root-selection, and persistence tests

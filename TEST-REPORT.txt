@@ -1,35 +1,101 @@
-LOCALCODE 4.7.0 - TEST REPORT
+LOCALCODE 4.8.0 – TEST REPORT / PRÜFBERICHT
+
+DEUTSCH
+=======
 
 Erfolgreich ausgeführt:
 - gofmt auf dem vollständigen Go-Quellcode
-- go test -count=1 ./...
+- go test -race -count=1 ./...
+- go test -shuffle=on -count=3 ./...
 - go vet ./...
-- JavaScript-Syntaxprüfung des eingebetteten Frontends
-- Windows-amd64-GUI-Build
-- Windows-amd64-Diagnose-Build
+- Go-Coverage-Lauf
+- Windows-amd64-Testkompilierung
+- JavaScript-Syntaxprüfung für i18n.js und alle eingebetteten Skriptblöcke
+- HTML-ID-Prüfung ohne doppelte IDs
+- Übersetzungskatalogprüfung: Deutsch und Englisch enthalten dieselben Schlüssel
+- Windows-amd64-GUI-Build und Windows-amd64-Diagnose-Build
 - PE32+-Strukturprüfung
 - ZIP-Integritätsprüfung
 
-Gezielt geprüfte Pfade:
-- Analyseaufgabe ohne Git-Initialisierung und ohne Dateiänderung
-- Supervisor-Blockade irrelevanter Git-Fragen und mutierender Analyseaktionen
-- kontrollierter Supervisor-Abschluss bei wiederholter Modelldrift
-- bestätigte Git-Initialisierung, Repository-Verifikation und .gitignore-Erstellung
-- bekannte Werkzeugerkennung und absolute ToolOverrides
-- typed ToolNotFoundError für reparierbare Werkzeuge
-- sichere ZIP-Extraktion und Blockade von Pfadtraversierung
-- Git-/ADB-Installationsmetadaten
-- Fortsetzungsentscheidung: echte Antwort vs. neue Aufgabe
+Gezielt geprüfte und reparierte Bereiche:
+- automatische Windows-Anzeigespracherkennung: Deutsch bei deutschem Windows, sonst Englisch
+- manuelle Sprachumschaltung und bevorzugte Agentenantwortsprache
+- deutsche und englische Oberfläche, Einstellungsseite, Dialoge, Projektvorlagen und Dokumentation
+- lokalisierte Werkzeughinweise und Installationsvorschauen
+- dauerhafte Genehmigungsleiste unten mittig, auch in Einstellungen und anderen Ansichten
+- Genehmigung, Ablehnung, Abbruch und Zeitablauf räumen den Pending-Zustand zuverlässig auf
+- Projektwurzel per direkter Eingabe und Windows-Ordnerdialog
+- Ordnerdialog besitzt ein Vordergrundfenster und verschwindet nicht hinter der App
+- Ganzzahlserialisierung für Splitter-, Kontext- und Timeoutwerte
+- atomisches Speichern von Konfiguration und Chatverlauf mit Backup-Wiederherstellung
+- zusammengefasste Hintergrundpersistenz ohne blockierende Dateizugriffe im Agentenlauf
+- kontrolliertes Beenden des Persistenzworkers mit Flush der neuesten Chatversion
+- kein Hintergrundschreiber greift nach dem Test-/Programmende auf gelöschte Verzeichnisse zu
+- Konfiguration wird erst nach erfolgreichem Speichern als aktiv übernommen
+- Projektauswahl meldet Fehler beim Erstellen der Dokumentation oder Speichern der Auswahl
+- Startzeitlimit für Ollama-Modellabfrage
+- Loopback-Hostprüfung, Cross-Origin-/Cross-Site-Schutz und restriktive Browser-Sicherheitsheader
+- Analyse ohne unnötige Git-Initialisierung
+- bestätigte Git-Initialisierung und Fortsetzung der ursprünglichen Aufgabe
+- automatische Werkzeugerkennung, Installationsgenehmigung und Verifikation
 - nicht leere Websuchanfrage aus Aufgaben-Fallback
-- DuckDuckGo-Suche mit Bing-RSS-Fallback auf Implementierungsebene
-- Android-Projekterkennung und ADB-Geräteparser
-- deterministischer Android-Ablauf: Build, APK-Fund, Geräteauswahl, adb install
-- automatische Kontextkomprimierung und Fortsetzung nach großem Werkzeugergebnis
-- Erhalt von Aufgabe, Entscheidungen, Projektfakten, Dateien, Befehlen, Fehlern und offenen Punkten
-- UI-Bindung der drei Komprimierungseinstellungen und sichtbares Komprimierungsereignis
+- automatische Kontextkomprimierung mit Erhalt von Aufgabe, Entscheidungen, Dateien, Befehlen, Fehlern und offenen Punkten
+- kontrollierter Modell-/Werkzeugabbruch und erzwungener Reset
+- UI-Mocktest: Genehmigungsleiste bleibt im Hauptfenster und in den Einstellungen sichtbar; Projektwurzel-Dialog funktioniert; Genehmigungs-POST enthält die korrekte ID und Entscheidung
 
 Nicht auf dem konkreten Zielrechner ausführbar:
-- UAC-Dialoge und tatsächliche Installationen von Visual Studio Build Tools
-- physisches USB-Gerät und OEM-Treiber
+- reale UAC-Dialoge und tatsächliche Installation großer Visual-Studio-Workloads
+- physisches USB-Gerät, OEM-Treiber und reale ADB-Installation auf dem Gerät
 - reale Ollama-Geschwindigkeit und VRAM-Auslastung auf der Ziel-GPU
-Diese Pfade sind mit Verifikation, Timeouts, vollständiger Ausgabe, kontrolliertem Abbruch und deterministischen Fallbacks abgesichert.
+
+Diese externen Pfade sind mit Timeouts, vollständiger Ausgabe, Verifikation und kontrolliertem Abbruch abgesichert. Eine identische Funktions- oder Modellqualität des proprietären Codex-Dienstes wird nicht behauptet.
+
+ENGLISH
+=======
+
+Successfully executed:
+- gofmt across the complete Go source tree
+- go test -race -count=1 ./...
+- go test -shuffle=on -count=3 ./...
+- go vet ./...
+- Go coverage run
+- Windows amd64 test compilation
+- JavaScript syntax checks for i18n.js and every embedded script block
+- HTML ID audit with no duplicate IDs
+- translation catalog parity check: German and English contain identical keys
+- Windows amd64 GUI and diagnostics builds
+- PE32+ structure verification
+- ZIP integrity verification
+
+Specifically reviewed and fixed:
+- automatic Windows display-language detection: German on German Windows, English otherwise
+- manual UI language selection and preferred agent response language
+- German and English interface, settings, dialogs, project templates, and documentation
+- localized tool guidance and installation previews
+- persistent bottom-center approval bar across the main UI, Settings, and other views
+- approval, rejection, cancellation, and expiration reliably clear pending state
+- project root selection through direct entry and the native Windows folder dialog
+- foreground-owned folder dialog that cannot silently open behind the app
+- integer serialization for splitters, context, and timeout values
+- atomic configuration and chat-history writes with backup recovery
+- coalesced background persistence without blocking agent execution
+- controlled persistence-worker shutdown with a final latest-state flush
+- no background writer accesses deleted test/application directories after shutdown
+- settings become active only after their durable write succeeds
+- project selection reports documentation or persistence failures instead of pretending success
+- startup timeout for Ollama model discovery
+- loopback Host validation, cross-origin/cross-site request protection, and restrictive browser security headers
+- analysis without unnecessary Git initialization
+- confirmed Git initialization and continuation of the original task
+- automatic tool discovery, installation approval, and post-install verification
+- non-empty web search query generation from the active task
+- automatic context compaction preserving task, decisions, files, commands, failures, and open work
+- controlled model/tool cancellation and forced reset
+- UI mock verification: approval dock remains visible in the main view and Settings; project-root modal works; approval POST contains the correct ID and decision
+
+Not executable on the specific target computer from this environment:
+- real UAC dialogs and installation of large Visual Studio workloads
+- a physical USB device, OEM drivers, and a real ADB deployment
+- actual Ollama throughput and VRAM use on the target GPU
+
+These external paths use timeouts, complete output, verification, and controlled cancellation. Identical capability or model quality to the proprietary Codex service is not claimed.

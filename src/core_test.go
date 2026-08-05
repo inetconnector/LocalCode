@@ -151,6 +151,7 @@ func TestAgentLoopExecutesStructuredActions(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "test-model"}, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Analysiere das Projekt", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +253,7 @@ func TestAgentFallsBackFromEmptyGPTOSSResponse(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "gpt-oss:20b"}, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Analysiere das Projekt", "gpt-oss:20b", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +340,8 @@ func TestProjectsEndpointListsSubdirectories(t *testing.T) {
 		}
 	}
 	state := NewAppState(Config{RootProjectDir: root, Port: 32145}, NewOllamaClient())
-	req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
+	t.Cleanup(state.Close)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:32145/api/projects", nil)
 	rr := httptest.NewRecorder()
 	NewServer(state).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -489,6 +492,7 @@ func TestAgentUsesImageAnalysisBeforeCoding(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "qwen2.5-coder:14b"}, client)
+	t.Cleanup(state.Close)
 	image := ImageAttachment{Name: "shot.png", MIME: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("image"))}
 	if err := state.StartAgent("Was zeigt das Bild?", "qwen2.5-coder:14b", []ImageAttachment{image}); err != nil {
 		t.Fatal(err)
@@ -547,6 +551,7 @@ func TestStateDocumentIsCreatedAndPreservesManualNotes(t *testing.T) {
 	cfg.AutoStateUpdate = true
 	cfg.StateFile = "STATE.md"
 	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
 	state.Project = root
 	state.Model = "qwen2.5-coder:14b"
 	state.LastTask = "Test"
@@ -593,6 +598,7 @@ func TestSettingsEndpointRoundTrip(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.RootProjectDir = root
 	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
 	server := NewServer(state)
 	payload := cfg
 	payload.ApprovalMode = "auto"
@@ -600,7 +606,7 @@ func TestSettingsEndpointRoundTrip(t *testing.T) {
 	payload.MCPServers = []MCPServerConfig{{Name: "demo", Enabled: true, Transport: "stdio", Command: "demo"}}
 	body, _ := json.Marshal(payload)
 	rr := httptest.NewRecorder()
-	server.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(string(body))))
+	server.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/settings", strings.NewReader(string(body))))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
 	}
@@ -776,6 +782,7 @@ func TestAgentContinuesAfterAskUserAnswer(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "test-model", MaxAgentSteps: 10}, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Git im Projekt einrichten", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -829,6 +836,7 @@ func TestReadOnlyToolResultIsVisibleAsEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, GitEnabled: true}, NewOllamaClient())
+	t.Cleanup(state.Close)
 	result, done := state.handleAgentAction(context.Background(), project, AgentAction{Action: "read_file", Path: "README.md", Message: "Lese README.md"})
 	if done {
 		t.Fatal("read_file unexpectedly finished agent")
@@ -865,6 +873,7 @@ func TestAskUserProducesOnlyOneVisibleQuestion(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	state := NewAppState(Config{RootProjectDir: project, LastProject: project, LastModel: "test-model", MaxAgentSteps: 4}, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Git im Projekt einrichten", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -899,11 +908,12 @@ func TestSettingsEndpointAcceptsForwardCompatibleFieldsWhileAgentRuns(t *testing
 	cfg := defaultConfig()
 	cfg.RootProjectDir = root
 	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
 	state.Running = true
 	server := NewServer(state)
 	body := `{"approval_mode":"balanced","model_timeout_seconds":240,"future_ui_option":"ignored"}`
 	rr := httptest.NewRecorder()
-	server.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(body)))
+	server.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/settings", strings.NewReader(body)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
 	}
@@ -917,6 +927,7 @@ func TestSettingsEndpointAcceptsForwardCompatibleFieldsWhileAgentRuns(t *testing
 
 func TestForceStopAlwaysReleasesUIState(t *testing.T) {
 	state := NewAppState(defaultConfig(), NewOllamaClient())
+	t.Cleanup(state.Close)
 	ctx, cancel := context.WithCancel(context.Background())
 	state.Running = true
 	state.Cancel = cancel
@@ -996,6 +1007,7 @@ func TestModelCallTimeoutReturnsControl(t *testing.T) {
 	cfg.ModelTimeout = 1
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Analysiere das Projekt", "slow-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1050,6 +1062,7 @@ func TestStopAgentCancelsBlockedModelCall(t *testing.T) {
 	cfg.ModelTimeout = 60
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Analysiere das Projekt", "blocked-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1180,7 +1193,8 @@ func TestLocalCodeBrandAndLicenseAreEmbedded(t *testing.T) {
 
 func TestPingReportsLocalCodeAndLicense(t *testing.T) {
 	state := NewAppState(defaultConfig(), NewOllamaClient())
-	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
+	t.Cleanup(state.Close)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:32145/api/ping", nil)
 	rr := httptest.NewRecorder()
 	NewServer(state).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -1230,6 +1244,7 @@ func TestAnalysisTaskDoesNotRequireGitOrMutateProject(t *testing.T) {
 	cfg.MaxAgentSteps = 10
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("analysiere das projekt", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1291,6 +1306,7 @@ func TestAffirmativeGitQuestionInitializesRepositoryAndContinues(t *testing.T) {
 	cfg.CreateProjectDocs = false
 	cfg.ApprovalMode = "balanced"
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("Richte die Git-Versionierung ein", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1381,6 +1397,7 @@ func TestAgentCompactsLargeContextAndContinues(t *testing.T) {
 	cfg.MaxAgentSteps = 8
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
 	if err := state.StartAgent("prüfe die große datei", "test-model", nil); err != nil {
 		t.Fatal(err)
 	}

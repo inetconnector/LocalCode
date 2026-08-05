@@ -24,10 +24,10 @@ func detectGPU() string {
 	out, _ := exec.Command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader").Output()
 	return strings.TrimSpace(string(out))
 }
-func openProjectTarget(project, target string) error {
+func openProjectTarget(project, target string, cfg Config) error {
 	return exec.Command("xdg-open", project).Start()
 }
-func selectDirectory(initial string) (string, error) { return initial, nil }
+func selectDirectory(initial, language string) (string, error) { return initial, nil }
 func commandBlocked(cfg Config, command string) error {
 	for _, p := range cfg.BlockedCommandPatterns {
 		if re, err := regexp.Compile(p); err == nil && re.MatchString(command) {

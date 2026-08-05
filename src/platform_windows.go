@@ -205,7 +205,7 @@ func runProjectCommand(ctx context.Context, project, command string, cfg Config)
 	if resolutionNote != "" {
 		out.WriteString(resolutionNote + "\n")
 	}
-	fmt.Fprintf(&out, "Arbeitsordner: %s\nExitcode: %d\nDauer: %s\n", project, exitCode, time.Since(started).Round(time.Millisecond))
+	fmt.Fprintf(&out, localizeConfigText(cfg, "Arbeitsordner: %s\nExitcode: %d\nDauer: %s\n", "Working directory: %s\nExit code: %d\nDuration: %s\n"), project, exitCode, time.Since(started).Round(time.Millisecond))
 	if stdout.Len() > 0 {
 		out.WriteString("\nSTDOUT:\n" + stdout.String())
 	}
@@ -252,7 +252,7 @@ func openInteractiveTerminal(project, command string, cfg Config) error {
 	return cmd.Start()
 }
 
-func openProjectTarget(project, target string) error {
+func openProjectTarget(project, target string, cfg Config) error {
 	startHidden := func(name string, args ...string) error {
 		cmd := exec.Command(name, args...)
 		hideCommandWindow(cmd)
@@ -266,7 +266,7 @@ func openProjectTarget(project, target string) error {
 		if code, err := exec.LookPath("code.cmd"); err == nil {
 			return startHidden("cmd.exe", "/D", "/S", "/C", "\""+code+"\" \""+project+"\"")
 		}
-		return fmt.Errorf("Visual Studio Code wurde nicht gefunden")
+		return fmt.Errorf("%s", localizeConfigText(cfg, "Visual Studio Code wurde nicht gefunden", "Visual Studio Code was not found"))
 	case "visualstudio":
 		if devenv, err := exec.LookPath("devenv.exe"); err == nil {
 			return startHidden(devenv, project)
@@ -276,18 +276,19 @@ func openProjectTarget(project, target string) error {
 				return startHidden(candidate[0], project)
 			}
 		}
-		return fmt.Errorf("Visual Studio wurde weder über PATH noch über vswhere/Visual-Studio-Installationspfade gefunden")
+		return fmt.Errorf("%s", localizeConfigText(cfg, "Visual Studio wurde weder über PATH noch über vswhere/Visual-Studio-Installationspfade gefunden", "Visual Studio was not found through PATH, vswhere, or Visual Studio installation paths"))
 	default:
 		return startHidden("explorer.exe", project)
 	}
 }
 
-func selectDirectory(initial string) (string, error) {
+func selectDirectory(initial, language string) (string, error) {
 	escaped := strings.ReplaceAll(initial, "'", "''")
 	script := `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; ` +
-		`$d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Projektordner auswählen'; $d.ShowNewFolderButton=$true; ` +
+		`$owner=New-Object System.Windows.Forms.Form; $owner.TopMost=$true; $owner.ShowInTaskbar=$false; $owner.Opacity=0; $owner.Width=1; $owner.Height=1; $owner.StartPosition='CenterScreen'; ` +
+		`$d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='` + strings.ReplaceAll(localized(language, "Projektordner auswählen", "Choose project folder"), "'", "''") + `'; $d.ShowNewFolderButton=$true; ` +
 		`if ('` + escaped + `' -ne '' -and (Test-Path -LiteralPath '` + escaped + `')) { $d.SelectedPath='` + escaped + `' }; ` +
-		`if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($d.SelectedPath) }`
+		`try { $owner.Show(); $owner.Activate(); if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($d.SelectedPath) } } finally { $d.Dispose(); $owner.Close(); $owner.Dispose() }`
 	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	out, err := cmd.Output()
@@ -426,4 +427,14 @@ func androidHostDeviceDiagnostic() string {
 		return "Windows meldet über Plug-and-Play kein eindeutig erkennbares Android-/ADB-Gerät. Prüfe Datenkabel, USB-Modus und OEM-USB-Treiber."
 	}
 	return "Windows Plug-and-Play erkennt folgende mögliche Android-Geräte:\n" + text
+}
+func detectSystemLanguage() string {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	proc := kernel32.NewProc("GetUserDefaultLocaleName")
+	buffer := make([]uint16, 85)
+	r1, _, _ := proc.Call(uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+	if r1 == 0 {
+		return "en"
+	}
+	return syscall.UTF16ToString(buffer)
 }

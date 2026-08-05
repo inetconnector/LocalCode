@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,8 @@ type ChatThreadSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Archived  bool      `json:"archived,omitempty"`
 }
+
+var threadFileMu sync.Mutex
 
 type threadFile struct {
 	Version int          `json:"version"`
@@ -66,6 +69,8 @@ func loadThreads() map[string]*ChatThread {
 }
 
 func saveThreads(threads map[string]*ChatThread) error {
+	threadFileMu.Lock()
+	defer threadFileMu.Unlock()
 	if err := os.MkdirAll(appDataDir(), 0o755); err != nil {
 		return err
 	}
@@ -88,11 +93,41 @@ func saveThreads(threads map[string]*ChatThread) error {
 	if err != nil {
 		return err
 	}
-	tmp := threadsPath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	path := threadsPath()
+	tmp, err := os.CreateTemp(filepath.Dir(path), "threads-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, threadsPath())
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	backup := path + ".bak"
+	_ = os.Remove(backup)
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Rename(path, backup); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Rename(backup, path)
+		return err
+	}
+	_ = os.Remove(backup)
+	return nil
 }
 
 func threadTitle(prompt string) string {

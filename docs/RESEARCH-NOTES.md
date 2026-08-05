@@ -1,51 +1,13 @@
-# Research Notes
+# Research notes / Recherchehinweise
 
-## Referenzumfang
+## Deutsch
 
-Version 4.0.0 orientiert sich an öffentlich dokumentierten Codex-Arbeitsmustern und an den vom Nutzer bereitgestellten Referenz-Screenshots. Relevant waren insbesondere:
+Die Architektur orientiert sich an öffentlich dokumentierten Agentenmustern: projektbezogene Arbeitsbereiche, fortsetzbare Chats, sichtbare Genehmigungen, kontrollierte Werkzeuge, Worktrees, MCP und Kontextkomprimierung. Die Oberfläche verwendet keine proprietären Assets und behauptet keine vollständige Dienst- oder Modellparität.
 
-- Projekte und fortsetzbare Chats
-- lokale Arbeitsordner und Datei-Kontext
-- Review-/Ausgabenbereich
-- Git-Worktrees für parallele Arbeit
-- lokale Umgebungen, Setup-Schritte und Aktionen
-- anpassbare Themes, Farben und Fonts
-- Einstellungen für Berechtigungen, Terminal, Browser, Git, Hooks und Verbindungen
-- MCP über stdio und Streamable HTTP
+Für neue Integrationen sind zuerst Primärquellen zu verwenden: offizielle Herstellerdokumentation, Spezifikationen und Release Notes. Erkenntnisse, Annahmen und technische Grenzen müssen dokumentiert und durch Tests abgesichert werden.
 
-## Offizielle Referenzen
+## English
 
-- https://openai.com/index/introducing-the-codex-app/
-- https://developers.openai.com/codex/features
-- https://developers.openai.com/codex/environments/git-worktrees
-- https://developers.openai.com/codex/environments/local-environment
-- https://developers.openai.com/codex/changelog
-- https://developers.openai.com/codex/learn/best-practices
-- https://help.openai.com/en/articles/20001275-chatgpt-work-and-codex
-- https://help.openai.com/en/articles/20001277-using-the-built-in-browser-in-the-chatgpt-desktop-app
+The architecture follows publicly documented agent patterns: project workspaces, resumable chats, visible approvals, controlled tools, worktrees, MCP, and context compaction. The interface does not use proprietary assets and does not claim full service or model parity.
 
-## Umsetzungsregeln
-
-- Keine sichtbaren Navigationspunkte ohne reale Funktion.
-- Keine kopierten OpenAI-Logos oder proprietären UI-Assets.
-- Eigenständige Icons, Farben und Implementierung.
-- Persistente lokale Chats und Einstellungen.
-- Anhänge werden lokal verarbeitet.
-- App-Modus über einen vorhandenen Chromium-Browser statt Electron.
-- Sicherheitsrelevante Grenzen werden offen dokumentiert.
-
-
-## Werkzeug- und Android-Referenzen
-
-- https://developer.android.com/tools/releases/platform-tools
-- https://developer.android.com/tools/adb
-- https://developer.android.com/studio/command-line/variables
-- https://developer.android.com/studio/run/device
-- https://developer.android.com/studio/run/oem-usb
-- https://developer.android.com/tools/sdkmanager
-
-Die Implementierung verwendet diese Quellen für die SDK-/ADB-Suchpfade, Gerätezustände und Installationshinweise.
-## Kontextverwaltung und Agenten-Harness (4.7.0)
-
-Die Implementierung orientiert sich an öffentlich dokumentierten Agentenmustern: lange Workflows benötigen einen stabilen Werkzeugzyklus und eine Verdichtung, die Arbeitszustand statt Gesprächsprosa bewahrt. LocalCode komprimiert deshalb an einer konfigurierbaren Schwelle und hält Originalaufgabe, Entscheidungen, Artefakte, Befehle, Fehler und offene Punkte ausdrücklich fest. Ollama-Toolaufrufe werden weiterhin als mehrstufiger Nachrichtenzyklus mit zurückgespielten Werkzeugergebnissen geführt.
-
+New integrations must start with primary sources: official vendor documentation, specifications, and release notes. Findings, assumptions, and technical limitations must be documented and covered by tests.
