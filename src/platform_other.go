@@ -93,6 +93,6 @@ func visualStudioToolPaths(name string) [][2]string { return nil }
 
 func androidHostDeviceDiagnostic() string { return "" }
 
-func installOllama(ctx context.Context) (string, error) {
+func installOllama(ctx context.Context, progress ollamaInstallProgressFunc) (string, error) {
 	return "", fmt.Errorf("automatic Ollama installation is currently supported on Windows only")
 }

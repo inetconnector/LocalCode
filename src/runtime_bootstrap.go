@@ -50,6 +50,62 @@ func localizedBootstrapError(cfg Config, de, en string, args ...any) error {
 	return fmt.Errorf(localizeConfigText(cfg, de, en), args...)
 }
 
+func formatDownloadAmount(bytes int64) string {
+	if bytes < 0 {
+		return "unknown"
+	}
+	const (
+		kiB = int64(1 << 10)
+		miB = int64(1 << 20)
+		giB = int64(1 << 30)
+	)
+	switch {
+	case bytes >= giB:
+		return fmt.Sprintf("%.2f GiB", float64(bytes)/float64(giB))
+	case bytes >= miB:
+		return fmt.Sprintf("%.1f MiB", float64(bytes)/float64(miB))
+	case bytes >= kiB:
+		return fmt.Sprintf("%.1f KiB", float64(bytes)/float64(kiB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func reportOllamaInstallProgress(cfg Config, reporter BootstrapReporter, phase string, written, total int64) {
+	switch phase {
+	case "download":
+		percent := 14
+		displayWritten := written
+		if total > 0 && displayWritten > total {
+			displayWritten = total
+		}
+		detail := formatDownloadAmount(displayWritten)
+		if total > 0 {
+			percent += int((displayWritten * 3) / total)
+			detail += " / " + formatDownloadAmount(total)
+		}
+		reportBootstrap(cfg, reporter, percent,
+			"Ollama-Installer wird heruntergeladen …",
+			"Downloading the Ollama installer …",
+			detail)
+	case "verify":
+		reportBootstrap(cfg, reporter, 18,
+			"Digitale Signatur des Ollama-Installers wird geprüft …",
+			"Verifying the Ollama installer signature …",
+			"Authenticode")
+	case "install":
+		reportBootstrap(cfg, reporter, 19,
+			"Ollama wird installiert …",
+			"Installing Ollama …",
+			localizeConfigText(cfg, "Der offizielle Installer läuft im Hintergrund.", "The official installer is running in the background."))
+	case "locate":
+		reportBootstrap(cfg, reporter, 20,
+			"Ollama-Installation wird überprüft …",
+			"Verifying the Ollama installation …",
+			"ollama.exe")
+	}
+}
+
 func normalizeConfiguredOllamaModel(model string) string {
 	model = strings.TrimSpace(model)
 	lower := strings.ToLower(model)
@@ -160,7 +216,9 @@ func ensureOllamaInstalledAndRunningWithProgress(ctx context.Context, cfg Config
 	}
 	reportBootstrap(cfg, reporter, 14, "Ollama fehlt und wird automatisch installiert …", "Ollama is missing and will be installed automatically …", "https://ollama.com/download/OllamaSetup.exe")
 	log.Printf("Ollama is missing; starting official automatic installation")
-	installDetail, err := installOllama(ctx)
+	installDetail, err := installOllama(ctx, func(phase string, written, total int64) {
+		reportOllamaInstallProgress(cfg, reporter, phase, written, total)
+	})
 	if err != nil {
 		return installDetail, localizedBootstrapError(cfg,
 			"Die automatische Ollama-Installation ist fehlgeschlagen: %w",

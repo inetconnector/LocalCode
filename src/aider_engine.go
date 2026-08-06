@@ -27,6 +27,8 @@ const aiderPinnedVersion = "0.86.2"
 const uvPinnedVersion = "0.11.16"
 const uvWindowsDownloadURL = "https://releases.astral.sh/github/uv/releases/download/" + uvPinnedVersion + "/uv-x86_64-pc-windows-msvc.zip"
 const uvWindowsSHA256 = "dd9d6d6554bfab265bfa98aa8e8a406c5c3a7b97582f93de1f4d48d9154a0395"
+const ollamaInstallerDownloadURL = "https://ollama.com/download/OllamaSetup.exe"
+const ollamaInstallerMaxBytes int64 = 4 << 30
 
 type AiderStatus struct {
 	Enabled          bool   `json:"enabled"`
@@ -203,13 +205,46 @@ func aiderStatus(ctx context.Context, cfg Config) AiderStatus {
 	return status
 }
 
+type downloadProgressFunc func(written, total int64)
+type ollamaInstallProgressFunc func(phase string, written, total int64)
+
+type downloadProgressWriter struct {
+	written  int64
+	total    int64
+	lastEmit time.Time
+	callback downloadProgressFunc
+}
+
+func (w *downloadProgressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	w.written += int64(n)
+	if w.callback != nil && (w.lastEmit.IsZero() || time.Since(w.lastEmit) >= 250*time.Millisecond || (w.total > 0 && w.written >= w.total)) {
+		w.lastEmit = time.Now()
+		w.callback(w.written, w.total)
+	}
+	return n, nil
+}
+
 func downloadFile(ctx context.Context, url, target string, maxBytes int64) error {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	return downloadFileWithProgress(ctx, url, target, maxBytes, nil)
+}
+
+func downloadFileWithProgress(ctx context.Context, url, target string, maxBytes int64, progress downloadProgressFunc) error {
+	if maxBytes <= 0 {
+		return fmt.Errorf("download size limit must be positive")
+	}
+	baseTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return fmt.Errorf("default HTTP transport has unexpected type %T", http.DefaultTransport)
+	}
+	transport := baseTransport.Clone()
+	transport.ResponseHeaderTimeout = 45 * time.Second
+	client := &http.Client{Transport: transport}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/6.1 dependency installer")
+	req.Header.Set("User-Agent", "LocalCode/6.4.1 dependency installer")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -219,17 +254,25 @@ func downloadFile(ctx context.Context, url, target string, maxBytes int64) error
 		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 	if resp.ContentLength > maxBytes && resp.ContentLength >= 0 {
-		return fmt.Errorf("download exceeds size limit: %d", resp.ContentLength)
+		return fmt.Errorf("download exceeds safe size limit: %d bytes received in headers, maximum is %d bytes", resp.ContentLength, maxBytes)
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
 	part := target + ".part"
+	if err := os.Remove(part); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	out, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	written, copyErr := io.Copy(out, io.LimitReader(resp.Body, maxBytes+1))
+	if progress != nil {
+		progress(0, resp.ContentLength)
+	}
+	counter := &downloadProgressWriter{total: resp.ContentLength, callback: progress}
+	limited := io.LimitReader(resp.Body, maxBytes+1)
+	written, copyErr := io.Copy(out, io.TeeReader(limited, counter))
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(part)
@@ -241,7 +284,10 @@ func downloadFile(ctx context.Context, url, target string, maxBytes int64) error
 	}
 	if written > maxBytes {
 		_ = os.Remove(part)
-		return fmt.Errorf("download exceeds size limit")
+		return fmt.Errorf("download exceeds safe size limit of %d bytes", maxBytes)
+	}
+	if progress != nil {
+		progress(written, resp.ContentLength)
 	}
 	// The destination is a managed download cache. Removing a stale target
 	// first keeps repeated installation attempts reliable on Windows, where
@@ -250,7 +296,11 @@ func downloadFile(ctx context.Context, url, target string, maxBytes int64) error
 		_ = os.Remove(part)
 		return err
 	}
-	return os.Rename(part, target)
+	if err := os.Rename(part, target); err != nil {
+		_ = os.Remove(part)
+		return err
+	}
+	return nil
 }
 
 func verifyFileSHA256(path, expected string) error {

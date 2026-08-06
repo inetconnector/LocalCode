@@ -1,42 +1,45 @@
-LOCALCODE 6.4.0 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
+LOCALCODE 6.4.1 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
 =====================================================================
 
-Fixed startup regression / Behobene Startregression
-----------------------------------------------------
-PASS  Automatic setup downloads are independent from agent/web network access.
-PASS  Schema 9 -> 10 migration enables setup downloads while preserving the
-      previous network_enabled preference.
-PASS  Compact startup splash reports Ollama, model, and selected-engine setup.
-PASS  Splash actions: retry, open log folder, limited mode, and exit.
-PASS  Setup errors are localized; no generic network-disabled startup deadlock.
+Fixed Windows startup failures / Behobene Windows-Startfehler
+--------------------------------------------------------------
+PASS  All six .bat launchers are ASCII-only, BOM-free, and use Windows CRLF.
+PASS  BUILD.bat is a small wrapper; build logic lives in scripts/build.ps1.
+PASS  START.bat uses scripts/needs-build.ps1 and cannot bypass a required build.
+PASS  Clean start, diagnostics, and project-root reset delegate to the current
+      shared build/start path instead of launching stale binaries.
+PASS  scripts/install-go.ps1 is UTF-8 with BOM and CRLF for Windows PowerShell
+      5.1; the other PowerShell drivers are ASCII/CRLF.
+PASS  Project-root reset writes JSON as UTF-8 without BOM.
+PASS  LocalCode accepts legacy configuration JSON containing a UTF-8 BOM.
 
-Additional fixes / Weitere Korrekturen
---------------------------------------
-PASS  Only models required by the selected engine are pulled.
-PASS  HTTPS Ollama URLs remain HTTPS; IPv6 hosts use valid bracketed addresses.
-PASS  Disabled selected engines fall back explicitly to LocalCode native.
-PASS  Splash server is loopback-only, token-protected, Host-validated, and uses
-      bounded read/write/idle timeouts.
-PASS  MCP uvx installation uses the pinned SHA-256-verified uv archive instead
-      of executing a downloaded installer script.
-PASS  STATE.md output distinguishes agent network from setup downloads.
+Fixed Ollama setup failure / Behobener Ollama-Einrichtungsfehler
+----------------------------------------------------------------
+PASS  Guarded installer limit increased to 4 GiB.
+PASS  Regression test covers the reported 1,563,278,432-byte installer.
+PASS  Splash reports live transferred/total MiB or GiB while downloading.
+PASS  Download retains a finite size ceiling and response-header timeout.
+PASS  Retry removes stale .part files; completed downloads replace atomically.
+PASS  Failed or completed installation attempts delete the large installer.
+PASS  Authenticode verification remains required before installer execution.
 
 Coverage / Testabdeckung
 ------------------------
-PASS  178 Go test functions discovered.
-PASS  Exact statement coverage: 6,526 / 8,153 = 80.044156%.
-PASS  Go summary: 80.0% of statements.
+PASS  189 Go test functions discovered.
+PASS  Exact statement coverage: 6,576 / 8,201 = 80.185343%.
+PASS  Go summary: 80.2% of statements.
 PASS  Machine-readable profile: reports/coverage.out.
 PASS  Human-readable HTML report: reports/coverage.html.
 
 Core verification / Kernpruefung
 ---------------------------------
 PASS  gofmt on all Go source and test files.
-PASS  go test -count=1 -timeout=180s ./...
+PASS  go test -count=1 -timeout=300s ./...
 PASS  go vet ./...
-PASS  three independent randomized test orders: 6411, 6412, 6413.
-PASS  Race detector for all 178 tests in five complete partitions. Each
+PASS  three independent randomized test orders: 11, 22, 33.
+PASS  Race detector for all 189 tests in four complete partitions. Each
       discovered test appears in exactly one partition.
+PASS  No obvious private-key or API-token patterns found in the source package.
 
 Windows verification / Windows-Pruefung
 -----------------------------------------
@@ -52,22 +55,18 @@ PASS  dist is populated and REBUILD-NATIVE.txt forces one complete native build
 UI and localization / Oberflaeche und Uebersetzung
 ---------------------------------------------------
 PASS  Browser UI E2E: 37 mocked API interactions without page errors.
-PASS  HTML IDs: 220 total, 220 unique, 0 duplicates.
-PASS  German/English localization parity: 543 / 543 keys.
-PASS  JavaScript syntax checks for i18n.js and embedded index.html script.
-PASS  Startup splash page, progress, authorization, retry/error, and completion
-      state are covered by automated HTTP tests.
+PASS  HTML-ID uniqueness test passed.
+PASS  German/English localization-key parity test passed.
+PASS  JavaScript syntax checks passed.
+PASS  Startup splash authorization, progress, retry/error, and completion paths
+      are covered by automated HTTP tests.
 
-Verification boundary / Verifikationsgrenze
---------------------------------------------
-The release host is Linux. It executes source tests, coverage, vet, UI checks,
-race-detector partitions, and Windows cross-builds. It cannot execute Windows
-batch files or PE programs natively. The supplied executables are cross-build
-artifacts from the final 6.4.0 source. dist/REBUILD-NATIVE.txt intentionally
-forces START.bat to perform the complete native Windows build before first use.
-
-Die Release-Umgebung ist Linux. Sie fuehrt Quelltests, Coverage, Vet, UI-Pruefung,
-Race-Detector-Gruppen und Windows-Cross-Builds aus. Windows-Batchdateien und
-PE-Programme kann sie nicht nativ starten. Die enthaltenen EXE-Dateien stammen
-aus dem finalen 6.4.0-Quellstand. dist/REBUILD-NATIVE.txt erzwingt vor der ersten
-Nutzung absichtlich den vollstaendigen nativen Windows-Build durch START.bat.
+Not executed / Nicht ausgefuehrt
+--------------------------------
+INFO  govulncheck could not be installed because the isolated release container
+      could not resolve proxy.golang.org. No vulnerability-scan pass is claimed.
+INFO  The release host is Linux and cannot execute .bat, PowerShell 5.1, or PE
+      programs natively. Batch/PowerShell encoding and delegation are tested
+      statically, and Windows binaries are cross-compiled from the final source.
+      dist/REBUILD-NATIVE.txt therefore forces START.bat to run the complete
+      native Windows build before first normal launch.

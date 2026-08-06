@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -703,6 +704,7 @@ func loadConfig() Config {
 	migrateLegacyProductData()
 	cfg := defaultConfig()
 	if data, err := os.ReadFile(configPath()); err == nil {
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 		var raw map[string]json.RawMessage
 		_ = json.Unmarshal(data, &raw)
 		_ = json.Unmarshal(data, &cfg)

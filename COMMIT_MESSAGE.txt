@@ -1,9 +1,1 @@
-fix(startup): add progress splash and decouple setup downloads
-
-- show Ollama, model, and coding-engine bootstrap progress before the main UI
-- migrate setup downloads away from the agent/web network permission
-- localize setup failures and provide retry, logs, limited mode, and exit actions
-- avoid downloads for inactive coding engines
-- preserve HTTPS and IPv6 Ollama endpoints
-- verify MCP uvx from the pinned SHA-256-checked uv archive
-- retain more than 80 percent statement coverage and Windows cross-build checks
+fix(windows): repair batch parsing and support large Ollama installer downloads

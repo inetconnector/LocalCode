@@ -1,6 +1,6 @@
 # LocalCode project state / Projektstatus
 
-**Version:** 6.4.0  
+**Version:** 6.4.1  
 **Status:** Startup setup fixed; progress splash and three selectable coding engines
 
 ## Deutsch
@@ -31,7 +31,7 @@
 
 ### Verifikation
 
-- Exakte finale Statement-Coverage: **6526/8153 = 80.044156 %**.
+- Exakte finale Statement-Coverage: **6576/8201 = 80.185343 %**.
 - Normale Tests, `go vet`, Race Detector, zufällige Testreihenfolgen, UI/API-Simulation, Übersetzungsparität und Windows-amd64-Cross-Build gehören zur Release-Prüfung.
 - Der endgültige Messwert und die exakten Testzahlen stehen in `TEST-REPORT.txt` und `reports/COVERAGE-SUMMARY.txt`.
 
@@ -63,7 +63,7 @@
 
 ### Verification
 
-- Exact final statement coverage: **6526/8153 = 80.044156%**.
+- Exact final statement coverage: **6576/8201 = 80.185343%**.
 - Normal tests, `go vet`, the race detector, randomized test orders, UI/API simulation, translation parity, and Windows-amd64 cross-builds are part of release verification.
 - The exact results are recorded in `TEST-REPORT.txt` and `reports/COVERAGE-SUMMARY.txt`.
 

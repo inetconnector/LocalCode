@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -256,7 +257,7 @@ func TestPlatformHelpersAndEnvironmentBranches(t *testing.T) {
 		if detail := androidHostDeviceDiagnostic(); detail != "" {
 			t.Fatalf("unexpected host diagnostic=%q", detail)
 		}
-		if _, err := installOllama(context.Background()); err == nil {
+		if _, err := installOllama(context.Background(), nil); err == nil {
 			t.Fatal("non-Windows automatic Ollama installation must fail explicitly")
 		}
 	}
@@ -308,5 +309,113 @@ func TestAutomaticModelPullCanBeExplicitlyDisabled(t *testing.T) {
 	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
 	if err == nil || !strings.Contains(err.Error(), "automatic model download is disabled") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestOllamaInstallerDownloadLimitCoversCurrentLargeWindowsInstaller(t *testing.T) {
+	const observedInstallerSize = int64(1563278432)
+	if ollamaInstallerMaxBytes <= observedInstallerSize {
+		t.Fatalf("Ollama installer limit %d does not cover observed installer size %d", ollamaInstallerMaxBytes, observedInstallerSize)
+	}
+	if ollamaInstallerMaxBytes < 2<<30 {
+		t.Fatalf("Ollama installer limit is unexpectedly small: %d", ollamaInstallerMaxBytes)
+	}
+}
+
+func TestDownloadFileReportsProgressAndCleansPartFile(t *testing.T) {
+	payload := strings.Repeat("0123456789abcdef", 8192)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "download.bin")
+	var calls int
+	var finalWritten, finalTotal int64
+	err := downloadFileWithProgress(context.Background(), server.URL, target, int64(len(payload))+1, func(written, total int64) {
+		calls++
+		finalWritten = written
+		finalTotal = total
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls < 2 || finalWritten != int64(len(payload)) || finalTotal != int64(len(payload)) {
+		t.Fatalf("progress calls=%d written=%d total=%d", calls, finalWritten, finalTotal)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil || string(data) != payload {
+		t.Fatalf("downloaded payload mismatch: len=%d err=%v", len(data), err)
+	}
+	if _, err := os.Stat(target + ".part"); !os.IsNotExist(err) {
+		t.Fatalf("partial file still exists: %v", err)
+	}
+}
+
+func TestDownloadFileRejectsNonPositiveLimit(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "download.bin")
+	if err := downloadFileWithProgress(context.Background(), "https://example.invalid/file", target, 0, nil); err == nil {
+		t.Fatal("expected non-positive size limit to be rejected before network access")
+	}
+}
+
+func TestFormatDownloadAmount(t *testing.T) {
+	cases := map[int64]string{
+		0:       "0 B",
+		1024:    "1.0 KiB",
+		1 << 20: "1.0 MiB",
+		1 << 30: "1.00 GiB",
+	}
+	for input, want := range cases {
+		if got := formatDownloadAmount(input); got != want {
+			t.Fatalf("formatDownloadAmount(%d)=%q want %q", input, got, want)
+		}
+	}
+}
+
+func TestReportOllamaInstallProgressCoversAllPhases(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "de"
+	var got []BootstrapProgress
+	reporter := func(progress BootstrapProgress) {
+		got = append(got, progress)
+	}
+	reportOllamaInstallProgress(cfg, reporter, "download", 50, 100)
+	reportOllamaInstallProgress(cfg, reporter, "download", 200, 100)
+	reportOllamaInstallProgress(cfg, reporter, "verify", 0, 0)
+	reportOllamaInstallProgress(cfg, reporter, "install", 0, 0)
+	reportOllamaInstallProgress(cfg, reporter, "locate", 0, 0)
+	reportOllamaInstallProgress(cfg, reporter, "unknown", 0, 0)
+	if len(got) != 5 {
+		t.Fatalf("progress events=%#v", got)
+	}
+	if got[0].Percent != 15 || got[1].Percent != 17 {
+		t.Fatalf("download progress=%#v", got[:2])
+	}
+	if got[2].Percent != 18 || got[3].Percent != 19 || got[4].Percent != 20 {
+		t.Fatalf("phase progress=%#v", got[2:])
+	}
+	if !strings.Contains(got[3].Detail, "offizielle Installer") {
+		t.Fatalf("localized install detail=%q", got[3].Detail)
+	}
+}
+
+func TestLoadConfigAcceptsUTF8BOM(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", base)
+	t.Setenv("LOCALCODE_CACHE_HOME", filepath.Join(base, "cache"))
+	t.Setenv("LOCALCODE_USER_HOME", filepath.Join(base, "home"))
+	path := configPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payload := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"schema_version":10,"port":33333,"language":"de"}`)...)
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadConfig()
+	if cfg.Port != 33333 || cfg.Language != "de" {
+		t.Fatalf("config with BOM was not loaded: %+v", cfg)
 	}
 }

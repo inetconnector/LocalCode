@@ -2229,7 +2229,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/ping" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.0"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.1"})
 		case r.URL.Path == "/api/shutdown" && r.Method == http.MethodPost:
 			shutdown = true
 			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -2238,7 +2238,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.0" {
+	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.1" {
 		t.Fatalf("version=%q ok=%v", got, ok)
 	}
 	if err := shutdownExistingLocalCode(server.URL); err != nil || !shutdown {

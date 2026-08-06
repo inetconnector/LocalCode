@@ -1,14 +1,14 @@
-LOCALCODE 6.4.0 STATEMENT COVERAGE
+LOCALCODE 6.4.1 STATEMENT COVERAGE
 ==================================
 
-Executed statements: 6,526
-Total statements:    8,153
-Exact coverage:      80.044156%
-Go display value:    80.0%
-Test functions:      178
+Executed statements: 6,576
+Total statements:    8,201
+Exact coverage:      80.185343%
+Go display value:    80.2%
+Test functions:      189
 
 Profile: reports/coverage.out
 HTML:    reports/coverage.html
 
-The profile was generated from the final 6.4.0 source with:
-  go test -count=1 -timeout=180s -coverprofile=../reports/coverage.out ./...
+The profile was generated from the final 6.4.1 source with:
+  go test -count=1 -timeout=300s -covermode=atomic -coverprofile=../reports/coverage.out ./...

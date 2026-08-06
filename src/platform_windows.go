@@ -482,27 +482,44 @@ func verifyAuthenticodeSignature(path string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func installOllama(ctx context.Context) (string, error) {
-	const source = "https://ollama.com/download/OllamaSetup.exe"
+func installOllama(ctx context.Context, progress ollamaInstallProgressFunc) (string, error) {
+	const source = ollamaInstallerDownloadURL
 	downloadDir := filepath.Join(appDataDir(), "downloads")
 	installer := filepath.Join(downloadDir, "OllamaSetup.exe")
-	if err := downloadFile(ctx, source, installer, 1<<30); err != nil {
+	if err := downloadFileWithProgress(ctx, source, installer, ollamaInstallerMaxBytes, func(written, total int64) {
+		if progress != nil {
+			progress("download", written, total)
+		}
+	}); err != nil {
 		return "", err
+	}
+	// The official installer can be well over one gigabyte. Keep it only for
+	// the duration of this installation attempt so LocalCode does not leave a
+	// large stale download in the user's profile.
+	defer os.Remove(installer)
+	if progress != nil {
+		progress("verify", 0, 0)
 	}
 	signer, err := verifyAuthenticodeSignature(installer)
 	if err != nil {
 		_ = os.Remove(installer)
 		return signer, fmt.Errorf("Ollama installer signature verification failed: %w", err)
 	}
+	if progress != nil {
+		progress("install", 0, 0)
+	}
 	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"}
 	output, exitCode, runErr := runCapturedCommand(ctx, installer, args, os.Environ(), downloadDir)
 	if runErr != nil {
 		return output, fmt.Errorf("Ollama installer failed with exit code %d: %w", exitCode, runErr)
 	}
+	if progress != nil {
+		progress("locate", 0, 0)
+	}
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		if path := findOllamaExecutable(); path != "" {
-			return strings.TrimSpace("Authenticode signer: " + signer + "\nInstaller: " + installer + "\nOllama executable: " + path + "\n" + output), nil
+			return strings.TrimSpace("Authenticode signer: " + signer + "\nInstaller source: " + source + "\nOllama executable: " + path + "\n" + output), nil
 		}
 		if err := ctx.Err(); err != nil {
 			return output, err
