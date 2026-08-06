@@ -14,6 +14,9 @@ const productDirName = "LocalCode"
 const legacyProductDirName = "Local" + "Codex"
 
 func userProfileDir() string {
+	if override := strings.TrimSpace(os.Getenv("LOCALCODE_USER_HOME")); override != "" {
+		return filepath.Clean(override)
+	}
 	if profile := strings.TrimSpace(os.Getenv("USERPROFILE")); profile != "" {
 		return filepath.Clean(profile)
 	}
@@ -108,7 +111,8 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		SchemaVersion: 8, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
@@ -134,6 +138,14 @@ func defaultConfig() Config {
 }
 
 func userConfigBaseDir() string {
+	if override := strings.TrimSpace(os.Getenv("LOCALCODE_CONFIG_HOME")); override != "" {
+		return filepath.Clean(override)
+	}
+	// Honor XDG_CONFIG_HOME on every platform. Besides making portable and
+	// enterprise deployments predictable, this keeps tests isolated on Windows.
+	if override := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); override != "" {
+		return filepath.Clean(override)
+	}
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
 		base = filepath.Join(userProfileDir(), ".config")
@@ -142,6 +154,12 @@ func userConfigBaseDir() string {
 }
 
 func userCacheBaseDir() string {
+	if override := strings.TrimSpace(os.Getenv("LOCALCODE_CACHE_HOME")); override != "" {
+		return filepath.Clean(override)
+	}
+	if override := strings.TrimSpace(os.Getenv("XDG_CACHE_HOME")); override != "" {
+		return filepath.Clean(override)
+	}
 	base, err := os.UserCacheDir()
 	if err != nil || base == "" {
 		base = filepath.Join(userProfileDir(), ".cache")
@@ -244,8 +262,29 @@ func pathWithin(base, candidate string) bool {
 }
 
 func suspiciousProjectRoot(root string) bool {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "." || root == "" {
+		return true
+	}
+	// Only LocalCode's own managed data directories are unsafe as workspace
+	// roots. Rejecting all of APPDATA/LOCALAPPDATA also rejected legitimate
+	// temporary projects and made Windows tests depend on the real user profile.
+	managed := []string{
+		appDataDir(),
+		legacyAppDataDir(),
+		filepath.Join(userCacheBaseDir(), productDirName),
+		filepath.Join(userCacheBaseDir(), legacyProductDirName),
+	}
 	for _, key := range []string{"LOCALAPPDATA", "APPDATA"} {
-		if base := strings.TrimSpace(os.Getenv(key)); base != "" && pathWithin(base, root) {
+		if base := strings.TrimSpace(os.Getenv(key)); base != "" {
+			managed = append(managed,
+				filepath.Join(base, productDirName),
+				filepath.Join(base, legacyProductDirName),
+			)
+		}
+	}
+	for _, base := range managed {
+		if pathWithin(base, root) || pathWithin(root, base) {
 			return true
 		}
 	}
@@ -298,8 +337,8 @@ func normalizeProjectPathList(values []string) []string {
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 7 {
-		cfg.SchemaVersion = 7
+	if cfg.SchemaVersion < 8 {
+		cfg.SchemaVersion = 8
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -314,6 +353,13 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.Port == 0 {
 		cfg.Port = d.Port
+	}
+	if oldSchema < 8 {
+		cfg.OllamaAutoInstall = true
+		cfg.OllamaAutoPull = true
+	}
+	if strings.TrimSpace(cfg.OllamaDefaultModel) == "" {
+		cfg.OllamaDefaultModel = d.OllamaDefaultModel
 	}
 	if strings.TrimSpace(cfg.EditingEngine) == "" {
 		cfg.EditingEngine = d.EditingEngine

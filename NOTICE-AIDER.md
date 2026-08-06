@@ -9,6 +9,6 @@ LocalCode kann das externe Paket `aider-chat` als optionale Bearbeitungs-Engine 
 - Pinned LocalCode integration version: `0.86.2`
 - License copy: `licenses/aider-LICENSE.txt`
 
-Aider is not bundled in the LocalCode executable or source archive. It is installed only after explicit user approval into a LocalCode-managed per-user tool directory. “Aider” is an upstream project name and is not a LocalCode trademark.
+Aider is not bundled in the LocalCode executable or source archive. When automatic runtime setup is enabled, it is installed or repaired at application startup in a LocalCode-managed per-user tool directory. “Aider” is an upstream project name and is not a LocalCode trademark.
 
-Aider ist weder in der LocalCode-EXE noch im Quellarchiv enthalten. Es wird erst nach ausdrücklicher Zustimmung in einen von LocalCode verwalteten benutzerlokalen Werkzeugordner installiert. „Aider“ ist der Name des Upstream-Projekts und keine Marke von LocalCode.
+Aider ist weder in der LocalCode-EXE noch im Quellarchiv enthalten. Bei aktivierter automatischer Laufzeiteinrichtung wird es beim Programmstart in einem von LocalCode verwalteten benutzerlokalen Werkzeugordner installiert oder repariert. „Aider“ ist der Name des Upstream-Projekts und keine Marke von LocalCode.

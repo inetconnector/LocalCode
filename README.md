@@ -1,4 +1,4 @@
-# LocalCode 6.0.0
+# LocalCode 6.1.0
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -11,11 +11,12 @@ LocalCode is a local Windows coding-agent application for Ollama. It provides pr
 ### Schnellstart
 
 1. Das ZIP vollständig in einen neuen Ordner entpacken.
-2. `BUILD-AND-RUN.bat` doppelklicken.
-3. Falls Go fehlt, lädt das Skript eine portable offizielle Go-Version.
-4. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
+2. `START.bat` oder `BUILD-AND-RUN.bat` doppelklicken.
+3. Fehlt eine unterstützte Go-Version, lädt das Build-Skript die aktuelle stabile Windows-Version direkt von `go.dev`, prüft deren offiziellen SHA-256-Wert und verwendet sie projektlokal.
+4. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und Aider. Fehlende Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
+5. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
 
-Voraussetzung: Eine erreichbare lokale Ollama-Installation mit mindestens einem geeigneten Modell, beispielsweise `qwen2.5-coder:14b` oder `gpt-oss:20b`.
+Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhandene Ollama-Installationen und Modelle werden weiterverwendet.
 
 ### Sprache
 
@@ -50,9 +51,9 @@ Der Supervisor erkennt typische Aufgaben wie Analyse, Build, Android-Deployment,
 
 ### Aider Editing Engine
 
-LocalCode 6.0.0 verwendet standardmäßig **Aider 0.86.2 als produktive Bearbeitungs-Engine**. LocalCode bleibt für Oberfläche, Projekt- und Aufgabenverwaltung, Genehmigungen, Abbruch, MCP, Terminal, Webrecherche, Anhänge, Backups und Kontextkomprimierung verantwortlich. Aider übernimmt die eigentliche mehrdateilige Codebearbeitung.
+LocalCode 6.1.0 verwendet standardmäßig **Aider 0.86.2 als produktive Bearbeitungs-Engine**. LocalCode bleibt für Oberfläche, Projekt- und Aufgabenverwaltung, Genehmigungen, Abbruch, MCP, Terminal, Webrecherche, Anhänge, Backups und Kontextkomprimierung verantwortlich. Aider übernimmt die eigentliche mehrdateilige Codebearbeitung.
 
-- Aider wird nicht in die EXE eingebettet. Beim ersten echten Bearbeitungsauftrag fragt LocalCode nach Zustimmung und installiert die fest angeheftete Version benutzerlokal über eine isolierte `uv tool`-Umgebung mit Python 3.12.
+- Aider wird nicht in die EXE eingebettet. Beim Start prüft LocalCode die fest angeheftete Version und installiert oder repariert sie bei Bedarf automatisch benutzerlokal über eine isolierte `uv tool`-Umgebung mit Python 3.12.
 - Ollama-Modelle werden im von Aider empfohlenen Format `ollama_chat/<modell>` angesprochen.
 - Repository Map, relevante Edit-Dateien, Read-only-Dokumente, Chat-Verlauf, Edit-Format, Architect/Editor-Modus, Lint und Tests sind über **Einstellungen → Konfiguration → Aider Editing Engine** steuerbar.
 - Vor jedem Aider-Bearbeitungs-, Lint- oder Testlauf erstellt LocalCode ein lokales Backup. **Letzte Aider-Änderung zurücksetzen** stellt nur dann wieder her, wenn die Dateien seit dem Lauf nicht manuell verändert wurden.
@@ -75,12 +76,12 @@ LocalCode sucht Werkzeuge über:
 - bekannte Windows-Installationsorte
 - den benutzerlokalen LocalCode-Werkzeugordner
 
-Fehlende unterstützte Werkzeuge werden nicht nur behauptet: LocalCode zeigt die durchsuchten Pfade, fragt nach Installationsgenehmigung, installiert das Werkzeug aus einer dokumentierten Quelle, verifiziert es und setzt anschließend die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
+Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle, `uv`, Python 3.12 und Aider) wird beim Start automatisch vervollständigt. Weitere projektspezifische Werkzeuge werden bedarfsgesteuert erkannt; LocalCode zeigt die durchsuchten Pfade, holt für eingriffsreiche Installationen eine Genehmigung ein, installiert aus einer dokumentierten Quelle, verifiziert das Ergebnis und setzt die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
 
 
 ### Verwaltete MCP-Suite
 
-LocalCode 6.0.0 enthält sechs verwaltete MCP-Funktionsbereiche:
+LocalCode 6.1.0 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 - **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
 - **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
@@ -113,8 +114,9 @@ Das Quellpaket enthält `.gitignore`, `.gitattributes`, `.editorconfig`, `GIT-SE
 
 ```text
 go fmt ./...
-go test -count=1 ./...
+go test -count=1 -timeout=180s ./...
 go vet ./...
+go test -shuffle=on -count=1 -timeout=180s ./...
 Windows-amd64-GUI-Build
 Windows-amd64-Diagnose-Build
 SHA-256-Erzeugung
@@ -124,7 +126,7 @@ Der Release-Testbericht befindet sich in `TEST-REPORT.txt`.
 
 ### Sicherheit und Grenzen
 
-Standardmäßig gelten projektbezogene Pfadgrenzen und Genehmigungen für Änderungen, Befehle und Netzwerkaktionen. Destruktive Git- und Systembefehle werden blockiert oder in ein sichtbares interaktives Terminal ausgelagert. Die native Anwendungssandbox ist nicht identisch mit der proprietären Codex-Infrastruktur. Eine vollständige Modell- oder Cloud-Parität kann mit einem lokalen 14B-/20B-Modell nicht seriös garantiert werden.
+Standardmäßig gelten projektbezogene Pfadgrenzen und Genehmigungen für Änderungen, Befehle und Netzwerkaktionen. Pfade werden einschließlich Symlinks und NTFS-Junctions kanonisch geprüft. Webabrufe binden sich an die bereits validierte öffentliche IP, wodurch DNS-Rebinding auf Loopback- oder Privatadressen blockiert wird. Destruktive Git- und Systembefehle werden blockiert oder in ein sichtbares interaktives Terminal ausgelagert. Die native Anwendungssandbox ist nicht identisch mit der proprietären Codex-Infrastruktur. Eine vollständige Modell- oder Cloud-Parität kann mit einem lokalen 14B-/20B-Modell nicht seriös garantiert werden.
 
 ### Lizenz
 
@@ -137,11 +139,12 @@ Apache License 2.0. Siehe `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
 ### Quick start
 
 1. Extract the ZIP completely into a new directory.
-2. Double-click `BUILD-AND-RUN.bat`.
-3. If Go is missing, the script downloads an official portable Go distribution.
-4. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
+2. Double-click `START.bat` or `BUILD-AND-RUN.bat`.
+3. If no supported Go version is available, the build script downloads the current stable Windows release directly from `go.dev`, verifies its official SHA-256 value, and uses it inside the project.
+4. On first application startup, LocalCode verifies Ollama, the configured coding model, and Aider. Missing components are installed automatically for the current user and verified afterwards.
+5. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
 
-Requirement: a reachable local Ollama installation with at least one suitable model, for example `qwen2.5-coder:14b` or `gpt-oss:20b`.
+Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama installations and models are reused.
 
 ### Language
 
@@ -176,9 +179,9 @@ The supervisor detects common tasks such as analysis, builds, Android deployment
 
 ### Aider editing engine
 
-LocalCode 6.0.0 uses **Aider 0.86.2 as its default production editing engine**. LocalCode remains responsible for the UI, project and task management, approvals, cancellation, MCP, terminal access, web research, attachments, backups, and context compaction. Aider performs the actual multi-file code editing.
+LocalCode 6.1.0 uses **Aider 0.86.2 as its default production editing engine**. LocalCode remains responsible for the UI, project and task management, approvals, cancellation, MCP, terminal access, web research, attachments, backups, and context compaction. Aider performs the actual multi-file code editing.
 
-- Aider is not embedded into the executable. On the first real editing task, LocalCode asks for approval and installs the pinned version for the current user through an isolated `uv tool` environment using Python 3.12.
+- Aider is not embedded into the executable. At startup, LocalCode verifies the pinned version and automatically installs or repairs it for the current user through an isolated `uv tool` environment using Python 3.12.
 - Ollama models are addressed using Aider's recommended `ollama_chat/<model>` form.
 - Repository map, selected edit files, read-only documents, history, edit format, architect/editor mode, linting, and tests are configurable under **Settings → Configuration → Aider editing engine**.
 - LocalCode creates a local backup before every Aider edit, lint, or test run. **Restore last Aider edit** only restores files when they still match the exact post-run hashes, protecting later manual work.
@@ -201,12 +204,12 @@ LocalCode searches for tools through:
 - known Windows installation locations
 - the per-user LocalCode tools directory
 
-For supported missing tools, LocalCode shows every searched path, requests installation approval, installs from a documented source, verifies the result, and then retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
+The core runtime (Ollama, configured Ollama models, `uv`, Python 3.12, and Aider) is completed automatically at startup. Additional project-specific tools are discovered on demand; for invasive installations LocalCode shows the searched paths, requests approval, installs from a documented source, verifies the result, and retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
 
 
 ### Managed MCP suite
 
-LocalCode 6.0.0 includes six managed MCP capability areas:
+LocalCode 6.1.0 includes six managed MCP capability areas:
 
 - **Filesystem MCP** – built-in, project-scoped file and directory tools.
 - **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.
@@ -250,7 +253,7 @@ The release verification report is stored in `TEST-REPORT.txt`.
 
 ### Security and limitations
 
-Project path boundaries and approvals for changes, commands, and network actions are enabled by default. Destructive Git and system commands are blocked or moved to a visible interactive terminal. The native application-level sandbox is not identical to proprietary Codex infrastructure. Complete model or cloud-service parity cannot be honestly guaranteed with a local 14B/20B model.
+Project path boundaries and approvals for changes, commands, and network actions are enabled by default. Paths are checked after resolving symlinks and NTFS junctions. Web fetches dial the already validated public IP, blocking DNS rebinding to loopback or private addresses. Destructive Git and system commands are blocked or moved to a visible interactive terminal. The native application-level sandbox is not identical to proprietary Codex infrastructure. Complete model or cloud-service parity cannot be honestly guaranteed with a local 14B/20B model.
 
 ### License
 

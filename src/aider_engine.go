@@ -25,7 +25,7 @@ import (
 
 const aiderPinnedVersion = "0.86.2"
 const uvPinnedVersion = "0.11.16"
-const uvWindowsDownloadURL = "https://github.com/astral-sh/uv/releases/download/" + uvPinnedVersion + "/uv-x86_64-pc-windows-msvc.zip"
+const uvWindowsDownloadURL = "https://releases.astral.sh/github/uv/releases/download/" + uvPinnedVersion + "/uv-x86_64-pc-windows-msvc.zip"
 const uvWindowsSHA256 = "dd9d6d6554bfab265bfa98aa8e8a406c5c3a7b97582f93de1f4d48d9154a0395"
 
 type AiderStatus struct {
@@ -209,7 +209,7 @@ func downloadFile(ctx context.Context, url, target string, maxBytes int64) error
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/6.0 Aider installer")
+	req.Header.Set("User-Agent", "LocalCode/6.1 dependency installer")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -364,7 +364,7 @@ func ensureUVInstalled(ctx context.Context, cfg Config) (string, string, error) 
 }
 
 func runCapturedCommand(ctx context.Context, executable string, args, env []string, dir string) (string, int, error) {
-	cmd := exec.CommandContext(ctx, executable, args...)
+	cmd := exec.Command(executable, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	hideCommandWindow(cmd)
@@ -380,14 +380,15 @@ func runCapturedCommand(ctx context.Context, executable string, args, env []stri
 	select {
 	case err = <-done:
 	case <-ctx.Done():
+		// Do not use exec.CommandContext here: on Windows it can terminate the
+		// wrapper process before taskkill /T observes its child tree, leaving a
+		// ping/python/aider child alive with open handles. Kill the complete tree
+		// first and then wait for Cmd.Wait to reap it.
 		killProcessTree(cmd)
 		select {
 		case <-done:
 			err = ctx.Err()
-		case <-time.After(10 * time.Second):
-			// Do not inspect ProcessState or output buffers while Cmd.Wait may
-			// still be finalizing them. Returning a bounded diagnostic keeps the
-			// UI responsive and avoids a data race even for a broken child tree.
+		case <-time.After(4 * time.Second):
 			return "", -1, fmt.Errorf("%w: subprocess did not terminate within the cancellation grace period", ctx.Err())
 		}
 	}

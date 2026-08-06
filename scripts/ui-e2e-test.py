@@ -24,7 +24,7 @@ def handler(route):
         try:data=json.loads(req.post_data)
         except:pass
     posts.append((path,method,data))
-    if path=='status': return fulfill(route,{'version':'6.0.0','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','aider_installed':True,'aider_version':'aider 0.86.2'})
+    if path=='status': return fulfill(route,{'version':'6.1.0','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','aider_installed':True,'aider_version':'aider 0.86.2'})
     if path=='projects': return fulfill(route,{'root':'C:\\Users\\frede\\Projekte','projects':projects,'hidden_projects':[]})
     if path=='threads': return fulfill(route,{'threads':threads,'current':current})
     if path=='snapshot':

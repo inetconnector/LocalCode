@@ -54,6 +54,9 @@ type Config struct {
 	Port           int               `json:"port"`
 
 	OllamaURL                         string `json:"ollama_url"`
+	OllamaAutoInstall                 bool   `json:"ollama_auto_install"`
+	OllamaAutoPull                    bool   `json:"ollama_auto_pull"`
+	OllamaDefaultModel                string `json:"ollama_default_model"`
 	EditingEngine                     string `json:"editing_engine"` // aider | native
 	AiderEnabled                      bool   `json:"aider_enabled"`
 	AiderAutoInstall                  bool   `json:"aider_auto_install"`

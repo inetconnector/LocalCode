@@ -3,31 +3,36 @@ REM SPDX-License-Identifier: Apache-2.0
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
+set "VERSION=6.1.0"
 set "LC_LANG=en"
 for /f "delims=" %%L in ('powershell.exe -NoLogo -NoProfile -Command "(Get-UICulture).TwoLetterISOLanguageName" 2^>nul') do set "LC_LANG=%%L"
 if /I "%LC_LANG%"=="de" (
-  set "TITLE=LocalCode 6.0.0 bauen"
-  set "NO_GO=[INFO] Go ist nicht installiert. Lade eine portable offizielle Go-Version ..."
+  set "TITLE=LocalCode %VERSION% bauen"
+  set "NO_GO=[INFO] Keine unterstützte Go-Version gefunden. Lade die aktuelle offizielle portable Go-Version ..."
+  set "OLD_GO=[INFO] Die gefundene Go-Version wird nicht mehr unterstützt. Aktualisiere projektlokal auf die aktuelle stabile Version ..."
   set "GO_MISSING=[FEHLER] go.exe wurde nicht gefunden:"
-  set "STEP1=[1/5] Formatiere Quellcode ..."
-  set "STEP2=[2/5] Führe Tests aus ..."
-  set "STEP3=[3/5] Führe go vet aus ..."
-  set "STEP4=[4/5] Baue Windows-GUI ..."
-  set "STEP5=[5/5] Baue Diagnoseprogramm ..."
+  set "STEP1=[1/6] Formatiere Quellcode ..."
+  set "STEP2=[2/6] Führe isolierte Tests aus ..."
+  set "STEP3=[3/6] Führe go vet aus ..."
+  set "STEP4=[4/6] Wiederhole Tests in zufälliger Reihenfolge ..."
+  set "STEP5=[5/6] Baue Windows-GUI ..."
+  set "STEP6=[6/6] Baue Diagnoseprogramm ..."
   set "SUCCESS=[OK] BUILD ERFOLGREICH"
   set "PROGRAM=Programm:"
   set "DIAGNOSTIC=Diagnose:"
   set "FAILED=[FEHLER] BUILD FEHLGESCHLAGEN"
   set "FAIL_HELP=Das Fenster bleibt offen. Die konkrete Meldung steht oben."
 ) else (
-  set "TITLE=Build LocalCode 6.0.0"
-  set "NO_GO=[INFO] Go is not installed. Downloading an official portable Go distribution ..."
+  set "TITLE=Build LocalCode %VERSION%"
+  set "NO_GO=[INFO] No supported Go version was found. Downloading the current official portable Go release ..."
+  set "OLD_GO=[INFO] The detected Go version is no longer supported. Updating to the current stable release inside the project ..."
   set "GO_MISSING=[ERROR] go.exe was not found:"
-  set "STEP1=[1/5] Formatting source code ..."
-  set "STEP2=[2/5] Running tests ..."
-  set "STEP3=[3/5] Running go vet ..."
-  set "STEP4=[4/5] Building Windows GUI ..."
-  set "STEP5=[5/5] Building diagnostics executable ..."
+  set "STEP1=[1/6] Formatting source code ..."
+  set "STEP2=[2/6] Running isolated tests ..."
+  set "STEP3=[3/6] Running go vet ..."
+  set "STEP4=[4/6] Re-running tests in randomized order ..."
+  set "STEP5=[5/6] Building Windows GUI ..."
+  set "STEP6=[6/6] Building diagnostics executable ..."
   set "SUCCESS=[OK] BUILD SUCCEEDED"
   set "PROGRAM=Application:"
   set "DIAGNOSTIC=Diagnostics:"
@@ -39,10 +44,18 @@ title %TITLE%
 taskkill /F /IM LocalCode.exe >nul 2>&1
 powershell.exe -NoLogo -NoProfile -Command "$n='Local'+'Codex'; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 
-set "VERSION=6.0.0"
 set "GOEXE="
 if exist "%~dp0.tools\go\bin\go.exe" set "GOEXE=%~dp0.tools\go\bin\go.exe"
 if not defined GOEXE for /f "delims=" %%G in ('where go.exe 2^>nul') do if not defined GOEXE set "GOEXE=%%G"
+
+if defined GOEXE (
+    set "LC_GOEXE=%GOEXE%"
+    powershell.exe -NoLogo -NoProfile -Command "$raw=(& $env:LC_GOEXE env GOVERSION 2^>$null); $m=[regex]::Match($raw,'^go(\d+)\.(\d+)'); if(-not $m.Success){exit 1}; $major=[int]$m.Groups[1].Value; $minor=[int]$m.Groups[2].Value; if($major -gt 1 -or ($major -eq 1 -and $minor -ge 25)){exit 0}else{exit 1}"
+    if errorlevel 1 (
+        echo %OLD_GO%
+        set "GOEXE="
+    )
+)
 
 if not defined GOEXE (
     echo %NO_GO%
@@ -67,7 +80,7 @@ if errorlevel 1 goto :fail_popd
 
 echo.
 echo %STEP2%
-"%GOEXE%" test -count=1 ./...
+"%GOEXE%" test -count=1 -timeout=180s ./...
 if errorlevel 1 goto :fail_popd
 
 echo.
@@ -77,6 +90,11 @@ if errorlevel 1 goto :fail_popd
 
 echo.
 echo %STEP4%
+"%GOEXE%" test -shuffle=on -count=1 -timeout=180s ./...
+if errorlevel 1 goto :fail_popd
+
+echo.
+echo %STEP5%
 set "CGO_ENABLED=0"
 set "GOOS=windows"
 set "GOARCH=amd64"
@@ -84,7 +102,7 @@ set "GOARCH=amd64"
 if errorlevel 1 goto :fail_popd
 
 echo.
-echo %STEP5%
+echo %STEP6%
 "%GOEXE%" build -trimpath -ldflags "-X main.version=%VERSION%-debug" -o "%~dp0dist\LocalCode-Debug.exe" .
 if errorlevel 1 goto :fail_popd
 popd

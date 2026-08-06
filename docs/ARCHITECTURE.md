@@ -2,43 +2,56 @@
 
 ## Deutsch
 
-LocalCode besteht aus einer einzelnen Go-Anwendung mit eingebettetem Web-Frontend.
+LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und einer ausschließlich an `127.0.0.1` gebundenen HTTP-/SSE-API.
 
-- `main.go`: Start, Ollama-Erkennung, Versionswechsel und lokaler HTTP-Server.
-- `server.go`: ausschließlich lokale API auf `127.0.0.1`, SSE, Projekte, Chats, aufgabenspezifische Snapshots, Einstellungen und Genehmigungen.
-- `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften/Entfernen/Wiederherstellen sowie persistente Aufgabenaktionen.
-- `agent.go` und `agent_supervisor.go`: Agentenschleife, deterministische Aufgabensteuerung, Fortsetzungen und Abbruch.
-- `context_compaction.go`: kontrollierte Kontextkomprimierung.
+- `main.go`: Versionsübergabe, automatische Laufzeiteinrichtung und lokaler Serverstart.
+- `runtime_bootstrap.go`: Prüfung und automatische Vervollständigung von Ollama, konfigurierten Modellen und Aider.
+- `ollama.go`: Dienstsuche, Modellinventar, Modell-Download, Chat und lokale Bildanalyse.
+- `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
+- `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
+- `agent.go`, `agent_supervisor.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, Fortsetzungen und Abbruch.
+- `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
+- `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
+- `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
+- `web_tools.go`: öffentliche Webabrufe mit IP-Prüfung beim Verbindungsaufbau.
 - `tool_registry.go`, `tool_install.go`, `project_automation.go`: Werkzeugerkennung, Installation, Build und Deployment.
-- `static/index.html` und `static/i18n.js`: Desktop-Oberfläche und Sprachkataloge.
+- `static/index.html` und `static/i18n.js`: Desktop-Oberfläche und vollständige deutsche/englische Sprachkataloge.
 
-Zustände werden unter einem Mutex verwaltet. Chatereignisse werden im Speicher sofort veröffentlicht und über einen einzelnen, zusammenfassenden Hintergrundschreiber atomar gespeichert. Dadurch blockieren Dateischreibvorgänge weder Agent noch Oberfläche.
+### Start- und Bootstrap-Ablauf
 
-Offene Genehmigungen gehören zum Backendzustand. Die Oberfläche liest sie aus Snapshots und Ereignissen und zeigt sie zusätzlich in einer festen Leiste unten mittig an. Die Projektwurzel kann über eine API manuell gesetzt oder durch einen Windows-Ordnerdialog gewählt werden.
+1. Konfiguration und frühere Produktdaten werden aus portablen oder benutzerlokalen Verzeichnissen geladen.
+2. Eine bereits laufende ältere LocalCode-Instanz wird kontrolliert abgelöst.
+3. Ollama wird gesucht und gestartet. Fehlt es unter Windows, lädt LocalCode den offiziellen Installer, prüft dessen Authenticode-Signatur und installiert ihn unbeaufsichtigt für den Benutzer.
+4. Fehlende explizit konfigurierte Modelle werden über die Ollama-API geladen. Auf einem frischen System wird nur das konfigurierte Standardmodell geladen, damit ein alter gespeicherter Modellname keinen zweiten großen Download auslöst.
+5. Aider wird gegen die angeheftete Version geprüft. Falls nötig, installiert LocalCode das geprüfte portable `uv`, eine isolierte Python-3.12-Laufzeit und `aider-chat==0.86.2`.
+6. Erst nach erfolgreicher Verifikation startet die lokale UI-API. Details und Fehler werden im LocalCode-Log festgehalten.
 
-Jedes UI-Ereignis kann eine Aufgaben-ID tragen. Ein Fenster fordert seinen Snapshot gezielt für diese Aufgabe an und filtert Live-Ereignisse entsprechend. Chat-Anfragen senden Projekt- und Aufgaben-ID explizit, damit mehrere geöffnete Aufgabenfenster nicht versehentlich denselben Auswahlzustand verwenden. Der Agent selbst bleibt global auf einen gleichzeitig aktiven Lauf begrenzt.
+Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofort veröffentlicht und durch einen zusammenfassenden Hintergrundschreiber atomar persistiert. Offene Genehmigungen sind Backendzustand und erscheinen zusätzlich als feste Entscheidungsleiste. Jede UI-Instanz fordert ihren Snapshot mit konkreter Projekt- und Aufgaben-ID an; ein Agentenlauf bleibt global auf eine gleichzeitig aktive Ausführung begrenzt.
 
 ## English
 
-LocalCode is a single Go application with an embedded web frontend.
+LocalCode is a single Go application with an embedded web frontend and an HTTP/SSE API bound exclusively to `127.0.0.1`.
 
-- `main.go`: startup, Ollama discovery, version handover, and local HTTP server.
-- `server.go`: loopback-only API, SSE, projects, chats, task-targeted snapshots, settings, and approvals.
-- `project_catalog.go` and `history.go`: project aliases, pin/remove/restore behavior, and persistent task actions.
-- `agent.go` and `agent_supervisor.go`: agent loop, deterministic supervision, continuations, and cancellation.
-- `context_compaction.go`: controlled context compaction.
-- `tool_registry.go`, `tool_install.go`, `project_automation.go`: tool discovery, installation, builds, and deployment.
-- `static/index.html` and `static/i18n.js`: desktop UI and language catalogs.
+- `main.go`: version handover, automatic runtime setup, and local server startup.
+- `runtime_bootstrap.go`: verification and automatic completion of Ollama, configured models, and Aider.
+- `ollama.go`: service discovery, model inventory, model pulls, chat, and local image analysis.
+- `server.go`: API, SSE, projects, tasks, settings, and approvals.
+- `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
+- `agent.go`, `agent_supervisor.go`, and `continuation.go`: agent loop, deterministic supervision, continuations, and cancellation.
+- `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
+- `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
+- `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
+- `web_tools.go`: public web fetches with IP validation at connection time.
+- `tool_registry.go`, `tool_install.go`, and `project_automation.go`: tool discovery, installation, build, and deployment.
+- `static/index.html` and `static/i18n.js`: desktop UI and complete German/English catalogs.
 
-State is protected by a mutex. Chat events are published immediately in memory and persisted by one coalescing background writer using atomic file replacement. Disk writes therefore do not block the agent or the UI.
+### Startup and bootstrap flow
 
-Pending approvals are backend state. The client restores them from snapshots and events and duplicates them in a fixed bottom-center decision bar. The project root can be entered manually through the API or selected with the Windows folder dialog.
+1. Configuration and legacy product data are loaded from portable or per-user directories.
+2. A running older LocalCode instance is replaced in a controlled manner.
+3. Ollama is discovered and started. If missing on Windows, LocalCode downloads the official installer, validates its Authenticode signature, and installs it unattended for the current user.
+4. Missing explicitly configured models are pulled through the Ollama API. On a fresh system only the configured default is pulled so a stale historical model does not trigger a second large download.
+5. Aider is checked against the pinned version. When needed, LocalCode installs the verified portable `uv`, an isolated Python 3.12 runtime, and `aider-chat==0.86.2`.
+6. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
 
-Each UI event can carry a task ID. A window requests a snapshot for its explicit task and filters live events accordingly. Chat requests include the explicit project and task ID so multiple task windows do not accidentally share the latest selection state. The agent itself remains globally limited to one active run at a time.
-
-## Aider editing engine / Aider-Editing-Engine
-
-LocalCode routes real multi-file code changes through a managed Aider subprocess. The supervisor remains authoritative for task intent, approvals, cancellation, MCP calls, tool discovery, output events, context compaction, and UI state. The Aider adapter owns isolated installation, CLI construction, task-specific history, repository-map configuration, edit format, lint/test handoff, project fingerprints, backup manifests, and guarded restore.
-
-LocalCode leitet echte mehrdateilige Codeänderungen an einen verwalteten Aider-Unterprozess weiter. Der Supervisor bleibt für Aufgabenabsicht, Genehmigungen, Abbruch, MCP-Aufrufe, Werkzeugerkennung, Ausgabenereignisse, Kontextkomprimierung und UI-Zustand maßgeblich. Der Aider-Adapter verwaltet isolierte Installation, CLI-Erzeugung, aufgabenbezogenen Verlauf, Repository-Map-Konfiguration, Edit-Format, Lint-/Testübergabe, Projekt-Fingerprints, Backup-Manifeste und geschützte Wiederherstellung.
-
+State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.

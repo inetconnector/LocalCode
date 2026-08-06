@@ -2,39 +2,64 @@
 
 ## Deutsch
 
-LocalCode kombiniert:
+LocalCode kombiniert folgende Anwendungsschutzschichten:
 
-- Genehmigungsmodi für Änderungen, Befehle und Netzwerkaktionen
-- Projekt-, Workspace- und unbeschränkte Pfadmodi
-- zusätzliche freigegebene Verzeichniswurzeln
-- blockierte Befehlsmuster und harte Schutzregeln für destruktive Git-Aktionen
-- Zeitlimits und kontrollierten Prozessbaum-Abbruch
-- einen Netzwerk-Hauptschalter
-- Schutz vor Abrufen lokaler und privater Netzwerkadressen
-- explizite MCP-Konfiguration
+- Genehmigungsmodi für Dateiänderungen, Befehle, Werkzeuginstallationen und Netzwerkaktionen
+- Projekt-, Workspace- und unbeschränkte Pfadmodi sowie zusätzliche freigegebene Wurzeln
+- kanonische Pfadprüfung nach Auflösung vorhandener Symlinks und NTFS-Junctions, auch bei neu anzulegenden Zieldateien
+- blockierte Befehlsmuster und harte Schutzregeln für destruktive Git-/Systemaktionen
+- Zeitlimits, Prozessgruppen und vollständigen Prozessbaum-Abbruch unter Windows
+- einen globalen Netzwerkschalter
+- Schutz vor Loopback-, Link-local-, privaten und sonstigen nichtöffentlichen Zieladressen
+- DNS-Rebinding-Schutz: verbunden wird mit genau der zuvor beim Dial validierten IP, nicht mit einer zweiten Namensauflösung
+- explizite MCP-Konfiguration und kontrolliertes Warten auf beendete stdio-Prozesse
 - keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen
 
-Hintergrundbefehle werden unter Windows ohne sichtbare Konsolenfenster gestartet. Interaktive Logins werden bewusst in einem sichtbaren Terminal geöffnet. Die Schutzschicht ist anwendungsbasiert und keine identische Betriebssystem-Sandbox der proprietären Codex-Infrastruktur.
+### Automatische Laufzeitinstallation
+
+Die Kernlaufzeit wird standardmäßig selbstständig vervollständigt. Dabei gelten zusätzliche Integritätsprüfungen:
+
+- Go wird vom Build-Skript aus der offiziellen `go.dev`-Release-Liste bezogen und gegen den dort veröffentlichten SHA-256-Wert geprüft.
+- Der Ollama-Installer wird ausschließlich von `ollama.com` geladen und muss eine gültige Windows-Authenticode-Signatur besitzen.
+- Das portable `uv` ist versions- und SHA-256-gebunden.
+- Aider ist auf `aider-chat==0.86.2` festgelegt und wird nach der Installation durch `aider --version` verifiziert.
+- Python, uv und Aider liegen in LocalCode-eigenen Benutzerverzeichnissen; globale Python-Pakete werden nicht verändert.
+- Der globale Netzwerkschalter und die jeweiligen Auto-Installationsoptionen können die Einrichtung ausdrücklich unterbinden.
+
+### Aider-Unterprozessgrenze
+
+LocalCode übergibt Aider eine explizite Minimal-Konfiguration und eine absichtlich leere Umgebungsdatei. Analytics, Update-Prüfung, Browseraufforderungen, Shell-Vorschläge, URL-Erkennung, Benachrichtigungen, Dateiüberwachung und Prompt-Caching sind deaktiviert. Historien liegen außerhalb des Repositories. Vor Bearbeitungs-, Lint- und Testläufen werden Backups und Hash-Manifeste erzeugt; Undo überschreibt keine später manuell geänderten Dateien. Aiders `--yes-always` gilt nur innerhalb des bereits durch LocalCode genehmigten Bearbeitungslaufs.
+
+Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interaktive Logins werden bewusst in einem sichtbaren Terminal geöffnet. Diese Kontrollen sind Anwendungsschutz und keine identische Betriebssystem- oder Virtualisierungssandbox der proprietären Codex-Infrastruktur.
 
 ## English
 
-LocalCode combines:
+LocalCode combines these application-level controls:
 
-- approval modes for changes, commands, and network actions
-- project, workspace, and unrestricted path modes
-- additional explicitly allowed roots
-- blocked command patterns and hard guards for destructive Git operations
-- time limits and controlled process-tree termination
+- approval modes for file changes, commands, tool installations, and network actions
+- project, workspace, and unrestricted path modes plus explicitly allowed roots
+- canonical path checks after resolving existing symlinks and NTFS junctions, including destinations that do not exist yet
+- blocked command patterns and hard guards for destructive Git/system operations
+- timeouts, process groups, and complete Windows process-tree termination
 - a global network switch
-- protection against fetching loopback and private-network addresses
-- explicit MCP configuration
+- rejection of loopback, link-local, private, and other non-public destinations
+- DNS-rebinding protection by dialing the exact IP validated during connection setup rather than performing a second lookup
+- explicit MCP configuration and controlled reaping of stdio subprocesses
 - no normal settings storage for passwords or tokens
 
-Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system sandbox to proprietary Codex infrastructure.
+### Automatic runtime installation
 
-## Aider subprocess boundary / Aider-Unterprozessgrenze
+The core runtime is completed automatically by default with additional integrity checks:
 
-Aider is an external Python application installed only after explicit approval. LocalCode passes an explicit minimal config and an empty environment file, disables Aider analytics, update checks, browser prompts, shell suggestions, URL detection, notifications, file watching, and prompt caching, and uses explicit history paths outside the repository. The selected task and files remain subject to LocalCode's project boundary and approval policy. Aider's `--yes-always` applies only inside the already approved subprocess.
+- Go is downloaded by the build script from the official `go.dev` release feed and verified against its published SHA-256 value.
+- The Ollama installer is downloaded only from `ollama.com` and must carry a valid Windows Authenticode signature.
+- Portable `uv` is pinned by version and SHA-256.
+- Aider is pinned to `aider-chat==0.86.2` and verified with `aider --version` after installation.
+- Python, uv, and Aider are stored in LocalCode-owned user directories; global Python packages are not modified.
+- The global network switch and individual auto-install options can explicitly block setup.
 
-Aider ist eine externe Python-Anwendung und wird erst nach ausdrücklicher Zustimmung installiert. LocalCode übergibt eine explizite Minimal-Konfiguration und eine leere Umgebungsdatei, deaktiviert Aider-Analytics, Update-Prüfung, Browseraufforderungen, Shell-Vorschläge, URL-Erkennung, Benachrichtigungen, Dateiüberwachung und Prompt-Caching und verwendet explizite Historienpfade außerhalb des Projekts. Aufgabe und Dateien bleiben der LocalCode-Projektgrenze und Genehmigungspolitik unterworfen. Aiders `--yes-always` gilt nur innerhalb des bereits genehmigten Unterprozesses.
+### Aider subprocess boundary
 
+LocalCode passes an explicit minimal configuration and an intentionally empty environment file. Analytics, update checks, browser prompts, shell suggestions, URL detection, notifications, file watching, and prompt caching are disabled. Histories remain outside the repository. Backups and hash manifests are created before edit, lint, and test runs; undo never overwrites later manual changes. Aider's `--yes-always` applies only inside an editing run already approved by LocalCode.
+
+Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system or virtualization sandbox to proprietary Codex infrastructure.

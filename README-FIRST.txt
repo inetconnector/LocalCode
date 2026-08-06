@@ -1,21 +1,34 @@
-LOCALCODE 6.0.0 - SCHNELLSTART / QUICK START
+LOCALCODE 6.1.0 - SCHNELLSTART / QUICK START
+=============================================
 
 DEUTSCH
+-------
 1. ZIP vollständig in einen neuen Ordner entpacken.
-2. BUILD-AND-RUN.bat doppelklicken.
-3. Beim ersten echten Code-Bearbeitungsauftrag fragt LocalCode, ob die fest angeheftete Aider Editing Engine benutzerlokal installiert werden darf. Zustimmen; die Installation verändert keine globalen Python-Pakete.
-4. Aider-Status und Modelle unter Einstellungen > Konfiguration prüfen.
-5. Eine lokale Ollama-Instanz und ein Coding-Modell werden vorausgesetzt.
+2. START.bat doppelklicken. Fehlt der Build oder ist der Quellcode neuer,
+   wird automatisch BUILD.bat ausgeführt.
+3. Fehlt eine unterstützte Go-Version, lädt LocalCode die aktuelle stabile
+   Windows-Ausgabe von go.dev und prüft den offiziellen SHA-256-Wert.
+4. Beim ersten Programmstart werden Ollama, das Standardmodell
+   qwen2.5-coder:14b und Aider 0.86.2 geprüft. Fehlende Komponenten werden
+   automatisch benutzerlokal installiert und danach verifiziert.
+5. Große Modell-Downloads können beim ersten Start dauern. Details stehen in
+   %LOCALAPPDATA%\LocalCode\localcode.log.
+
+Für einen vollständigen Neuaufbau: BUILD-AND-RUN.bat
+Für Diagnoseausgabe: DIAGNOSE.bat
 
 ENGLISH
+-------
 1. Extract the ZIP completely into a new directory.
-2. Double-click BUILD-AND-RUN.bat.
-3. On the first real code-editing task, LocalCode asks whether the pinned Aider editing engine may be installed for the current user. Approve it; global Python packages are not modified.
-4. Review Aider status and models under Settings > Configuration.
-5. A reachable local Ollama instance and a coding model are required.
+2. Double-click START.bat. If the build is missing or source files are newer,
+   BUILD.bat runs automatically.
+3. If no supported Go version is available, LocalCode downloads the current
+   stable Windows release from go.dev and verifies the official SHA-256 value.
+4. On first application startup, Ollama, the default qwen2.5-coder:14b model,
+   and Aider 0.86.2 are verified. Missing components are installed for the
+   current user automatically and verified afterwards.
+5. Large model downloads can take time on first startup. Details are written to
+   %LOCALAPPDATA%\LocalCode\localcode.log.
 
-Documentation / Dokumentation:
-- README.md
-- docs/AIDER-INTEGRATION.md
-- GIT-SETUP.md
-- TEST-REPORT.txt
+For a complete rebuild: BUILD-AND-RUN.bat
+For diagnostics: DIAGNOSE.bat

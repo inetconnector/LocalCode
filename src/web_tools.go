@@ -83,7 +83,7 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
+	resp, err := publicHTTPClient(45*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +104,8 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 func duckDuckGoSearch(ctx context.Context, query string, maxResults int) ([]WebResult, error) {
 	endpoint := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/4.8")
-	resp, err := (&http.Client{Timeout: 35 * time.Second}).Do(req)
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
+	resp, err := publicHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +161,62 @@ func validatePublicURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
+func publicOnlyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if parsed := net.ParseIP(host); parsed != nil {
+		if isForbiddenIP(parsed) {
+			return nil, fmt.Errorf("private or local address is blocked: %s", parsed.String())
+		}
+		dialer := &net.Dialer{Timeout: 20 * time.Second, KeepAlive: 30 * time.Second}
+		return dialer.DialContext(ctx, network, net.JoinHostPort(parsed.String(), port))
+	}
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var public []net.IP
+	for _, address := range addresses {
+		if isForbiddenIP(address.IP) {
+			return nil, fmt.Errorf("private or local address is blocked: %s", address.IP.String())
+		}
+		public = append(public, address.IP)
+	}
+	if len(public) == 0 {
+		return nil, errors.New("hostname did not resolve to a public address")
+	}
+	dialer := &net.Dialer{Timeout: 20 * time.Second, KeepAlive: 30 * time.Second}
+	var lastErr error
+	for _, ip := range public {
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, lastErr
+}
+
+func publicHTTPClient(timeout time.Duration, maxRedirects int) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Do not delegate target resolution to an HTTP proxy. The custom dialer
+	// resolves once, validates every returned IP and dials that exact IP, which
+	// prevents DNS rebinding between validation and connection establishment.
+	transport.Proxy = nil
+	transport.DialContext = publicOnlyDialContext
+	client := &http.Client{Timeout: timeout, Transport: transport}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > maxRedirects {
+			return errors.New("too many redirects")
+		}
+		_, err := validatePublicURL(req.URL.String())
+		return err
+	}
+	return client
+}
+
 func webFetch(ctx context.Context, cfg Config, rawURL string) (string, error) {
 	if !cfg.NetworkEnabled {
 		return "", errors.New("network access is disabled in settings")
@@ -173,15 +229,9 @@ func webFetch(ctx context.Context, cfg Config, rawURL string) (string, error) {
 	if maxBytes <= 0 {
 		maxBytes = 2 << 20
 	}
-	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) > 8 {
-			return errors.New("too many redirects")
-		}
-		_, err := validatePublicURL(req.URL.String())
-		return err
-	}}
+	client := publicHTTPClient(45*time.Second, 8)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/4.8")
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
 	req.Header.Set("Accept", "text/html,application/json,text/plain;q=0.9,*/*;q=0.5")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -235,8 +285,8 @@ func bingRSSSearch(ctx context.Context, query string, maxResults int) ([]WebResu
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/4.8")
-	resp, err := (&http.Client{Timeout: 35 * time.Second}).Do(req)
+	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
+	resp, err := publicHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}

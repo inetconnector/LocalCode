@@ -25,6 +25,43 @@ func sandboxRoots(cfg Config, project string) []string {
 	return roots
 }
 
+func canonicalSandboxPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	abs = filepath.Clean(abs)
+
+	// EvalSymlinks requires the complete path to exist. For a new file, walk
+	// upward to the nearest existing ancestor, resolve all symlinks/junctions
+	// there, and append the still-missing suffix. This closes the common escape
+	// where a directory inside the project is an NTFS junction to another drive.
+	current := abs
+	var suffix []string
+	for {
+		resolved, evalErr := filepath.EvalSymlinks(current)
+		if evalErr == nil {
+			resolved, err = filepath.Abs(resolved)
+			if err != nil {
+				return "", err
+			}
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(evalErr, os.ErrNotExist) {
+			return "", evalErr
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", evalErr
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
 func resolveSandboxPath(cfg Config, project, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -44,8 +81,13 @@ func resolveSandboxPath(cfg Config, project, raw string) (string, error) {
 	if roots == nil {
 		return abs, nil
 	}
+	canonicalCandidate, err := canonicalSandboxPath(abs)
+	if err != nil {
+		return "", err
+	}
 	for _, root := range roots {
-		if pathWithin(root, abs) {
+		canonicalRoot, rootErr := canonicalSandboxPath(root)
+		if rootErr == nil && pathWithin(canonicalRoot, canonicalCandidate) {
 			return abs, nil
 		}
 	}

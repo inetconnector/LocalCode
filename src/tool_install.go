@@ -165,7 +165,7 @@ func downloadToFile(ctx context.Context, rawURL, target string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
 	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -281,7 +281,7 @@ func latestMinGitURL(ctx context.Context) (string, string, error) {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
 	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", err
@@ -427,7 +427,7 @@ func installPortableNode(ctx context.Context) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
 	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", err
@@ -498,7 +498,7 @@ func installPortableGitHubCLI(ctx context.Context) (string, string, error) {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "LocalCode/5.0 tool-installer")
+	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
 	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
 	if err != nil {
 		return "", "", err

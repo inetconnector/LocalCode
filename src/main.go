@@ -47,33 +47,21 @@ func main() {
 		}
 	}
 
-	ollama := NewOllamaClient()
-	if cfg.OllamaURL != "" {
-		ollama.BaseURL = cfg.OllamaURL
-	}
-	ollama.ContextLength = cfg.ContextLength
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-	err := ollama.EnsureRunning(ctx)
-	cancel()
+	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Hour)
+	setup, err := bootstrapRuntimeDependencies(setupCtx, cfg)
+	setupCancel()
 	if err != nil {
-		log.Printf("Ollama unavailable: %v", err)
-		showFatal("LocalCode", localizeConfigText(cfg, "Ollama konnte nicht gestartet oder erreicht werden.", "Ollama could not be started or reached.")+"\n\n"+err.Error()+"\n\nLog: "+logPath())
+		log.Printf("Automatic runtime setup failed: %v; details: %s", err, strings.Join(setup.Details, " | "))
+		showFatal("LocalCode", localizeConfigText(cfg,
+			"Die automatische Einrichtung von Ollama, Modellen oder Aider ist fehlgeschlagen.",
+			"Automatic setup of Ollama, models, or Aider failed.")+"\n\n"+err.Error()+"\n\nLog: "+logPath())
 		return
 	}
-
-	modelsCtx, modelsCancel := context.WithTimeout(context.Background(), 20*time.Second)
-	models, err := ollama.Tags(modelsCtx)
-	modelsCancel()
-	if err != nil {
-		showFatal("LocalCode", localizeConfigText(cfg, "Ollama-Modelle konnten nicht gelesen werden:", "Ollama models could not be read:")+"\n\n"+err.Error())
-		return
+	cfg = setup.Config
+	ollama := setup.Ollama
+	for _, detail := range setup.Details {
+		log.Printf("Runtime setup: %s", detail)
 	}
-	if len(models) == 0 {
-		showFatal("LocalCode", localizeConfigText(cfg, "In Ollama ist kein Modell installiert. Installiere mindestens gpt-oss:20b oder qwen2.5-coder:14b.", "No model is installed in Ollama. Install at least gpt-oss:20b or qwen2.5-coder:14b."))
-		return
-	}
-
-	cfg.LastModel = chooseDefaultModel(models, cfg.LastModel)
 	if cfg.LastProject != "" {
 		if full, err := ensureWithinRoot(cfg.RootProjectDir, cfg.LastProject); err != nil {
 			cfg.LastProject = ""

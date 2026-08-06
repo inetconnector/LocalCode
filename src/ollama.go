@@ -274,7 +274,7 @@ func (o *OllamaClient) Pull(ctx context.Context, model string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 45 * time.Minute}
+	client := &http.Client{Timeout: 2 * time.Hour}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

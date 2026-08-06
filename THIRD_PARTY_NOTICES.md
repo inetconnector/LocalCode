@@ -12,9 +12,9 @@ LocalCode wird mit der Go-Werkzeugkette und Standardbibliothek gebaut. Go wird u
 
 ## Aider editing engine / Aider-Bearbeitungs-Engine
 
-LocalCode can install `aider-chat==0.86.2` as an external, separately executed editing engine after explicit user approval. Aider is licensed under Apache-2.0. It is not redistributed in this source package or executable. See `NOTICE-AIDER.md` and `licenses/aider-LICENSE.txt`.
+LocalCode can install or repair `aider-chat==0.86.2` automatically at startup as an external, separately executed editing engine when runtime auto-setup is enabled. Aider is licensed under Apache-2.0. It is not redistributed in this source package or executable. See `NOTICE-AIDER.md` and `licenses/aider-LICENSE.txt`.
 
-LocalCode kann nach ausdrücklicher Zustimmung `aider-chat==0.86.2` als externe, separat ausgeführte Bearbeitungs-Engine installieren. Aider steht unter Apache-2.0 und wird weder in diesem Quellpaket noch in der EXE weiterverteilt. Siehe `NOTICE-AIDER.md` und `licenses/aider-LICENSE.txt`.
+LocalCode kann bei aktivierter automatischer Laufzeiteinrichtung `aider-chat==0.86.2` beim Start automatisch als externe, separat ausgeführte Bearbeitungs-Engine installieren oder reparieren. Aider steht unter Apache-2.0 und wird weder in diesem Quellpaket noch in der EXE weiterverteilt. Siehe `NOTICE-AIDER.md` und `licenses/aider-LICENSE.txt`.
 
 ## Managed MCP servers / Verwaltete MCP-Server
 
@@ -41,7 +41,7 @@ The following components can be detected or invoked by LocalCode but are not bun
 
 Die folgenden Komponenten können von LocalCode erkannt oder aufgerufen werden, sind aber nicht im Quellpaket oder in der EXE enthalten:
 
-- Ollama and locally installed Ollama models
+- Ollama and locally installed Ollama models; when enabled, LocalCode can download the official Windows installer and pull configured models automatically
 - Microsoft Edge, Google Chrome, Visual Studio and Visual Studio Code
 - Android SDK, ADB and Gradle
 - Windows Terminal, OpenSSH and WSL

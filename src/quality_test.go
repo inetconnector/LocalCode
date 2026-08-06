@@ -19,8 +19,8 @@ import (
 
 func TestLanguageSettingsAndResponseLanguage(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 4, Language: "de", PreferredLanguage: "Deutsch"})
-	if cfg.SchemaVersion != 7 {
-		t.Fatalf("schema = %d, want 7", cfg.SchemaVersion)
+	if cfg.SchemaVersion != 8 {
+		t.Fatalf("schema = %d, want 8", cfg.SchemaVersion)
 	}
 	if cfg.Language != "auto" || cfg.PreferredLanguage != "auto" {
 		t.Fatalf("legacy implicit German default was not migrated: %#v", cfg)

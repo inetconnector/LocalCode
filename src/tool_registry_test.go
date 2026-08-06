@@ -37,6 +37,56 @@ func writeTestExecutable(t *testing.T, path, body string) {
 	}
 }
 
+func isolateWindowsToolDiscovery(t *testing.T) {
+	t.Helper()
+	base := t.TempDir()
+	for key, value := range map[string]string{
+		"USERPROFILE":       filepath.Join(base, "profile"),
+		"LOCALAPPDATA":      filepath.Join(base, "local"),
+		"APPDATA":           filepath.Join(base, "roaming"),
+		"ProgramFiles":      filepath.Join(base, "program-files"),
+		"ProgramFiles(x86)": filepath.Join(base, "program-files-x86"),
+		"ANDROID_HOME":      "",
+		"ANDROID_SDK_ROOT":  "",
+		"PATH":              "",
+	} {
+		t.Setenv(key, value)
+	}
+}
+
+func buildWindowsADBTestExecutable(t *testing.T, target string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourceDir := t.TempDir()
+	source := `package main
+import (
+  "fmt"
+  "os"
+)
+func main() {
+  if len(os.Args) > 1 && os.Args[1] == "version" {
+    fmt.Println("Android Debug Bridge version 1.0.41")
+    return
+  }
+  if len(os.Args) > 1 && os.Args[1] == "devices" {
+    fmt.Println("List of devices attached")
+    fmt.Println("SERIAL123\\tdevice product:test model:Demo transport_id:1")
+  }
+}`
+	file := filepath.Join(sourceDir, "main.go")
+	if err := os.WriteFile(file, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goexe := filepath.Join(runtime.GOROOT(), "bin", "go.exe")
+	cmd := exec.Command(goexe, "build", "-trimpath", "-o", target, file)
+	cmd.Env = os.Environ()
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build adb test helper: %v\n%s", err, output)
+	}
+}
+
 func TestParseAndroidSDKFromLocalProperties(t *testing.T) {
 	project := t.TempDir()
 	want := filepath.Join(project, "Android SDK")
@@ -53,15 +103,14 @@ func TestDiscoverADBFromProjectSDKAndDiagnoseDevice(t *testing.T) {
 	project := t.TempDir()
 	sdk := filepath.Join(project, "sdk")
 	adb := filepath.Join(sdk, "platform-tools", executableName("adb"))
-	body := `if [ "$1" = "version" ]; then echo "Android Debug Bridge version 1.0.41"; exit 0; fi
-if [ "$1" = "devices" ]; then printf "List of devices attached\\nSERIAL123\\tdevice product:test model:Demo transport_id:1\\n"; exit 0; fi
-exit 0`
 	if runtime.GOOS == "windows" {
-		body = `if "%1"=="version" (echo Android Debug Bridge version 1.0.41& exit /b 0)
-if "%1"=="devices" (echo List of devices attached& echo SERIAL123 device product:test model:Demo transport_id:1& exit /b 0)
-exit /b 0`
+		buildWindowsADBTestExecutable(t, adb)
+	} else {
+		body := `if [ "$1" = "version" ]; then echo "Android Debug Bridge version 1.0.41"; exit 0; fi
+if [ "$1" = "devices" ]; then printf "List of devices attached\nSERIAL123\tdevice product:test model:Demo transport_id:1\n"; exit 0; fi
+exit 0`
+		writeTestExecutable(t, adb, body)
 	}
-	writeTestExecutable(t, adb, body)
 	if err := os.WriteFile(filepath.Join(project, "local.properties"), []byte("sdk.dir="+strings.ReplaceAll(sdk, `\`, `\\`)+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +294,7 @@ exit /b 0`
 
 func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 2})
-	if cfg.SchemaVersion != 7 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
+	if cfg.SchemaVersion != 8 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
 		t.Fatalf("tool and compaction settings were not migrated: %#v", cfg)
 	}
 	if cfg.ToolOverrides == nil {
@@ -254,6 +303,9 @@ func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 }
 
 func TestMissingToolReturnsTypedError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		isolateWindowsToolDiscovery(t)
+	}
 	project := t.TempDir()
 	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}, NetworkEnabled: false})
 	text, err := runResolvedTool(context.Background(), project, "adb", []string{"devices", "-l"}, cfg)
@@ -370,6 +422,9 @@ func TestExtractZipRejectsTraversal(t *testing.T) {
 }
 
 func TestMissingToolForActionDetectsKnownCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		isolateWindowsToolDiscovery(t)
+	}
 	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
 	missing := missingToolForAction(t.TempDir(), cfg, AgentAction{Action: "run_command", Command: "definitely-not-a-real-tool-xyz --version"})
 	if missing != nil {

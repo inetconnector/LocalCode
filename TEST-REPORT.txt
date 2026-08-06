@@ -1,110 +1,103 @@
-LOCALCODE 6.0.0 - AIDER ENGINE TEST REPORT / PRUEFBERICHT
+LOCALCODE 6.1.0 - FINAL TEST REPORT / ABSCHLUSS-PRUEFBERICHT
 =====================================================================
 
 Scope / Umfang
 --------------
-This release integrates Aider as LocalCode's managed production editing engine.
-The review covered installation isolation, version pinning, Ollama model routing,
-repository-map invocation, multi-file edit arguments, architect/editor mode,
-Git behavior, conservative lint/test detection, persistent task histories,
-approval handling, cancellation, process-tree termination, backups, guarded
-undo, UI controls, localization, documentation, licensing and Windows builds.
+This release fixes the native Windows failures reported for cancellation,
+legacy-data migration, MCP process cleanup, temporary project roots, project
+catalog isolation and tool discovery. It also adds automatic setup for Go,
+Ollama, required Ollama models and Aider, plus sandbox and network hardening.
 
-Dieses Release integriert Aider als verwaltete produktive Bearbeitungs-Engine
-von LocalCode. Geprueft wurden isolierte Installation, Versionsbindung,
-Ollama-Modellweiterleitung, Repository-Map-Aufrufe, Argumente fuer
-Mehrdatei-Aenderungen, Architect/Editor-Modus, Git-Verhalten, konservative
-Lint-/Testerkennung, dauerhafte Aufgabenverlaeufe, Genehmigungen, Abbruch,
-Prozessbaumbeendigung, Backups, geschuetztes Undo, UI, Uebersetzungen,
-Dokumentation, Lizenzierung und Windows-Builds.
+Dieses Release behebt die gemeldeten nativen Windows-Fehler bei Abbruch,
+Migration alter Nutzerdaten, MCP-Prozessfreigabe, temporaeren Projektwurzeln,
+Projektkatalog-Isolation und Werkzeugerkennung. Zusaetzlich wurden die
+automatische Einrichtung von Go, Ollama, benoetigten Ollama-Modellen und Aider
+sowie Sandbox- und Netzwerkhaertung umgesetzt.
 
-Automated checks / Automatisierte Pruefungen
---------------------------------------------
-PASS  gofmt on all Go sources
-PASS  go test -count=1 ./...
-PASS  go test -race -count=1 ./...
-PASS  go test -shuffle=on -count=3 ./...
+Final automated verification / Finale automatisierte Verifikation
+-------------------------------------------------------------------
+PASS  gofmt on all Go sources; no pending formatting differences
+PASS  go test -count=1 -timeout=180s ./...
 PASS  go vet ./...
-PASS  114 Go tests discovered
-PASS  statement coverage: 45.5%
-PASS  Windows-amd64 test compilation
+PASS  go test -race -count=1 -timeout=180s ./...
+PASS  three separate go test -shuffle=on -count=1 runs
+PASS  122 Go test functions discovered
+PASS  statement coverage: 46.1%
+PASS  Windows-amd64 test-binary cross compilation
+PASS  Windows-amd64 GUI cross build (PE32+ x86-64)
+PASS  Windows-amd64 diagnostic cross build (PE32+ x86-64)
 PASS  JavaScript syntax checks for i18n and embedded client code
 PASS  HTML ID check: 198 IDs, 198 unique, 0 duplicates
-PASS  German/English localization parity: 487/487 keys, 0 missing
+PASS  German/English localization parity: 493/493 keys, 0 missing
 PASS  browser UI E2E: 33 mocked API interactions without page errors
-PASS  Windows GUI build: PE32+ x86-64 GUI executable
-PASS  Windows diagnostic build: PE32+ x86-64 console executable
+PASS  source scan: no TODO/FIXME/HACK markers in production source
 
-Aider integration checks / Aider-Integrationspruefungen
--------------------------------------------------------
-PASS  pinned Aider version 0.86.2 is validated through aider --version
-PASS  managed uv tool installation is user-local and does not modify global
-      Python packages
-PASS  portable uv download is pinned and SHA-256 verified before execution
-PASS  Python 3.12 tool environment and dedicated cache/tool/bin directories
-PASS  explicit managed Aider config and intentionally empty env file
-PASS  project/home Aider configuration and repository .env are not silently
-      loaded by LocalCode-managed runs
-PASS  Ollama names, including hf.co/... model names, are routed through
-      ollama_chat/<model>
-PASS  OLLAMA_API_BASE uses the configured LocalCode Ollama endpoint
-PASS  repository map and max history token budgets are configurable
-PASS  per-task chat, input and LLM history paths are isolated from projects
-PASS  relevant editable files and read-only README.md, AGENTS.md and STATE.md
-PASS  diff/whole edit formats and architect/editor arguments
-PASS  conservative Go, Rust, Gradle, Android, .NET, Python and Node quality
-      command detection
-PASS  utility repo-map/lint/test runs use the same managed config, empty env,
-      ignore file, model routing, history controls and safety switches
-PASS  missing Git never blocks editing; Aider receives --git only for an
-      existing repository when enabled
-PASS  automatic Aider commits are disabled by default
-PASS  pre-edit, pre-lint and pre-test project backups
-PASS  hash manifests identify exact before/after file states
-PASS  undo refuses to overwrite files changed manually after an Aider run
-PASS  cancellation terminates the managed process tree and returns control
-PASS  race test for cancelled subprocess completion and output collection
-PASS  settings actions for status, install/repair, repository-map test and undo
+Reported Windows failures / Gemeldete Windows-Fehler
+-----------------------------------------------------
+PASS  Aider cancellation terminates the complete Windows process tree and
+      waits for Cmd.Wait instead of leaving child handles open
+PASS  legacy product-data migration honors LOCALCODE_*_HOME and XDG test paths
+      on Windows instead of reading the real user profile
+PASS  persistent MCP stdio sessions wait for actual process termination before
+      TempDir cleanup
+PASS  legitimate temporary Windows project roots are no longer replaced by
+      C:\Users\...\Projekte
+PASS  project catalog, aliases and thread-context tests are isolated from the
+      real project folder
+PASS  the ADB test uses a real compiled Windows helper executable
+PASS  missing-tool tests isolate PATH, Android SDK variables and profile paths
 
-Existing LocalCode capabilities retained / Beibehaltene Funktionen
-------------------------------------------------------------------
-PASS  visible approval workflow and persistent allow rules
-PASS  controlled stop and forced UI recovery
-PASS  MCP suite: Filesystem, PowerShell, Git, Fetch, GitHub and Playwright
-PASS  project/task context menus and new task creation below projects
-PASS  web research, terminal, attachments, vision analysis and file uploads
-PASS  tool discovery and approved user-local tool installation
-PASS  context compaction and persistent STATE.md management
-PASS  Visual-Studio-ready .gitignore, .gitattributes and .editorconfig
-PASS  bilingual README, Git setup, state, release notes and Aider documentation
-PASS  Apache-2.0 license plus Aider attribution and license copy
+Automatic setup / Automatische Einrichtung
+-------------------------------------------
+PASS  START.bat rebuilds when LocalCode.exe is missing or source/build inputs
+      are newer
+PASS  BUILD.bat accepts a supported Go 1.25+ toolchain or installs the current
+      stable Windows-amd64 Go archive from go.dev and verifies its official
+      SHA-256 value
+PASS  startup detects and starts an existing Ollama installation
+PASS  missing Windows Ollama is downloaded only from ollama.com, requires a
+      valid Authenticode signature and is installed unattended for the user
+PASS  missing configured Ollama models are pulled automatically
+PASS  fresh installations use qwen2.5-coder:14b unless another default is set
+PASS  explicitly configured Aider main/architect/editor models are included
+PASS  Aider 0.86.2 is verified and automatically installed or repaired through
+      pinned, SHA-256-verified portable uv and an isolated Python 3.12 tool env
+PASS  existing valid installations and models are reused
+PASS  German and English settings expose all automatic-setup controls
 
-External verification boundary / Grenze externer Verifikation
----------------------------------------------------------------
-The source test suite uses a controlled fake Aider executable to verify the
-complete LocalCode/Aider process contract without changing a real repository.
-An attempted live Aider download/install in this build container could not
-complete because the environment could not resolve the external package hosts.
-Therefore this report does not claim a successful live PyPI/GitHub installation
-inside the build container.
+Security and reliability / Sicherheit und Zuverlaessigkeit
+------------------------------------------------------------
+PASS  project sandbox resolves existing symlinks and NTFS junctions at the
+      nearest existing ancestor, including non-existing write destinations
+PASS  web fetch validates and dials the same resolved public IP, preventing a
+      second DNS lookup from rebinding to a private/local destination
+PASS  redirects and supported web-search providers use the same public-IP rule
+PASS  dependency downloads use fixed official origins and integrity/signature
+      checks where available
+PASS  Aider and MCP subprocesses are reaped deterministically
+PASS  no executables built with the container's obsolete Go 1.23.2 are shipped
 
-On the target Windows computer LocalCode asks for approval, installs the pinned
-version, executes aider --version, and marks Aider ready only after the expected
-version is verified. The Settings page also provides explicit Install/repair and
-Test repository map actions. A real local Ollama edit can only be validated on
-the target computer because it depends on that computer's Ollama service,
-models, network access and project contents.
+External verification boundary / Externe Verifikationsgrenze
+--------------------------------------------------------------
+The verification container runs Linux and cannot execute the resulting Windows
+programs or batch files natively. Windows test binaries and both applications
+were successfully cross-compiled, but the exact post-fix command
+`go test ./...` must still be run once on the target Windows system. The target
+reported Go 1.26.5, so START.bat will use that supported installation.
 
-Die Quelltests verwenden eine kontrollierte Aider-Testprogrammdatei, um den
-vollstaendigen LocalCode/Aider-Prozessvertrag zu pruefen, ohne ein echtes
-Repository zu veraendern. Ein echter Aider-Download in diesem Build-Container
-konnte wegen fehlender DNS-Aufloesung zu den externen Paketservern nicht
-abgeschlossen werden. Deshalb wird hier keine erfolgreiche Live-Installation
-im Build-Container behauptet.
+Live Ollama, model and Aider downloads were not executed in this container.
+Their internal request, parsing, installation orchestration and model-refresh
+contracts are covered with controlled tests, but final success also depends on
+the target computer's Windows configuration, network, available disk space and
+Ollama service startup.
 
-Auf dem Windows-Zielrechner fragt LocalCode nach Genehmigung, installiert die
-festgelegte Version, fuehrt aider --version aus und meldet Aider erst nach
-korrekter Versionspruefung als bereit. In den Einstellungen stehen zusaetzlich
-Installieren/Reparieren und Repository Map testen zur Verfuegung. Ein echter
-lokaler Ollama-Bearbeitungslauf kann nur auf dem Zielrechner geprueft werden,
-weil er von dessen Ollama-Dienst, Modellen, Netzwerk und Projektdateien abhaengt.
+Der Pruefcontainer laeuft unter Linux und kann die erzeugten Windows-Programme
+und Batchdateien nicht nativ starten. Windows-Testprogramm sowie GUI- und
+Diagnoseprogramm wurden erfolgreich cross-kompiliert; der konkrete korrigierte
+Befehl `go test ./...` muss dennoch einmal auf dem Windows-Zielsystem laufen.
+Dort wurde Go 1.26.5 gemeldet, das START.bat direkt verwenden wird.
+
+Echte Ollama-, Modell- und Aider-Downloads wurden im Container nicht ausgefuehrt.
+Anfrage-, Auswertungs-, Installations- und Modellaktualisierungsablaeufe sind
+mit kontrollierten Tests abgedeckt; der reale Erfolg haengt zusaetzlich von
+Windows, Netzwerk, Speicherplatz und dem Start des Ollama-Dienstes ab.

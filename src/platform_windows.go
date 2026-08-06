@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +28,7 @@ func hideCommandWindow(cmd *exec.Cmd) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.HideWindow = true
-	cmd.SysProcAttr.CreationFlags |= 0x08000000 // CREATE_NO_WINDOW
+	cmd.SysProcAttr.CreationFlags |= 0x08000000 | 0x00000200 // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
 }
 
 func killProcessTree(cmd *exec.Cmd) {
@@ -437,4 +438,48 @@ func detectSystemLanguage() string {
 		return "en"
 	}
 	return syscall.UTF16ToString(buffer)
+}
+
+func verifyAuthenticodeSignature(path string) (string, error) {
+	escaped := strings.ReplaceAll(path, "'", "''")
+	script := `$ErrorActionPreference='Stop'; $s=Get-AuthenticodeSignature -LiteralPath '` + escaped + `'; ` +
+		`if ($s.Status -ne 'Valid') { throw ('Invalid Authenticode signature: ' + $s.Status + ' ' + $s.StatusMessage) }; ` +
+		`[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($s.SignerCertificate.Subject)`
+	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	hideCommandWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(out)), err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func installOllama(ctx context.Context) (string, error) {
+	const source = "https://ollama.com/download/OllamaSetup.exe"
+	downloadDir := filepath.Join(appDataDir(), "downloads")
+	installer := filepath.Join(downloadDir, "OllamaSetup.exe")
+	if err := downloadFile(ctx, source, installer, 1<<30); err != nil {
+		return "", err
+	}
+	signer, err := verifyAuthenticodeSignature(installer)
+	if err != nil {
+		_ = os.Remove(installer)
+		return signer, fmt.Errorf("Ollama installer signature verification failed: %w", err)
+	}
+	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"}
+	output, exitCode, runErr := runCapturedCommand(ctx, installer, args, os.Environ(), downloadDir)
+	if runErr != nil {
+		return output, fmt.Errorf("Ollama installer failed with exit code %d: %w", exitCode, runErr)
+	}
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		if path := findOllamaExecutable(); path != "" {
+			return strings.TrimSpace("Authenticode signer: " + signer + "\nInstaller: " + installer + "\nOllama executable: " + path + "\n" + output), nil
+		}
+		if err := ctx.Err(); err != nil {
+			return output, err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return output, errors.New("Ollama installer finished, but ollama.exe was not found")
 }

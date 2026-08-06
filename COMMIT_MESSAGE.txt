@@ -1,8 +1,10 @@
-feat: integrate Aider as the production editing engine
+fix(windows): harden runtime bootstrap and test isolation
 
-- install pinned Aider 0.86.2 through an isolated user-local uv tool environment
-- route multi-file source changes through Aider repository maps and edit formats
-- add architect/editor, lint, test, Git, history, status, repair and undo settings
-- preserve LocalCode approvals, cancellation, MCP, tool discovery and context compaction
-- add hash-guarded backups for edit, lint and test repair runs
-- add complete German and English documentation, licensing notices and integration tests
+- isolate Windows tests from real user profiles, PATH entries and project folders
+- terminate Aider and MCP subprocess trees deterministically on cancellation
+- install and verify missing Ollama, configured models, uv, Python 3.12 and Aider
+- resolve symlinks and NTFS junctions before enforcing project sandbox boundaries
+- prevent DNS-rebinding bypasses by dialing the already validated public IP
+- require a supported Go toolchain and rebuild automatically when sources are newer
+- add runtime bootstrap, model pull, migration and security regression tests
+- update German and English documentation for LocalCode 6.1.0

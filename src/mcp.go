@@ -52,20 +52,21 @@ type mcpPendingResult struct {
 }
 
 type mcpStdioSession struct {
-	key       string
-	server    MCPServerConfig
-	project   string
-	protocol  string
-	command   *exec.Cmd
-	stdin     io.WriteCloser
-	writeMu   sync.Mutex
-	nextID    atomic.Int64
-	pendingMu sync.Mutex
-	pending   map[int64]chan mcpPendingResult
-	stderrMu  sync.Mutex
-	stderr    bytes.Buffer
-	done      chan struct{}
-	closeOnce sync.Once
+	key         string
+	server      MCPServerConfig
+	project     string
+	protocol    string
+	command     *exec.Cmd
+	stdin       io.WriteCloser
+	writeMu     sync.Mutex
+	nextID      atomic.Int64
+	pendingMu   sync.Mutex
+	pending     map[int64]chan mcpPendingResult
+	stderrMu    sync.Mutex
+	stderr      bytes.Buffer
+	done        chan struct{}
+	processDone chan struct{}
+	closeOnce   sync.Once
 }
 
 type mcpHTTPSession struct {
@@ -318,7 +319,7 @@ func startMCPStdioSession(ctx context.Context, cfg Config, project string, serve
 	}
 	session := &mcpStdioSession{
 		key: key, server: server, project: project, command: cmd, stdin: stdin,
-		pending: map[int64]chan mcpPendingResult{}, done: make(chan struct{}),
+		pending: map[int64]chan mcpPendingResult{}, done: make(chan struct{}), processDone: make(chan struct{}),
 	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start MCP server %s: %w", command, err)
@@ -554,6 +555,7 @@ func (s *mcpStdioSession) stderrText() string {
 
 func (s *mcpStdioSession) waitProcess() {
 	err := s.command.Wait()
+	close(s.processDone)
 	if err != nil {
 		s.failAllPending(err)
 	}
@@ -579,6 +581,14 @@ func (s *mcpStdioSession) close() {
 		}
 		s.failAllPending(errors.New("MCP session closed"))
 	})
+	// On Windows, TempDir cleanup can race with a still-exiting helper process.
+	// Wait until Cmd.Wait has actually reaped the process and released handles.
+	if s.processDone != nil {
+		select {
+		case <-s.processDone:
+		case <-time.After(5 * time.Second):
+		}
+	}
 }
 
 func (m *mcpManager) callHTTP(ctx context.Context, cfg Config, project string, server MCPServerConfig, method string, params any) (string, error) {

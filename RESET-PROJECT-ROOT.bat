@@ -14,5 +14,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "LocalCode 6.0.0" "%~dp0dist\LocalCode.exe"
+if not exist "%~dp0dist\LocalCode.exe" (
+  call "%~dp0BUILD.bat"
+  if errorlevel 1 exit /b 1
+)
+start "LocalCode 6.1.0" "%~dp0dist\LocalCode.exe"
 exit /b 0
