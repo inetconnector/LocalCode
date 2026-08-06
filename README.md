@@ -1,4 +1,4 @@
-# LocalCode 6.3.0
+# LocalCode 6.4.0
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -13,8 +13,9 @@ LocalCode is a local Windows coding-agent application for Ollama. It provides pr
 1. Das ZIP vollständig in einen neuen Ordner entpacken.
 2. `START.bat` doppelklicken. Die Markierung `dist\REBUILD-NATIVE.txt` erzwingt vor dem ersten Programmstart einen vollständigen nativen Windows-Build und wird erst nach erfolgreicher Prüfung entfernt.
 3. Fehlt eine unterstützte Go-Version, lädt das Build-Skript die aktuelle stabile Windows-Version direkt von `go.dev`, prüft deren offiziellen SHA-256-Wert und verwendet sie projektlokal.
-4. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und die ausgewählte Coding-Agent-Engine. Fehlende unterstützte Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
-5. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
+4. Vor der eigentlichen Oberfläche öffnet LocalCode ein kompaktes Startfenster. Es zeigt die aktuelle Prüfung, Installation und den Fortschritt großer Modelldownloads sowie bei Fehlern Wiederholen, Log-Ordner, eingeschränkten Start und Beenden.
+5. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und die ausgewählte Coding-Agent-Engine. Fehlende unterstützte Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
+6. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
 
 Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhandene Ollama-Installationen und Modelle werden weiterverwendet.
 
@@ -77,12 +78,12 @@ LocalCode sucht Werkzeuge über:
 - bekannte Windows-Installationsorte
 - den benutzerlokalen LocalCode-Werkzeugordner
 
-Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle und die ausgewählte Engine) wird beim Start automatisch vervollständigt. Für Aider gehören `uv` und Python 3.12 dazu; für OpenCode bei Bedarf ein verwaltetes Node.js/npm; Claude Code verwendet den offiziellen nativen Windows-Installer. Weitere projektspezifische Werkzeuge werden bedarfsgesteuert erkannt; LocalCode zeigt die durchsuchten Pfade, holt für eingriffsreiche Installationen eine Genehmigung ein, installiert aus einer dokumentierten Quelle, verifiziert das Ergebnis und setzt die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
+Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle und die ausgewählte Engine) wird beim Start automatisch vervollständigt. **Downloads für automatische Einrichtung** ist dabei bewusst vom Agenten-/Web-Schalter **Netzwerkzugriff** getrennt: Eine deaktivierte Websuche blockiert die Ersteinrichtung nicht. Für Aider gehören `uv` und Python 3.12 dazu; für OpenCode bei Bedarf ein verwaltetes Node.js/npm; Claude Code verwendet den offiziellen nativen Windows-Installer. Weitere projektspezifische Werkzeuge werden bedarfsgesteuert erkannt; LocalCode zeigt die durchsuchten Pfade, holt für eingriffsreiche Installationen eine Genehmigung ein, installiert aus einer dokumentierten Quelle, verifiziert das Ergebnis und setzt die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
 
 
 ### Verwaltete MCP-Suite
 
-LocalCode 6.3.0 enthält sechs verwaltete MCP-Funktionsbereiche:
+LocalCode 6.4.0 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 - **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
 - **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
@@ -142,8 +143,9 @@ Apache License 2.0. Siehe `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
 1. Extract the ZIP completely into a new directory.
 2. Double-click `START.bat` or `BUILD-AND-RUN.bat`.
 3. If no supported Go version is available, the build script downloads the current stable Windows release directly from `go.dev`, verifies its official SHA-256 value, and uses it inside the project.
-4. On first application startup, LocalCode verifies Ollama, the configured coding model, and the selected coding-agent engine. Missing supported components are installed automatically for the current user and verified afterwards.
-5. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
+4. Before the main UI, LocalCode opens a compact startup window showing the current check, installation, and large model-download progress. On failure it offers retry, log-folder access, limited mode, and exit.
+5. On first application startup, LocalCode verifies Ollama, the configured coding model, and the selected coding-agent engine. Missing supported components are installed automatically for the current user and verified afterwards.
+6. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
 
 Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama installations and models are reused.
 
@@ -206,12 +208,12 @@ LocalCode searches for tools through:
 - known Windows installation locations
 - the per-user LocalCode tools directory
 
-The core runtime (Ollama, configured Ollama models, and the selected engine) is completed automatically at startup. Aider provisions `uv` and Python 3.12; OpenCode provisions managed Node.js/npm when required; Claude Code uses the official native Windows installer. Additional project-specific tools are discovered on demand; for invasive installations LocalCode shows the searched paths, requests approval, installs from a documented source, verifies the result, and retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
+The core runtime (Ollama, configured Ollama models, and the selected engine) is completed automatically at startup. **Allow downloads for automatic setup** is deliberately separate from the agent/web **Network access** switch, so disabling web research does not deadlock first-run setup. Aider provisions `uv` and Python 3.12; OpenCode provisions managed Node.js/npm when required; Claude Code uses the official native Windows installer. Additional project-specific tools are discovered on demand; for invasive installations LocalCode shows the searched paths, requests approval, installs from a documented source, verifies the result, and retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
 
 
 ### Managed MCP suite
 
-LocalCode 6.3.0 includes six managed MCP capability areas:
+LocalCode 6.4.0 includes six managed MCP capability areas:
 
 - **Filesystem MCP** – built-in, project-scoped file and directory tools.
 - **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.

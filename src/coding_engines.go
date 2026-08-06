@@ -317,8 +317,8 @@ func claudeInstallPowerShell(channel string) string {
 }
 
 func installClaudeCode(ctx context.Context, cfg Config) (CodingEngineStatus, string, error) {
-	if !cfg.NetworkEnabled {
-		return codingEngineStatus(ctx, cfg, editingEngineClaude), "", errors.New("network access is disabled")
+	if !cfg.SetupDownloadsEnabled {
+		return codingEngineStatus(ctx, cfg, editingEngineClaude), "", errors.New("downloads for automatic setup are disabled")
 	}
 	if runtime.GOOS != "windows" {
 		return codingEngineStatus(ctx, cfg, editingEngineClaude), "", errors.New("automatic Claude Code installation is currently supported on Windows only")
@@ -342,8 +342,8 @@ func installClaudeCode(ctx context.Context, cfg Config) (CodingEngineStatus, str
 }
 
 func installOpenCode(ctx context.Context, project string, cfg Config) (CodingEngineStatus, Config, string, error) {
-	if !cfg.NetworkEnabled {
-		return codingEngineStatus(ctx, cfg, editingEngineOpenCode), cfg, "", errors.New("network access is disabled")
+	if !cfg.SetupDownloadsEnabled {
+		return codingEngineStatus(ctx, cfg, editingEngineOpenCode), cfg, "", errors.New("downloads for automatic setup are disabled")
 	}
 	npm := discoverTool(project, "npm", cfg, true)
 	var details []string

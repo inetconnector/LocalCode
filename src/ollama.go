@@ -3,12 +3,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -111,6 +113,10 @@ func normalizeOllamaBaseURL(raw string) string {
 	if err != nil || u.Host == "" {
 		return ""
 	}
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return ""
+	}
 	hostname := strings.TrimSpace(u.Hostname())
 	port := u.Port()
 	if port == "" {
@@ -119,8 +125,8 @@ func normalizeOllamaBaseURL(raw string) string {
 	if hostname == "0.0.0.0" || hostname == "::" || hostname == "[::]" || hostname == "" {
 		hostname = "127.0.0.1"
 	}
-	u.Scheme = "http"
-	u.Host = hostname + ":" + port
+	u.Scheme = scheme
+	u.Host = net.JoinHostPort(hostname, port)
 	u.Path = ""
 	u.RawQuery = ""
 	u.Fragment = ""
@@ -265,7 +271,11 @@ func (o *OllamaClient) FindVisionModel(ctx context.Context) (string, error) {
 }
 
 func (o *OllamaClient) Pull(ctx context.Context, model string) error {
-	data, err := json.Marshal(ollamaPullRequest{Model: model, Stream: false})
+	return o.PullWithProgress(ctx, model, nil)
+}
+
+func (o *OllamaClient) PullWithProgress(ctx context.Context, model string, progress func(status string, completed, total int64)) error {
+	data, err := json.Marshal(ollamaPullRequest{Model: model, Stream: progress != nil})
 	if err != nil {
 		return err
 	}
@@ -280,12 +290,41 @@ func (o *OllamaClient) Pull(ctx context.Context, model string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		return fmt.Errorf("ollama pull %s: HTTP %d: %s", model, resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 1600))
+	}
+	if progress != nil {
+		type pullProgressResponse struct {
+			Status    string `json:"status"`
+			Error     string `json:"error"`
+			Completed int64  `json:"completed"`
+			Total     int64  `json:"total"`
+		}
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 64*1024), 4<<20)
+		for scanner.Scan() {
+			line := bytes.TrimSpace(scanner.Bytes())
+			if len(line) == 0 {
+				continue
+			}
+			var update pullProgressResponse
+			if err := json.Unmarshal(line, &update); err != nil {
+				return fmt.Errorf("invalid Ollama pull progress for %s: %w", model, err)
+			}
+			if strings.TrimSpace(update.Error) != "" {
+				return errors.New(update.Error)
+			}
+			progress(update.Status, update.Completed, update.Total)
+		}
+		if err := scanner.Err(); err != nil {
+			return err
+		}
+		return nil
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ollama pull %s: HTTP %d: %s", model, resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 1600))
 	}
 	var result struct {
 		Status string `json:"status"`

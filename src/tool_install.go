@@ -70,6 +70,9 @@ func toolInstallPreview(name string, cfg Config) string {
 
 func installKnownTool(ctx context.Context, project, name string, cfg Config) (Config, string, error) {
 	profile := profileForTool(name)
+	if !cfg.SetupDownloadsEnabled {
+		return cfg, "", errors.New("downloads for automatic setup are disabled")
+	}
 	if toolRuntimeGOOS != "windows" {
 		return cfg, "", errors.New("automatic tool installation is currently supported on Windows only")
 	}

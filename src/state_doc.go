@@ -189,7 +189,14 @@ func updateStateDocument(project string, cfg Config, running bool, model, task, 
 		b.WriteString("- " + action + "\n")
 	}
 	b.WriteString("\n## " + localized(lang, "Laufzeit- und Sicherheitskonfiguration", "Runtime and security configuration") + "\n\n")
-	fmt.Fprintf(&b, "- %s: `%s`\n- %s: `%s`\n- %s: `%t`\n- %s: `%s`\n- %s: `%t`\n- %s: %s\n", localized(lang, "Approval-Modus", "Approval mode"), cfg.ApprovalMode, localized(lang, "Sandbox-Modus", "Sandbox mode"), cfg.SandboxMode, localized(lang, "Netzwerk", "Network"), cfg.NetworkEnabled, localized(lang, "Websuche", "Web search"), cfg.WebSearchProvider, localized(lang, "Git-Werkzeuge", "Git tools"), cfg.GitEnabled, localized(lang, "MCP-Server", "MCP servers"), strings.Join(mcpNames, ", "))
+	fmt.Fprintf(&b, "- %s: `%s`\n- %s: `%s`\n- %s: `%t`\n- %s: `%t`\n- %s: `%s`\n- %s: `%t`\n- %s: %s\n",
+		localized(lang, "Approval-Modus", "Approval mode"), cfg.ApprovalMode,
+		localized(lang, "Sandbox-Modus", "Sandbox mode"), cfg.SandboxMode,
+		localized(lang, "Agenten-Netzwerk", "Agent network"), cfg.NetworkEnabled,
+		localized(lang, "Setup-Downloads", "Setup downloads"), cfg.SetupDownloadsEnabled,
+		localized(lang, "Websuche", "Web search"), cfg.WebSearchProvider,
+		localized(lang, "Git-Werkzeuge", "Git tools"), cfg.GitEnabled,
+		localized(lang, "MCP-Server", "MCP servers"), strings.Join(mcpNames, ", "))
 	b.WriteString("\n## " + localized(lang, "Pflegehinweis", "Maintenance note") + "\n\n" + localized(lang, "Dieser verwaltete Abschnitt wird bei Projektauswahl, Agentenstart, Werkzeugaktionen und Abschluss automatisch neu geschrieben. Inhalte außerhalb der Marker bleiben erhalten.", "This managed section is rewritten automatically when a project is selected, an agent starts, tools run or a task finishes. Content outside the markers is preserved.") + "\n")
 	b.WriteString(stateEnd)
 	managed := b.String()

@@ -2,7 +2,7 @@ REM SPDX-License-Identifier: Apache-2.0
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-set "VERSION=6.3.0"
+set "VERSION=6.4.0"
 set "NEEDS_BUILD=0"
 set "LC_ROOT=%~dp0"
 

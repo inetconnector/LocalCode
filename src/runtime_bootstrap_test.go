@@ -145,10 +145,168 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 
 func TestSchemaEightEnablesRuntimeAutoSetupDuringMigration(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 6})
-	if cfg.SchemaVersion != 9 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
+	if cfg.SchemaVersion != 10 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
 		t.Fatalf("runtime bootstrap migration incomplete: %#v", cfg)
 	}
 	if cfg.OllamaDefaultModel != defaultCodingModel {
 		t.Fatalf("default model = %q", cfg.OllamaDefaultModel)
+	}
+}
+
+func TestRequiredModelsOnlyIncludesSelectedEngineModels(t *testing.T) {
+	installed := []ModelInfo{{Name: "qwen2.5-coder:14b"}}
+
+	claude := defaultConfig()
+	claude.EditingEngine = editingEngineClaude
+	claude.LastModel = "qwen2.5-coder:14b"
+	claude.AiderArchitectModel = "large-aider-only:latest"
+	claude.OpenCodeModel = "ollama/large-opencode-only:latest"
+	if missing := requiredOllamaModels(claude, installed); len(missing) != 0 {
+		t.Fatalf("inactive engine models must not be downloaded: %#v", missing)
+	}
+
+	opencode := claude
+	opencode.EditingEngine = editingEngineOpenCode
+	if missing := requiredOllamaModels(opencode, installed); len(missing) != 1 || missing[0] != "large-opencode-only:latest" {
+		t.Fatalf("selected OpenCode Ollama model missing=%#v", missing)
+	}
+
+	aider := claude
+	aider.EditingEngine = editingEngineAider
+	aider.AiderMainModel = "ollama_chat/qwen2.5-coder:14b"
+	if missing := requiredOllamaModels(aider, installed); len(missing) != 1 || missing[0] != "large-aider-only:latest" {
+		t.Fatalf("selected Aider models missing=%#v", missing)
+	}
+}
+
+func TestDisabledSelectedEngineFallsBackToNative(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "de"
+	cfg.EditingEngine = editingEngineClaude
+	cfg.ClaudeCodeEnabled = false
+	var progress []BootstrapProgress
+	updated, detail, err := ensureSelectedEditingEngineRuntimeWithProgress(context.Background(), cfg, func(p BootstrapProgress) {
+		progress = append(progress, p)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.EditingEngine != editingEngineNative {
+		t.Fatalf("engine=%q", updated.EditingEngine)
+	}
+	if !strings.Contains(detail, "native Engine") {
+		t.Fatalf("detail=%q", detail)
+	}
+	if len(progress) < 2 || progress[len(progress)-1].Percent != 94 {
+		t.Fatalf("progress=%#v", progress)
+	}
+}
+
+func TestBootstrapProgressClampsAndLocalizes(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "de"
+	var got []BootstrapProgress
+	reporter := func(p BootstrapProgress) { got = append(got, p) }
+	reportBootstrap(cfg, reporter, -7, "Deutsch", "English", " detail ")
+	reportBootstrap(cfg, reporter, 107, "Fertig", "Done", "")
+	reportBootstrap(cfg, nil, 50, "ignoriert", "ignored", "")
+	if len(got) != 2 || got[0].Percent != 0 || got[0].Stage != "Deutsch" || got[0].Detail != "detail" || got[1].Percent != 100 {
+		t.Fatalf("progress=%#v", got)
+	}
+}
+
+func TestGermanSetupDownloadErrorsAreLocalized(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "de"
+	cfg.OllamaAutoPull = true
+	cfg.SetupDownloadsEnabled = false
+	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
+	if err == nil || !strings.Contains(err.Error(), "Downloads für die automatische Einrichtung") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestNormalizeOllamaBaseURLPreservesSecureSchemeAndIPv6(t *testing.T) {
+	cases := map[string]string{
+		"localhost":                   "http://localhost:11434",
+		"https://ollama.example":      "https://ollama.example:11434",
+		"http://[::1]:11435/api/tags": "http://[::1]:11435",
+		"http://0.0.0.0":              "http://127.0.0.1:11434",
+		"ftp://ollama.example:11434":  "",
+		"http://":                     "",
+		"   ":                         "",
+	}
+	for input, want := range cases {
+		if got := normalizeOllamaBaseURL(input); got != want {
+			t.Errorf("normalizeOllamaBaseURL(%q)=%q want %q", input, got, want)
+		}
+	}
+}
+
+func TestPlatformHelpersAndEnvironmentBranches(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.EnvironmentVars = map[string]string{"LOCALCODE_TEST_VALUE": "ok", "   ": "ignored"}
+	env := commandEnvironment(cfg)
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "LOCALCODE_TEST_VALUE=ok") || strings.Contains(joined, "=ignored") {
+		t.Fatalf("environment=%q", joined)
+	}
+	if runtime.GOOS != "windows" {
+		showFatal("LocalCode test", "expected console fallback")
+		if detail := androidHostDeviceDiagnostic(); detail != "" {
+			t.Fatalf("unexpected host diagnostic=%q", detail)
+		}
+		if _, err := installOllama(context.Background()); err == nil {
+			t.Fatal("non-Windows automatic Ollama installation must fail explicitly")
+		}
+	}
+}
+
+func TestRequiredModelsFallbackAndEmptyModelChecks(t *testing.T) {
+	if modelInstalled([]ModelInfo{{Name: "qwen:latest"}}, "") {
+		t.Fatal("empty model name must never be installed")
+	}
+	cfg := Config{EditingEngine: editingEngineNative}
+	missing := requiredOllamaModels(cfg, nil)
+	if len(missing) != 1 || missing[0] != defaultCodingModel {
+		t.Fatalf("fallback models=%#v", missing)
+	}
+}
+
+func TestNativeEngineAndAlreadyInstalledModelProgress(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "en"
+	cfg.EditingEngine = editingEngineNative
+	var progress []BootstrapProgress
+	updated, detail, err := ensureSelectedEditingEngineRuntimeWithProgress(context.Background(), cfg, func(p BootstrapProgress) {
+		progress = append(progress, p)
+	})
+	if err != nil || updated.EditingEngine != editingEngineNative || !strings.Contains(detail, "native editing engine") {
+		t.Fatalf("updated=%+v detail=%q err=%v", updated, detail, err)
+	}
+	if len(progress) < 2 || progress[len(progress)-1].Percent != 94 {
+		t.Fatalf("engine progress=%#v", progress)
+	}
+
+	models := []ModelInfo{{Name: cfg.OllamaDefaultModel}}
+	progress = nil
+	got, details, err := ensureConfiguredModelsWithProgress(context.Background(), cfg, NewOllamaClient(), models, func(p BootstrapProgress) {
+		progress = append(progress, p)
+	})
+	if err != nil || len(details) != 0 || len(got) != 1 {
+		t.Fatalf("models=%#v details=%#v err=%v", got, details, err)
+	}
+	if len(progress) < 2 || progress[len(progress)-1].Percent != 68 {
+		t.Fatalf("model progress=%#v", progress)
+	}
+}
+
+func TestAutomaticModelPullCanBeExplicitlyDisabled(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Language = "en"
+	cfg.OllamaAutoPull = false
+	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
+	if err == nil || !strings.Contains(err.Error(), "automatic model download is disabled") {
+		t.Fatalf("err=%v", err)
 	}
 }

@@ -47,15 +47,63 @@ func main() {
 		}
 	}
 
-	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Hour)
-	setup, err := bootstrapRuntimeDependencies(setupCtx, cfg)
-	setupCancel()
-	if err != nil {
+	var splash *startupSplash
+	if started, splashErr := startStartupSplash(cfg, version); splashErr != nil {
+		log.Printf("Startup splash could not be started: %v", splashErr)
+	} else if browserErr := openStartupBrowser(started.URL()); browserErr != nil {
+		log.Printf("Startup splash browser could not be opened: %v", browserErr)
+		started.Close()
+	} else {
+		splash = started
+	}
+
+	var setup RuntimeBootstrapResult
+	var err error
+	limitedMode := false
+bootstrapLoop:
+	for {
+		setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Hour)
+		reporter := BootstrapReporter(nil)
+		if splash != nil {
+			reporter = splash.Update
+		}
+		setup, err = bootstrapRuntimeDependenciesWithProgress(setupCtx, cfg, reporter)
+		setupCancel()
+		if err == nil {
+			break
+		}
 		log.Printf("Automatic runtime setup failed: %v; details: %s", err, strings.Join(setup.Details, " | "))
-		showFatal("LocalCode", localizeConfigText(cfg,
-			"Die automatische Einrichtung von Ollama, Modellen oder Aider ist fehlgeschlagen.",
-			"Automatic setup of Ollama, models, or Aider failed.")+"\n\n"+err.Error()+"\n\nLog: "+logPath())
-		return
+		if splash == nil {
+			showFatal("LocalCode", localizeConfigText(cfg,
+				"Die automatische Einrichtung von Ollama, Modellen oder der ausgewählten Coding-Engine ist fehlgeschlagen.",
+				"Automatic setup of Ollama, models, or the selected coding engine failed.")+"\n\n"+err.Error()+"\n\nLog: "+logPath())
+			return
+		}
+		splash.Fail(err)
+		actionCtx, actionCancel := context.WithTimeout(context.Background(), 24*time.Hour)
+		action := splash.WaitAction(actionCtx)
+		actionCancel()
+		switch action {
+		case "retry":
+			splash.Reset()
+			cfg = loadConfig()
+			continue
+		case "continue":
+			limitedMode = true
+			if setup.Config.SchemaVersion == 0 {
+				setup.Config = cfg
+			}
+			if setup.Ollama == nil {
+				setup.Ollama = NewOllamaClient()
+				if cfg.OllamaURL != "" {
+					setup.Ollama.BaseURL = cfg.OllamaURL
+				}
+			}
+			break bootstrapLoop
+		default:
+			splash.Close()
+			return
+		}
 	}
 	cfg = setup.Config
 	ollama := setup.Ollama
@@ -74,11 +122,29 @@ func main() {
 	state := NewAppState(cfg, ollama)
 	url, err := startHTTPServer(state, cfg.Port)
 	if err != nil {
-		showFatal("LocalCode", fmt.Sprintf(localizeConfigText(cfg, "Lokaler Server konnte nicht gestartet werden:\n\n%v", "The local server could not be started:\n\n%v"), err))
+		if splash != nil {
+			localizedErr := fmt.Errorf(localizeConfigText(cfg, "Lokaler Server konnte nicht gestartet werden: %w", "The local server could not be started: %w"), err)
+			splash.Fail(localizedErr)
+			// The main server cannot run, so there is no useful limited-mode
+			// continuation. Show a native fallback before shutting down the
+			// temporary splash server.
+			time.Sleep(250 * time.Millisecond)
+			showFatal("LocalCode", localizedErr.Error()+"\n\nLog: "+logPath())
+			splash.Close()
+		} else {
+			showFatal("LocalCode", fmt.Sprintf(localizeConfigText(cfg, "Lokaler Server konnte nicht gestartet werden:\n\n%v", "The local server could not be started:\n\n%v"), err))
+		}
 		return
 	}
-	log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
-	if err := openBrowser(url); err != nil {
+	if limitedMode {
+		log.Printf("LocalCode %s started in limited mode at %s; Ollama target %s", version, url, ollama.BaseURL)
+	} else {
+		log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
+	}
+	if splash != nil {
+		splash.Complete(url)
+		time.AfterFunc(30*time.Second, splash.Close)
+	} else if err := openBrowser(url); err != nil {
 		showFatal("LocalCode", localizeConfigText(cfg, "Browser konnte nicht geöffnet werden. Öffne manuell:", "The browser could not be opened. Open this address manually:")+"\n"+url)
 	}
 
@@ -124,6 +190,7 @@ func runDiagnostics() int {
 	fmt.Println(tr("Approval-Modus:", "Approval mode:"), diagCfg.ApprovalMode)
 	fmt.Println(tr("Sandbox-Modus:", "Sandbox mode:"), diagCfg.SandboxMode)
 	fmt.Println(tr("Netzwerk:", "Network:"), diagCfg.NetworkEnabled, tr("Websuche:", "Web search:"), diagCfg.WebSearchProvider)
+	fmt.Println(tr("Setup-Downloads:", "Setup downloads:"), diagCfg.SetupDownloadsEnabled)
 	fmt.Println(tr("Git verfügbar/aktiv:", "Git available/enabled:"), gitAvailable(diagCfg.LastProject, diagCfg), diagCfg.GitEnabled)
 	fmt.Println(tr("STATE.md automatisch:", "Automatic STATE.md:"), diagCfg.AutoStateUpdate, diagCfg.StateFile)
 	fmt.Println(tr("Aktive MCP-Server:", "Active MCP servers:"), enabledMCPCount(diagCfg))

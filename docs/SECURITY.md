@@ -24,7 +24,9 @@ Die Kernlaufzeit wird standardmäßig selbstständig vervollständigt. Dabei gel
 - Das portable `uv` ist versions- und SHA-256-gebunden.
 - Aider ist auf `aider-chat==0.86.2` festgelegt und wird nach der Installation durch `aider --version` verifiziert.
 - Python, uv und Aider liegen in LocalCode-eigenen Benutzerverzeichnissen; globale Python-Pakete werden nicht verändert.
-- Der globale Netzwerkschalter und die jeweiligen Auto-Installationsoptionen können die Einrichtung ausdrücklich unterbinden.
+- Setup-Downloads besitzen einen eigenen Schalter und sind vom Agenten-/Web-Netzwerkzugriff getrennt. Dadurch kann Webrecherche deaktiviert bleiben, ohne die ausdrücklich aktivierte Ersteinrichtung zu blockieren.
+- Das temporäre Startfenster ist ausschließlich an `127.0.0.1` gebunden, verwendet ein zufälliges Zugriffstoken, prüft den Host-Header und lädt keine externen Ressourcen.
+- MCP-`uvx` wird aus demselben versions- und SHA-256-gebundenen uv-Archiv installiert; es wird kein heruntergeladenes Installationsskript direkt ausgeführt.
 
 ### Aider-Unterprozessgrenze
 
@@ -56,7 +58,9 @@ The core runtime is completed automatically by default with additional integrity
 - Portable `uv` is pinned by version and SHA-256.
 - Aider is pinned to `aider-chat==0.86.2` and verified with `aider --version` after installation.
 - Python, uv, and Aider are stored in LocalCode-owned user directories; global Python packages are not modified.
-- The global network switch and individual auto-install options can explicitly block setup.
+- Setup downloads have their own switch and are separate from agent/web network access. Web research can remain disabled without blocking explicitly enabled first-run setup.
+- The temporary startup window binds only to `127.0.0.1`, uses a random access token, validates the Host header, and loads no external resources.
+- MCP `uvx` is installed from the same version- and SHA-256-pinned uv archive; no downloaded installer script is executed directly.
 
 ### Aider subprocess boundary
 

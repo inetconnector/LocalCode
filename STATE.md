@@ -1,9 +1,16 @@
 # LocalCode project state / Projektstatus
 
-**Version:** 6.3.0  
-**Status:** Three-engine release with Aider, Claude Code, and OpenCode selection
+**Version:** 6.4.0  
+**Status:** Startup setup fixed; progress splash and three selectable coding engines
 
 ## Deutsch
+
+### Start und automatische Einrichtung
+
+- Ein kompaktes, token-geschütztes Loopback-Startfenster zeigt Ollama-Prüfung, Installation, Modelldownload und Engine-Einrichtung.
+- Setup-Downloads sind vom Agenten-/Web-Netzwerkzugriff getrennt; Schema 9 wird sicher auf Schema 10 migriert.
+- Bei Fehlern sind Wiederholen, Log-Ordner, eingeschränkter Start und Beenden verfügbar.
+- Nur Modelle der aktiven Engine werden automatisch geladen.
 
 ### Coding-Agent-Engines
 
@@ -24,11 +31,18 @@
 
 ### Verifikation
 
-- Exakte finale Statement-Coverage: **6330/7896 = 80.167173 %**.
+- Exakte finale Statement-Coverage: **6526/8153 = 80.044156 %**.
 - Normale Tests, `go vet`, Race Detector, zufällige Testreihenfolgen, UI/API-Simulation, Übersetzungsparität und Windows-amd64-Cross-Build gehören zur Release-Prüfung.
 - Der endgültige Messwert und die exakten Testzahlen stehen in `TEST-REPORT.txt` und `reports/COVERAGE-SUMMARY.txt`.
 
 ## English
+
+### Startup and automatic setup
+
+- A compact, token-protected loopback startup window shows Ollama checks, installation, model downloads, and engine setup.
+- Setup downloads are separate from agent/web network access; schema 9 migrates safely to schema 10.
+- Failure actions include retry, log-folder access, limited mode, and exit.
+- Only models required by the active engine are pulled automatically.
 
 ### Coding-agent engines
 
@@ -49,7 +63,7 @@
 
 ### Verification
 
-- Exact final statement coverage: **6330/7896 = 80.167173%**.
+- Exact final statement coverage: **6526/8153 = 80.044156%**.
 - Normal tests, `go vet`, the race detector, randomized test orders, UI/API simulation, translation parity, and Windows-amd64 cross-builds are part of release verification.
 - The exact results are recorded in `TEST-REPORT.txt` and `reports/COVERAGE-SUMMARY.txt`.
 

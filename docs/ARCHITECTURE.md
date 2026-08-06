@@ -4,8 +4,8 @@
 
 LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und einer ausschließlich an `127.0.0.1` gebundenen HTTP-/SSE-API.
 
-- `main.go`: Versionsübergabe, automatische Laufzeiteinrichtung und lokaler Serverstart.
-- `runtime_bootstrap.go`: Prüfung und automatische Vervollständigung von Ollama, konfigurierten Modellen und Aider.
+- `main.go`: Versionsübergabe, kompaktes Startfenster, automatische Laufzeiteinrichtung und lokaler Serverstart.
+- `runtime_bootstrap.go`: Fortschrittsgesteuerte Prüfung und automatische Vervollständigung von Ollama, konfigurierten Modellen und der ausgewählten Coding-Agent-Engine.
 - `ollama.go`: Dienstsuche, Modellinventar, Modell-Download, Chat und lokale Bildanalyse.
 - `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
 - `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
@@ -21,10 +21,11 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 
 1. Konfiguration und frühere Produktdaten werden aus portablen oder benutzerlokalen Verzeichnissen geladen.
 2. Eine bereits laufende ältere LocalCode-Instanz wird kontrolliert abgelöst.
-3. Ollama wird gesucht und gestartet. Fehlt es unter Windows, lädt LocalCode den offiziellen Installer, prüft dessen Authenticode-Signatur und installiert ihn unbeaufsichtigt für den Benutzer.
-4. Fehlende explizit konfigurierte Modelle werden über die Ollama-API geladen. Auf einem frischen System wird nur das konfigurierte Standardmodell geladen, damit ein alter gespeicherter Modellname keinen zweiten großen Download auslöst.
-5. Aider wird gegen die angeheftete Version geprüft. Falls nötig, installiert LocalCode das geprüfte portable `uv`, eine isolierte Python-3.12-Laufzeit und `aider-chat==0.86.2`.
-6. Erst nach erfolgreicher Verifikation startet die lokale UI-API. Details und Fehler werden im LocalCode-Log festgehalten.
+3. Ein ausschließlich an Loopback gebundenes, token-geschütztes Startfenster zeigt alle weiteren Schritte und bietet bei Fehlern Wiederholen, Log-Ordner, eingeschränkten Start und Beenden.
+4. Ollama wird gesucht und gestartet. Fehlt es unter Windows, lädt LocalCode den offiziellen Installer, prüft dessen Authenticode-Signatur und installiert ihn unbeaufsichtigt für den Benutzer.
+5. Fehlende für LocalCode und die ausgewählte Engine benötigte Modelle werden über die Ollama-API geladen. Auf einem frischen System wird nur das konfigurierte Standardmodell geladen, damit ein alter gespeicherter Modellname keinen zweiten großen Download auslöst.
+6. Die ausgewählte externe Engine wird geprüft; Aider wird gegen die angeheftete Version geprüft. Falls nötig, installiert LocalCode das geprüfte portable `uv`, eine isolierte Python-3.12-Laufzeit und `aider-chat==0.86.2`.
+7. Erst nach erfolgreicher Verifikation startet die lokale UI-API. Details und Fehler werden im LocalCode-Log festgehalten.
 
 Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofort veröffentlicht und durch einen zusammenfassenden Hintergrundschreiber atomar persistiert. Offene Genehmigungen sind Backendzustand und erscheinen zusätzlich als feste Entscheidungsleiste. Jede UI-Instanz fordert ihren Snapshot mit konkreter Projekt- und Aufgaben-ID an; ein Agentenlauf bleibt global auf eine gleichzeitig aktive Ausführung begrenzt.
 
@@ -32,8 +33,8 @@ Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofo
 
 LocalCode is a single Go application with an embedded web frontend and an HTTP/SSE API bound exclusively to `127.0.0.1`.
 
-- `main.go`: version handover, automatic runtime setup, and local server startup.
-- `runtime_bootstrap.go`: verification and automatic completion of Ollama, configured models, and Aider.
+- `main.go`: version handover, compact startup window, automatic runtime setup, and local server startup.
+- `runtime_bootstrap.go`: progress-driven verification and automatic completion of Ollama, configured models, and the selected coding-agent engine.
 - `ollama.go`: service discovery, model inventory, model pulls, chat, and local image analysis.
 - `server.go`: API, SSE, projects, tasks, settings, and approvals.
 - `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
@@ -49,9 +50,10 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 
 1. Configuration and legacy product data are loaded from portable or per-user directories.
 2. A running older LocalCode instance is replaced in a controlled manner.
-3. Ollama is discovered and started. If missing on Windows, LocalCode downloads the official installer, validates its Authenticode signature, and installs it unattended for the current user.
-4. Missing explicitly configured models are pulled through the Ollama API. On a fresh system only the configured default is pulled so a stale historical model does not trigger a second large download.
-5. Aider is checked against the pinned version. When needed, LocalCode installs the verified portable `uv`, an isolated Python 3.12 runtime, and `aider-chat==0.86.2`.
-6. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
+3. A loopback-only, token-protected startup window displays every following step and offers retry, log-folder access, limited mode, and exit on failure.
+4. Ollama is discovered and started. If missing on Windows, LocalCode downloads the official installer, validates its Authenticode signature, and installs it unattended for the current user.
+5. Missing models required by LocalCode and the selected engine are pulled through the Ollama API. On a fresh system only the configured default is pulled so a stale historical model does not trigger a second large download.
+6. The selected external engine is checked; Aider is checked against the pinned version. When needed, LocalCode installs the verified portable `uv`, an isolated Python 3.12 runtime, and `aider-chat==0.86.2`.
+7. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
 
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.

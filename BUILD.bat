@@ -3,7 +3,7 @@ REM SPDX-License-Identifier: Apache-2.0
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-set "VERSION=6.3.0"
+set "VERSION=6.4.0"
 set "LC_LANG=en"
 for /f "delims=" %%L in ('powershell.exe -NoLogo -NoProfile -Command "(Get-UICulture).TwoLetterISOLanguageName" 2^>nul') do set "LC_LANG=%%L"
 if /I "%LC_LANG%"=="de" (

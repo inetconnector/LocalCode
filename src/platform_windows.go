@@ -42,10 +42,7 @@ func killProcessTree(cmd *exec.Cmd) {
 	_ = cmd.Process.Kill()
 }
 
-func openBrowser(url string) error {
-	// Prefer Chromium app mode so LocalCode opens as a focused desktop-style
-	// window without browser tabs or an address bar. Fall back to the default
-	// browser when Edge/Chrome cannot be located.
+func chromiumBrowserCandidates() []string {
 	candidates := []string{}
 	if p, err := exec.LookPath("msedge.exe"); err == nil {
 		candidates = append(candidates, p)
@@ -65,24 +62,55 @@ func openBrowser(url string) error {
 			candidates = append(candidates, p)
 		}
 	}
+	return candidates
+}
+
+func openChromiumApp(url string, compact bool) error {
 	seen := map[string]bool{}
-	for _, browser := range candidates {
-		if browser == "" || seen[strings.ToLower(browser)] {
+	for _, browser := range chromiumBrowserCandidates() {
+		key := strings.ToLower(strings.TrimSpace(browser))
+		if key == "" || seen[key] {
 			continue
 		}
-		seen[strings.ToLower(browser)] = true
+		seen[key] = true
 		if st, err := os.Stat(browser); err != nil || st.IsDir() {
 			continue
 		}
-		cmd := exec.Command(browser, "--app="+url, "--start-maximized", "--no-first-run")
+		args := []string{"--app=" + url, "--no-first-run"}
+		if compact {
+			args = append(args, "--window-size=760,560", "--window-position=120,80")
+		} else {
+			args = append(args, "--start-maximized")
+		}
+		cmd := exec.Command(browser, args...)
 		hideCommandWindow(cmd)
 		if err := cmd.Start(); err == nil {
 			return nil
 		}
 	}
+	return errors.New("no supported Chromium browser found")
+}
+
+func openBrowser(url string) error {
+	// Prefer Chromium app mode so LocalCode opens as a focused desktop-style
+	// window without browser tabs or an address bar. Fall back to the default
+	// browser when Edge/Chrome cannot be located.
+	if err := openChromiumApp(url, false); err == nil {
+		return nil
+	}
 	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	hideCommandWindow(cmd)
 	return cmd.Start()
+}
+
+func openStartupBrowser(url string) error {
+	// The bootstrap UI intentionally starts as a compact splash window. Once
+	// setup completes, its page expands the same app window before redirecting
+	// to the main LocalCode UI.
+	if err := openChromiumApp(url, true); err == nil {
+		return nil
+	}
+	return openBrowser(url)
 }
 
 func showFatal(title, message string) {

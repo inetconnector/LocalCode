@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -172,6 +173,9 @@ func findMCPServerIndex(cfg Config, name string) int {
 }
 
 func installMCPDependency(ctx context.Context, project string, cfg Config, server MCPServerConfig) (Config, string, error) {
+	if !cfg.SetupDownloadsEnabled {
+		return cfg, "", errors.New("downloads for automatic setup are disabled")
+	}
 	switch strings.ToLower(server.Preset) {
 	case "git":
 		return installKnownTool(ctx, project, "git", cfg)
@@ -220,27 +224,49 @@ func installUV(ctx context.Context) (string, string, error) {
 		}
 		return "", "", errors.New("automatic uv installation is currently implemented for Windows")
 	}
-	powershell := powershellExecutable("", defaultConfig())
-	if powershell == "" {
-		return "", "", errors.New("Windows PowerShell is required to install uv")
+	if path, err := exec.LookPath("uvx.exe"); err == nil {
+		return path, "uvx already installed: " + path, nil
 	}
-	installCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	defer cancel()
-	command := "$ErrorActionPreference='Stop'; $env:UV_INSTALL_DIR=" + quotePowerShellLiteral(filepath.Join(appDataDir(), "tools", "uv")) + "; irm https://astral.sh/uv/install.ps1 | iex"
-	output, err := runPowerShell(installCtx, powershell, appDataDir(), command, defaultConfig())
-	if err != nil {
-		return "", output, err
+	uvDir := filepath.Join(appDataDir(), "tools", "uv")
+	managed := filepath.Join(uvDir, "uvx.exe")
+	if info, err := os.Stat(managed); err == nil && !info.IsDir() {
+		return managed, "uvx already installed: " + managed, nil
 	}
-	candidates := []string{
-		filepath.Join(appDataDir(), "tools", "uv", "uvx.exe"),
-		filepath.Join(userProfileDir(), ".local", "bin", "uvx.exe"),
+	zipPath := filepath.Join(uvDir, "uv-windows.zip")
+	if err := downloadFile(ctx, uvWindowsDownloadURL, zipPath, 100<<20); err != nil {
+		return "", "", err
 	}
-	for _, candidate := range candidates {
-		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
-			return candidate, output + "\nuvx: " + candidate, nil
+	if err := verifyFileSHA256(zipPath, uvWindowsSHA256); err != nil {
+		_ = os.Remove(zipPath)
+		return "", "", err
+	}
+	extractDir := filepath.Join(uvDir, "extract-mcp")
+	_ = os.RemoveAll(extractDir)
+	if err := extractZipFile(zipPath, extractDir); err != nil {
+		return "", "", err
+	}
+	var source string
+	_ = filepath.WalkDir(extractDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr == nil && !entry.IsDir() && strings.EqualFold(entry.Name(), "uvx.exe") {
+			source = path
+			return io.EOF
 		}
+		return nil
+	})
+	if source == "" {
+		return "", "", errors.New("verified uv archive did not contain uvx.exe")
 	}
-	return "", output, errors.New("uv installer completed but uvx.exe was not found")
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(uvDir, 0o755); err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(managed, data, 0o755); err != nil {
+		return "", "", err
+	}
+	return managed, "Installed verified uvx " + uvPinnedVersion + ": " + managed, nil
 }
 
 func (s *AppState) prepareMCPServer(ctx context.Context, project string, cfg Config, action AgentAction) (Config, string, bool, error) {

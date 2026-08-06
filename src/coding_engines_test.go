@@ -41,7 +41,7 @@ exit /b 0`
 
 func TestCodingEngineConfigurationAndArguments(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 8, EditingEngine: "CLAUDE", ClaudeCodePermissionMode: "invalid", ClaudeCodeMaxTurns: 0})
-	if cfg.SchemaVersion != 9 || cfg.EditingEngine != editingEngineClaude || cfg.ClaudeCodePermissionMode != "acceptEdits" || cfg.ClaudeCodeMaxTurns != 24 {
+	if cfg.SchemaVersion != 10 || cfg.EditingEngine != editingEngineClaude || cfg.ClaudeCodePermissionMode != "acceptEdits" || cfg.ClaudeCodeMaxTurns != 24 {
 		t.Fatalf("normalized config = %#v", cfg)
 	}
 	if normalizeEditingEngine("unknown") != editingEngineAider || codingEngineDisplayName("opencode") != "OpenCode" {

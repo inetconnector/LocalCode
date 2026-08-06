@@ -1,13 +1,9 @@
-feat(engines): add selectable Aider, Claude Code, and OpenCode backends
+fix(startup): add progress splash and decouple setup downloads
 
-- introduce a shared coding-engine abstraction for edit, repo-map, lint, test,
-  setup, authentication, cancellation, backup, and undo workflows
-- add Claude Code native Windows installation, status/login checks, bounded
-  non-interactive execution, model/channel settings, and safe permission modes
-- add user-local OpenCode installation through managed Node.js/npm, provider/model
-  settings, authentication, auto-approval control, and process-scoped Ollama config
-- preserve the complete Aider integration and legacy aider_* action aliases
-- add engine-specific settings, status controls, German/English translations, and
-  UI/API regression coverage for switching and testing all three engines
-- keep statement coverage above 80 percent and retain race, vet, randomized,
-  Windows cross-build, manifest, and checksum release verification
+- show Ollama, model, and coding-engine bootstrap progress before the main UI
+- migrate setup downloads away from the agent/web network permission
+- localize setup failures and provide retry, logs, limited mode, and exit actions
+- avoid downloads for inactive coding engines
+- preserve HTTPS and IPv6 Ollama endpoints
+- verify MCP uvx from the pinned SHA-256-checked uv archive
+- retain more than 80 percent statement coverage and Windows cross-build checks

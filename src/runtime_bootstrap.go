@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"runtime"
@@ -20,6 +19,35 @@ type RuntimeBootstrapResult struct {
 	Ollama  *OllamaClient
 	Models  []ModelInfo
 	Details []string
+}
+
+type BootstrapProgress struct {
+	Percent int    `json:"percent"`
+	Stage   string `json:"stage"`
+	Detail  string `json:"detail,omitempty"`
+}
+
+type BootstrapReporter func(BootstrapProgress)
+
+func reportBootstrap(cfg Config, reporter BootstrapReporter, percent int, de, en, detail string) {
+	if reporter == nil {
+		return
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	reporter(BootstrapProgress{
+		Percent: percent,
+		Stage:   localizeConfigText(cfg, de, en),
+		Detail:  strings.TrimSpace(detail),
+	})
+}
+
+func localizedBootstrapError(cfg Config, de, en string, args ...any) error {
+	return fmt.Errorf(localizeConfigText(cfg, de, en), args...)
 }
 
 func normalizeConfiguredOllamaModel(model string) string {
@@ -60,13 +88,21 @@ func modelInstalled(models []ModelInfo, wanted string) bool {
 }
 
 func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
-	candidates := []string{
-		cfg.AiderMainModel,
-		cfg.AiderArchitectModel,
-		cfg.AiderEditorModel,
-	}
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.OpenCodeModel)), "ollama/") {
-		candidates = append(candidates, strings.TrimSpace(cfg.OpenCodeModel[len("ollama/"):]))
+	candidates := []string{}
+	switch normalizeEditingEngine(cfg.EditingEngine) {
+	case editingEngineAider:
+		if cfg.AiderEnabled {
+			candidates = append(candidates,
+				cfg.AiderMainModel,
+				cfg.AiderArchitectModel,
+				cfg.AiderEditorModel,
+			)
+		}
+	case editingEngineOpenCode:
+		model := strings.TrimSpace(cfg.OpenCodeModel)
+		if cfg.OpenCodeEnabled && strings.HasPrefix(strings.ToLower(model), "ollama/") {
+			candidates = append(candidates, strings.TrimSpace(model[len("ollama/"):]))
+		}
 	}
 	if len(models) == 0 {
 		// A stale LastModel from a previous installation must not trigger a
@@ -100,70 +136,136 @@ func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
 }
 
 func ensureOllamaInstalledAndRunning(ctx context.Context, cfg Config, client *OllamaClient) (string, error) {
+	return ensureOllamaInstalledAndRunningWithProgress(ctx, cfg, client, nil)
+}
+
+func ensureOllamaInstalledAndRunningWithProgress(ctx context.Context, cfg Config, client *OllamaClient, reporter BootstrapReporter) (string, error) {
+	reportBootstrap(cfg, reporter, 8, "Ollama wird gesucht und geprüft …", "Checking for Ollama …", client.BaseURL)
 	probeCtx, probeCancel := context.WithTimeout(ctx, 35*time.Second)
 	probeErr := client.EnsureRunning(probeCtx)
 	probeCancel()
 	if probeErr == nil {
+		reportBootstrap(cfg, reporter, 22, "Ollama ist erreichbar.", "Ollama is reachable.", client.BaseURL)
 		return "Ollama is already installed and reachable at " + client.BaseURL, nil
 	}
 	if runtime.GOOS != "windows" || !cfg.OllamaAutoInstall {
-		return "", errors.New("Ollama is not installed or reachable and automatic installation is disabled")
+		return "", localizedBootstrapError(cfg,
+			"Ollama ist nicht installiert oder nicht erreichbar und die automatische Installation ist deaktiviert.",
+			"Ollama is not installed or reachable and automatic installation is disabled.")
 	}
-	if !cfg.NetworkEnabled {
-		return "", errors.New("Ollama is missing, but network access is disabled")
+	if !cfg.SetupDownloadsEnabled {
+		return "", localizedBootstrapError(cfg,
+			"Ollama fehlt, aber Downloads für die automatische Einrichtung sind deaktiviert.",
+			"Ollama is missing, but downloads for automatic setup are disabled.")
 	}
+	reportBootstrap(cfg, reporter, 14, "Ollama fehlt und wird automatisch installiert …", "Ollama is missing and will be installed automatically …", "https://ollama.com/download/OllamaSetup.exe")
 	log.Printf("Ollama is missing; starting official automatic installation")
 	installDetail, err := installOllama(ctx)
 	if err != nil {
-		return installDetail, fmt.Errorf("automatic Ollama installation failed: %w", err)
+		return installDetail, localizedBootstrapError(cfg,
+			"Die automatische Ollama-Installation ist fehlgeschlagen: %w",
+			"Automatic Ollama installation failed: %w", err)
 	}
+	reportBootstrap(cfg, reporter, 19, "Ollama wurde installiert und wird gestartet …", "Ollama was installed and is starting …", findOllamaExecutable())
 	startCtx, startCancel := context.WithTimeout(ctx, 90*time.Second)
 	startErr := client.EnsureRunning(startCtx)
 	startCancel()
 	if startErr != nil {
-		return installDetail, fmt.Errorf("Ollama was installed but could not be started: %w", startErr)
+		return installDetail, localizedBootstrapError(cfg,
+			"Ollama wurde installiert, konnte aber nicht gestartet werden: %w",
+			"Ollama was installed but could not be started: %w", startErr)
 	}
+	reportBootstrap(cfg, reporter, 22, "Ollama ist installiert und erreichbar.", "Ollama is installed and reachable.", client.BaseURL)
 	return strings.TrimSpace(installDetail + "\nOllama reachable at " + client.BaseURL), nil
 }
 
 func ensureConfiguredModels(ctx context.Context, cfg Config, client *OllamaClient, models []ModelInfo) ([]ModelInfo, []string, error) {
+	return ensureConfiguredModelsWithProgress(ctx, cfg, client, models, nil)
+}
+
+func ensureConfiguredModelsWithProgress(ctx context.Context, cfg Config, client *OllamaClient, models []ModelInfo, reporter BootstrapReporter) ([]ModelInfo, []string, error) {
+	reportBootstrap(cfg, reporter, 28, "Installierte Ollama-Modelle werden geprüft …", "Checking installed Ollama models …", fmt.Sprintf("%d model(s) found", len(models)))
 	missing := requiredOllamaModels(cfg, models)
 	if len(missing) == 0 {
+		reportBootstrap(cfg, reporter, 68, "Alle benötigten Modelle sind vorhanden.", "All required models are installed.", "")
 		return models, nil, nil
 	}
 	if !cfg.OllamaAutoPull {
-		return models, nil, fmt.Errorf("required Ollama models are missing and automatic model download is disabled: %s", strings.Join(missing, ", "))
+		return models, nil, localizedBootstrapError(cfg,
+			"Benötigte Ollama-Modelle fehlen und der automatische Modelldownload ist deaktiviert: %s",
+			"Required Ollama models are missing and automatic model download is disabled: %s", strings.Join(missing, ", "))
 	}
-	if !cfg.NetworkEnabled {
-		return models, nil, fmt.Errorf("required Ollama models are missing but network access is disabled: %s", strings.Join(missing, ", "))
+	if !cfg.SetupDownloadsEnabled {
+		return models, nil, localizedBootstrapError(cfg,
+			"Benötigte Ollama-Modelle fehlen, aber Downloads für die automatische Einrichtung sind deaktiviert: %s",
+			"Required Ollama models are missing, but downloads for automatic setup are disabled: %s", strings.Join(missing, ", "))
 	}
 	details := []string{}
-	for _, model := range missing {
+	for index, model := range missing {
 		log.Printf("Pulling required Ollama model %s", model)
+		basePercent := 30 + (index * 36 / len(missing))
+		span := 36 / len(missing)
+		reportBootstrap(cfg, reporter, basePercent, "Ollama-Modell wird geladen …", "Downloading Ollama model …", model)
 		pullCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
-		err := client.Pull(pullCtx, model)
+		var pullProgress func(status string, completed, total int64)
+		if reporter != nil {
+			pullProgress = func(status string, completed, total int64) {
+				percent := basePercent
+				if total > 0 && completed >= 0 {
+					percent += int(float64(span) * (float64(completed) / float64(total)))
+				}
+				detail := model
+				if strings.TrimSpace(status) != "" {
+					detail += " · " + strings.TrimSpace(status)
+				}
+				if total > 0 {
+					detail += fmt.Sprintf(" · %.1f / %.1f GB", float64(completed)/(1<<30), float64(total)/(1<<30))
+				}
+				reportBootstrap(cfg, reporter, percent, "Ollama-Modell wird geladen …", "Downloading Ollama model …", detail)
+			}
+		}
+		err := client.PullWithProgress(pullCtx, model, pullProgress)
 		cancel()
 		if err != nil {
-			return models, details, fmt.Errorf("automatic model download failed for %s: %w", model, err)
+			return models, details, localizedBootstrapError(cfg,
+				"Der automatische Download des Modells %s ist fehlgeschlagen: %w",
+				"Automatic model download failed for %s: %w", model, err)
 		}
 		details = append(details, "Installed Ollama model: "+model)
 	}
+	reportBootstrap(cfg, reporter, 68, "Modelldownload abgeschlossen; Bestand wird geprüft …", "Model download completed; verifying models …", "")
 	refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	refreshed, err := client.Tags(refreshCtx)
 	cancel()
 	if err != nil {
-		return models, details, fmt.Errorf("models were downloaded but could not be enumerated: %w", err)
+		return models, details, localizedBootstrapError(cfg,
+			"Die Modelle wurden geladen, konnten danach aber nicht aufgelistet werden: %w",
+			"Models were downloaded but could not be enumerated: %w", err)
 	}
 	return refreshed, details, nil
 }
 
 func ensureSelectedEditingEngineRuntime(ctx context.Context, cfg Config) (Config, string, error) {
+	return ensureSelectedEditingEngineRuntimeWithProgress(ctx, cfg, nil)
+}
+
+func ensureSelectedEditingEngineRuntimeWithProgress(ctx context.Context, cfg Config, reporter BootstrapReporter) (Config, string, error) {
 	engine := normalizeEditingEngine(cfg.EditingEngine)
+	displayName := codingEngineDisplayName(engine)
+	reportBootstrap(cfg, reporter, 74, "Coding-Agent-Engine wird geprüft …", "Checking coding-agent engine …", displayName)
 	if engine == editingEngineNative {
+		reportBootstrap(cfg, reporter, 94, "Die native LocalCode-Engine ist bereit.", "The native LocalCode engine is ready.", "")
 		return cfg, "LocalCode native editing engine is ready", nil
 	}
 	if !codingEngineEnabled(cfg, engine) {
-		return cfg, codingEngineDisplayName(engine) + " is disabled", nil
+		cfg.EditingEngine = editingEngineNative
+		detail := localizeConfigText(cfg,
+			displayName+" ist deaktiviert; LocalCode verwendet stattdessen die native Engine.",
+			displayName+" is disabled; LocalCode is using the native engine instead.")
+		reportBootstrap(cfg, reporter, 94,
+			"Die ausgewählte Engine ist deaktiviert; native Engine wird verwendet.",
+			"The selected engine is disabled; using the native engine.", displayName)
+		return normalizeConfig(cfg), detail, nil
 	}
 	status := codingEngineStatus(ctx, cfg, engine)
 	if status.Installed {
@@ -179,14 +281,18 @@ func ensureSelectedEditingEngineRuntime(ctx context.Context, cfg Config) (Config
 		if !status.Authenticated {
 			detail += " (login required before first use)"
 		}
+		reportBootstrap(cfg, reporter, 94, "Coding-Agent-Engine ist bereit.", "Coding-agent engine is ready.", status.DisplayName+" "+status.Version)
 		return normalizeConfig(cfg), detail, nil
 	}
 	if !codingEngineAutoInstall(cfg, engine) {
 		return cfg, status.Error, &CodingEngineNotInstalledError{Status: status}
 	}
-	if !cfg.NetworkEnabled {
-		return cfg, status.Error, fmt.Errorf("%s is missing, but network access is disabled", status.DisplayName)
+	if !cfg.SetupDownloadsEnabled {
+		return cfg, status.Error, localizedBootstrapError(cfg,
+			"%s fehlt, aber Downloads für die automatische Einrichtung sind deaktiviert.",
+			"%s is missing, but downloads for automatic setup are disabled.", status.DisplayName)
 	}
+	reportBootstrap(cfg, reporter, 78, "Coding-Agent-Engine wird installiert …", "Installing coding-agent engine …", status.DisplayName)
 	log.Printf("%s is missing or outdated; starting automatic installation", status.DisplayName)
 	installCtx, cancel := context.WithTimeout(ctx, 45*time.Minute)
 	status, updated, output, err := installCodingEngine(installCtx, cfg.RootProjectDir, engine, cfg)
@@ -198,6 +304,7 @@ func ensureSelectedEditingEngineRuntime(ctx context.Context, cfg Config) (Config
 	if !status.Authenticated {
 		detail += "\nLogin is still required and can be opened from Settings > Configuration."
 	}
+	reportBootstrap(cfg, reporter, 94, "Coding-Agent-Engine wurde installiert.", "Coding-agent engine was installed.", status.DisplayName+" "+status.Version)
 	return normalizeConfig(updated), detail, nil
 }
 
@@ -211,13 +318,18 @@ func ensureAiderRuntime(ctx context.Context, cfg Config) (Config, string, error)
 }
 
 func bootstrapRuntimeDependencies(ctx context.Context, cfg Config) (RuntimeBootstrapResult, error) {
+	return bootstrapRuntimeDependenciesWithProgress(ctx, cfg, nil)
+}
+
+func bootstrapRuntimeDependenciesWithProgress(ctx context.Context, cfg Config, reporter BootstrapReporter) (RuntimeBootstrapResult, error) {
 	result := RuntimeBootstrapResult{Config: cfg, Ollama: NewOllamaClient()}
+	reportBootstrap(cfg, reporter, 2, "LocalCode wird vorbereitet …", "Preparing LocalCode …", "")
 	if cfg.OllamaURL != "" {
 		result.Ollama.BaseURL = cfg.OllamaURL
 	}
 	result.Ollama.ContextLength = cfg.ContextLength
 
-	detail, err := ensureOllamaInstalledAndRunning(ctx, cfg, result.Ollama)
+	detail, err := ensureOllamaInstalledAndRunningWithProgress(ctx, cfg, result.Ollama, reporter)
 	if detail != "" {
 		result.Details = append(result.Details, detail)
 	}
@@ -229,26 +341,33 @@ func bootstrapRuntimeDependencies(ctx context.Context, cfg Config) (RuntimeBoots
 	models, err := result.Ollama.Tags(tagsCtx)
 	cancel()
 	if err != nil {
-		return result, fmt.Errorf("Ollama models could not be read: %w", err)
+		return result, localizedBootstrapError(cfg,
+			"Die installierten Ollama-Modelle konnten nicht gelesen werden: %w",
+			"Ollama models could not be read: %w", err)
 	}
-	models, modelDetails, err := ensureConfiguredModels(ctx, cfg, result.Ollama, models)
+	models, modelDetails, err := ensureConfiguredModelsWithProgress(ctx, cfg, result.Ollama, models, reporter)
 	result.Details = append(result.Details, modelDetails...)
 	if err != nil {
 		return result, err
 	}
 	if len(models) == 0 {
-		return result, errors.New("Ollama has no installed model after automatic setup")
+		return result, localizedBootstrapError(cfg,
+			"Nach der automatischen Einrichtung ist kein Ollama-Modell installiert.",
+			"Ollama has no installed model after automatic setup.")
 	}
 	result.Models = models
 	result.Config.LastModel = chooseDefaultModel(models, result.Config.LastModel)
 
-	updated, engineDetail, err := ensureSelectedEditingEngineRuntime(ctx, result.Config)
+	updated, engineDetail, err := ensureSelectedEditingEngineRuntimeWithProgress(ctx, result.Config, reporter)
 	if engineDetail != "" {
 		result.Details = append(result.Details, engineDetail)
 	}
 	if err != nil {
-		return result, fmt.Errorf("editing engine setup failed: %w", err)
+		return result, localizedBootstrapError(cfg,
+			"Die Einrichtung der Coding-Agent-Engine ist fehlgeschlagen: %w",
+			"Coding-agent engine setup failed: %w", err)
 	}
 	result.Config = updated
+	reportBootstrap(result.Config, reporter, 100, "LocalCode ist startbereit.", "LocalCode is ready to start.", "")
 	return result, nil
 }

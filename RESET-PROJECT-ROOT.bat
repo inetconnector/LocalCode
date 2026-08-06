@@ -23,5 +23,5 @@ call "%~dp0BUILD.bat"
 if errorlevel 1 exit /b 1
 
 :after_rebuild
-start "LocalCode 6.3.0" "%~dp0dist\LocalCode.exe"
+start "LocalCode 6.4.0" "%~dp0dist\LocalCode.exe"
 exit /b 0

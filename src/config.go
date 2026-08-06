@@ -111,8 +111,8 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		SchemaVersion: 9, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
-		OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
+		SchemaVersion: 10, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
@@ -339,8 +339,8 @@ func normalizeProjectPathList(values []string) []string {
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 9 {
-		cfg.SchemaVersion = 9
+	if cfg.SchemaVersion < 10 {
+		cfg.SchemaVersion = 10
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -359,6 +359,14 @@ func normalizeConfig(cfg Config) Config {
 	if oldSchema < 8 {
 		cfg.OllamaAutoInstall = true
 		cfg.OllamaAutoPull = true
+	}
+	if oldSchema < 10 {
+		// Dependency downloads are intentionally separate from the agent/web
+		// network switch. Earlier releases could deadlock during startup when
+		// network_enabled was false, because the UI was not available yet to
+		// re-enable it. Existing installations therefore migrate to allowing
+		// only the explicitly enabled automatic setup downloads.
+		cfg.SetupDownloadsEnabled = true
 	}
 	if strings.TrimSpace(cfg.OllamaDefaultModel) == "" {
 		cfg.OllamaDefaultModel = d.OllamaDefaultModel

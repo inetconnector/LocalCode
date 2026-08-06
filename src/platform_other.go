@@ -29,6 +29,7 @@ func hideCommandWindow(cmd *exec.Cmd) {
 }
 
 func openBrowser(url string) error          { return exec.Command("xdg-open", url).Start() }
+func openStartupBrowser(url string) error   { return openBrowser(url) }
 func showFatal(title, message string)       { fmt.Printf("%s: %s\n", title, message) }
 func startOllamaDetached(path string) error { return exec.Command(path, "serve").Start() }
 func findOllamaExecutable() string          { p, _ := exec.LookPath("ollama"); return p }

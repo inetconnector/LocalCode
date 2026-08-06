@@ -420,8 +420,8 @@ func runCapturedCommand(ctx context.Context, executable string, args, env []stri
 }
 
 func installAider(ctx context.Context, cfg Config) (AiderStatus, string, error) {
-	if !cfg.NetworkEnabled {
-		return aiderStatus(ctx, cfg), "", errors.New("network access is disabled")
+	if !cfg.SetupDownloadsEnabled {
+		return aiderStatus(ctx, cfg), "", errors.New("downloads for automatic setup are disabled")
 	}
 	uv, uvVersion, err := ensureUVInstalled(ctx, cfg)
 	if err != nil {

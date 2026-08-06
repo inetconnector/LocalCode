@@ -1,23 +1,31 @@
-LOCALCODE 6.3.0 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
+LOCALCODE 6.4.0 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
 =====================================================================
 
-Feature scope / Funktionsumfang
--------------------------------
-PASS  Selectable external coding engines: Aider, Claude Code, OpenCode.
-PASS  Generic engine status, install/repair, sign-in, repository test, edit,
-      lint, test-repair, cancellation, backup, changed-file detection and undo.
-PASS  Aider remains pinned and isolated through uv/Python 3.12.
-PASS  Claude Code native Windows installer, channel/model/permission settings,
-      authentication check and non-interactive execution are implemented.
-PASS  OpenCode user-local npm installation, provider/model settings, login,
-      auto-approval control and process-scoped Ollama provider config are implemented.
-PASS  Legacy aider_* actions remain compatible aliases for generic engine_* actions.
+Fixed startup regression / Behobene Startregression
+----------------------------------------------------
+PASS  Automatic setup downloads are independent from agent/web network access.
+PASS  Schema 9 -> 10 migration enables setup downloads while preserving the
+      previous network_enabled preference.
+PASS  Compact startup splash reports Ollama, model, and selected-engine setup.
+PASS  Splash actions: retry, open log folder, limited mode, and exit.
+PASS  Setup errors are localized; no generic network-disabled startup deadlock.
+
+Additional fixes / Weitere Korrekturen
+--------------------------------------
+PASS  Only models required by the selected engine are pulled.
+PASS  HTTPS Ollama URLs remain HTTPS; IPv6 hosts use valid bracketed addresses.
+PASS  Disabled selected engines fall back explicitly to LocalCode native.
+PASS  Splash server is loopback-only, token-protected, Host-validated, and uses
+      bounded read/write/idle timeouts.
+PASS  MCP uvx installation uses the pinned SHA-256-verified uv archive instead
+      of executing a downloaded installer script.
+PASS  STATE.md output distinguishes agent network from setup downloads.
 
 Coverage / Testabdeckung
--------------------------
-PASS  162 Go test functions discovered.
-PASS  Exact statement coverage: 6,330 / 7,896 = 80.167173%.
-PASS  Go summary: 80.2% of statements.
+------------------------
+PASS  178 Go test functions discovered.
+PASS  Exact statement coverage: 6,526 / 8,153 = 80.044156%.
+PASS  Go summary: 80.0% of statements.
 PASS  Machine-readable profile: reports/coverage.out.
 PASS  Human-readable HTML report: reports/coverage.html.
 
@@ -26,84 +34,40 @@ Core verification / Kernpruefung
 PASS  gofmt on all Go source and test files.
 PASS  go test -count=1 -timeout=180s ./...
 PASS  go vet ./...
-PASS  three independent randomized test orders:
-      -shuffle=1701
-      -shuffle=6303
-      -shuffle=99881
-PASS  Race detector for all 162 tests. The test set was executed in four
-      complete partitions because the release tool has a per-command runtime
-      limit. Every discovered test is included in exactly one partition.
+PASS  three independent randomized test orders: 6411, 6412, 6413.
+PASS  Race detector for all 178 tests in five complete partitions. Each
+      discovered test appears in exactly one partition.
 
 Windows verification / Windows-Pruefung
 -----------------------------------------
 PASS  Windows-amd64 test executable cross compilation.
 PASS  Windows-amd64 GUI executable cross compilation.
 PASS  Windows-amd64 diagnostic executable cross compilation.
-PASS  dist/LocalCode.exe is a PE32+ x86-64 Windows GUI executable.
-PASS  dist/LocalCode-Debug.exe is a PE32+ x86-64 Windows console executable.
-PASS  reports/localcode-windows-amd64.test.exe is a PE32+ x86-64 test executable.
-PASS  dist is populated; it is not an empty placeholder directory.
-PASS  REBUILD-NATIVE.txt forces one complete native build with the target
-      Windows Go toolchain before normal launch.
-
-Coding-engine regression coverage / Engine-Regressionspruefung
-----------------------------------------------------------------
-PASS  Engine normalization, selection, display names and configuration migration.
-PASS  Executable discovery and Windows .cmd/.bat process launch.
-PASS  Claude/OpenCode version and authentication status parsing.
-PASS  Claude official installer command including stable/latest/exact channel.
-PASS  Claude non-interactive arguments, bounded turns and safe permission modes.
-PASS  OpenCode npm installation, run arguments, agent/model and --auto control.
-PASS  OpenCode local Ollama provider injection through OPENCODE_CONFIG_CONTENT.
-PASS  Generic engine API status/setup/test/undo success and error paths.
-PASS  Startup auto-setup and required Ollama-model collection for selected engines.
-PASS  Backup manifest, changed-file fingerprinting and guarded restoration.
-
-Existing critical coverage / Bestehende kritische Pruefung
------------------------------------------------------------
-PASS  Agent action parsing, dispatch, approvals, cancellation and failures.
-PASS  HTTP API success, method, malformed JSON and validation paths.
-PASS  File sandbox, copy, move, write, delete, traversal and binary protection.
-PASS  MCP built-ins, HTTP/SSE, persistent STDIO, Git and PowerShell dispatch.
-PASS  Managed installation paths for Android tools, MinGit, WinGet, .NET,
-      Visual Studio Build Tools, Node.js LTS and GitHub CLI.
-PASS  Ollama startup, configured model bootstrap, vision selection and diagnostics.
-PASS  Project catalog, chat lifecycle, persistence, migration and race regressions.
+PASS  dist/LocalCode.exe: PE32+ x86-64 Windows GUI executable.
+PASS  dist/LocalCode-Debug.exe: PE32+ x86-64 Windows console executable.
+PASS  reports/localcode-windows-amd64.test.exe: PE32+ x86-64 test executable.
+PASS  dist is populated and REBUILD-NATIVE.txt forces one complete native build
+      on the target Windows computer before normal launch.
 
 UI and localization / Oberflaeche und Uebersetzung
 ---------------------------------------------------
 PASS  Browser UI E2E: 37 mocked API interactions without page errors.
-PASS  Engine selector exercised with Aider, Claude Code and OpenCode.
-PASS  HTML IDs: 219 total, 219 unique, 0 duplicates.
-PASS  German/English localization parity: 540 / 540 keys.
+PASS  HTML IDs: 220 total, 220 unique, 0 duplicates.
+PASS  German/English localization parity: 543 / 543 keys.
 PASS  JavaScript syntax checks for i18n.js and embedded index.html script.
-PASS  Literal UI-event translation and bilingual generated-document tests.
-
-Automatic setup / Automatische Einrichtung
--------------------------------------------
-PASS  Build scripts reuse Go >=1.25 or install a verified current stable Go
-      release project-locally when required.
-PASS  Runtime bootstrap detects, installs when necessary, starts and rechecks
-      Ollama on Windows and pulls missing configured models.
-PASS  Aider provisions uv, Python 3.12 and pinned Aider 0.86.2.
-PASS  Claude Code uses the official native Windows PowerShell distribution path.
-PASS  OpenCode provisions managed Node.js/npm if necessary and installs opencode-ai
-      into a user-local LocalCode tools prefix.
+PASS  Startup splash page, progress, authorization, retry/error, and completion
+      state are covered by automated HTTP tests.
 
 Verification boundary / Verifikationsgrenze
 --------------------------------------------
-The release host is Linux with Go 1.23.2. It executes the complete source tests,
-coverage, vet, UI test and race-detector partitions, and cross-compiles Windows
-binaries. It cannot execute Windows batch files or PE programs natively. The
-supplied PE files are cross-build artifacts from the final 6.3.0 source. The
-mandatory REBUILD-NATIVE marker causes START.bat to rebuild them on the target
-Windows computer. The user reported Go 1.26.5 there; BUILD.bat accepts supported
-Go >=1.25 and otherwise downloads and verifies the current stable official release.
+The release host is Linux. It executes source tests, coverage, vet, UI checks,
+race-detector partitions, and Windows cross-builds. It cannot execute Windows
+batch files or PE programs natively. The supplied executables are cross-build
+artifacts from the final 6.4.0 source. dist/REBUILD-NATIVE.txt intentionally
+forces START.bat to perform the complete native Windows build before first use.
 
-Die Release-Umgebung ist Linux mit Go 1.23.2. Sie fuehrt die vollstaendigen
-Quelltests, Coverage, Vet, UI-Pruefung und Race-Detector-Gruppen aus und erstellt
-Windows-Cross-Builds. Windows-Batchdateien und PE-Programme kann sie nicht nativ
-starten. Die mitgelieferten PE-Dateien stammen aus dem finalen 6.3.0-Quellstand.
-REBUILD-NATIVE.txt erzwingt auf dem Windows-Zielrechner einen nativen Neubau. Dort
-wurde Go 1.26.5 gemeldet; BUILD.bat akzeptiert unterstuetztes Go >=1.25 und laedt
-andernfalls die aktuelle stabile offizielle Version mit Pruefsummenpruefung.
+Die Release-Umgebung ist Linux. Sie fuehrt Quelltests, Coverage, Vet, UI-Pruefung,
+Race-Detector-Gruppen und Windows-Cross-Builds aus. Windows-Batchdateien und
+PE-Programme kann sie nicht nativ starten. Die enthaltenen EXE-Dateien stammen
+aus dem finalen 6.4.0-Quellstand. dist/REBUILD-NATIVE.txt erzwingt vor der ersten
+Nutzung absichtlich den vollstaendigen nativen Windows-Build durch START.bat.
