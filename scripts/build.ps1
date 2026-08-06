@@ -82,12 +82,28 @@ try {
     New-Item -ItemType Directory -Force -Path $Dist | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $TestRoot 'config'), (Join-Path $TestRoot 'cache'), (Join-Path $TestRoot 'home') | Out-Null
 
-    foreach ($name in @('LOCALCODE_CONFIG_HOME','LOCALCODE_CACHE_HOME','LOCALCODE_USER_HOME','CGO_ENABLED','GOOS','GOARCH')) {
+    # Keep the build isolated from the real LocalCode profile, but do not use
+    # LOCALCODE_* overrides here. Those have intentionally highest precedence
+    # and would shadow t.Setenv calls inside Windows tests. Standard profile/XDG
+    # variables still isolate the process while allowing every test to replace
+    # its own home/config/cache directory deterministically.
+    foreach ($name in @(
+        'LOCALCODE_CONFIG_HOME','LOCALCODE_CACHE_HOME','LOCALCODE_USER_HOME',
+        'XDG_CONFIG_HOME','XDG_CACHE_HOME','HOME','USERPROFILE','LOCALAPPDATA','APPDATA',
+        'CGO_ENABLED','GOOS','GOARCH'
+    )) {
         Save-EnvironmentVariable $name
     }
-    $env:LOCALCODE_CONFIG_HOME = Join-Path $TestRoot 'config'
-    $env:LOCALCODE_CACHE_HOME = Join-Path $TestRoot 'cache'
-    $env:LOCALCODE_USER_HOME = Join-Path $TestRoot 'home'
+    [Environment]::SetEnvironmentVariable('LOCALCODE_CONFIG_HOME', $null, 'Process')
+    [Environment]::SetEnvironmentVariable('LOCALCODE_CACHE_HOME', $null, 'Process')
+    [Environment]::SetEnvironmentVariable('LOCALCODE_USER_HOME', $null, 'Process')
+    $env:XDG_CONFIG_HOME = Join-Path $TestRoot 'config'
+    $env:XDG_CACHE_HOME = Join-Path $TestRoot 'cache'
+    $env:HOME = Join-Path $TestRoot 'home'
+    $env:USERPROFILE = Join-Path $TestRoot 'home'
+    $env:LOCALAPPDATA = Join-Path $TestRoot 'local-app-data'
+    $env:APPDATA = Join-Path $TestRoot 'roaming-app-data'
+    New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA, $env:APPDATA | Out-Null
     [Environment]::SetEnvironmentVariable('CGO_ENABLED', $null, 'Process')
     [Environment]::SetEnvironmentVariable('GOOS', $null, 'Process')
     [Environment]::SetEnvironmentVariable('GOARCH', $null, 'Process')

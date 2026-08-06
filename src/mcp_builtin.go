@@ -281,6 +281,16 @@ func pathFromFileURI(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	host := strings.TrimSpace(parsed.Host)
+	// Some Windows clients emit file://C:/path instead of the canonical
+	// file:///C:/path. net/url interprets C: as the authority, which would drop
+	// the drive letter and make filepath.Rel fail with different volumes.
+	if len(host) == 2 && host[1] == ':' && ((host[0] >= 'A' && host[0] <= 'Z') || (host[0] >= 'a' && host[0] <= 'z')) {
+		value = host + value
+	} else if host != "" && !strings.EqualFold(host, "localhost") {
+		// Preserve UNC authorities (file://server/share/file.txt).
+		value = "//" + host + "/" + strings.TrimPrefix(value, "/")
+	}
 	value = filepath.FromSlash(value)
 	if runtime.GOOS == "windows" && strings.HasPrefix(value, string(filepath.Separator)) && len(value) > 3 && value[2] == ':' {
 		value = value[1:]

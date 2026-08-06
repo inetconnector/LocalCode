@@ -204,7 +204,7 @@ func engineExecutableVersion(ctx context.Context, executable string, cfg Config)
 	if executable == "" {
 		return "", errors.New("executable not found")
 	}
-	output, code, err := runCapturedCommand(ctx, executable, []string{"--version"}, commandEnvironment(cfg), appDataDir())
+	output, code, err := runCapturedCommand(ctx, executable, []string{"--version"}, commandEnvironment(cfg), "")
 	if err != nil {
 		return strings.TrimSpace(output), fmt.Errorf("version command failed with exit code %d: %w", code, err)
 	}
@@ -215,7 +215,7 @@ func claudeAuthenticationStatus(ctx context.Context, executable string, cfg Conf
 	if executable == "" {
 		return false, ""
 	}
-	output, code, err := runCapturedCommand(ctx, executable, []string{"auth", "status", "--text"}, commandEnvironment(cfg), appDataDir())
+	output, code, err := runCapturedCommand(ctx, executable, []string{"auth", "status", "--text"}, commandEnvironment(cfg), "")
 	text := strings.TrimSpace(output)
 	if err == nil && code == 0 {
 		return true, text
@@ -227,7 +227,7 @@ func openCodeAuthenticationStatus(ctx context.Context, executable string, cfg Co
 	if executable == "" {
 		return false, ""
 	}
-	output, code, err := runCapturedCommand(ctx, executable, []string{"auth", "list"}, commandEnvironment(cfg), appDataDir())
+	output, code, err := runCapturedCommand(ctx, executable, []string{"auth", "list"}, commandEnvironment(cfg), "")
 	text := strings.TrimSpace(output)
 	if err == nil && code == 0 {
 		lower := strings.ToLower(text)

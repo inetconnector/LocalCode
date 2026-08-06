@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -588,6 +589,34 @@ func TestCoverageFinalProjectCatalogEdgeCases(t *testing.T) {
 	}
 }
 
+func TestCoverageFinalStandardProfileFallbacks(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALCODE_USER_HOME", "")
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	} else {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOME", home)
+	}
+	if got := userProfileDir(); filepath.Clean(got) != filepath.Clean(home) {
+		t.Fatalf("user profile fallback = %q, want %q", got, home)
+	}
+
+	t.Setenv("LOCALCODE_CONFIG_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("LOCALCODE_CACHE_HOME", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	configBase := userConfigBaseDir()
+	cacheBase := userCacheBaseDir()
+	if strings.TrimSpace(configBase) == "" || strings.TrimSpace(cacheBase) == "" {
+		t.Fatalf("empty standard directories: config=%q cache=%q", configBase, cacheBase)
+	}
+}
+
 func TestCoverageFinalConfigAndFileFailureBranches(t *testing.T) {
 	base := isolateCoverageEnv(t)
 	t.Setenv("LOCALCODE_CONFIG_HOME", "")
@@ -666,6 +695,11 @@ func TestCoverageFinalCancelledInstallOffers(t *testing.T) {
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	emptyBin := filepath.Join(base, "empty-bin")
+	if err := os.MkdirAll(emptyBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", emptyBin)
 	cfg := defaultConfig()
 	cfg.RootProjectDir = base
 	cfg.LastProject = project

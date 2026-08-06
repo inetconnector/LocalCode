@@ -29,11 +29,22 @@ import (
 func isolateCoverageEnv(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	t.Setenv("LOCALCODE_CONFIG_HOME", filepath.Join(root, "config"))
-	t.Setenv("LOCALCODE_CACHE_HOME", filepath.Join(root, "cache"))
-	t.Setenv("HOME", filepath.Join(root, "home"))
-	if err := os.MkdirAll(os.Getenv("HOME"), 0o755); err != nil {
-		t.Fatal(err)
+	configHome := filepath.Join(root, "config")
+	cacheHome := filepath.Join(root, "cache")
+	userHome := filepath.Join(root, "home")
+	t.Setenv("LOCALCODE_CONFIG_HOME", configHome)
+	t.Setenv("LOCALCODE_CACHE_HOME", cacheHome)
+	t.Setenv("LOCALCODE_USER_HOME", userHome)
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	t.Setenv("HOME", userHome)
+	t.Setenv("USERPROFILE", userHome)
+	t.Setenv("LOCALAPPDATA", filepath.Join(root, "local-app-data"))
+	t.Setenv("APPDATA", filepath.Join(root, "roaming-app-data"))
+	for _, dir := range []string{configHome, cacheHome, userHome, os.Getenv("LOCALAPPDATA"), os.Getenv("APPDATA")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return root
 }
@@ -527,7 +538,11 @@ func TestCoverageMCPBuiltinHelpersAndFilesystem(t *testing.T) {
 	if _, err := mcpCallBuiltin(context.Background(), cfg, project, fsServer, "tools/call", map[string]any{"name": "read_text_file", "arguments": map[string]any{"path": "a.txt"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mcpCallBuiltin(context.Background(), cfg, project, fsServer, "resources/read", map[string]any{"uri": "file://" + filepath.ToSlash(filepath.Join(project, "a.txt"))}); err != nil {
+	resourceURI, err := fileURI(filepath.Join(project, "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mcpCallBuiltin(context.Background(), cfg, project, fsServer, "resources/read", map[string]any{"uri": resourceURI}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mcpCallBuiltin(context.Background(), cfg, project, fsServer, "prompts/get", map[string]any{"name": "x"}); err == nil {
@@ -540,6 +555,12 @@ func TestCoverageMCPBuiltinHelpersAndFilesystem(t *testing.T) {
 		t.Fatal("uri")
 	}
 	if p, err := pathFromFileURI("file:///tmp/a%20b"); err != nil || !strings.Contains(p, "a b") {
+		t.Fatal(p, err)
+	}
+	if p, err := pathFromFileURI("file://C:/Users/test/a.txt"); err != nil || !strings.Contains(strings.ToLower(filepath.ToSlash(p)), "c:/users/test/a.txt") {
+		t.Fatal(p, err)
+	}
+	if p, err := pathFromFileURI("file://server/share/a.txt"); err != nil || !strings.Contains(strings.ToLower(filepath.ToSlash(p)), "server/share/a.txt") {
 		t.Fatal(p, err)
 	}
 	if _, err := executeBuiltinMCPTool(context.Background(), cfg, project, "bad", "x", nil); err == nil {
@@ -1200,11 +1221,15 @@ func TestCoverageAgentActionsAndApprovals(t *testing.T) {
 	}
 
 	// Read actions through the visible agent dispatcher.
+	resourceURI, err := fileURI(filepath.Join(project, "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, a := range []AgentAction{
 		{Action: "discover_tool", Tool: "go", Message: "discover"}, {Action: "project_info", Message: "info"}, {Action: "tool_inventory", Message: "inventory"},
 		{Action: "list_files", Path: ".", MaxDepth: 2, Message: "list"}, {Action: "read_file", Path: "a.txt", Message: "read"}, {Action: "search_text", Query: "needle", Message: "search"},
 		{Action: "mcp_list_tools", Server: "filesystem", Message: "tools"}, {Action: "mcp_list_resources", Server: "filesystem", Message: "resources"},
-		{Action: "mcp_read_resource", Server: "filesystem", URI: "file://" + filepath.ToSlash(filepath.Join(project, "a.txt")), Message: "resource"}, {Action: "mcp_list_prompts", Server: "filesystem", Message: "prompts"},
+		{Action: "mcp_read_resource", Server: "filesystem", URI: resourceURI, Message: "resource"}, {Action: "mcp_list_prompts", Server: "filesystem", Message: "prompts"},
 	} {
 		res, wait := state.handleAgentAction(ctx, project, a)
 		if wait || strings.Contains(res, "ERROR:") {
@@ -2229,7 +2254,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/ping" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.1"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.2"})
 		case r.URL.Path == "/api/shutdown" && r.Method == http.MethodPost:
 			shutdown = true
 			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -2238,7 +2263,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.1" {
+	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.2" {
 		t.Fatalf("version=%q ok=%v", got, ok)
 	}
 	if err := shutdownExistingLocalCode(server.URL); err != nil || !shutdown {

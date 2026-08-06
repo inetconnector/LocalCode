@@ -140,3 +140,32 @@ func TestWindowsPowerShellScriptEncodings(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsBuildIsolationAllowsPerTestOverrides(t *testing.T) {
+	driver, err := os.ReadFile(filepath.Join("..", "scripts", "build.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(driver)
+	for _, required := range []string{
+		"SetEnvironmentVariable('LOCALCODE_CONFIG_HOME', $null, 'Process')",
+		"SetEnvironmentVariable('LOCALCODE_CACHE_HOME', $null, 'Process')",
+		"SetEnvironmentVariable('LOCALCODE_USER_HOME', $null, 'Process')",
+		"$env:XDG_CONFIG_HOME = Join-Path $TestRoot 'config'",
+		"$env:XDG_CACHE_HOME = Join-Path $TestRoot 'cache'",
+		"$env:USERPROFILE = Join-Path $TestRoot 'home'",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("build isolation is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"$env:LOCALCODE_CONFIG_HOME =",
+		"$env:LOCALCODE_CACHE_HOME =",
+		"$env:LOCALCODE_USER_HOME =",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("build driver must not shadow per-test overrides with %q", forbidden)
+		}
+	}
+}

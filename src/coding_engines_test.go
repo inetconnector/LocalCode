@@ -354,6 +354,7 @@ func TestCodingEngineInstallDispatchAndRepairWrapper(t *testing.T) {
 	cfg.RootProjectDir = project
 	cfg.LastProject = project
 	cfg.NetworkEnabled = false
+	cfg.SetupDownloadsEnabled = false
 	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative} {
 		status, _, _, err := installCodingEngine(context.Background(), project, engine, cfg)
 		if engine == editingEngineNative {
@@ -361,7 +362,7 @@ func TestCodingEngineInstallDispatchAndRepairWrapper(t *testing.T) {
 				t.Fatalf("native install dispatch: status=%#v err=%v", status, err)
 			}
 		} else if err == nil {
-			t.Fatalf("%s install should be blocked without network", engine)
+			t.Fatalf("%s install should be blocked when setup downloads are disabled", engine)
 		}
 	}
 

@@ -299,6 +299,7 @@ func TestNormalizeConfigRepairsAppDataProjectRoot(t *testing.T) {
 	if err := os.MkdirAll(broken, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("LOCALCODE_USER_HOME", profile)
 	t.Setenv("USERPROFILE", profile)
 	t.Setenv("LOCALAPPDATA", localAppData)
 	t.Setenv("APPDATA", filepath.Join(profile, "AppData", "Roaming"))
@@ -322,6 +323,7 @@ func TestNormalizeConfigKeepsValidCustomProjectRoot(t *testing.T) {
 	if err := os.MkdirAll(custom, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("LOCALCODE_USER_HOME", profile)
 	t.Setenv("USERPROFILE", profile)
 	t.Setenv("LOCALAPPDATA", filepath.Join(profile, "AppData", "Local"))
 	t.Setenv("APPDATA", filepath.Join(profile, "AppData", "Roaming"))
@@ -1091,6 +1093,8 @@ func TestLegacyProductDataMigrationCopiesUserState(t *testing.T) {
 	base := t.TempDir()
 	configBase := filepath.Join(base, "config")
 	cacheBase := filepath.Join(base, "cache")
+	t.Setenv("LOCALCODE_CONFIG_HOME", configBase)
+	t.Setenv("LOCALCODE_CACHE_HOME", cacheBase)
 	t.Setenv("XDG_CONFIG_HOME", configBase)
 	t.Setenv("XDG_CACHE_HOME", cacheBase)
 

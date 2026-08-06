@@ -24,7 +24,7 @@ def handler(route):
         try:data=json.loads(req.post_data)
         except:pass
     posts.append((path,method,data))
-    if path=='status': return fulfill(route,{'version':'6.4.1','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','engine_installed':True,'engine_authenticated':True,'engine_version':'aider 0.86.2','engine_executable':'aider.exe','aider_installed':True,'aider_version':'aider 0.86.2'})
+    if path=='status': return fulfill(route,{'version':'6.4.2','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','engine_installed':True,'engine_authenticated':True,'engine_version':'aider 0.86.2','engine_executable':'aider.exe','aider_installed':True,'aider_version':'aider 0.86.2'})
     if path=='projects': return fulfill(route,{'root':'C:\\Users\\frede\\Projekte','projects':projects,'hidden_projects':[]})
     if path=='threads': return fulfill(route,{'threads':threads,'current':current})
     if path=='snapshot':
@@ -65,7 +65,7 @@ def handler(route):
           'aider':{'engine':'aider','display_name':'Aider','enabled':True,'installed':True,'authenticated':True,'executable':'aider.exe','version':'aider 0.86.2','expected_version':'0.86.2','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\aider'},
           'claude':{'engine':'claude','display_name':'Claude Code','enabled':True,'installed':True,'authenticated':True,'executable':'claude.exe','version':'2.1.211 (Claude Code)','expected_version':'stable','installation_root':'C:\\Users\\frede\\.local\\bin'},
           'opencode':{'engine':'opencode','display_name':'OpenCode','enabled':True,'installed':True,'authenticated':True,'executable':'opencode.cmd','version':'1.2.3','expected_version':'latest','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\opencode'},
-          'native':{'engine':'native','display_name':'LocalCode nativ','enabled':True,'installed':True,'authenticated':True,'executable':'embedded','version':'6.4.1'}
+          'native':{'engine':'native','display_name':'LocalCode nativ','enabled':True,'installed':True,'authenticated':True,'executable':'embedded','version':'6.4.2'}
         }
         return fulfill(route,{'selected':engine,'status':values[engine],'engines':list(values.values())})
     if path=='engines/setup':

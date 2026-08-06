@@ -1,6 +1,6 @@
 # LocalCode project state / Projektstatus
 
-**Version:** 6.4.1  
+**Version:** 6.4.2  
 **Status:** Startup setup fixed; progress splash and three selectable coding engines
 
 ## Deutsch
@@ -75,3 +75,11 @@ The release environment can execute the complete source suite and race detector 
 Managed runtime state is written here when this repository itself is selected in LocalCode.
 Verwalteter Laufzeitstatus wird hier geschrieben, wenn dieses Repository selbst in LocalCode ausgewählt ist.
 <!-- LOCALCODE:STATE:END -->
+
+
+## Version 6.4.2 Windows-Testfixes
+
+- Native Buildtests are fully isolated without shadowing test-local path overrides.
+- Canonical and tolerant Windows file-URI handling for MCP resources.
+- Engine probes work before the LocalCode app-data directory exists.
+- 191 tests; statement coverage 80.038996 %.
