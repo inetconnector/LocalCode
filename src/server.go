@@ -23,14 +23,15 @@ import (
 var staticFS embed.FS
 
 type Server struct {
-	state *AppState
-	mux   *http.ServeMux
+	state           *AppState
+	mux             *http.ServeMux
+	selectDirectory func(initial, language string) (string, error)
 }
 
 var launchTaskWindow = openBrowser
 
 func NewServer(state *AppState) *Server {
-	s := &Server{state: state, mux: http.NewServeMux()}
+	s := &Server{state: state, mux: http.NewServeMux(), selectDirectory: selectDirectory}
 	s.routes()
 	return s
 }
@@ -355,7 +356,7 @@ func (s *Server) handleBrowseRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Agent läuft gerade", 409)
 		return
 	}
-	selected, err := selectDirectory(initial, language)
+	selected, err := s.selectDirectory(initial, language)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

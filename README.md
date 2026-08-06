@@ -1,4 +1,4 @@
-# LocalCode 6.4.2
+# LocalCode 6.4.3
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -83,7 +83,7 @@ Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle und die ausgewählte Engi
 
 ### Verwaltete MCP-Suite
 
-LocalCode 6.4.2 enthält sechs verwaltete MCP-Funktionsbereiche:
+LocalCode 6.4.3 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 - **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
 - **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
@@ -213,7 +213,7 @@ The core runtime (Ollama, configured Ollama models, and the selected engine) is 
 
 ### Managed MCP suite
 
-LocalCode 6.4.2 includes six managed MCP capability areas:
+LocalCode 6.4.3 includes six managed MCP capability areas:
 
 - **Filesystem MCP** – built-in, project-scoped file and directory tools.
 - **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.

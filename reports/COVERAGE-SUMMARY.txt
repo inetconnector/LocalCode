@@ -1,6 +1,6 @@
-LocalCode 6.4.2 coverage summary
-Covered statements: 6568
+LocalCode 6.4.3 coverage summary
+Covered statements: 6570
 Total statements: 8206
-Statement coverage: 80.038995857 %
+Statement coverage: 80.063368267122 %
 Profile: reports/coverage.out
 HTML report: reports/coverage.html

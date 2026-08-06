@@ -689,6 +689,7 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	state.Model = "test-model"
 	t.Cleanup(state.Close)
 	server := NewServer(state)
+	server.selectDirectory = func(initial, language string) (string, error) { return initial, nil }
 
 	// Security and method branches.
 	badHost := httptest.NewRequest(http.MethodGet, "http://evil.example/api/ping", nil)
@@ -743,6 +744,16 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	if _, err := server.applyRoot(root); err != nil {
 		t.Fatal(err)
 	}
+	server.selectDirectory = func(initial, language string) (string, error) { return "", errors.New("picker failed") }
+	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/browse-root", map[string]any{})
+	requireCoverageStatus(t, rr, http.StatusInternalServerError)
+	server.selectDirectory = func(initial, language string) (string, error) { return "", nil }
+	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/browse-root", map[string]any{})
+	requireCoverageStatus(t, rr, http.StatusOK)
+	if !strings.Contains(rr.Body.String(), `"cancelled":true`) {
+		t.Fatalf("cancelled browse body=%s", rr.Body.String())
+	}
+	server.selectDirectory = func(initial, language string) (string, error) { return initial, nil }
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/browse-root", map[string]any{})
 	requireCoverageStatus(t, rr, http.StatusOK)
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/reset-root", map[string]any{})
@@ -857,7 +868,7 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	requireCoverageStatus(t, rr, http.StatusOK)
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/tools/diagnose", map[string]any{"tool": ""})
 	requireCoverageStatus(t, rr, http.StatusBadRequest)
-	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "printf hi", "path": project})
+	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "echo hi", "path": project})
 	requireCoverageStatus(t, rr, http.StatusOK)
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": ""})
 	requireCoverageStatus(t, rr, http.StatusBadRequest)
@@ -1250,7 +1261,7 @@ func TestCoverageAgentActionsAndApprovals(t *testing.T) {
 	mutations := []AgentAction{
 		{Action: "write_file", Path: "w.txt", Content: "alpha", Message: "write"}, {Action: "replace_text", Path: "w.txt", OldText: "alpha", NewText: "beta", Message: "replace"},
 		{Action: "copy_path", Source: "w.txt", Destination: "c.txt", Message: "copy"}, {Action: "move_path", Source: "c.txt", Destination: "m.txt", Message: "move"},
-		{Action: "run_tool", Tool: "go", Args: []string{"version"}, Message: "go"}, {Action: "run_command", Command: "printf command-ok", Message: "command"},
+		{Action: "run_tool", Tool: "go", Args: []string{"version"}, Message: "go"}, {Action: "run_command", Command: "echo command-ok", Message: "command"},
 		{Action: "mcp_call_tool", Server: "filesystem", Tool: "read_text_file", Arguments: map[string]any{"path": "w.txt"}, Message: "mcp"},
 	}
 	for _, a := range mutations {
@@ -1301,7 +1312,7 @@ func TestCoverageAgentActionsAndApprovals(t *testing.T) {
 	if _, err := executeAction(ctx, project, cfg, AgentAction{Action: "run_tool", Tool: "go", Args: []string{"version"}}); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := executeAction(ctx, project, cfg, AgentAction{Action: "run_command", Command: "printf direct"}); err != nil || !strings.Contains(out, "direct") {
+	if out, err := executeAction(ctx, project, cfg, AgentAction{Action: "run_command", Command: "echo direct"}); err != nil || !strings.Contains(out, "direct") {
 		t.Fatal(out, err)
 	}
 	if _, err := executeAction(ctx, project, cfg, AgentAction{Action: "unknown"}); err == nil {
@@ -2254,7 +2265,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/ping" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.2"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"app": "LocalCode", "version": "6.4.3"})
 		case r.URL.Path == "/api/shutdown" && r.Method == http.MethodPost:
 			shutdown = true
 			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -2263,7 +2274,7 @@ func TestCoverageLocalCodeInstanceHTTPHelpers(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.2" {
+	if got, ok := existingLocalCodeVersion(server.URL); !ok || got != "6.4.3" {
 		t.Fatalf("version=%q ok=%v", got, ok)
 	}
 	if err := shutdownExistingLocalCode(server.URL); err != nil || !shutdown {

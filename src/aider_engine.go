@@ -244,7 +244,7 @@ func downloadFileWithProgress(ctx context.Context, url, target string, maxBytes 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "LocalCode/6.4.2 dependency installer")
+	req.Header.Set("User-Agent", "LocalCode/6.4.3 dependency installer")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

@@ -1,37 +1,35 @@
-LOCALCODE 6.4.2 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
+LOCALCODE 6.4.3 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
 
-Reproduced user failures fixed
---------------------------------
-- Coding-engine installer tests now use SetupDownloadsEnabled instead of the unrelated agent/web NetworkEnabled flag.
-- Windows native build isolation no longer shadows per-test LOCALCODE_* directory overrides.
-- Project-root repair and legacy-data migration tests explicitly control their highest-priority profile/config/cache paths.
-- MCP resources use canonical file URIs; the parser also preserves Windows drive letters for file://C:/... and supports UNC authorities.
-- Tests requiring a missing Aider executable isolate PATH from real user installations.
-- Claude Code/OpenCode version and authentication probes no longer fail when the LocalCode app-data directory has not yet been created.
+Reported native-Windows failures fixed
+---------------------------------------
+- TestCodingEngineServerAdditionalErrorBranches disables SetupDownloadsEnabled and cannot invoke the real Claude Code installer.
+- TestCoverageServerEndpointMatrix injects a deterministic folder selector and does not open a Windows Forms folder dialog.
+- TestCoverageAgentActionsAndApprovals and the terminal-command matrix use the cross-platform `echo` command instead of PowerShell-incompatible `printf`.
+- Folder-picker error, cancellation, and success paths have explicit regression coverage.
 
 Automated verification
 ----------------------
 - Go test functions: 191
-- Normal isolated test run: PASS
+- Normal test run: PASS
 - go vet ./...: PASS
 - Randomized-order runs (seeds 11, 22, 33): PASS
-- Race detector: PASS for all tests in four complete groups
-- Statement coverage: 6568/8206 = 80.038995857 %
+- Race detector: PASS for the complete suite
+- Statement coverage: 6570/8206 = 80.063368267122 %
 - UI/API simulation: PASS, 37 requests
 - Windows amd64 GUI cross-build: PASS
 - Windows amd64 diagnostics cross-build: PASS
 - Windows amd64 test executable compilation: PASS
 - Batch files: ASCII, BOM-free, Windows CRLF: PASS
-- PowerShell build scripts: encoding/static packaging tests PASS
+- Archive paths, duplicate entries, checksums, and source manifest: verified during packaging
 
 Generated Windows files
 -----------------------
-- dist/LocalCode.exe: 10138624 bytes
-  SHA-256: 33df08ff9fb2d2cab772d5eb9ee80afa1946514413eee192a996f01cfb5bbdc9
-- dist/LocalCode-Debug.exe: 14337024 bytes
-  SHA-256: b21c052e4c5c46c3b13c04563fcb6a7b1735eae0bcbc17f9f1a118c5764e1c17
-- reports/localcode-windows-amd64.test.exe: 16890368 bytes
-  SHA-256: aa713aed8d5acd978f886659af8fd9e1caa6f2579c0618adaef5861620b010b8
+- dist/LocalCode.exe: 10139136 bytes
+  SHA-256: 1f619f6e6b53ba4dcb43aeaf04171aab67fe317a77bb507ce0420373db5fd609
+- dist/LocalCode-Debug.exe: 14337536 bytes
+  SHA-256: d67732e0e9f5998d402e3c05bc3fe6edac82aa4a7fecb36115c91ed892d6ac4c
+- reports/localcode-windows-amd64.test.exe: 16893952 bytes
+  SHA-256: b007b6bc46d73ac0ed3a7a7c753f001488b6a61c9c75f31f15f8c0a41cdb68ea
 
 Limitation
 ----------

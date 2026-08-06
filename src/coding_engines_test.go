@@ -478,6 +478,7 @@ func TestCodingEngineServerAdditionalErrorBranches(t *testing.T) {
 	cfg.EditingEngine = editingEngineClaude
 	cfg.ClaudeCodeExecutable = filepath.Join(t.TempDir(), "missing")
 	cfg.NetworkEnabled = false
+	cfg.SetupDownloadsEnabled = false
 	state := &AppState{Config: cfg, Ollama: NewOllamaClient()}
 	server := NewServer(state)
 	request := func(method, path, body string) *httptest.ResponseRecorder {

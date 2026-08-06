@@ -1,1 +1,1 @@
-fix(windows): isolate native tests and normalize MCP file URIs
+fix(windows): isolate engine, folder-picker, and shell tests

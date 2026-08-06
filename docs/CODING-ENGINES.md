@@ -1,8 +1,8 @@
 # Coding-agent engines / Coding-Agent-Engines
 
-LocalCode 6.4.2 can switch between three external coding-agent engines from **Settings → Configuration → Coding-agent engine**. The selection affects multi-file editing, repository analysis, linting, and test-repair actions. **LocalCode native** remains available as the internal tool loop and is not a fourth external engine.
+LocalCode 6.4.3 can switch between three external coding-agent engines from **Settings → Configuration → Coding-agent engine**. The selection affects multi-file editing, repository analysis, linting, and test-repair actions. **LocalCode native** remains available as the internal tool loop and is not a fourth external engine.
 
-LocalCode 6.4.2 kann unter **Einstellungen → Konfiguration → Coding-Agent-Engine** zwischen drei externen Coding-Agent-Engines umschalten. Die Auswahl gilt für mehrdateilige Bearbeitung, Repository-Analyse, Linting und Testreparatur. **LocalCode nativ** bleibt als interne Werkzeugschleife verfügbar und ist keine vierte externe Engine.
+LocalCode 6.4.3 kann unter **Einstellungen → Konfiguration → Coding-Agent-Engine** zwischen drei externen Coding-Agent-Engines umschalten. Die Auswahl gilt für mehrdateilige Bearbeitung, Repository-Analyse, Linting und Testreparatur. **LocalCode nativ** bleibt als interne Werkzeugschleife verfügbar und ist keine vierte externe Engine.
 
 ## Comparison / Vergleich
 

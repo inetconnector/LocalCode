@@ -1,6 +1,6 @@
 # LocalCode project state / Projektstatus
 
-**Version:** 6.4.2  
+**Version:** 6.4.3  
 **Status:** Startup setup fixed; progress splash and three selectable coding engines
 
 ## Deutsch
@@ -83,3 +83,11 @@ Verwalteter Laufzeitstatus wird hier geschrieben, wenn dieses Repository selbst 
 - Canonical and tolerant Windows file-URI handling for MCP resources.
 - Engine probes work before the LocalCode app-data directory exists.
 - 191 tests; statement coverage 80.038996 %.
+
+## Version 6.4.3 Windows-Testisolation / Windows test isolation
+
+- Engine-Setup-Tests deaktivieren den dedizierten Setup-Download-Schalter und können dadurch niemals eine reale Claude-Code-Installation auslösen.
+- Der Ordnerauswahldialog ist pro Serverinstanz injizierbar; HTTP-Tests öffnen unter Windows keine echte GUI mehr und prüfen Fehler-, Abbruch- und Erfolgsfall deterministisch.
+- Shell-Befehle in plattformübergreifenden Tests verwenden `echo` statt des unter PowerShell nicht vorhandenen `printf`.
+- 191 Testfunktionen; exakte Statement-Coverage: 6569/8206 = 80.051182 %.
+
