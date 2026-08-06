@@ -111,11 +111,13 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		SchemaVersion: 8, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		SchemaVersion: 9, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
 		OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
+		ClaudeCodeEnabled: true, ClaudeCodeAutoInstall: true, ClaudeCodeChannel: "stable", ClaudeCodeModel: "sonnet", ClaudeCodePermissionMode: "acceptEdits", ClaudeCodeMaxTurns: 24,
+		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "latest", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
@@ -337,8 +339,8 @@ func normalizeProjectPathList(values []string) []string {
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 8 {
-		cfg.SchemaVersion = 8
+	if cfg.SchemaVersion < 9 {
+		cfg.SchemaVersion = 9
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -364,9 +366,7 @@ func normalizeConfig(cfg Config) Config {
 	if strings.TrimSpace(cfg.EditingEngine) == "" {
 		cfg.EditingEngine = d.EditingEngine
 	}
-	if cfg.EditingEngine != "aider" && cfg.EditingEngine != "native" {
-		cfg.EditingEngine = d.EditingEngine
-	}
+	cfg.EditingEngine = normalizeEditingEngine(cfg.EditingEngine)
 	if strings.TrimSpace(cfg.AiderVersion) == "" {
 		cfg.AiderVersion = aiderPinnedVersion
 	}
@@ -401,6 +401,33 @@ func normalizeConfig(cfg Config) Config {
 		cfg.AiderAutoLint = true
 		cfg.AiderAutoTest = true
 		cfg.AiderUseGit = true
+	}
+	if oldSchema < 9 {
+		cfg.ClaudeCodeEnabled = true
+		cfg.ClaudeCodeAutoInstall = true
+		cfg.OpenCodeEnabled = true
+		cfg.OpenCodeAutoInstall = true
+		cfg.OpenCodeAutoApprove = true
+	}
+	if strings.TrimSpace(cfg.ClaudeCodeChannel) == "" {
+		cfg.ClaudeCodeChannel = d.ClaudeCodeChannel
+	}
+	if strings.TrimSpace(cfg.ClaudeCodeModel) == "" {
+		cfg.ClaudeCodeModel = d.ClaudeCodeModel
+	}
+	switch cfg.ClaudeCodePermissionMode {
+	case "default", "acceptEdits", "plan", "dontAsk":
+	default:
+		cfg.ClaudeCodePermissionMode = d.ClaudeCodePermissionMode
+	}
+	if cfg.ClaudeCodeMaxTurns < 1 || cfg.ClaudeCodeMaxTurns > 200 {
+		cfg.ClaudeCodeMaxTurns = d.ClaudeCodeMaxTurns
+	}
+	if strings.TrimSpace(cfg.OpenCodeVersion) == "" {
+		cfg.OpenCodeVersion = d.OpenCodeVersion
+	}
+	if strings.TrimSpace(cfg.OpenCodeAgent) == "" {
+		cfg.OpenCodeAgent = d.OpenCodeAgent
 	}
 	if cfg.ProjectAliases == nil {
 		cfg.ProjectAliases = map[string]string{}

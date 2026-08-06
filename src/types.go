@@ -57,7 +57,7 @@ type Config struct {
 	OllamaAutoInstall                 bool   `json:"ollama_auto_install"`
 	OllamaAutoPull                    bool   `json:"ollama_auto_pull"`
 	OllamaDefaultModel                string `json:"ollama_default_model"`
-	EditingEngine                     string `json:"editing_engine"` // aider | native
+	EditingEngine                     string `json:"editing_engine"` // aider | claude | opencode | native
 	AiderEnabled                      bool   `json:"aider_enabled"`
 	AiderAutoInstall                  bool   `json:"aider_auto_install"`
 	AiderVersion                      string `json:"aider_version"`
@@ -76,6 +76,20 @@ type Config struct {
 	AiderTestCommand                  string `json:"aider_test_command,omitempty"`
 	AiderUseGit                       bool   `json:"aider_use_git"`
 	AiderAutoCommits                  bool   `json:"aider_auto_commits"`
+	ClaudeCodeEnabled                 bool   `json:"claude_code_enabled"`
+	ClaudeCodeAutoInstall             bool   `json:"claude_code_auto_install"`
+	ClaudeCodeChannel                 string `json:"claude_code_channel"`
+	ClaudeCodeExecutable              string `json:"claude_code_executable,omitempty"`
+	ClaudeCodeModel                   string `json:"claude_code_model,omitempty"`
+	ClaudeCodePermissionMode          string `json:"claude_code_permission_mode"`
+	ClaudeCodeMaxTurns                int    `json:"claude_code_max_turns"`
+	OpenCodeEnabled                   bool   `json:"opencode_enabled"`
+	OpenCodeAutoInstall               bool   `json:"opencode_auto_install"`
+	OpenCodeVersion                   string `json:"opencode_version"`
+	OpenCodeExecutable                string `json:"opencode_executable,omitempty"`
+	OpenCodeModel                     string `json:"opencode_model,omitempty"`
+	OpenCodeAgent                     string `json:"opencode_agent,omitempty"`
+	OpenCodeAutoApprove               bool   `json:"opencode_auto_approve"`
 	ContextLength                     int    `json:"context_length"`
 	ContextCompactionEnabled          bool   `json:"context_compaction_enabled"`
 	ContextCompactionThresholdPercent int    `json:"context_compaction_threshold_percent"`
@@ -157,28 +171,33 @@ type ModelInfo struct {
 }
 
 type Status struct {
-	Version            string      `json:"version"`
-	OllamaOnline       bool        `json:"ollama_online"`
-	OllamaURL          string      `json:"ollama_url,omitempty"`
-	OllamaError        string      `json:"ollama_error,omitempty"`
-	EditingEngine      string      `json:"editing_engine"`
-	AiderInstalled     bool        `json:"aider_installed"`
-	AiderVersion       string      `json:"aider_version,omitempty"`
-	Models             []ModelInfo `json:"models"`
-	SelectedModel      string      `json:"selected_model"`
-	GPU                string      `json:"gpu,omitempty"`
-	RootDir            string      `json:"root_dir"`
-	Project            string      `json:"project,omitempty"`
-	Running            bool        `json:"running"`
-	GitAvailable       bool        `json:"git_available"`
-	MCPCount           int         `json:"mcp_count"`
-	RunID              string      `json:"run_id,omitempty"`
-	RunPhase           string      `json:"run_phase,omitempty"`
-	RunStartedAt       time.Time   `json:"run_started_at,omitempty"`
-	LastProgressAt     time.Time   `json:"last_progress_at,omitempty"`
-	ResolvedLanguage   string      `json:"resolved_language"`
-	SystemLanguage     string      `json:"system_language"`
-	SupportedLanguages []string    `json:"supported_languages"`
+	Version             string      `json:"version"`
+	OllamaOnline        bool        `json:"ollama_online"`
+	OllamaURL           string      `json:"ollama_url,omitempty"`
+	OllamaError         string      `json:"ollama_error,omitempty"`
+	EditingEngine       string      `json:"editing_engine"`
+	AiderInstalled      bool        `json:"aider_installed"`
+	AiderVersion        string      `json:"aider_version,omitempty"`
+	EngineInstalled     bool        `json:"engine_installed"`
+	EngineVersion       string      `json:"engine_version,omitempty"`
+	EngineExecutable    string      `json:"engine_executable,omitempty"`
+	EngineAuthenticated bool        `json:"engine_authenticated"`
+	EngineError         string      `json:"engine_error,omitempty"`
+	Models              []ModelInfo `json:"models"`
+	SelectedModel       string      `json:"selected_model"`
+	GPU                 string      `json:"gpu,omitempty"`
+	RootDir             string      `json:"root_dir"`
+	Project             string      `json:"project,omitempty"`
+	Running             bool        `json:"running"`
+	GitAvailable        bool        `json:"git_available"`
+	MCPCount            int         `json:"mcp_count"`
+	RunID               string      `json:"run_id,omitempty"`
+	RunPhase            string      `json:"run_phase,omitempty"`
+	RunStartedAt        time.Time   `json:"run_started_at,omitempty"`
+	LastProgressAt      time.Time   `json:"last_progress_at,omitempty"`
+	ResolvedLanguage    string      `json:"resolved_language"`
+	SystemLanguage      string      `json:"system_language"`
+	SupportedLanguages  []string    `json:"supported_languages"`
 }
 
 type UIEvent struct {
@@ -234,10 +253,11 @@ type AppState struct {
 	Threads       map[string]*ChatThread
 	CurrentThread string
 
-	LastTask        string
-	LastSummary     string
-	ActionLog       []string
-	LastAiderBackup string
+	LastTask         string
+	LastSummary      string
+	ActionLog        []string
+	LastAiderBackup  string
+	LastEngineBackup string
 
 	subscribers         map[chan UIEvent]struct{}
 	threadSaveCh        chan map[string]*ChatThread

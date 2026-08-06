@@ -16,6 +16,15 @@ LocalCode can install or repair `aider-chat==0.86.2` automatically at startup as
 
 LocalCode kann bei aktivierter automatischer Laufzeiteinrichtung `aider-chat==0.86.2` beim Start automatisch als externe, separat ausgeführte Bearbeitungs-Engine installieren oder reparieren. Aider steht unter Apache-2.0 und wird weder in diesem Quellpaket noch in der EXE weiterverteilt. Siehe `NOTICE-AIDER.md` und `licenses/aider-LICENSE.txt`.
 
+## Claude Code and OpenCode / Claude Code und OpenCode
+
+LocalCode can download, install, detect, authenticate, and execute Claude Code and OpenCode as separate external command-line applications. Neither application, its model service, nor its provider credentials are bundled in this source package or executable. The upstream software licenses, service terms, privacy terms, account requirements, and usage charges apply independently. LocalCode does not grant a license to either product and does not store their provider credentials.
+
+LocalCode kann Claude Code und OpenCode als separate externe Kommandozeilenprogramme herunterladen, installieren, erkennen, anmelden und ausführen. Weder die Anwendungen noch ihre Modelldienste oder Provider-Zugangsdaten sind in diesem Quellpaket oder der EXE enthalten. Die jeweiligen Softwarelizenzen, Nutzungs- und Datenschutzbedingungen, Kontovoraussetzungen und Nutzungskosten gelten unabhängig. LocalCode erteilt keine Lizenz für diese Produkte und speichert deren Provider-Zugangsdaten nicht.
+
+- Claude Code is installed through Anthropic's official distribution channel when the user enables automatic setup.
+- OpenCode is installed from the official `opencode-ai` npm package into a LocalCode-managed per-user prefix.
+
 ## Managed MCP servers / Verwaltete MCP-Server
 
 The source package contains LocalCode client integrations and built-in providers, but it does not redistribute the following upstream server packages or their runtimes. When the user explicitly approves installation or sign-in, LocalCode downloads or starts them from their official distribution channels. Their own licenses and terms apply.

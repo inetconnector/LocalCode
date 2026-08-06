@@ -65,6 +65,9 @@ func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
 		cfg.AiderArchitectModel,
 		cfg.AiderEditorModel,
 	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.OpenCodeModel)), "ollama/") {
+		candidates = append(candidates, strings.TrimSpace(cfg.OpenCodeModel[len("ollama/"):]))
+	}
 	if len(models) == 0 {
 		// A stale LastModel from a previous installation must not trigger a
 		// second multi-gigabyte download on a fresh machine. Bootstrap with the
@@ -154,31 +157,57 @@ func ensureConfiguredModels(ctx context.Context, cfg Config, client *OllamaClien
 	return refreshed, details, nil
 }
 
-func ensureAiderRuntime(ctx context.Context, cfg Config) (Config, string, error) {
-	if cfg.EditingEngine != "aider" || !cfg.AiderEnabled {
-		return cfg, "Aider is disabled", nil
+func ensureSelectedEditingEngineRuntime(ctx context.Context, cfg Config) (Config, string, error) {
+	engine := normalizeEditingEngine(cfg.EditingEngine)
+	if engine == editingEngineNative {
+		return cfg, "LocalCode native editing engine is ready", nil
 	}
-	status := aiderStatus(ctx, cfg)
+	if !codingEngineEnabled(cfg, engine) {
+		return cfg, codingEngineDisplayName(engine) + " is disabled", nil
+	}
+	status := codingEngineStatus(ctx, cfg, engine)
 	if status.Installed {
-		cfg.AiderExecutable = status.Executable
-		return cfg, "Aider already installed: " + status.Version, nil
+		switch engine {
+		case editingEngineAider:
+			cfg.AiderExecutable = status.Executable
+		case editingEngineClaude:
+			cfg.ClaudeCodeExecutable = status.Executable
+		case editingEngineOpenCode:
+			cfg.OpenCodeExecutable = status.Executable
+		}
+		detail := status.DisplayName + " already installed: " + status.Version
+		if !status.Authenticated {
+			detail += " (login required before first use)"
+		}
+		return normalizeConfig(cfg), detail, nil
 	}
-	if !cfg.AiderAutoInstall {
-		return cfg, status.Error, &AiderNotInstalledError{Status: status}
+	if !codingEngineAutoInstall(cfg, engine) {
+		return cfg, status.Error, &CodingEngineNotInstalledError{Status: status}
 	}
 	if !cfg.NetworkEnabled {
-		return cfg, status.Error, errors.New("Aider is missing, but network access is disabled")
+		return cfg, status.Error, fmt.Errorf("%s is missing, but network access is disabled", status.DisplayName)
 	}
-	log.Printf("Aider is missing or outdated; installing pinned version %s", cfg.AiderVersion)
+	log.Printf("%s is missing or outdated; starting automatic installation", status.DisplayName)
 	installCtx, cancel := context.WithTimeout(ctx, 45*time.Minute)
-	status, output, err := installAider(installCtx, cfg)
+	status, updated, output, err := installCodingEngine(installCtx, cfg.RootProjectDir, engine, cfg)
 	cancel()
 	if err != nil {
 		return cfg, output, err
 	}
-	cfg.AiderExecutable = status.Executable
-	cfg.AiderVersion = status.ExpectedVersion
-	return normalizeConfig(cfg), strings.TrimSpace(output + "\nAider verified: " + status.Version), nil
+	detail := strings.TrimSpace(output + "\n" + status.DisplayName + " verified: " + status.Version)
+	if !status.Authenticated {
+		detail += "\nLogin is still required and can be opened from Settings > Configuration."
+	}
+	return normalizeConfig(updated), detail, nil
+}
+
+// ensureAiderRuntime is retained for backward-compatible callers and tests.
+func ensureAiderRuntime(ctx context.Context, cfg Config) (Config, string, error) {
+	if !cfg.AiderEnabled || normalizeEditingEngine(cfg.EditingEngine) == editingEngineNative {
+		return cfg, "Aider is disabled", nil
+	}
+	cfg.EditingEngine = editingEngineAider
+	return ensureSelectedEditingEngineRuntime(ctx, cfg)
 }
 
 func bootstrapRuntimeDependencies(ctx context.Context, cfg Config) (RuntimeBootstrapResult, error) {
@@ -213,12 +242,12 @@ func bootstrapRuntimeDependencies(ctx context.Context, cfg Config) (RuntimeBoots
 	result.Models = models
 	result.Config.LastModel = chooseDefaultModel(models, result.Config.LastModel)
 
-	updated, aiderDetail, err := ensureAiderRuntime(ctx, result.Config)
-	if aiderDetail != "" {
-		result.Details = append(result.Details, aiderDetail)
+	updated, engineDetail, err := ensureSelectedEditingEngineRuntime(ctx, result.Config)
+	if engineDetail != "" {
+		result.Details = append(result.Details, engineDetail)
 	}
 	if err != nil {
-		return result, fmt.Errorf("Aider setup failed: %w", err)
+		return result, fmt.Errorf("editing engine setup failed: %w", err)
 	}
 	result.Config = updated
 	return result, nil

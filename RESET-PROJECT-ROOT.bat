@@ -14,9 +14,14 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-if not exist "%~dp0dist\LocalCode.exe" (
-  call "%~dp0BUILD.bat"
-  if errorlevel 1 exit /b 1
-)
-start "LocalCode 6.1.0" "%~dp0dist\LocalCode.exe"
+if not exist "%~dp0dist\LocalCode.exe" goto :rebuild
+if exist "%~dp0dist\REBUILD-NATIVE.txt" goto :rebuild
+goto :after_rebuild
+
+:rebuild
+call "%~dp0BUILD.bat"
+if errorlevel 1 exit /b 1
+
+:after_rebuild
+start "LocalCode 6.3.0" "%~dp0dist\LocalCode.exe"
 exit /b 0

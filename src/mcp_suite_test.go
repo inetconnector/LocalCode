@@ -155,7 +155,6 @@ func TestMCPPersistentHelperProcess(t *testing.T) {
 
 func TestMCPStdioSessionPersistsAcrossCalls(t *testing.T) {
 	defaultMCPManager.Close()
-	t.Cleanup(defaultMCPManager.Close)
 	counter := filepath.Join(t.TempDir(), "counter.json")
 	cfg := defaultConfig()
 	cfg.MCPServers = []MCPServerConfig{{
@@ -165,6 +164,10 @@ func TestMCPStdioSessionPersistsAcrossCalls(t *testing.T) {
 		TimeoutSec: 10, ProjectScoped: true,
 	}}
 	project := t.TempDir()
+	// Register this cleanup after both TempDir calls. Go executes test cleanups
+	// in LIFO order, so the persistent child is stopped and reaped before
+	// Windows tries to remove its working directory and counter directory.
+	t.Cleanup(defaultMCPManager.Close)
 	for i := 0; i < 2; i++ {
 		output, err := mcpCall(context.Background(), cfg, project, "persistent", "tools/list", map[string]any{})
 		if err != nil {
@@ -184,6 +187,10 @@ func TestMCPStdioSessionPersistsAcrossCalls(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected one persistent MCP process, got %d", count)
+	}
+	defaultMCPManager.Close()
+	if err := os.RemoveAll(project); err != nil {
+		t.Fatalf("persistent MCP process still holds its project directory: %v", err)
 	}
 }
 

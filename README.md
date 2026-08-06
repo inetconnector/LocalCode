@@ -1,4 +1,4 @@
-# LocalCode 6.1.0
+# LocalCode 6.3.0
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -11,9 +11,9 @@ LocalCode is a local Windows coding-agent application for Ollama. It provides pr
 ### Schnellstart
 
 1. Das ZIP vollständig in einen neuen Ordner entpacken.
-2. `START.bat` oder `BUILD-AND-RUN.bat` doppelklicken.
+2. `START.bat` doppelklicken. Die Markierung `dist\REBUILD-NATIVE.txt` erzwingt vor dem ersten Programmstart einen vollständigen nativen Windows-Build und wird erst nach erfolgreicher Prüfung entfernt.
 3. Fehlt eine unterstützte Go-Version, lädt das Build-Skript die aktuelle stabile Windows-Version direkt von `go.dev`, prüft deren offiziellen SHA-256-Wert und verwendet sie projektlokal.
-4. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und Aider. Fehlende Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
+4. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und die ausgewählte Coding-Agent-Engine. Fehlende unterstützte Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
 5. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
 
 Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhandene Ollama-Installationen und Modelle werden weiterverwendet.
@@ -49,20 +49,21 @@ Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhand
 
 Der Supervisor erkennt typische Aufgaben wie Analyse, Build, Android-Deployment, Git-Initialisierung und Webrecherche. Wiederholte identische Fragen oder Werkzeugaktionen werden blockiert. Vor Erreichen des Kontextlimits wird der Verlauf komprimiert; erhalten bleiben Aufgabe, Entscheidungen, gelesene und geänderte Dateien, Befehle, Fehler, offene Punkte und die nächste geplante Aktion.
 
-### Aider Editing Engine
+### Umschaltbare Coding-Agent-Engines
 
-LocalCode 6.1.0 verwendet standardmäßig **Aider 0.86.2 als produktive Bearbeitungs-Engine**. LocalCode bleibt für Oberfläche, Projekt- und Aufgabenverwaltung, Genehmigungen, Abbruch, MCP, Terminal, Webrecherche, Anhänge, Backups und Kontextkomprimierung verantwortlich. Aider übernimmt die eigentliche mehrdateilige Codebearbeitung.
+Unter **Einstellungen → Konfiguration → Coding-Agent-Engine** kann LocalCode zwischen drei vollständig angebundenen externen Bearbeitungs-Engines umschalten:
 
-- Aider wird nicht in die EXE eingebettet. Beim Start prüft LocalCode die fest angeheftete Version und installiert oder repariert sie bei Bedarf automatisch benutzerlokal über eine isolierte `uv tool`-Umgebung mit Python 3.12.
-- Ollama-Modelle werden im von Aider empfohlenen Format `ollama_chat/<modell>` angesprochen.
-- Repository Map, relevante Edit-Dateien, Read-only-Dokumente, Chat-Verlauf, Edit-Format, Architect/Editor-Modus, Lint und Tests sind über **Einstellungen → Konfiguration → Aider Editing Engine** steuerbar.
-- Vor jedem Aider-Bearbeitungs-, Lint- oder Testlauf erstellt LocalCode ein lokales Backup. **Letzte Aider-Änderung zurücksetzen** stellt nur dann wieder her, wenn die Dateien seit dem Lauf nicht manuell verändert wurden.
-- LocalCode übergibt eine leere verwaltete Aider-Konfiguration und eine leere `.env`, damit Projekt- oder Benutzerkonfigurationen und Projektschlüssel den kontrollierten Lauf nicht unbemerkt verändern. Gewollte Umgebungsvariablen werden ausschließlich über LocalCode verwaltet.
-- Aider-interne Bestätigungen werden im nichtinteraktiven Lauf automatisch beantwortet, aber LocalCodes eigene Genehmigungsgrenze bleibt davor vollständig aktiv.
-- Git wird nur verwendet, wenn das Projekt bereits ein Git-Repository ist und die Aider-Git-Option aktiviert wurde. Automatische Aider-Commits sind standardmäßig ausgeschaltet.
-- Falls die lokale Modellqualität mit `diff` nicht ausreicht, können `whole` oder der zweistufige Architect/Editor-Modus gewählt werden.
+- **Aider 0.86.2** – Standard für lokale Ollama-Modelle. LocalCode installiert Aider reproduzierbar über `uv tool` mit Python 3.12 und verwendet `ollama_chat/<modell>`.
+- **Claude Code** – Anthropics native CLI. Unter Windows verwendet LocalCode den offiziellen benutzerlokalen PowerShell-Installer, prüft Version und Anmeldung und startet Aufgaben nichtinteraktiv über `claude -p`. Stable-, Latest- oder konkrete Versionskanäle sind konfigurierbar. Für die Nutzung ist ein geeigneter Claude-/Anthropic-Zugang oder eine unterstützte Provider-Konfiguration erforderlich.
+- **OpenCode** – provideroffene CLI. LocalCode installiert `opencode-ai` benutzerlokal über ein verwaltetes Node.js/npm, unterstützt `provider/modell`, Anmeldung über `opencode auth login` und lokale Ollama-Modelle. Für Ollama erzeugt LocalCode pro Prozess eine passende OpenCode-Providerkonfiguration, ohne die globale OpenCode-Konfiguration zu überschreiben.
 
-Technische Details, Sicherheitsgrenzen, Datenpfade und Wiederherstellung stehen in `docs/AIDER-INTEGRATION.md`.
+Zusätzlich bleibt **LocalCode nativ** als interne Werkzeugschleife verfügbar. Diese Option ist keine vierte externe Engine.
+
+Für jede externe Engine sind Statusprüfung, Installation/Reparatur, Anmeldung (soweit erforderlich), Repository-Analysetest, kontrollierter Abbruch, Ausgabeerfassung und Wiederherstellung der letzten Änderung integriert. Der Supervisor verwendet für mehrdateilige Änderungen, Repository-Analyse, Linting und Tests immer die aktuell ausgewählte Engine. Die alten `aider_*`-Agentenaktionen bleiben als kompatible Aliase erhalten.
+
+Vor bearbeitenden Läufen erstellt LocalCode ein projektbezogenes Backup und ermittelt geänderte Dateien anhand von Fingerprints. **Letzte Engine-Änderung zurücksetzen** schützt spätere manuelle Änderungen durch Hash-Prüfung. LocalCodes Genehmigungsgrenze liegt vor dem Start der externen Engine; die externe Engine läuft anschließend mit ihren eigenen Werkzeug- und Berechtigungsregeln. Der gefährliche Claude-Modus `bypassPermissions` wird in LocalCode bewusst nicht angeboten. OpenCodes automatische Genehmigung kann in den Einstellungen ausgeschaltet werden.
+
+Aider-spezifische Details stehen in `docs/AIDER-INTEGRATION.md`; Vergleich, Installation, Modelle, Anmeldung und Sicherheitsgrenzen aller Engines stehen in `docs/CODING-ENGINES.md`.
 
 ### Werkzeuge
 
@@ -76,12 +77,12 @@ LocalCode sucht Werkzeuge über:
 - bekannte Windows-Installationsorte
 - den benutzerlokalen LocalCode-Werkzeugordner
 
-Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle, `uv`, Python 3.12 und Aider) wird beim Start automatisch vervollständigt. Weitere projektspezifische Werkzeuge werden bedarfsgesteuert erkannt; LocalCode zeigt die durchsuchten Pfade, holt für eingriffsreiche Installationen eine Genehmigung ein, installiert aus einer dokumentierten Quelle, verifiziert das Ergebnis und setzt die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
+Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle und die ausgewählte Engine) wird beim Start automatisch vervollständigt. Für Aider gehören `uv` und Python 3.12 dazu; für OpenCode bei Bedarf ein verwaltetes Node.js/npm; Claude Code verwendet den offiziellen nativen Windows-Installer. Weitere projektspezifische Werkzeuge werden bedarfsgesteuert erkannt; LocalCode zeigt die durchsuchten Pfade, holt für eingriffsreiche Installationen eine Genehmigung ein, installiert aus einer dokumentierten Quelle, verifiziert das Ergebnis und setzt die ursprüngliche Aktion fort. Unterstützt sind unter anderem Git/MinGit, Android Platform-Tools, .NET SDK, Visual Studio Build Tools sowie mehrere WinGet-Pakete.
 
 
 ### Verwaltete MCP-Suite
 
-LocalCode 6.1.0 enthält sechs verwaltete MCP-Funktionsbereiche:
+LocalCode 6.3.0 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 - **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
 - **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
@@ -141,7 +142,7 @@ Apache License 2.0. Siehe `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
 1. Extract the ZIP completely into a new directory.
 2. Double-click `START.bat` or `BUILD-AND-RUN.bat`.
 3. If no supported Go version is available, the build script downloads the current stable Windows release directly from `go.dev`, verifies its official SHA-256 value, and uses it inside the project.
-4. On first application startup, LocalCode verifies Ollama, the configured coding model, and Aider. Missing components are installed automatically for the current user and verified afterwards.
+4. On first application startup, LocalCode verifies Ollama, the configured coding model, and the selected coding-agent engine. Missing supported components are installed automatically for the current user and verified afterwards.
 5. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
 
 Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama installations and models are reused.
@@ -177,20 +178,21 @@ Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama ins
 
 The supervisor detects common tasks such as analysis, builds, Android deployment, Git initialization, and web research. Repeated identical questions or tool actions are blocked. Before the context limit is reached, older history is compacted while preserving the task, decisions, files read or changed, commands, failures, open items, and the next planned action.
 
-### Aider editing engine
+### Switchable coding-agent engines
 
-LocalCode 6.1.0 uses **Aider 0.86.2 as its default production editing engine**. LocalCode remains responsible for the UI, project and task management, approvals, cancellation, MCP, terminal access, web research, attachments, backups, and context compaction. Aider performs the actual multi-file code editing.
+Under **Settings → Configuration → Coding-agent engine**, LocalCode can switch between three fully integrated external editing engines:
 
-- Aider is not embedded into the executable. At startup, LocalCode verifies the pinned version and automatically installs or repairs it for the current user through an isolated `uv tool` environment using Python 3.12.
-- Ollama models are addressed using Aider's recommended `ollama_chat/<model>` form.
-- Repository map, selected edit files, read-only documents, history, edit format, architect/editor mode, linting, and tests are configurable under **Settings → Configuration → Aider editing engine**.
-- LocalCode creates a local backup before every Aider edit, lint, or test run. **Restore last Aider edit** only restores files when they still match the exact post-run hashes, protecting later manual work.
-- LocalCode supplies an empty managed Aider configuration and an empty `.env` file so repository or home configuration and repository secrets cannot silently alter the controlled run. Intended environment variables are managed only through LocalCode.
-- Aider's internal prompts are accepted for the non-interactive subprocess, while LocalCode's own approval boundary remains fully active before the subprocess starts.
-- Git is used only when the project is already a Git repository and Aider Git integration is enabled. Automatic Aider commits are disabled by default.
-- If a local model performs poorly with `diff`, users can select `whole` or the two-stage architect/editor mode.
+- **Aider 0.86.2** – the default for local Ollama models. LocalCode installs Aider reproducibly through `uv tool` with Python 3.12 and uses `ollama_chat/<model>`.
+- **Claude Code** – Anthropic's native CLI. On Windows, LocalCode uses the official per-user PowerShell installer, verifies the version and authentication state, and runs tasks non-interactively through `claude -p`. Stable, latest, or exact-version channels are configurable. A suitable Claude/Anthropic account or supported provider configuration is required.
+- **OpenCode** – a provider-neutral CLI. LocalCode installs `opencode-ai` per user through managed Node.js/npm, supports `provider/model`, sign-in through `opencode auth login`, and local Ollama models. For Ollama, LocalCode supplies a process-scoped OpenCode provider configuration without overwriting the user's global OpenCode configuration.
 
-See `docs/AIDER-INTEGRATION.md` for implementation details, security boundaries, data paths, and recovery behavior.
+**LocalCode native** remains available as the internal tool loop; it is not a fourth external engine.
+
+Each external engine has integrated status checks, installation/repair, sign-in where required, repository-analysis testing, controlled cancellation, output capture, and restoration of the last change. The supervisor uses the selected engine for multi-file edits, repository analysis, linting, and tests. Legacy `aider_*` agent actions remain compatible aliases.
+
+Before editing runs, LocalCode creates a project backup and detects changed files through fingerprints. **Restore last engine change** protects later manual edits through hash checks. LocalCode's approval boundary applies before the external process starts; the selected engine then applies its own tool and permission rules. Claude's dangerous `bypassPermissions` mode is intentionally not exposed. OpenCode auto-approval can be disabled in Settings.
+
+Aider-specific details are in `docs/AIDER-INTEGRATION.md`; comparison, installation, models, authentication, and security boundaries for all engines are documented in `docs/CODING-ENGINES.md`.
 
 ### Tools
 
@@ -204,12 +206,12 @@ LocalCode searches for tools through:
 - known Windows installation locations
 - the per-user LocalCode tools directory
 
-The core runtime (Ollama, configured Ollama models, `uv`, Python 3.12, and Aider) is completed automatically at startup. Additional project-specific tools are discovered on demand; for invasive installations LocalCode shows the searched paths, requests approval, installs from a documented source, verifies the result, and retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
+The core runtime (Ollama, configured Ollama models, and the selected engine) is completed automatically at startup. Aider provisions `uv` and Python 3.12; OpenCode provisions managed Node.js/npm when required; Claude Code uses the official native Windows installer. Additional project-specific tools are discovered on demand; for invasive installations LocalCode shows the searched paths, requests approval, installs from a documented source, verifies the result, and retries the original action. Supported installers include Git/MinGit, Android Platform-Tools, the .NET SDK, Visual Studio Build Tools, and several WinGet packages.
 
 
 ### Managed MCP suite
 
-LocalCode 6.1.0 includes six managed MCP capability areas:
+LocalCode 6.3.0 includes six managed MCP capability areas:
 
 - **Filesystem MCP** – built-in, project-scoped file and directory tools.
 - **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.

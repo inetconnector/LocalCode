@@ -184,7 +184,7 @@ func TestAiderArchitectModePassesEditorSettings(t *testing.T) {
 	}
 }
 
-func TestEmbeddedUIContainsAiderSettingsAndActions(t *testing.T) {
+func TestEmbeddedUIContainsCodingEngineSettingsAndActions(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("static", "index.html"))
 	if err != nil {
 		t.Fatal(err)
@@ -193,14 +193,16 @@ func TestEmbeddedUIContainsAiderSettingsAndActions(t *testing.T) {
 	for _, id := range []string{
 		`id="setEditingEngine"`, `id="setAiderEnabled"`, `id="setAiderVersion"`,
 		`id="setAiderArchitectMode"`, `id="setAiderMapTokens"`, `id="setAiderAutoLint"`,
-		`id="setAiderAutoTest"`, `id="aiderStatusBtn"`, `id="aiderInstallBtn"`,
-		`id="aiderTestBtn"`, `id="aiderUndoBtn"`, `id="aiderResult"`,
+		`id="setAiderAutoTest"`, `id="setClaudeEnabled"`, `id="setClaudeModel"`,
+		`id="setOpenCodeEnabled"`, `id="setOpenCodeModel"`, `id="engineStatusBtn"`,
+		`id="engineInstallBtn"`, `id="engineLoginBtn"`, `id="engineTestBtn"`,
+		`id="engineUndoBtn"`, `id="engineResult"`,
 	} {
 		if !strings.Contains(text, id) {
 			t.Fatalf("embedded UI is missing %s", id)
 		}
 	}
-	for _, fragment := range []string{"/api/aider/status", "/api/aider/setup", "/api/aider/undo"} {
+	for _, fragment := range []string{"/api/engines/status", "/api/engines/setup", "/api/engines/undo"} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("embedded UI is not wired to %s", fragment)
 		}

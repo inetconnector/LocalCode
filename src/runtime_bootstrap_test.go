@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -97,6 +99,10 @@ func TestPortableDirectoryOverridesAreCrossPlatform(t *testing.T) {
 }
 
 func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
+	previousLogOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	t.Cleanup(func() { log.SetOutput(previousLogOutput) })
+
 	installed := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -139,7 +145,7 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 
 func TestSchemaEightEnablesRuntimeAutoSetupDuringMigration(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 6})
-	if cfg.SchemaVersion != 8 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
+	if cfg.SchemaVersion != 9 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
 		t.Fatalf("runtime bootstrap migration incomplete: %#v", cfg)
 	}
 	if cfg.OllamaDefaultModel != defaultCodingModel {

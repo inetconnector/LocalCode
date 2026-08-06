@@ -19,6 +19,16 @@ import (
 	"time"
 )
 
+var toolRuntimeGOOS = runtime.GOOS
+var toolHTTPClient = func(timeout time.Duration) *http.Client { return &http.Client{Timeout: timeout} }
+var androidPlatformToolsURL = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+var minGitReleaseURL = "https://api.github.com/repos/git-for-windows/git/releases/latest"
+var dotnetInstallURL = "https://dot.net/v1/dotnet-install.ps1"
+var vsBuildToolsURL = "https://aka.ms/vs/stable/vs_buildtools.exe"
+var nodeIndexURL = "https://nodejs.org/dist/index.json"
+var nodeDistBaseURL = "https://nodejs.org/dist"
+var githubCLIReleaseURL = "https://api.github.com/repos/cli/cli/releases/latest"
+
 type ToolNotFoundError struct {
 	Info   ToolInfo
 	Detail string
@@ -33,7 +43,7 @@ func (e *ToolNotFoundError) Error() string {
 
 func toolInstallSupported(name string) bool {
 	p := profileForTool(name)
-	return runtime.GOOS == "windows" && strings.TrimSpace(p.InstallKind) != ""
+	return toolRuntimeGOOS == "windows" && strings.TrimSpace(p.InstallKind) != ""
 }
 
 func toolInstallPreview(name string, cfg Config) string {
@@ -60,7 +70,7 @@ func toolInstallPreview(name string, cfg Config) string {
 
 func installKnownTool(ctx context.Context, project, name string, cfg Config) (Config, string, error) {
 	profile := profileForTool(name)
-	if runtime.GOOS != "windows" {
+	if toolRuntimeGOOS != "windows" {
 		return cfg, "", errors.New("automatic tool installation is currently supported on Windows only")
 	}
 	if cfg.ToolOverrides == nil {
@@ -166,7 +176,7 @@ func downloadToFile(ctx context.Context, rawURL, target string) error {
 		return err
 	}
 	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := toolHTTPClient(10 * time.Minute)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -258,7 +268,7 @@ func extractZipSafe(archive, destination string) error {
 func installAndroidPlatformTools(ctx context.Context) (string, string, error) {
 	root := localToolDir("android-platform-tools")
 	archive := filepath.Join(appDataDir(), "downloads", "platform-tools-latest-windows.zip")
-	const source = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+	source := androidPlatformToolsURL
 	if err := downloadToFile(ctx, source, archive); err != nil {
 		return root, "Download: " + source, err
 	}
@@ -276,13 +286,13 @@ type githubRelease struct {
 }
 
 func latestMinGitURL(ctx context.Context) (string, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/git-for-windows/git/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, minGitReleaseURL, nil)
 	if err != nil {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
-	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
+	resp, err := toolHTTPClient(45 * time.Second).Do(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -358,7 +368,7 @@ func installWithWinget(ctx context.Context, packageID string) (string, error) {
 func installDotnetSDK(ctx context.Context, project string) (string, string, error) {
 	root := localToolDir("dotnet")
 	script := filepath.Join(appDataDir(), "downloads", "dotnet-install.ps1")
-	const source = "https://dot.net/v1/dotnet-install.ps1"
+	source := dotnetInstallURL
 	if err := downloadToFile(ctx, source, script); err != nil {
 		return "", "Download: " + source, err
 	}
@@ -385,10 +395,13 @@ func installDotnetSDK(ctx context.Context, project string) (string, string, erro
 
 func installVisualStudioBuildTools(ctx context.Context) (string, string, error) {
 	bootstrapper := filepath.Join(appDataDir(), "downloads", "vs_buildtools.exe")
-	const source = "https://aka.ms/vs/stable/vs_buildtools.exe"
+	source := vsBuildToolsURL
 	if err := downloadToFile(ctx, source, bootstrapper); err != nil {
 		return "", "Download: " + source, err
 	}
+	// The Windows loader ignores POSIX mode bits; setting the executable bit is
+	// harmless there and keeps the managed installer testable on other hosts.
+	_ = os.Chmod(bootstrapper, 0o755)
 	args := []string{
 		"--quiet", "--wait", "--norestart", "--nocache",
 		"--add", "Microsoft.VisualStudio.Workload.MSBuildTools",
@@ -420,15 +433,15 @@ type nodeRelease struct {
 }
 
 func installPortableNode(ctx context.Context) (string, string, error) {
-	if runtime.GOOS != "windows" {
+	if toolRuntimeGOOS != "windows" {
 		return "", "", errors.New("portable Node.js installation is currently supported on Windows only")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://nodejs.org/dist/index.json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, nodeIndexURL, nil)
 	if err != nil {
 		return "", "", err
 	}
 	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
-	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	resp, err := toolHTTPClient(60 * time.Second).Do(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -459,7 +472,7 @@ func installPortableNode(ctx context.Context) (string, string, error) {
 		return "", "", errors.New("no Windows x64 Node.js LTS ZIP found")
 	}
 	asset := fmt.Sprintf("node-%s-win-x64.zip", version)
-	source := "https://nodejs.org/dist/" + version + "/" + asset
+	source := strings.TrimRight(nodeDistBaseURL, "/") + "/" + version + "/" + asset
 	archive := filepath.Join(appDataDir(), "downloads", asset)
 	root := localToolDir("node")
 	if err := downloadToFile(ctx, source, archive); err != nil {
@@ -490,16 +503,16 @@ func installPortableNode(ctx context.Context) (string, string, error) {
 }
 
 func installPortableGitHubCLI(ctx context.Context) (string, string, error) {
-	if runtime.GOOS != "windows" {
+	if toolRuntimeGOOS != "windows" {
 		return "", "", errors.New("portable GitHub CLI installation is currently supported on Windows only")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/cli/cli/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubCLIReleaseURL, nil)
 	if err != nil {
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "LocalCode/6.1 tool-installer")
-	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	resp, err := toolHTTPClient(60 * time.Second).Do(req)
 	if err != nil {
 		return "", "", err
 	}

@@ -364,7 +364,17 @@ func ensureUVInstalled(ctx context.Context, cfg Config) (string, string, error) 
 }
 
 func runCapturedCommand(ctx context.Context, executable string, args, env []string, dir string) (string, int, error) {
-	cmd := exec.Command(executable, args...)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(executable))
+		if ext == ".cmd" || ext == ".bat" {
+			cmd = exec.Command("cmd.exe", "/D", "/S", "/C", buildWindowsCommandLine(executable, args))
+		} else {
+			cmd = exec.Command(executable, args...)
+		}
+	} else {
+		cmd = exec.Command(executable, args...)
+	}
 	cmd.Dir = dir
 	cmd.Env = env
 	hideCommandWindow(cmd)
@@ -724,10 +734,7 @@ func fileSHA256(path string) (string, bool) {
 }
 
 func latestAiderBackup(project string) string {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return ""
-	}
+	cache := userCacheBaseDir()
 	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(project))))
 	root := filepath.Join(cache, productDirName, "aider-backups", hex.EncodeToString(sum[:8]))
 	entries, err := os.ReadDir(root)
@@ -811,15 +818,15 @@ func restoreAiderBackup(project, backupDir string) (string, error) {
 }
 
 func createAiderBackup(project string) (string, error) {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
+	cache := userCacheBaseDir()
 	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(project))))
 	dir := filepath.Join(cache, productDirName, "aider-backups", hex.EncodeToString(sum[:8]), time.Now().Format("20060102-150405.000"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
 	var total int64
 	const maxTotal = int64(256 << 20)
-	err = filepath.WalkDir(project, func(path string, d os.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(project, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}

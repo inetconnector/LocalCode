@@ -71,6 +71,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/git-overview", s.handleGitOverview)
 	s.mux.HandleFunc("/api/tools", s.handleTools)
 	s.mux.HandleFunc("/api/tools/diagnose", s.handleToolDiagnose)
+	s.mux.HandleFunc("/api/engines/status", s.handleCodingEngineStatus)
+	s.mux.HandleFunc("/api/engines/setup", s.handleCodingEngineSetup)
+	s.mux.HandleFunc("/api/engines/undo", s.handleCodingEngineUndo)
 	s.mux.HandleFunc("/api/aider/status", s.handleAiderStatus)
 	s.mux.HandleFunc("/api/aider/setup", s.handleAiderSetup)
 	s.mux.HandleFunc("/api/aider/undo", s.handleAiderUndo)
@@ -175,8 +178,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		SupportedLanguages: append([]string(nil), supportedLanguages...),
 	}
 	s.state.mu.RUnlock()
-	if cfg.EditingEngine == "aider" && cfg.AiderEnabled {
-		aider := aiderStatus(ctx, cfg)
+	engineStatus := selectedCodingEngineStatus(ctx, cfg)
+	st.EngineInstalled = engineStatus.Installed
+	st.EngineVersion = engineStatus.Version
+	st.EngineExecutable = engineStatus.Executable
+	st.EngineAuthenticated = engineStatus.Authenticated
+	st.EngineError = engineStatus.Error
+	if cfg.AiderEnabled {
+		aider := codingEngineStatus(ctx, cfg, editingEngineAider)
 		st.AiderInstalled = aider.Installed
 		st.AiderVersion = aider.Version
 	}

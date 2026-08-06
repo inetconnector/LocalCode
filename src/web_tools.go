@@ -30,6 +30,14 @@ var ddgResultRE = regexp.MustCompile(`(?is)<a[^>]+class="result__a"[^>]+href="([
 var tagRE = regexp.MustCompile(`(?is)<[^>]+>`)
 var spaceRE = regexp.MustCompile(`\s+`)
 
+// Indirections keep network code deterministic in tests while production uses
+// the hardened resolver and HTTP client below.
+var webLookupIP = net.LookupIP
+var webHTTPClient = publicHTTPClient
+var ollamaWebSearchEndpoint = "https://ollama.com/api/web_search"
+var duckDuckGoSearchEndpoint = "https://html.duckduckgo.com/html/"
+var bingRSSSearchEndpoint = "https://www.bing.com/search"
+
 func cleanHTMLText(s string) string {
 	s = tagRE.ReplaceAllString(s, " ")
 	s = html.UnescapeString(s)
@@ -77,13 +85,13 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 		return nil, fmt.Errorf("environment variable %s is not set", cfg.WebSearchAPIKeyEnv)
 	}
 	payload, _ := json.Marshal(map[string]any{"query": query, "max_results": maxResults})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://ollama.com/api/web_search", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ollamaWebSearchEndpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := publicHTTPClient(45*time.Second, 8).Do(req)
+	resp, err := webHTTPClient(45*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +110,10 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 }
 
 func duckDuckGoSearch(ctx context.Context, query string, maxResults int) ([]WebResult, error) {
-	endpoint := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
+	endpoint := duckDuckGoSearchEndpoint + "?q=" + url.QueryEscape(query)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
-	resp, err := publicHTTPClient(35*time.Second, 8).Do(req)
+	resp, err := webHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +157,7 @@ func validatePublicURL(raw string) (*url.URL, error) {
 	if u.Hostname() == "" {
 		return nil, errors.New("URL has no hostname")
 	}
-	ips, err := net.LookupIP(u.Hostname())
+	ips, err := webLookupIP(u.Hostname())
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +237,7 @@ func webFetch(ctx context.Context, cfg Config, rawURL string) (string, error) {
 	if maxBytes <= 0 {
 		maxBytes = 2 << 20
 	}
-	client := publicHTTPClient(45*time.Second, 8)
+	client := webHTTPClient(45*time.Second, 8)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
 	req.Header.Set("Accept", "text/html,application/json,text/plain;q=0.9,*/*;q=0.5")
@@ -280,13 +288,13 @@ func bingRSSSearch(ctx context.Context, query string, maxResults int) ([]WebResu
 	if query == "" {
 		return nil, errors.New("search query is empty")
 	}
-	endpoint := "https://www.bing.com/search?format=rss&q=" + url.QueryEscape(query)
+	endpoint := bingRSSSearchEndpoint + "?format=rss&q=" + url.QueryEscape(query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.1")
-	resp, err := publicHTTPClient(35*time.Second, 8).Do(req)
+	resp, err := webHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
 	}

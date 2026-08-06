@@ -3,7 +3,7 @@ REM SPDX-License-Identifier: Apache-2.0
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-set "VERSION=6.1.0"
+set "VERSION=6.3.0"
 set "LC_LANG=en"
 for /f "delims=" %%L in ('powershell.exe -NoLogo -NoProfile -Command "(Get-UICulture).TwoLetterISOLanguageName" 2^>nul') do set "LC_LANG=%%L"
 if /I "%LC_LANG%"=="de" (
@@ -72,6 +72,13 @@ if not exist "%GOEXE%" (
 if errorlevel 1 goto :fail
 if not exist "%~dp0dist" mkdir "%~dp0dist"
 
+REM Never let build tests read or modify the real LocalCode profile.
+set "LC_TEST_ROOT=%TEMP%\LocalCode-Build-Test-%RANDOM%-%RANDOM%"
+set "LOCALCODE_CONFIG_HOME=%LC_TEST_ROOT%\config"
+set "LOCALCODE_CACHE_HOME=%LC_TEST_ROOT%\cache"
+set "LOCALCODE_USER_HOME=%LC_TEST_ROOT%\home"
+mkdir "%LOCALCODE_CONFIG_HOME%" "%LOCALCODE_CACHE_HOME%" "%LOCALCODE_USER_HOME%" >nul 2>&1
+
 pushd "%~dp0src"
 echo.
 echo %STEP1%
@@ -106,8 +113,10 @@ echo %STEP6%
 "%GOEXE%" build -trimpath -ldflags "-X main.version=%VERSION%-debug" -o "%~dp0dist\LocalCode-Debug.exe" .
 if errorlevel 1 goto :fail_popd
 popd
+rmdir /S /Q "%LC_TEST_ROOT%" >nul 2>&1
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$a=(Get-FileHash -Algorithm SHA256 '%~dp0dist\LocalCode.exe').Hash; $b=(Get-FileHash -Algorithm SHA256 '%~dp0dist\LocalCode-Debug.exe').Hash; @('LocalCode.exe  '+$a,'LocalCode-Debug.exe  '+$b) | Set-Content -Encoding ascii '%~dp0CHECKSUMS-SHA256.txt'"
+del /Q "%~dp0dist\REBUILD-NATIVE.txt" >nul 2>&1
 
 echo.
 echo ============================================================
@@ -121,6 +130,7 @@ exit /b 0
 :fail_popd
 popd
 :fail
+if defined LC_TEST_ROOT rmdir /S /Q "%LC_TEST_ROOT%" >nul 2>&1
 echo.
 echo ============================================================
 echo %FAILED%

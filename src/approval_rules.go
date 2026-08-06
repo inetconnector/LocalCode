@@ -112,7 +112,7 @@ func approvalActionTokens(a AgentAction) []string {
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Path))}
 	case "copy_path", "move_path":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Source)), filepath.ToSlash(filepath.Clean(a.Destination))}
-	case "web_search", "web_fetch", "build_project", "deploy_android", "open_terminal", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
+	case "web_search", "web_fetch", "build_project", "deploy_android", "open_terminal", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
 		return []string{a.Action}
 	case "mcp_call_tool":
 		return []string{"mcp", a.Server, a.Tool}
@@ -192,7 +192,7 @@ func persistentApprovalPattern(action AgentAction) ([]string, bool) {
 		return tokens, true
 	case "write_file", "replace_text":
 		return tokens, true
-	case "build_project", "deploy_android", "web_search", "web_fetch", "open_terminal", "mcp_call_tool", "copy_path", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
+	case "build_project", "deploy_android", "web_search", "web_fetch", "open_terminal", "mcp_call_tool", "copy_path", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
 		return tokens, true
 	}
 	return tokens, true

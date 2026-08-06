@@ -11,7 +11,10 @@ import (
 )
 
 func (s *AppState) offerInstallMissingTool(ctx context.Context, project string, cfg Config, missing *ToolNotFoundError) (Config, string, bool, error) {
-	if missing == nil || !toolInstallSupported(missing.Info.Name) {
+	if missing == nil {
+		return cfg, "", false, nil
+	}
+	if !toolInstallSupported(missing.Info.Name) {
 		return cfg, "", false, missing
 	}
 	installAction := AgentAction{
@@ -114,18 +117,19 @@ func missingToolForAction(project string, cfg Config, a AgentAction) *ToolNotFou
 }
 
 func (s *AppState) executeActionWithToolRepair(ctx context.Context, project string, cfg Config, a AgentAction) (string, error) {
-	if a.Action == "aider_edit" || a.Action == "aider_repo_map" || a.Action == "aider_lint" || a.Action == "aider_test" {
+	if isCodingEngineAction(a.Action) {
 		currentCfg := cfg
 		for attempt := 0; attempt < 2; attempt++ {
-			result, err := s.executeAiderAction(ctx, project, currentCfg, a)
+			result, err := s.executeCodingEngineAction(ctx, project, currentCfg, a)
 			if err == nil {
 				return result, nil
 			}
-			var missing *AiderNotInstalledError
-			if !errors.As(err, &missing) {
+			var missingEngine *CodingEngineNotInstalledError
+			var missingAider *AiderNotInstalledError
+			if !errors.As(err, &missingEngine) && !errors.As(err, &missingAider) {
 				return result, err
 			}
-			newCfg, installDetail, installed, installErr := s.offerInstallAider(ctx, project, currentCfg)
+			newCfg, installDetail, installed, installErr := s.offerInstallCodingEngine(ctx, project, currentCfg)
 			if installErr != nil {
 				return strings.TrimSpace(result + "\n\n" + installDetail), installErr
 			}
@@ -134,7 +138,7 @@ func (s *AppState) executeActionWithToolRepair(ctx context.Context, project stri
 			}
 			currentCfg = newCfg
 		}
-		return "", errors.New("Aider installation retry limit reached")
+		return "", errors.New("editing-engine installation retry limit reached")
 	}
 	currentCfg := cfg
 	var installLog []string

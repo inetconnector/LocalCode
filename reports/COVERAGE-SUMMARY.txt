@@ -1,0 +1,14 @@
+LOCALCODE 6.3.0 STATEMENT COVERAGE
+==================================
+
+Covered statements: 6330
+Total statements:   7896
+Exact coverage:     80.167173%
+Go display value:   80.2% of statements
+
+Command:
+  go test -coverprofile=reports/coverage.out -count=1 -timeout=180s ./...
+
+The profile was generated on the Linux release host from the final 6.3.0
+source. The Windows-amd64 test program was cross-compiled successfully, but
+Windows-native runtime coverage cannot be measured in this environment.

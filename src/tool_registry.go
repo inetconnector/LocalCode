@@ -45,6 +45,8 @@ type toolProfile struct {
 	WingetID    string
 }
 
+var toolRegistryGOOS = runtime.GOOS
+
 var toolProfiles = []toolProfile{
 	{Name: "adb", DisplayName: "Android Debug Bridge", Aliases: []string{"adb", "adb.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://developer.android.com/tools/adb", InstallHint: "Android SDK Platform-Tools installieren.", InstallKind: "android-platform-tools"},
 	{Name: "fastboot", DisplayName: "Android Fastboot", Aliases: []string{"fastboot", "fastboot.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://developer.android.com/tools/releases/platform-tools", InstallHint: "Android SDK Platform-Tools installieren.", InstallKind: "android-platform-tools"},
@@ -107,7 +109,7 @@ func profileForTool(name string) toolProfile {
 		}
 	}
 	aliases := []string{canonical}
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		aliases = append(aliases, canonical+".exe", canonical+".cmd", canonical+".bat")
 	}
 	return toolProfile{Name: canonical, DisplayName: canonical, Aliases: aliases}
@@ -147,7 +149,7 @@ func androidSDKRoots(project string) []string {
 			roots = append(roots, v)
 		}
 	}
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
 			roots = append(roots, filepath.Join(v, "Android", "Sdk"))
 			roots = append(roots, filepath.Join(v, "LocalCode", "tools", "android-platform-tools"))
@@ -255,7 +257,7 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 	for _, candidate := range visualStudioToolPaths(profile.Name) {
 		add(candidate[0], candidate[1])
 	}
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		pf := os.Getenv("ProgramFiles")
 		pf86 := os.Getenv("ProgramFiles(x86)")
 		local := os.Getenv("LOCALAPPDATA")
@@ -332,14 +334,14 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 }
 
 func executableName(name string) string {
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		return name + ".exe"
 	}
 	return name
 }
 
 func scriptName(name string) string {
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		switch name {
 		case "npm", "npx":
 			return name + ".cmd"
@@ -495,7 +497,7 @@ func runDirectTool(ctx context.Context, project, path string, args []string, cfg
 	start := time.Now()
 	result := ToolRunResult{Tool: canonicalToolName(path), Path: path, Args: append([]string(nil), args...), CWD: project, ExitCode: -1}
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
+	if toolRegistryGOOS == "windows" {
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext == ".cmd" || ext == ".bat" {
 			parts := []string{"/D", "/S", "/C", buildWindowsCommandLine(path, args)}

@@ -1,10 +1,13 @@
-fix(windows): harden runtime bootstrap and test isolation
+feat(engines): add selectable Aider, Claude Code, and OpenCode backends
 
-- isolate Windows tests from real user profiles, PATH entries and project folders
-- terminate Aider and MCP subprocess trees deterministically on cancellation
-- install and verify missing Ollama, configured models, uv, Python 3.12 and Aider
-- resolve symlinks and NTFS junctions before enforcing project sandbox boundaries
-- prevent DNS-rebinding bypasses by dialing the already validated public IP
-- require a supported Go toolchain and rebuild automatically when sources are newer
-- add runtime bootstrap, model pull, migration and security regression tests
-- update German and English documentation for LocalCode 6.1.0
+- introduce a shared coding-engine abstraction for edit, repo-map, lint, test,
+  setup, authentication, cancellation, backup, and undo workflows
+- add Claude Code native Windows installation, status/login checks, bounded
+  non-interactive execution, model/channel settings, and safe permission modes
+- add user-local OpenCode installation through managed Node.js/npm, provider/model
+  settings, authentication, auto-approval control, and process-scoped Ollama config
+- preserve the complete Aider integration and legacy aider_* action aliases
+- add engine-specific settings, status controls, German/English translations, and
+  UI/API regression coverage for switching and testing all three engines
+- keep statement coverage above 80 percent and retain race, vet, randomized,
+  Windows cross-build, manifest, and checksum release verification

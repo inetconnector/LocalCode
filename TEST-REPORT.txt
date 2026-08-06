@@ -1,103 +1,109 @@
-LOCALCODE 6.1.0 - FINAL TEST REPORT / ABSCHLUSS-PRUEFBERICHT
+LOCALCODE 6.3.0 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
 =====================================================================
 
-Scope / Umfang
---------------
-This release fixes the native Windows failures reported for cancellation,
-legacy-data migration, MCP process cleanup, temporary project roots, project
-catalog isolation and tool discovery. It also adds automatic setup for Go,
-Ollama, required Ollama models and Aider, plus sandbox and network hardening.
+Feature scope / Funktionsumfang
+-------------------------------
+PASS  Selectable external coding engines: Aider, Claude Code, OpenCode.
+PASS  Generic engine status, install/repair, sign-in, repository test, edit,
+      lint, test-repair, cancellation, backup, changed-file detection and undo.
+PASS  Aider remains pinned and isolated through uv/Python 3.12.
+PASS  Claude Code native Windows installer, channel/model/permission settings,
+      authentication check and non-interactive execution are implemented.
+PASS  OpenCode user-local npm installation, provider/model settings, login,
+      auto-approval control and process-scoped Ollama provider config are implemented.
+PASS  Legacy aider_* actions remain compatible aliases for generic engine_* actions.
 
-Dieses Release behebt die gemeldeten nativen Windows-Fehler bei Abbruch,
-Migration alter Nutzerdaten, MCP-Prozessfreigabe, temporaeren Projektwurzeln,
-Projektkatalog-Isolation und Werkzeugerkennung. Zusaetzlich wurden die
-automatische Einrichtung von Go, Ollama, benoetigten Ollama-Modellen und Aider
-sowie Sandbox- und Netzwerkhaertung umgesetzt.
+Coverage / Testabdeckung
+-------------------------
+PASS  162 Go test functions discovered.
+PASS  Exact statement coverage: 6,330 / 7,896 = 80.167173%.
+PASS  Go summary: 80.2% of statements.
+PASS  Machine-readable profile: reports/coverage.out.
+PASS  Human-readable HTML report: reports/coverage.html.
 
-Final automated verification / Finale automatisierte Verifikation
--------------------------------------------------------------------
-PASS  gofmt on all Go sources; no pending formatting differences
+Core verification / Kernpruefung
+---------------------------------
+PASS  gofmt on all Go source and test files.
 PASS  go test -count=1 -timeout=180s ./...
 PASS  go vet ./...
-PASS  go test -race -count=1 -timeout=180s ./...
-PASS  three separate go test -shuffle=on -count=1 runs
-PASS  122 Go test functions discovered
-PASS  statement coverage: 46.1%
-PASS  Windows-amd64 test-binary cross compilation
-PASS  Windows-amd64 GUI cross build (PE32+ x86-64)
-PASS  Windows-amd64 diagnostic cross build (PE32+ x86-64)
-PASS  JavaScript syntax checks for i18n and embedded client code
-PASS  HTML ID check: 198 IDs, 198 unique, 0 duplicates
-PASS  German/English localization parity: 493/493 keys, 0 missing
-PASS  browser UI E2E: 33 mocked API interactions without page errors
-PASS  source scan: no TODO/FIXME/HACK markers in production source
+PASS  three independent randomized test orders:
+      -shuffle=1701
+      -shuffle=6303
+      -shuffle=99881
+PASS  Race detector for all 162 tests. The test set was executed in four
+      complete partitions because the release tool has a per-command runtime
+      limit. Every discovered test is included in exactly one partition.
 
-Reported Windows failures / Gemeldete Windows-Fehler
------------------------------------------------------
-PASS  Aider cancellation terminates the complete Windows process tree and
-      waits for Cmd.Wait instead of leaving child handles open
-PASS  legacy product-data migration honors LOCALCODE_*_HOME and XDG test paths
-      on Windows instead of reading the real user profile
-PASS  persistent MCP stdio sessions wait for actual process termination before
-      TempDir cleanup
-PASS  legitimate temporary Windows project roots are no longer replaced by
-      C:\Users\...\Projekte
-PASS  project catalog, aliases and thread-context tests are isolated from the
-      real project folder
-PASS  the ADB test uses a real compiled Windows helper executable
-PASS  missing-tool tests isolate PATH, Android SDK variables and profile paths
+Windows verification / Windows-Pruefung
+-----------------------------------------
+PASS  Windows-amd64 test executable cross compilation.
+PASS  Windows-amd64 GUI executable cross compilation.
+PASS  Windows-amd64 diagnostic executable cross compilation.
+PASS  dist/LocalCode.exe is a PE32+ x86-64 Windows GUI executable.
+PASS  dist/LocalCode-Debug.exe is a PE32+ x86-64 Windows console executable.
+PASS  reports/localcode-windows-amd64.test.exe is a PE32+ x86-64 test executable.
+PASS  dist is populated; it is not an empty placeholder directory.
+PASS  REBUILD-NATIVE.txt forces one complete native build with the target
+      Windows Go toolchain before normal launch.
+
+Coding-engine regression coverage / Engine-Regressionspruefung
+----------------------------------------------------------------
+PASS  Engine normalization, selection, display names and configuration migration.
+PASS  Executable discovery and Windows .cmd/.bat process launch.
+PASS  Claude/OpenCode version and authentication status parsing.
+PASS  Claude official installer command including stable/latest/exact channel.
+PASS  Claude non-interactive arguments, bounded turns and safe permission modes.
+PASS  OpenCode npm installation, run arguments, agent/model and --auto control.
+PASS  OpenCode local Ollama provider injection through OPENCODE_CONFIG_CONTENT.
+PASS  Generic engine API status/setup/test/undo success and error paths.
+PASS  Startup auto-setup and required Ollama-model collection for selected engines.
+PASS  Backup manifest, changed-file fingerprinting and guarded restoration.
+
+Existing critical coverage / Bestehende kritische Pruefung
+-----------------------------------------------------------
+PASS  Agent action parsing, dispatch, approvals, cancellation and failures.
+PASS  HTTP API success, method, malformed JSON and validation paths.
+PASS  File sandbox, copy, move, write, delete, traversal and binary protection.
+PASS  MCP built-ins, HTTP/SSE, persistent STDIO, Git and PowerShell dispatch.
+PASS  Managed installation paths for Android tools, MinGit, WinGet, .NET,
+      Visual Studio Build Tools, Node.js LTS and GitHub CLI.
+PASS  Ollama startup, configured model bootstrap, vision selection and diagnostics.
+PASS  Project catalog, chat lifecycle, persistence, migration and race regressions.
+
+UI and localization / Oberflaeche und Uebersetzung
+---------------------------------------------------
+PASS  Browser UI E2E: 37 mocked API interactions without page errors.
+PASS  Engine selector exercised with Aider, Claude Code and OpenCode.
+PASS  HTML IDs: 219 total, 219 unique, 0 duplicates.
+PASS  German/English localization parity: 540 / 540 keys.
+PASS  JavaScript syntax checks for i18n.js and embedded index.html script.
+PASS  Literal UI-event translation and bilingual generated-document tests.
 
 Automatic setup / Automatische Einrichtung
 -------------------------------------------
-PASS  START.bat rebuilds when LocalCode.exe is missing or source/build inputs
-      are newer
-PASS  BUILD.bat accepts a supported Go 1.25+ toolchain or installs the current
-      stable Windows-amd64 Go archive from go.dev and verifies its official
-      SHA-256 value
-PASS  startup detects and starts an existing Ollama installation
-PASS  missing Windows Ollama is downloaded only from ollama.com, requires a
-      valid Authenticode signature and is installed unattended for the user
-PASS  missing configured Ollama models are pulled automatically
-PASS  fresh installations use qwen2.5-coder:14b unless another default is set
-PASS  explicitly configured Aider main/architect/editor models are included
-PASS  Aider 0.86.2 is verified and automatically installed or repaired through
-      pinned, SHA-256-verified portable uv and an isolated Python 3.12 tool env
-PASS  existing valid installations and models are reused
-PASS  German and English settings expose all automatic-setup controls
+PASS  Build scripts reuse Go >=1.25 or install a verified current stable Go
+      release project-locally when required.
+PASS  Runtime bootstrap detects, installs when necessary, starts and rechecks
+      Ollama on Windows and pulls missing configured models.
+PASS  Aider provisions uv, Python 3.12 and pinned Aider 0.86.2.
+PASS  Claude Code uses the official native Windows PowerShell distribution path.
+PASS  OpenCode provisions managed Node.js/npm if necessary and installs opencode-ai
+      into a user-local LocalCode tools prefix.
 
-Security and reliability / Sicherheit und Zuverlaessigkeit
-------------------------------------------------------------
-PASS  project sandbox resolves existing symlinks and NTFS junctions at the
-      nearest existing ancestor, including non-existing write destinations
-PASS  web fetch validates and dials the same resolved public IP, preventing a
-      second DNS lookup from rebinding to a private/local destination
-PASS  redirects and supported web-search providers use the same public-IP rule
-PASS  dependency downloads use fixed official origins and integrity/signature
-      checks where available
-PASS  Aider and MCP subprocesses are reaped deterministically
-PASS  no executables built with the container's obsolete Go 1.23.2 are shipped
+Verification boundary / Verifikationsgrenze
+--------------------------------------------
+The release host is Linux with Go 1.23.2. It executes the complete source tests,
+coverage, vet, UI test and race-detector partitions, and cross-compiles Windows
+binaries. It cannot execute Windows batch files or PE programs natively. The
+supplied PE files are cross-build artifacts from the final 6.3.0 source. The
+mandatory REBUILD-NATIVE marker causes START.bat to rebuild them on the target
+Windows computer. The user reported Go 1.26.5 there; BUILD.bat accepts supported
+Go >=1.25 and otherwise downloads and verifies the current stable official release.
 
-External verification boundary / Externe Verifikationsgrenze
---------------------------------------------------------------
-The verification container runs Linux and cannot execute the resulting Windows
-programs or batch files natively. Windows test binaries and both applications
-were successfully cross-compiled, but the exact post-fix command
-`go test ./...` must still be run once on the target Windows system. The target
-reported Go 1.26.5, so START.bat will use that supported installation.
-
-Live Ollama, model and Aider downloads were not executed in this container.
-Their internal request, parsing, installation orchestration and model-refresh
-contracts are covered with controlled tests, but final success also depends on
-the target computer's Windows configuration, network, available disk space and
-Ollama service startup.
-
-Der Pruefcontainer laeuft unter Linux und kann die erzeugten Windows-Programme
-und Batchdateien nicht nativ starten. Windows-Testprogramm sowie GUI- und
-Diagnoseprogramm wurden erfolgreich cross-kompiliert; der konkrete korrigierte
-Befehl `go test ./...` muss dennoch einmal auf dem Windows-Zielsystem laufen.
-Dort wurde Go 1.26.5 gemeldet, das START.bat direkt verwenden wird.
-
-Echte Ollama-, Modell- und Aider-Downloads wurden im Container nicht ausgefuehrt.
-Anfrage-, Auswertungs-, Installations- und Modellaktualisierungsablaeufe sind
-mit kontrollierten Tests abgedeckt; der reale Erfolg haengt zusaetzlich von
-Windows, Netzwerk, Speicherplatz und dem Start des Ollama-Dienstes ab.
+Die Release-Umgebung ist Linux mit Go 1.23.2. Sie fuehrt die vollstaendigen
+Quelltests, Coverage, Vet, UI-Pruefung und Race-Detector-Gruppen aus und erstellt
+Windows-Cross-Builds. Windows-Batchdateien und PE-Programme kann sie nicht nativ
+starten. Die mitgelieferten PE-Dateien stammen aus dem finalen 6.3.0-Quellstand.
+REBUILD-NATIVE.txt erzwingt auf dem Windows-Zielrechner einen nativen Neubau. Dort
+wurde Go 1.26.5 gemeldet; BUILD.bat akzeptiert unterstuetztes Go >=1.25 und laedt
+andernfalls die aktuelle stabile offizielle Version mit Pruefsummenpruefung.

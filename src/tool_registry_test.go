@@ -72,7 +72,7 @@ func main() {
   }
   if len(os.Args) > 1 && os.Args[1] == "devices" {
     fmt.Println("List of devices attached")
-    fmt.Println("SERIAL123\\tdevice product:test model:Demo transport_id:1")
+    fmt.Println("SERIAL123\tdevice product:test model:Demo transport_id:1")
   }
 }`
 	file := filepath.Join(sourceDir, "main.go")
@@ -294,7 +294,7 @@ exit /b 0`
 
 func TestToolDiscoverySettingsMigrateFromOlderSchema(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 2})
-	if cfg.SchemaVersion != 8 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
+	if cfg.SchemaVersion != 9 || !cfg.AutoDiscoverTools || !cfg.AutoResearchToolHelp || !cfg.ContextCompactionEnabled {
 		t.Fatalf("tool and compaction settings were not migrated: %#v", cfg)
 	}
 	if cfg.ToolOverrides == nil {

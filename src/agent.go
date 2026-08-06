@@ -44,7 +44,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file",
-			"project_info", "build_project", "deploy_android", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
+			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"finish", "ask_user",
 		}},
@@ -71,7 +71,7 @@ Arbeitsweise:
 - AGENTS.md, README.md, STATE.md, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
-- Für echte Quellcodeänderungen ist aider_edit die bevorzugte Editing Engine. Aider liefert Repository Map, robuste Edit-Formate, Chat-Verlauf, Lint/Test-Schleifen und Git-Integration. Verwende replace_text/write_file nur für sehr kleine, eindeutig deterministische Verwaltungsänderungen.
+- Für echte Quellcodeänderungen ist engine_edit die bevorzugte, in den Einstellungen ausgewählte Editing Engine (Aider, Claude Code oder OpenCode). Verwende replace_text/write_file nur für sehr kleine, eindeutig deterministische Verwaltungsänderungen.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
@@ -93,8 +93,9 @@ Werkzeuge:
 - list_files, read_file, search_text
 - replace_text, write_file, delete_file
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
-- aider_edit(task) für robuste mehrdateilige Codeänderungen mit Repository Map, Backup, Edit-Format, Lint und Tests
-- aider_repo_map für die Aider-Repository-Map, aider_lint und aider_test für gezielte Aider-Qualitätsläufe
+- engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
+- engine_repo_map für eine unverändernde Repository-Analyse, engine_lint und engine_test für gezielte Qualitätsläufe
+- aider_edit/aider_repo_map/aider_lint/aider_test sind nur rückwärtskompatible Aliasnamen
 - discover_tool(tool), tool_inventory, run_tool(tool,args)
 - run_command (komplexe Shell-Befehle, nicht-interaktiv), open_terminal (interaktiv sichtbar)
 - copy_path, move_path
@@ -303,15 +304,15 @@ func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 			}
 		}
 	}
+	// Keep Running true until every final state/event write is complete. Otherwise
+	// NewChat can switch the selected thread between the Running=false update and
+	// the final status event, causing the old run to write into the new chat.
 	s.mu.Lock()
 	if s.RunID != runID {
 		s.mu.Unlock()
 		return
 	}
-	s.Running = false
-	s.Cancel = nil
-	s.Pending = nil
-	s.RunPhase = "idle"
+	s.RunPhase = "finalizing"
 	s.LastProgressAt = time.Now()
 	s.mu.Unlock()
 	if runAfterHook {
@@ -320,6 +321,15 @@ func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 		s.UpdateProjectState("Agent wartet auf Antwort oder wurde abgebrochen")
 	}
 	s.AddEvent(UIEvent{Type: "status", Message: "Bereit"})
+	s.mu.Lock()
+	if s.RunID == runID {
+		s.Running = false
+		s.Cancel = nil
+		s.Pending = nil
+		s.RunPhase = "idle"
+		s.LastProgressAt = time.Now()
+	}
+	s.mu.Unlock()
 }
 
 func (s *AppState) prepareAttachmentContext(ctx context.Context, userMessage string, attachments []Attachment) (string, func(), error) {
@@ -814,7 +824,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 			params["arguments"] = a.Arguments
 		}
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -923,9 +933,9 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
-	case "replace_text", "write_file", "aider_edit":
+	case "replace_text", "write_file", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
-	case "aider_repo_map", "aider_lint", "aider_test":
+	case "engine_repo_map", "engine_lint", "engine_test", "aider_repo_map", "aider_lint", "aider_test":
 		return cfg.ApprovalMode == "strict"
 	case "git":
 		if gitActionIsReadOnly(a.Args) {
@@ -1102,22 +1112,29 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		return "Web search: " + a.Query, nil
 	case "web_fetch":
 		return "Web fetch: " + a.URL, nil
-	case "aider_edit":
+	case "engine_edit", "aider_edit":
 		task := strings.TrimSpace(a.Task)
 		if task == "" {
 			task = strings.TrimSpace(a.Message)
 		}
 		if task == "" {
-			return "", errors.New("Aider task is empty")
+			return "", errors.New("editing-engine task is empty")
 		}
-		files := relevantFilesForAider(project, task, 12)
-		return "Aider Editing Engine ausführen\nAufgabe: " + task + "\nModell: " + cfg.AiderMainModel + "\nVorausgewählte Dateien: " + strings.Join(files, ", ") + "\nVor Änderungen wird ein lokales Backup erzeugt; anschließend laufen konfigurierte Linter und Tests.", nil
-	case "aider_repo_map":
-		return "Aider Repository Map erzeugen und anzeigen. Es werden keine Dateien verändert.", nil
-	case "aider_lint":
-		return "Aider-Lintlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
-	case "aider_test":
-		return "Aider-Testlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
+		engine := normalizeEditingEngine(cfg.EditingEngine)
+		name := codingEngineDisplayName(engine)
+		model := selectedEngineModel(cfg, "")
+		detail := name + " Editing Engine ausführen\nAufgabe: " + task + "\nModell: " + model + "\nVor Änderungen wird ein lokales Backup erzeugt."
+		if engine == editingEngineAider {
+			files := relevantFilesForAider(project, task, 12)
+			detail += "\nVorausgewählte Dateien: " + strings.Join(files, ", ") + "\nAnschließend laufen konfigurierte Linter und Tests."
+		}
+		return detail, nil
+	case "engine_repo_map", "aider_repo_map":
+		return codingEngineDisplayName(cfg.EditingEngine) + " Repository-Analyse erzeugen und anzeigen. Es werden keine Dateien verändert.", nil
+	case "engine_lint", "aider_lint":
+		return codingEngineDisplayName(cfg.EditingEngine) + "-Lintlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
+	case "engine_test", "aider_test":
+		return codingEngineDisplayName(cfg.EditingEngine) + "-Testlauf ausführen und gefundene Probleme gemäß Konfiguration reparieren.", nil
 	case "build_project":
 		return "Projekt mit dem automatisch erkannten Buildsystem bauen. Fehlende bekannte Werkzeuge werden nach separater Genehmigung installiert.", nil
 	case "deploy_android":

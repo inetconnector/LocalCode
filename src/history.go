@@ -210,10 +210,13 @@ func (s *AppState) NewChat(project string) (ChatThreadSummary, error) {
 		copy.Events = append([]UIEvent(nil), item.Events...)
 		threads[id] = &copy
 	}
+	// Build the return value while the state lock is still held. AddEvent may
+	// update the selected thread concurrently during agent finalization.
+	summary := ChatThreadSummary{ID: t.ID, Project: t.Project, Title: t.Title, Model: t.Model, UpdatedAt: t.UpdatedAt}
 	s.mu.Unlock()
 	_ = saveConfig(cfg)
 	_ = saveThreads(threads)
-	return ChatThreadSummary{ID: t.ID, Project: t.Project, Title: t.Title, Model: t.Model, UpdatedAt: t.UpdatedAt}, nil
+	return summary, nil
 }
 
 func (s *AppState) SelectChat(id string) error {

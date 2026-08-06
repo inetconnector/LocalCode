@@ -158,8 +158,9 @@ func forcedActionForIntent(intent taskIntent, completed map[string]bool, cfg Con
 			return &AgentAction{Action: "git", Message: "Git-Repository initialisieren", Args: []string{"init"}}
 		}
 	case "edit":
-		if cfg.EditingEngine == "aider" && cfg.AiderEnabled && !completed["aider_edit"] {
-			return &AgentAction{Action: "aider_edit", Message: "Codeänderungen mit der Aider Editing Engine umsetzen", Task: intent.OriginalTask}
+		engine := normalizeEditingEngine(cfg.EditingEngine)
+		if engine != editingEngineNative && codingEngineEnabled(cfg, engine) && !completed["engine_edit"] && !completed["aider_edit"] {
+			return &AgentAction{Action: "engine_edit", Message: "Codeänderungen mit " + codingEngineDisplayName(engine) + " umsetzen", Task: intent.OriginalTask}
 		}
 	}
 	return nil
@@ -210,7 +211,7 @@ func (s *AppState) executeConfirmedContinuationAction(ctx context.Context, proje
 func actionAllowedForIntent(intent taskIntent, action AgentAction) (bool, string) {
 	if intent.Kind == "analyze" {
 		switch action.Action {
-		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "finish", "ask_user":
+		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "finish", "ask_user":
 			return true, ""
 		case "git":
 			if gitActionIsReadOnly(action.Args) {

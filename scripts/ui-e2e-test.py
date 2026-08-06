@@ -24,7 +24,7 @@ def handler(route):
         try:data=json.loads(req.post_data)
         except:pass
     posts.append((path,method,data))
-    if path=='status': return fulfill(route,{'version':'6.1.0','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','aider_installed':True,'aider_version':'aider 0.86.2'})
+    if path=='status': return fulfill(route,{'version':'6.3.0','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','engine_installed':True,'engine_authenticated':True,'engine_version':'aider 0.86.2','engine_executable':'aider.exe','aider_installed':True,'aider_version':'aider 0.86.2'})
     if path=='projects': return fulfill(route,{'root':'C:\\Users\\frede\\Projekte','projects':projects,'hidden_projects':[]})
     if path=='threads': return fulfill(route,{'threads':threads,'current':current})
     if path=='snapshot':
@@ -32,7 +32,7 @@ def handler(route):
         t=next((x for x in threads if x['id']==tid),None)
         return fulfill(route,{'events':[],'project':t['project'] if t else selected,'model':'qwen2.5-coder:14b','running':False,'current_thread':tid,'run_phase':'idle'})
     if path=='settings':
-        if method=='GET': return fulfill(route,{'schema_version':7,'editing_engine':'aider','aider_enabled':True,'aider_auto_install':True,'aider_version':'0.86.2','aider_edit_format':'diff','aider_editor_edit_format':'editor-diff','aider_map_tokens':4096,'aider_max_chat_history_tokens':8192,'aider_auto_lint':True,'aider_auto_test':True,'aider_use_git':True,'approval_mode':'strict','sandbox_mode':'project','language':'auto','shortcuts':{},'approval_rules':[],'ui_left_width':296,'ui_right_width':340,'ui_terminal_height':260,'show_bottom_bar':True,'mcp_servers':mcp_servers})
+        if method=='GET': return fulfill(route,{'schema_version':9,'editing_engine':'aider','aider_enabled':True,'aider_auto_install':True,'aider_version':'0.86.2','aider_edit_format':'diff','aider_editor_edit_format':'editor-diff','aider_map_tokens':4096,'aider_max_chat_history_tokens':8192,'aider_auto_lint':True,'aider_auto_test':True,'aider_use_git':True,'claude_code_enabled':True,'claude_code_auto_install':True,'claude_code_channel':'stable','claude_code_model':'sonnet','claude_code_permission_mode':'acceptEdits','claude_code_max_turns':24,'opencode_enabled':True,'opencode_auto_install':True,'opencode_version':'latest','opencode_model':'ollama/qwen2.5-coder:14b','opencode_agent':'build','opencode_auto_approve':True,'approval_mode':'strict','sandbox_mode':'project','language':'auto','shortcuts':{},'approval_rules':[],'ui_left_width':296,'ui_right_width':340,'ui_terminal_height':260,'show_bottom_bar':True,'mcp_servers':mcp_servers})
         return fulfill(route,{'ok':True})
     if path=='new-chat':
         selected=data.get('project',selected); current='t'+str(len(threads)+1); new={'id':current,'project':selected,'title':'Neuer Chat','model':'qwen2.5-coder:14b','updated_at':'2026-08-05T00:01:00Z'}; threads.insert(0,new); return fulfill(route,{'ok':True,'thread':new})
@@ -59,7 +59,21 @@ def handler(route):
     if path=='delete-chat':
         threads[:]=[t for t in threads if t['id']!=data['id']]; return fulfill(route,{'ok':True})
     if path in ('open-project','open-terminal','open-chat-window','approve','stop','force-stop','chat'): return fulfill(route,{'ok':True})
-    if path=='aider/status': return fulfill(route,{'enabled':True,'installed':True,'executable':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\aider\\bin\\aider.exe','version':'aider 0.86.2','expected_version':'0.86.2','uv_executable':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\uv\\uv.exe','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\aider'})
+    if path=='engines/status':
+        engine=(req.url.split('engine=',1)[1].split('&',1)[0] if 'engine=' in req.url else 'aider')
+        values={
+          'aider':{'engine':'aider','display_name':'Aider','enabled':True,'installed':True,'authenticated':True,'executable':'aider.exe','version':'aider 0.86.2','expected_version':'0.86.2','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\aider'},
+          'claude':{'engine':'claude','display_name':'Claude Code','enabled':True,'installed':True,'authenticated':True,'executable':'claude.exe','version':'2.1.211 (Claude Code)','expected_version':'stable','installation_root':'C:\\Users\\frede\\.local\\bin'},
+          'opencode':{'engine':'opencode','display_name':'OpenCode','enabled':True,'installed':True,'authenticated':True,'executable':'opencode.cmd','version':'1.2.3','expected_version':'latest','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\opencode'},
+          'native':{'engine':'native','display_name':'LocalCode nativ','enabled':True,'installed':True,'authenticated':True,'executable':'embedded','version':'6.3.0'}
+        }
+        return fulfill(route,{'selected':engine,'status':values[engine],'engines':list(values.values())})
+    if path=='engines/setup':
+        engine=data.get('engine','aider'); action=data.get('action','test'); names={'aider':'Aider','claude':'Claude Code','opencode':'OpenCode','native':'LocalCode nativ'}
+        return fulfill(route,{'ok':True,'status':{'engine':engine,'display_name':names[engine],'installed':True,'authenticated':True,'version':'test-version','executable':engine+'.exe'},'detail':action+' successful'})
+    if path=='engines/undo': return fulfill(route,{'ok':True,'detail':'Restored files: 1'})
+    # Compatibility routes remain available for older front ends.
+    if path=='aider/status': return fulfill(route,{'enabled':True,'installed':True,'executable':'aider.exe','version':'aider 0.86.2','expected_version':'0.86.2'})
     if path=='aider/setup': return fulfill(route,{'ok':True,'status':{'installed':True,'version':'aider 0.86.2','expected_version':'0.86.2','executable':'aider.exe'},'detail':'Repository map: sample'})
     if path=='aider/undo': return fulfill(route,{'ok':True,'detail':'Restored files: 1'})
     if path=='mcp/status': return fulfill(route,{'servers':[
@@ -83,7 +97,7 @@ def thread_menu(page):
 
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox'])
-    page=browser.new_page(viewport={'width':1440,'height':900}); errors=[]
+    page=browser.new_page(viewport={'width':1440,'height':900}); page.set_default_timeout(10000); errors=[]
     page.on('pageerror',lambda e: errors.append(str(e))); page.route('http://localcode.test/api/**',handler)
     html=(static/'index.html').read_text(); i18n=(static/'i18n.js').read_text()
     html=html.replace('<head>','<head><base href="http://localcode.test/">',1).replace('<script src="/i18n.js"></script>','<script>'+i18n+'</script>').replace('setMainGrid();connectEvents();startHealthMonitor();','setMainGrid();startHealthMonitor();')
@@ -126,9 +140,26 @@ with sync_playwright() as p:
     page.locator('.settings-nav-btn[data-settings="configuration"]').click()
     page.wait_for_selector('.setting-panel[data-panel="configuration"].active')
     assert page.locator('#setEditingEngine').input_value()=='aider'
-    page.locator('#aiderStatusBtn').click(); page.wait_for_timeout(100)
-    assert '0.86.2' in page.locator('#aiderResult').inner_text()
-    assert any(x[0]=='aider/status' for x in posts)
+    assert page.locator('#aiderEngineSettings').is_visible()
+    assert not page.locator('#claudeEngineSettings').is_visible()
+    assert not page.locator('#openCodeEngineSettings').is_visible()
+    page.locator('#engineStatusBtn').click(); page.wait_for_timeout(150)
+    assert 'Aider' in page.locator('#engineResult').inner_text() and '0.86.2' in page.locator('#engineResult').inner_text()
+    assert any(x[0]=='engines/status' and 'engine=aider' in x[0]+'?'+page.url for x in posts) or any(x[0]=='engines/status' for x in posts)
+    # Every external engine can be selected and uses the same status/setup API.
+    page.locator('#setEditingEngine').select_option('claude'); page.wait_for_timeout(50)
+    assert page.locator('#claudeEngineSettings').is_visible() and not page.locator('#aiderEngineSettings').is_visible()
+    page.locator('#engineStatusBtn').click(); page.wait_for_timeout(150)
+    assert 'Claude Code' in page.locator('#engineResult').inner_text()
+    page.locator('#engineTestBtn').click(); page.wait_for_timeout(150)
+    assert any(x[0]=='engines/setup' and x[2].get('engine')=='claude' and x[2].get('action')=='test' for x in posts)
+    page.locator('#setEditingEngine').select_option('opencode'); page.wait_for_timeout(50)
+    assert page.locator('#openCodeEngineSettings').is_visible() and not page.locator('#claudeEngineSettings').is_visible()
+    page.locator('#engineStatusBtn').click(); page.wait_for_timeout(150)
+    assert 'OpenCode' in page.locator('#engineResult').inner_text()
+    page.locator('#engineTestBtn').click(); page.wait_for_timeout(150)
+    assert any(x[0]=='engines/setup' and x[2].get('engine')=='opencode' and x[2].get('action')=='test' for x in posts)
+    page.locator('#setEditingEngine').select_option('aider'); page.wait_for_timeout(50)
     page.locator('.settings-nav-btn[data-settings="plugins"]').click()
     page.wait_for_selector('.setting-panel[data-panel="plugins"].active')
     assert page.locator('#mcpCards .mcp-managed-card').count()==6
