@@ -11,6 +11,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
 - `agent.go`, `agent_supervisor.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
 - `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
+- `asset_tools.go`: validierte lokale SVG-/Icon-Erzeugung mit XML- und Sicherheitsprüfung vor dem Schreiben.
 - `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
 - `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
 - `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
@@ -34,6 +35,8 @@ Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeld
 
 Agentenerinnerungen werden als normalisierte Einträge in der lokalen Konfiguration gespeichert. Jeder neue native Agentenlauf erhält globale Erinnerungen und Erinnerungen des aktiven Projekts im eingebetteten Kontext. Schreibende Memory-Aktionen speichern atomar über denselben Konfigurationspfad; Löschungen verlangen eine konkrete ID.
 
+SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `create_svg_asset` nutzt. Der Pfad muss auf `.svg` enden, der Inhalt muss gültiges XML mit `<svg>`-Wurzel und Größenangabe sein, und Skripte, Event-Handler sowie `javascript:`-URLs werden vor der Dateioperation blockiert.
+
 MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
 
 ## English
@@ -47,6 +50,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
 - `agent.go`, `agent_supervisor.go`, and `continuation.go`: agent loop, deterministic supervision, completion guard/review, continuations, and cancellation.
 - `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
+- `asset_tools.go`: validated local SVG/icon creation with XML and safety checks before writing.
 - `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
 - `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
 - `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
@@ -69,5 +73,7 @@ State is mutex-protected. Events are published immediately in memory and atomica
 Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
 
 Agent memories are stored as normalized entries in the local configuration. Every new native agent run receives global memories and memories for the active project in the embedded context. Writing memory actions persist atomically through the same configuration path; deletion requires a concrete ID.
+
+SVG/icon resources use a dedicated tool when the native agent calls `create_svg_asset`. The path must end in `.svg`, content must be valid XML with an `<svg>` root and size metadata, and scripts, event handlers, and `javascript:` URLs are blocked before the file operation.
 
 MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.
