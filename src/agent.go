@@ -964,7 +964,7 @@ func completionGuardIssues(project string, intent taskIntent, originalTask strin
 	for _, missing := range missingInteractiveImplementationMarkers(originalTask, combined.String()) {
 		issues = append(issues, missing)
 	}
-	for _, missing := range missingArtifactImplementationMarkers(originalTask, combined.String()) {
+	for _, missing := range missingArtifactImplementationMarkers(originalTask, combined.String(), paths) {
 		issues = append(issues, missing)
 	}
 	for _, missing := range missingGameImplementationMarkers(originalTask, combined.String()) {
@@ -1089,7 +1089,7 @@ func expandMentionedFileCandidate(field string) []string {
 
 func knownProjectFileExt(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".go", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".json", ".md", ".txt", ".yaml", ".yml", ".toml", ".xml", ".py", ".java", ".kt", ".cs", ".cpp", ".c", ".h", ".rs":
+	case ".go", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".json", ".md", ".txt", ".yaml", ".yml", ".toml", ".xml", ".py", ".java", ".kt", ".cs", ".cpp", ".c", ".h", ".rs", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico":
 		return true
 	default:
 		return false
@@ -1310,15 +1310,28 @@ func missingInteractiveImplementationMarkers(task, content string) []string {
 	return issues
 }
 
-func missingArtifactImplementationMarkers(task, content string) []string {
+func missingArtifactImplementationMarkers(task, content string, changedPaths []string) []string {
 	normalizedTask := normalizedQuestion(task)
 	if !containsNormalizedAny(normalizedTask, []string{"bild", "image", "grafik", "graphic", "zeichne", "male", "draw", "paint", "diagramm", "diagram", "svg", "canvas", "asset"}) {
 		return nil
+	}
+	if !hasConcreteVisualArtifactPath(changedPaths) {
+		return []string{"Die Aufgabe verlangt ein Bild/Diagramm/visuelles Asset, aber es wurde keine konkrete Artefaktdatei wie SVG, HTML/Canvas, CSS oder Bilddatei geändert."}
 	}
 	if regexp.MustCompile(`(?i)<svg\b|<canvas\b|<img\b|drawImage\s*\(|getContext\s*\(|\.(png|jpg|jpeg|webp|gif|bmp|ico)\b|viewBox\s*=`).MatchString(content) {
 		return nil
 	}
 	return []string{"Die Aufgabe verlangt ein Bild/Diagramm/visuelles Asset, aber in den geänderten Dateien ist kein konkretes darstellbares Artefakt erkennbar."}
+}
+
+func hasConcreteVisualArtifactPath(paths []string) bool {
+	for _, path := range paths {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".svg", ".html", ".htm", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico":
+			return true
+		}
+	}
+	return false
 }
 
 func missingGameImplementationMarkers(task, content string) []string {

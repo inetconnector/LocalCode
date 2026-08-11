@@ -220,6 +220,14 @@ func TestImplementationIntentCoversFileAndVisualTasks(t *testing.T) {
 	}
 }
 
+func TestMentionedProjectFilesIncludesVisualAssets(t *testing.T) {
+	got := mentionedProjectFiles("Male ein altes Schloss als assets/castle.svg und exportiere preview.webp.")
+	want := []string{"assets/castle.svg", "preview.webp"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mentionedProjectFiles() = %#v, want %#v", got, want)
+	}
+}
+
 func TestSupervisorBlocksUnrequestedGlobalInstalls(t *testing.T) {
 	intent := classifyTaskIntent("Baue eine lokale Browser-App und pruefe ob sie funktioniert.")
 	allowed, hint := actionAllowedForIntent(intent, AgentAction{Action: "run_command", Command: "npm install -g playwright"})
@@ -249,6 +257,30 @@ func TestCompletionGuardBlocksMissingGeneralInteractiveLogic(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing issue %q in: %s", want, joined)
 		}
+	}
+}
+
+func TestCompletionGuardRequiresConcreteVisualArtifactFile(t *testing.T) {
+	project := t.TempDir()
+	readme := "# Bild\n\n<svg viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>\n"
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Male ein altes Schloss als Bild."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"README.md": true}, false)
+	if !strings.Contains(strings.Join(issues, "\n"), "keine konkrete Artefaktdatei") {
+		t.Fatalf("README-only visual task was not blocked: %v", issues)
+	}
+	if err := os.MkdirAll(filepath.Join(project, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svg := `<svg viewBox="0 0 100 80"><rect width="100" height="80"/><path d="M10 70 L50 20 L90 70 Z"/></svg>`
+	if err := os.WriteFile(filepath.Join(project, "assets", "castle.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues = completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"assets/castle.svg": true}, false)
+	if len(issues) != 0 {
+		t.Fatalf("concrete SVG artifact was blocked: %v", issues)
 	}
 }
 
