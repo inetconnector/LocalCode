@@ -166,7 +166,11 @@ func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
 		// configured coding default, then let the user select additional models.
 		candidates = append(candidates, cfg.OllamaDefaultModel)
 	} else {
-		candidates = append(candidates, cfg.LastModel)
+		// Existing installations can carry stale last_model values from tests,
+		// removed local models, or older configs. Startup should ensure the
+		// configured default exists, but must not pull an arbitrary stale
+		// last-used model before the UI is reachable.
+		candidates = append(candidates, cfg.OllamaDefaultModel)
 	}
 	seen := map[string]bool{}
 	out := []string{}

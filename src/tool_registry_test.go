@@ -258,6 +258,37 @@ func TestDiscoverGenericProjectLocalTool(t *testing.T) {
 	}
 }
 
+func TestDiscoverNodeFromWingetPackage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		isolateWindowsToolDiscovery(t)
+	}
+	oldGOOS := toolRegistryGOOS
+	t.Cleanup(func() { toolRegistryGOOS = oldGOOS })
+	toolRegistryGOOS = "windows"
+
+	project := t.TempDir()
+	local := os.Getenv("LOCALAPPDATA")
+	nodeRoot := filepath.Join(local, "Microsoft", "WinGet", "Packages", "OpenJS.NodeJS.LTS_Microsoft.Winget.Source_8wekyb3d8bbwe", "node-v24.15.0-win-x64")
+	for _, name := range []string{"node.exe", "npm.cmd", "npx.cmd"} {
+		if err := os.MkdirAll(nodeRoot, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(nodeRoot, name), []byte("@echo off\r\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := normalizeConfig(Config{SchemaVersion: 3, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	for _, name := range []string{"node", "npm", "npx"} {
+		info := discoverTool(project, name, cfg, false)
+		if !info.Available {
+			t.Fatalf("%s was not discovered from WinGet package; searched: %v", name, info.SearchedPath)
+		}
+		if !strings.Contains(info.Path, "Microsoft"+string(filepath.Separator)+"WinGet"+string(filepath.Separator)+"Packages") || info.Source != "WinGet" {
+			t.Fatalf("%s path/source = %q/%q", name, info.Path, info.Source)
+		}
+	}
+}
+
 func TestADBNoDevicePerformsSingleRecoveryAndRetry(t *testing.T) {
 	project := t.TempDir()
 	tool := filepath.Join(project, "adb")

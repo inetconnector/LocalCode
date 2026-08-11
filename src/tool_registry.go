@@ -268,7 +268,18 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 		case "gh":
 			add(filepath.Join(pf, "GitHub CLI", "gh.exe"), "Standardpfad")
 		case "node", "npm", "npx":
-			add(filepath.Join(pf, "nodejs", scriptName(profile.Name)), "Standardpfad")
+			add(filepath.Join(pf, "nodejs", nodeToolFileName(profile.Name)), "Standardpfad")
+			add(filepath.Join(local, "Programs", "nodejs", nodeToolFileName(profile.Name)), "Benutzerinstallation")
+			for _, pattern := range []string{
+				filepath.Join(local, "Microsoft", "WinGet", "Packages", "OpenJS.NodeJS*_Microsoft.Winget.Source_*", "node-v*-win-x64", nodeToolFileName(profile.Name)),
+				filepath.Join(local, "Microsoft", "WinGet", "Packages", "OpenJS.NodeJS*_Microsoft.Winget.Source_*", "nodejs", nodeToolFileName(profile.Name)),
+			} {
+				matches, _ := filepath.Glob(pattern)
+				sort.Strings(matches)
+				for i := len(matches) - 1; i >= 0; i-- {
+					add(matches[i], "WinGet")
+				}
+			}
 		case "go":
 			add(filepath.Join(pf, "Go", "bin", "go.exe"), "Standardpfad")
 		case "dotnet":
@@ -350,6 +361,13 @@ func scriptName(name string) string {
 		}
 	}
 	return name
+}
+
+func nodeToolFileName(name string) string {
+	if name == "node" {
+		return executableName(name)
+	}
+	return scriptName(name)
 }
 
 func discoverTool(project, name string, cfg Config, withVersion bool) ToolInfo {

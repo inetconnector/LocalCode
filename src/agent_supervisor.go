@@ -41,7 +41,7 @@ func classifyTaskIntent(task string) taskIntent {
 	case containsAny("initialisiere git", "git init", "repository anlegen", "repo anlegen"):
 		intent.Kind = "git_init"
 		intent.GitRequested = true
-	case containsAny("implementiere", "baue ein", "entwickle", "erstelle die app", "erstelle eine app", "fixe", "behebe", "repariere", "ändere", "aendere", "ergänze", "ergaenze", "füge hinzu", "fuege hinzu", "portiere", "refaktoriere", "übersetze", "uebersetze", "implement", "develop", "fix", "repair", "change", "add feature", "refactor", "translate"):
+	case containsAny("implementiere", "baue", "bau ", "entwickle", "erstelle", "fixe", "behebe", "repariere", "ändere", "aendere", "ergänze", "ergaenze", "füge hinzu", "fuege hinzu", "kopiere", "verschiebe", "benenne um", "male", "zeichne", "generiere ein bild", "portiere", "refaktoriere", "übersetze", "uebersetze", "implement", "develop", "create", "fix", "repair", "change", "add feature", "copy", "move", "rename", "draw", "paint", "generate image", "refactor", "translate"):
 		intent.Kind = "edit"
 	case containsAny("analysiere das projekt", "analysiere projekt", "pruefe das projekt", "untersuche das projekt", "projekt analysieren"):
 		intent.Kind = "analyze"
@@ -179,6 +179,9 @@ func toolFailureRecoveryDirective(action AgentAction, result string, err error, 
 	if strings.Contains(text, "old_text muss genau einmal") || strings.Contains(text, "old_text must occur exactly once") {
 		directives = append(directives, "Die Textstelle war nicht eindeutig. Nutze search_text, lies die konkrete Datei vollständig und verwende danach einen eindeutigen größeren Kontext oder write_file. Frage den Nutzer nicht nach einer Zeilennummer, wenn sie aus dem Projekt ermittelbar ist.")
 	}
+	if strings.Contains(text, "native engine is handled by localcode tools") || strings.Contains(text, "localcode nativ") && strings.Contains(text, "engine_edit") {
+		directives = append(directives, "Die native Engine ist kein externer Bearbeitungsprozess. Verwende jetzt direkte Dateiwerkzeuge: list_files/read_file/search_text und danach replace_text oder write_file mit vollständigem nicht-leerem content. Frage den Nutzer nicht nach einer anderen Methode.")
+	}
 	if strings.Contains(text, "search query is empty") || strings.Contains(text, "query is empty") {
 		directives = append(directives, "Erzeuge eine konkrete Suchanfrage aus der aktuellen Nutzeraufgabe und rufe web_search erneut genau einmal auf.")
 	}
@@ -209,6 +212,12 @@ func (s *AppState) executeConfirmedContinuationAction(ctx context.Context, proje
 }
 
 func actionAllowedForIntent(intent taskIntent, action AgentAction) (bool, string) {
+	if (action.Action == "run_command" || action.Action == "open_terminal") && commandLooksGlobalInstall(action.Command) && !taskExplicitlyRequestsGlobalInstall(intent.OriginalTask) {
+		return false, "Globale Installationen sind für diese Aufgabe nicht angefordert. Installiere keine Werkzeuge global und frage nicht nach globaler Installation. Nutze vorhandene/verwaltete Werkzeuge, projektlokale Abhängigkeiten oder eine nicht-invasive Prüfung wie Syntax-, Build-, Datei- oder DOM-Smoke-Checks."
+	}
+	if action.Action == "run_tool" && commandLooksGlobalInstall(strings.Join(append([]string{action.Tool}, action.Args...), " ")) && !taskExplicitlyRequestsGlobalInstall(intent.OriginalTask) {
+		return false, "Globale Installationen sind für diese Aufgabe nicht angefordert. Installiere keine Werkzeuge global und frage nicht nach globaler Installation. Nutze vorhandene/verwaltete Werkzeuge, projektlokale Abhängigkeiten oder eine nicht-invasive Prüfung."
+	}
 	if intent.Kind == "analyze" {
 		switch action.Action {
 		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "finish", "ask_user":

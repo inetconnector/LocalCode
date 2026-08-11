@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -48,9 +50,9 @@ var actionSchema = map[string]any{
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"finish", "ask_user",
 		}},
-		"message": map[string]any{"type": "string"}, "path": map[string]any{"type": "string"},
-		"query": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"},
-		"old_text": map[string]any{"type": "string"}, "new_text": map[string]any{"type": "string"},
+		"message": map[string]any{"type": "string"}, "path": map[string]any{"type": "string", "description": "Relative project path."},
+		"query": map[string]any{"type": "string"}, "content": map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file."},
+		"old_text": map[string]any{"type": "string", "minLength": 1}, "new_text": map[string]any{"type": "string"},
 		"command": map[string]any{"type": "string"}, "max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
 		"url": map[string]any{"type": "string"}, "max_results": map[string]any{"type": "integer", "minimum": 1, "maximum": 10},
 		"server": map[string]any{"type": "string"}, "tool": map[string]any{"type": "string"}, "uri": map[string]any{"type": "string"},
@@ -61,6 +63,38 @@ var actionSchema = map[string]any{
 		"task": map[string]any{"type": "string"},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
+	"allOf": []map[string]any{
+		conditionalRequired("read_file", "path"),
+		conditionalRequired("delete_file", "path"),
+		conditionalRequired("search_text", "query"),
+		conditionalRequired("replace_text", "path", "old_text"),
+		conditionalRequired("write_file", "path", "content"),
+		conditionalRequired("run_tool", "tool"),
+		conditionalRequired("discover_tool", "tool"),
+		conditionalRequired("run_command", "command"),
+		conditionalRequired("open_terminal", "command"),
+		conditionalRequired("web_fetch", "url"),
+		conditionalRequired("mcp_call_tool", "server", "tool"),
+	},
+}
+
+func conditionalRequired(action string, fields ...string) map[string]any {
+	return map[string]any{
+		"if": map[string]any{
+			"properties": map[string]any{"action": map[string]any{"const": action}},
+			"required":   []string{"action"},
+		},
+		"then": map[string]any{"required": fields},
+	}
+}
+
+var writeFileContentSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"content": map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content."},
+	},
+	"required":             []string{"content"},
+	"additionalProperties": false,
 }
 
 const agentSystemPrompt = `Du bist LocalCode, ein präziser autonomer Software-Agent für ein lokales Projekt.
@@ -71,7 +105,8 @@ Arbeitsweise:
 - AGENTS.md, README.md, STATE.md, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
-- Für echte Quellcodeänderungen ist engine_edit die bevorzugte, in den Einstellungen ausgewählte Editing Engine (Aider, Claude Code oder OpenCode). Verwende replace_text/write_file nur für sehr kleine, eindeutig deterministische Verwaltungsänderungen.
+- Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
+- write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
@@ -384,7 +419,12 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, mcpServersSummary(cfg), toolInventorySummary(project, cfg))
+	engine := normalizeEditingEngine(cfg.EditingEngine)
+	engineHint := "ENGINE-HINWEIS: Für mehrdateilige Codeänderungen ist engine_edit verfügbar."
+	if engine == editingEngineNative {
+		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
+	}
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummary(cfg), toolInventorySummary(project, cfg))
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
@@ -392,7 +432,8 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	language := responseLanguage(cfg)
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(userMessage)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, userMessage), userMessage, attachmentContext, automationHint)}}
+	qualityHint := taskQualityHint(userMessage)
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, userMessage), userMessage, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -466,10 +507,13 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	intent := classifyTaskIntent(originalTask)
 	completedActions := map[string]bool{}
 	failedActions := map[string]int{}
+	changedPaths := map[string]bool{}
+	changedSinceVerification := false
 	compactionCount := 0
 	lastSignature := ""
 	repeatBlocks := 0
 	supervisorBlocks := 0
+	invalidActionBlocks := 0
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -512,9 +556,16 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 				s.AddEvent(UIEvent{Type: "error", Message: "Modellaufruf wegen Zeitüberschreitung beendet", Detail: fmt.Sprintf("Zeitlimit: %d Sekunden. Das Zeitlimit kann in den Einstellungen geändert werden.", cfg.ModelTimeout)})
 				return "timeout"
 			}
+			invalidActionBlocks++
+			if invalidActionBlocks <= 3 {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Ungültige Agentenaktion blockiert", "Invalid agent action blocked"), Detail: err.Error()})
+				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Die letzte Modellantwort enthielt keine ausführbare Agentenaktion und wurde nicht ausgeführt. Liefere jetzt genau eine gültige JSON-Aktion. Bei write_file sind path und vollständiger nicht-leerer content Pflicht. Wenn die Datei zu groß ist, nutze read_file/search_text und dann replace_text mit eindeutigem Kontext. Frage nicht nach globalen Installationen und wiederhole keine ungültige Aktion."})
+				continue
+			}
 			s.AddEvent(UIEvent{Type: "error", Message: "Modellaufruf fehlgeschlagen", Detail: err.Error()})
 			return "error"
 		}
+		invalidActionBlocks = 0
 		if usedModel != model {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Modell automatisch gewechselt", Detail: model + " konnte keine nutzbare Aktion liefern. Verwende " + usedModel + "."})
 			model = usedModel
@@ -591,6 +642,12 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		if action.Action != "finish" {
 			s.AddEvent(UIEvent{Type: "agent_step", Message: action.Message, Action: action.Action, Path: action.Path, Command: action.Command})
+		} else if issues := completionGuardIssues(project, intent, originalTask, changedPaths, changedSinceVerification); len(issues) > 0 {
+			supervisorBlocks++
+			detail := "- " + strings.Join(issues, "\n- ")
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussprüfung blockiert", "Completion guard blocked finish"), Detail: detail})
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG:\n" + detail + "\n" + completionRepairDirective(originalTask, issues)})
+			continue
 		}
 		s.setRunPhase(runID, "tool:"+action.Action)
 		result, done := s.handleAgentAction(ctx, project, action)
@@ -598,9 +655,20 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			return "done"
 		}
 		completedActions[action.Action] = true
+		toolFailed := agentToolResultFailed(result)
+		if actionMutatesProject(action) && !toolFailed {
+			for _, path := range mutatedActionPaths(action) {
+				if strings.TrimSpace(path) != "" {
+					changedPaths[path] = true
+				}
+			}
+			changedSinceVerification = true
+		}
+		if actionVerifiesProject(action) && !toolFailed {
+			changedSinceVerification = false
+		}
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, 120000)
-		lowerResult := strings.ToLower(result)
-		if strings.Contains(lowerResult, "error:") || strings.Contains(lowerResult, "status: fehler") || strings.Contains(lowerResult, "status: timeout") || strings.Contains(lowerResult, "exitcode: 1") || strings.Contains(lowerResult, "exitcode: -1") {
+		if toolFailed {
 			failedActions[actionSignature(action)]++
 			toolMessage += "\n\n" + toolFailureRecoveryDirective(action, result, errors.New("Werkzeugaktion fehlgeschlagen"), originalTask)
 			if failedActions[actionSignature(action)] >= 2 {
@@ -679,6 +747,7 @@ func (s *AppState) nextAgentAction(ctx context.Context, requestedModel string, m
 		if err == nil {
 			return action, candidate, nil
 		}
+		incompleteAction := action
 		retry := append([]OllamaMessage(nil), messages...)
 		retry = append(retry, OllamaMessage{Role: "assistant", Content: content}, OllamaMessage{Role: "user", Content: "Antwort ungültig. Antworte ausschließlich mit einem JSON-Objekt des Schemas. Fehler: " + err.Error()})
 		content, retryErr := s.Ollama.Chat(ctx, candidate, trimMessages(retry), actionSchema)
@@ -688,9 +757,50 @@ func (s *AppState) nextAgentAction(ctx context.Context, requestedModel string, m
 		if retryErr == nil {
 			return action, candidate, nil
 		}
+		if recovered, recoverErr := s.repairIncompleteAgentAction(ctx, candidate, messages, chooseMoreSpecificAction(incompleteAction, action), retryErr); recoverErr == nil {
+			return recovered, candidate, nil
+		} else {
+			errs = append(errs, candidate+" repair: "+recoverErr.Error())
+		}
 		errs = append(errs, candidate+": "+retryErr.Error())
 	}
 	return zero, requestedModel, fmt.Errorf("kein Modell lieferte eine gültige Agentenaktion: %s", strings.Join(errs, " | "))
+}
+
+func chooseMoreSpecificAction(first, second AgentAction) AgentAction {
+	if strings.TrimSpace(second.Action) != "" {
+		if strings.TrimSpace(second.Path) != "" || strings.TrimSpace(first.Path) == "" {
+			return second
+		}
+	}
+	return first
+}
+
+func (s *AppState) repairIncompleteAgentAction(ctx context.Context, model string, messages []OllamaMessage, action AgentAction, cause error) (AgentAction, error) {
+	if action.Action != "write_file" || strings.TrimSpace(action.Path) == "" || !strings.Contains(cause.Error(), "content") {
+		return AgentAction{}, cause
+	}
+	repairMessages := append([]OllamaMessage(nil), messages...)
+	repairPrompt := fmt.Sprintf(`Die vorherige Aktion war unvollständig und wurde nicht ausgeführt:
+{"action":"write_file","message":%q,"path":%q}
+
+Erzeuge jetzt ausschließlich den vollständigen nicht-leeren Inhalt für diese Datei. Antworte nur mit dem JSON-Objekt {"content":"..."} gemäß Schema. Schreibe keinen Markdown-Zaun. Der Inhalt muss direkt als Dateiinhalt verwendbar sein.`, action.Message, action.Path)
+	repairMessages = append(repairMessages, OllamaMessage{Role: "user", Content: repairPrompt})
+	content, err := s.Ollama.Chat(ctx, model, trimMessages(repairMessages), writeFileContentSchema)
+	if err != nil {
+		return AgentAction{}, err
+	}
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		return AgentAction{}, err
+	}
+	if strings.TrimSpace(payload.Content) == "" {
+		return AgentAction{}, errors.New("write_file content repair returned empty content")
+	}
+	action.Content = payload.Content
+	return action, nil
 }
 
 func parseAgentAction(content string) (AgentAction, error) {
@@ -709,9 +819,621 @@ func parseAgentAction(content string) (AgentAction, error) {
 	if strings.TrimSpace(a.Message) == "" {
 		a.Message = a.Action
 	}
+	a = fillAgentActionFromArguments(a)
+	if err := validateAgentAction(a); err != nil {
+		return a, err
+	}
 	return a, nil
 }
 func mustJSON(v any) string { data, _ := json.Marshal(v); return string(data) }
+
+func fillAgentActionFromArguments(a AgentAction) AgentAction {
+	if len(a.Arguments) == 0 {
+		return a
+	}
+	if a.Path == "" {
+		a.Path = stringMapArg(a.Arguments, "path")
+	}
+	if a.Content == "" {
+		a.Content = stringMapArg(a.Arguments, "content")
+	}
+	if a.Query == "" {
+		a.Query = stringMapArg(a.Arguments, "query")
+	}
+	if a.OldText == "" {
+		a.OldText = stringMapArg(a.Arguments, "old_text")
+	}
+	if a.NewText == "" {
+		a.NewText = stringMapArg(a.Arguments, "new_text")
+	}
+	if a.Command == "" {
+		a.Command = stringMapArg(a.Arguments, "command")
+	}
+	if a.Task == "" {
+		a.Task = stringMapArg(a.Arguments, "task")
+	}
+	if a.Tool == "" {
+		a.Tool = stringMapArg(a.Arguments, "tool")
+	}
+	return a
+}
+
+func stringMapArg(values map[string]any, name string) string {
+	if values == nil {
+		return ""
+	}
+	value, ok := values[name]
+	if !ok {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	default:
+		return ""
+	}
+}
+
+func validateAgentAction(a AgentAction) error {
+	require := func(name, value string) error {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s action requires non-empty %s", a.Action, name)
+		}
+		return nil
+	}
+	switch a.Action {
+	case "read_file", "delete_file":
+		return require("path", a.Path)
+	case "search_text":
+		return require("query", a.Query)
+	case "replace_text":
+		if err := require("path", a.Path); err != nil {
+			return err
+		}
+		return require("old_text", a.OldText)
+	case "write_file":
+		if err := require("path", a.Path); err != nil {
+			return err
+		}
+		return require("content", a.Content)
+	case "run_tool", "discover_tool":
+		return require("tool", a.Tool)
+	case "run_command", "open_terminal":
+		return require("command", a.Command)
+	case "web_fetch":
+		return require("url", a.URL)
+	case "mcp_call_tool":
+		if err := require("server", a.Server); err != nil {
+			return err
+		}
+		return require("tool", a.Tool)
+	}
+	return nil
+}
+
+func completionGuardIssues(project string, intent taskIntent, originalTask string, changedPaths map[string]bool, changedSinceVerification bool) []string {
+	if intent.Kind != "edit" {
+		return nil
+	}
+	var issues []string
+	if len(changedPaths) == 0 {
+		issues = append(issues, "Es wurde keine erfolgreiche Projektänderung erkannt.")
+	}
+	mentioned := mentionedProjectFiles(originalTask)
+	for _, path := range mentioned {
+		if _, ok := changedPaths[path]; !ok {
+			changedPaths[path] = false
+		}
+	}
+	paths := make([]string, 0, len(changedPaths))
+	for path := range changedPaths {
+		if concreteProjectPath(path) {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	var combined strings.Builder
+	for _, path := range paths {
+		content, err := readProjectFile(project, path)
+		if err != nil {
+			if isMentionedPath(path, mentioned) {
+				issues = append(issues, fmt.Sprintf("Die ausdrücklich erwähnte Datei `%s` konnte nicht gelesen werden: %v.", path, err))
+			}
+			continue
+		}
+		if strings.TrimSpace(content) == "" {
+			issues = append(issues, fmt.Sprintf("`%s` ist leer.", path))
+			continue
+		}
+		combined.WriteString("\n--- ")
+		combined.WriteString(path)
+		combined.WriteString(" ---\n")
+		combined.WriteString(content)
+		if marker := firstPlaceholderMarker(content); marker != "" {
+			issues = append(issues, fmt.Sprintf("`%s` enthält noch Platzhalter-/Nicht-implementiert-Text (%s).", path, marker))
+		}
+	}
+	if taskRequestsVerification(originalTask) && changedSinceVerification {
+		issues = append(issues, "Nach der letzten Dateiänderung wurde keine passende Prüfung ausgeführt, obwohl die Aufgabe eine Funktions-, Syntax-, Test-, Lint- oder Build-Prüfung verlangt.")
+	}
+	for _, missing := range missingRequestedCapabilityMarkers(originalTask, combined.String()) {
+		issues = append(issues, missing)
+	}
+	for _, missing := range missingInteractiveImplementationMarkers(originalTask, combined.String()) {
+		issues = append(issues, missing)
+	}
+	for _, missing := range missingArtifactImplementationMarkers(originalTask, combined.String()) {
+		issues = append(issues, missing)
+	}
+	for _, missing := range missingGameImplementationMarkers(originalTask, combined.String()) {
+		issues = append(issues, missing)
+	}
+	return issues
+}
+
+func completionRepairDirective(task string, issues []string) string {
+	var b strings.Builder
+	b.WriteString("Behebe die Ursachen mit konkreten Werkzeugaktionen. Behandle keine Symptome und melde erst finish, wenn diese Punkte wirklich erfüllt sind.\n")
+	b.WriteString("Priorität: fehlende Laufzeitlogik gehört in Quellcode-/Konfigurations-/Asset-Dateien, nicht in README oder reine Beschreibungstexte. Ändere Dokumentation erst, nachdem die Funktion selbst existiert.\n")
+	b.WriteString("Wenn eine UI-Kontrolle, Taste, ein Button, Menü, Formular oder Status fehlt, implementiere sowohl das sichtbare Element als auch den Event-Handler und die Zustandsänderung.\n")
+	b.WriteString("Wenn Tests/Prüfungen fehlen oder fehlschlagen, installiere nicht reflexhaft global. Nutze vorhandene, projektlokale, verwaltete oder nicht-invasive Prüfungen.\n")
+	if containsNormalizedAny(normalizedQuestion(task), []string{"spiel", "game", "app", "tool", "browser", "ui"}) {
+		b.WriteString("Bei Apps, Spielen und Tools: behebe zuerst die Kernmechanik und den Datenfluss in der Laufzeitlogik; kosmetische Änderungen zählen nicht als Reparatur fehlender Funktion.\n")
+	}
+	if len(issues) > 1 {
+		b.WriteString("Bearbeite den wichtigsten fehlenden Punkt in der nächsten Aktion vollständig, verifiziere danach, und lass die Abschlussprüfung die verbleibenden Punkte erneut bestimmen.\n")
+	}
+	return b.String()
+}
+
+func actionMutatesProject(a AgentAction) bool {
+	switch a.Action {
+	case "replace_text", "write_file", "delete_file", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+		return true
+	default:
+		return false
+	}
+}
+
+func mutatedActionPaths(a AgentAction) []string {
+	switch a.Action {
+	case "replace_text", "write_file", "delete_file":
+		return []string{a.Path}
+	case "copy_path":
+		return []string{a.Destination}
+	case "move_path":
+		return []string{a.Source, a.Destination}
+	case "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test", "git_commit":
+		return []string{"."}
+	default:
+		return nil
+	}
+}
+
+func actionVerifiesProject(a AgentAction) bool {
+	switch a.Action {
+	case "build_project", "deploy_android", "engine_lint", "aider_lint", "engine_test", "aider_test":
+		return true
+	case "run_tool":
+		return commandLooksLikeVerification(strings.Join(append([]string{a.Tool}, a.Args...), " "))
+	case "run_command", "open_terminal":
+		return commandLooksLikeVerification(a.Command)
+	default:
+		return false
+	}
+}
+
+func agentToolResultFailed(result string) bool {
+	lowerResult := strings.ToLower(result)
+	return strings.Contains(lowerResult, "error:") ||
+		strings.Contains(lowerResult, "status: fehler") ||
+		strings.Contains(lowerResult, "status: timeout") ||
+		strings.Contains(lowerResult, "exitcode: 1") ||
+		strings.Contains(lowerResult, "exitcode: -1")
+}
+
+func mentionedProjectFiles(task string) []string {
+	seen := map[string]bool{}
+	var files []string
+	fields := strings.FieldsFunc(task, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\r', '\n', '"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>', ',', ';', ':', '!', '?':
+			return true
+		default:
+			return false
+		}
+	})
+	for _, field := range fields {
+		for _, candidate := range expandMentionedFileCandidate(field) {
+			candidate = strings.Trim(candidate, "./\\")
+			if candidate == "" || strings.Contains(candidate, "://") {
+				continue
+			}
+			if taskTokenNamesTechnology(candidate) {
+				continue
+			}
+			if !knownProjectFileExt(candidate) {
+				continue
+			}
+			candidate = filepath.ToSlash(filepath.Clean(candidate))
+			if strings.HasPrefix(candidate, "../") || candidate == ".." || filepath.IsAbs(candidate) {
+				continue
+			}
+			if !seen[candidate] {
+				seen[candidate] = true
+				files = append(files, candidate)
+			}
+		}
+	}
+	sort.Strings(files)
+	return files
+}
+
+func expandMentionedFileCandidate(field string) []string {
+	candidate := strings.Trim(field, "./\\")
+	parts := strings.FieldsFunc(candidate, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	if len(parts) <= 1 {
+		return []string{candidate}
+	}
+	for _, part := range parts {
+		if part == "" || !knownProjectFileExt(part) {
+			return []string{candidate}
+		}
+	}
+	return parts
+}
+
+func knownProjectFileExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".json", ".md", ".txt", ".yaml", ".yml", ".toml", ".xml", ".py", ".java", ".kt", ".cs", ".cpp", ".c", ".h", ".rs":
+		return true
+	default:
+		return false
+	}
+}
+
+func taskTokenNamesTechnology(token string) bool {
+	switch strings.ToLower(strings.Trim(token, ".:/\\ ")) {
+	case "node.js", "deno.js", "vue.js", "react.js", "next.js", "nuxt.js", "three.js", "d3.js", "pixi.js", "socket.io":
+		return true
+	default:
+		return false
+	}
+}
+
+func concreteProjectPath(path string) bool {
+	path = strings.TrimSpace(path)
+	return path != "" && path != "." && path != string(filepath.Separator)
+}
+
+func isMentionedPath(path string, mentioned []string) bool {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	for _, candidate := range mentioned {
+		if clean == filepath.ToSlash(filepath.Clean(candidate)) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstPlaceholderMarker(content string) string {
+	lower := strings.ToLower(content)
+	markers := []string{
+		"placeholder",
+		"platzhalter",
+		"not implemented",
+		"nicht implementiert",
+		"can be added",
+		"kann ergänzt",
+		"kann spaeter",
+		"kann später",
+		"noch zu implementieren",
+		"implementierung folgt",
+		"coming soon",
+		"goes here",
+		"todo: implement",
+		"todo implement",
+		"tbd",
+	}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return marker
+		}
+	}
+	return ""
+}
+
+func taskRequestsVerification(task string) bool {
+	lower := normalizedQuestion(task)
+	for _, marker := range []string{"test", "teste", "pruef", "prüf", "syntax", "lint", "build", "kompil", "verifizier", "funktioniert", "works"} {
+		if strings.Contains(lower, normalizedQuestion(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+func taskQualityHint(task string) string {
+	normalizedTask := normalizedQuestion(task)
+	intent := classifyTaskIntent(task)
+	if intent.Kind != "edit" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nINTERNE QUALITÄTSANFORDERUNGEN:\n")
+	b.WriteString("- Leite aus der Nutzeraufgabe vor dem Umsetzen eine interne Abnahmeliste ab. Implementiere jede verlangte Fähigkeit mit echtem Codepfad, Zustand und Ereignisfluss; reine Begriffe, README-Behauptungen, Alerts oder Beispielwerte reichen nicht.\n")
+	b.WriteString("- Behandle Ursachen statt Symptome: Wenn eine Fähigkeit fehlt, ändere die betroffene Logik, nicht nur sichtbare Texte oder Dokumentation.\n")
+	b.WriteString("- Diese Regeln gelten sprach- und projektunabhängig: Go, Python, JavaScript/TypeScript, HTML/CSS, Java/Kotlin, C/C++, C#, Rust, Shell, Konfigurationsdateien, Dokumente, Assets und andere Dateitypen müssen mit der jeweils passenden Projektstruktur und Verifikation umgesetzt werden.\n")
+	b.WriteString("- Erkenne die Technik aus Dateien, Projektstruktur und project_info. Verwende danach passende Prüfungen: build_project oder projektspezifische Tests, Compiler/Syntaxchecks, Linter, Parser, Formatprüfung oder Datei-/Hash-/Existenzprüfung. Nutze nicht automatisch JavaScript-Prüfungen für andere Sprachen.\n")
+	b.WriteString("- Installiere keine Werkzeuge global als Reflex auf eine fehlende Prüfung. Bevorzuge vorhandene LocalCode-Werkzeuge, projektlokale Abhängigkeiten, verwaltete Installationspfade oder eine nicht-invasive Alternative; frage nur nach Installation, wenn die Nutzeraufgabe das wirklich verlangt oder keine sichere Prüfung möglich ist.\n")
+	b.WriteString("- Für Apps, Browser-UIs, Spiele und Tools müssen erwartbare Kernabläufe bedienbar sein: Eingaben werden verdrahtet, Zustände werden gehalten, Fehler-/Endzustände bleiben sichtbar und Reset/Undo/Restart-Aktionen setzen alle relevanten Daten konsistent zurück.\n")
+	b.WriteString("- Wenn die Aufgabe Buttons, Tastatur, Formulare, Menüs oder andere UI-Kontrollen nennt, müssen Event-Handler und sichtbare Zustandsänderungen implementiert sein.\n")
+	b.WriteString("- Für Dateioperationen wie Kopieren, Verschieben, Umbenennen oder Konvertieren: führe die Operation wirklich aus, prüfe Quelle/Ziel, Dateigröße oder Inhalt/Hash soweit sinnvoll, und melde keine Fertigstellung, wenn Zielpfade fehlen.\n")
+	b.WriteString("- Für Bild-, Zeichen-, Diagramm- oder Asset-Aufgaben: erstelle ein konkretes Artefakt im passenden Format (z. B. SVG/HTML-Canvas/CSS/Projektasset oder ein vorhandenes verfügbares Bildwerkzeug), prüfe dass die Datei existiert, nicht leer ist und syntaktisch/strukturell zum Format passt. Wenn echte Raster-KI-Bildgenerierung lokal nicht verfügbar ist, wähle ein lokales darstellbares Format oder benenne diese Grenze offen.\n")
+	b.WriteString("- Nach jeder Codeänderungsrunde verifiziere passend zur Technik: Syntax-/Unit-/Build-Prüfung und bei sichtbaren Browser-UIs nach Möglichkeit zusätzlich Browser-/DOM-Smoke-Test. Melde finish erst nach erfolgreicher Prüfung nach der letzten Änderung.\n")
+	if containsNormalizedAny(normalizedTask, []string{"pac man", "pacman", "pac-man"}) {
+		b.WriteString("- Für einen Pac-Man-Klon sind intern mindestens erforderlich: rechteckiges Maze, Wände, Pellets mit Entfernung und Score-Erhöhung, spielbarer Pac-Man, automatisch bewegte Geister, Wandkollisionen, Geisterkollisionen mit Lebensverlust, Game-over-Zustand, Gewinnzustand, Pause, Restart per Taste und Button sowie Tastatursteuerung per Pfeiltasten und WASD.\n")
+		b.WriteString("- Parse Startpositionen aus dem Maze oder halte feste Startdaten; setze Gegner beim Restart/Lebensverlust nie zufällig auf mögliche Wände.\n")
+		b.WriteString("- Nach Änderungen an game.js muss mindestens eine JavaScript-Syntaxprüfung wie node -c game.js laufen. Wenn Playwright oder ein Browserwerkzeug verfügbar ist, prüfe zusätzlich, dass index.html lädt und Canvas/HUD vorhanden sind.\n")
+	}
+	return b.String()
+}
+
+func commandLooksLikeVerification(command string) bool {
+	if regexp.MustCompile(`(?i)\bnode(?:\.exe)?\s+-(?:c|check)\b`).MatchString(command) {
+		return true
+	}
+	languageSpecific := []string{
+		`(?i)\bpython(?:\d+(?:\.\d+)?)?(?:\.exe)?\s+-m\s+py_compile\b`,
+		`(?i)\bgo(?:\.exe)?\s+(test|vet|build|fmt)\b`,
+		`(?i)\bcargo(?:\.exe)?\s+(test|check|build|clippy|fmt)\b`,
+		`(?i)\brustc(?:\.exe)?\b`,
+		`(?i)\bjavac(?:\.exe)?\b`,
+		`(?i)\bjava(?:\.exe)?\s+.*\btest\b`,
+		`(?i)\bmvn(?:\.cmd|\.exe)?\s+(test|verify|package|compile)\b`,
+		`(?i)\bgradle(?:\.bat|\.cmd|\.exe)?\s+(test|build|check)\b`,
+		`(?i)\bdotnet(?:\.exe)?\s+(test|build|format)\b`,
+		`(?i)\btsc(?:\.cmd|\.exe)?\b`,
+		`(?i)\beslint(?:\.cmd|\.exe)?\b`,
+		`(?i)\bphp(?:\.exe)?\s+-l\b`,
+		`(?i)\bruby(?:\.exe)?\s+-c\b`,
+		`(?i)\b(?:bash|sh)(?:\.exe)?\s+-n\b`,
+		`(?i)\bshellcheck(?:\.exe)?\b`,
+		`(?i)\b(?:gcc|g\+\+|clang|clang\+\+)(?:\.exe)?\b.*\s+-fsyntax-only\b`,
+		`(?i)\bcmake(?:\.exe)?\s+--build\b`,
+		`(?i)\bmake(?:\.exe)?\s+(test|check|all)?\b`,
+	}
+	for _, pattern := range languageSpecific {
+		if regexp.MustCompile(pattern).MatchString(command) {
+			return true
+		}
+	}
+	lower := normalizedQuestion(command)
+	for _, marker := range []string{"test", "go test", "npm test", "pnpm test", "yarn test", "pytest", "vitest", "lint", "vet", "build", "tsc", "check", "playwright"} {
+		if strings.Contains(lower, normalizedQuestion(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+func commandLooksGlobalInstall(command string) bool {
+	patterns := []string{
+		`(?i)\bnpm(?:\.cmd|\.exe)?\s+(?:install|i|add)\b[^\r\n]*\s-(?:g|-global)\b`,
+		`(?i)\bnpm(?:\.cmd|\.exe)?\s+(?:install|i|add)\b[^\r\n]*\s--global\b`,
+		`(?i)\byarn(?:\.cmd|\.exe)?\s+global\s+add\b`,
+		`(?i)\bpnpm(?:\.cmd|\.exe)?\s+(?:add|install)\b[^\r\n]*\s-(?:g|-global)\b`,
+		`(?i)\bpython(?:\d+(?:\.\d+)?)?(?:\.exe)?\s+-m\s+pip\s+install\b[^\r\n]*\s--user\b`,
+		`(?i)\bpip(?:\d+(?:\.\d+)?)?(?:\.exe)?\s+install\b[^\r\n]*\s--user\b`,
+		`(?i)\bcargo(?:\.exe)?\s+install\b`,
+		`(?i)\bgo(?:\.exe)?\s+install\b`,
+		`(?i)\bwinget(?:\.exe)?\s+install\b`,
+		`(?i)\bchoco(?:\.exe)?\s+install\b`,
+		`(?i)\bscoop(?:\.cmd|\.ps1|\.exe)?\s+install\b`,
+	}
+	for _, pattern := range patterns {
+		if regexp.MustCompile(pattern).MatchString(command) {
+			return true
+		}
+	}
+	return false
+}
+
+func taskExplicitlyRequestsGlobalInstall(task string) bool {
+	normalizedTask := normalizedQuestion(task)
+	return containsNormalizedAny(normalizedTask, []string{"global installieren", "global install", "installiere global", "systemweit installieren", "install system-wide", "installiere das werkzeug", "installiere playwright", "install playwright"})
+}
+
+func missingRequestedCapabilityMarkers(task, content string) []string {
+	normalizedTask := normalizedQuestion(task)
+	normalizedContent := normalizedQuestion(content)
+	type requirement struct {
+		taskMarkers    []string
+		contentMarkers []string
+		issue          string
+	}
+	requirements := []requirement{
+		{[]string{"pause", "pausieren"}, []string{"pause", "paused", "pausiert"}, "Die Aufgabe verlangt Pause/Pausieren, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+		{[]string{"restart", "neustart", "neu starten"}, []string{"restart", "reset", "new game", "neustart", "neu starten"}, "Die Aufgabe verlangt Neustart/Restart, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+		{[]string{"game over"}, []string{"game over", "gameover"}, "Die Aufgabe verlangt einen Game-over-Zustand, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+		{[]string{"win-state", "win state", "gewinn", "gewonnen", "sieg"}, []string{"win", "won", "victory", "gewinn", "gewonnen", "sieg"}, "Die Aufgabe verlangt einen Gewinnzustand, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+		{[]string{"score", "punkte", "punktestand"}, []string{"score", "punkte", "punktestand"}, "Die Aufgabe verlangt Punkte/Score, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+		{[]string{"lives", "leben"}, []string{"lives", "leben"}, "Die Aufgabe verlangt Leben/Lives, aber in den geänderten Dateien ist kein entsprechender Implementierungsmarker erkennbar."},
+	}
+	var issues []string
+	for _, req := range requirements {
+		if containsNormalizedAny(normalizedTask, req.taskMarkers) && !containsNormalizedAny(normalizedContent, req.contentMarkers) {
+			issues = append(issues, req.issue)
+		}
+	}
+	return issues
+}
+
+func missingInteractiveImplementationMarkers(task, content string) []string {
+	normalizedTask := normalizedQuestion(task)
+	if !containsNormalizedAny(normalizedTask, []string{"app", "browser", "web", "ui", "spiel", "game", "tool", "button", "taste", "keyboard", "canvas", "dom", "formular", "form"}) {
+		return nil
+	}
+	type check struct {
+		taskMarkers []string
+		re          string
+		issue       string
+	}
+	checks := []check{
+		{[]string{"button", "knopf", "schaltflaeche", "schaltfläche"}, `(?i)addEventListener\s*\(\s*['"]click['"]|onclick\s*=`, "Die Aufgabe verlangt einen Button/eine Schaltfläche, aber es ist keine verdrahtete Button-Interaktion erkennbar."},
+		{[]string{"taste", "tasten", "keyboard", "tastatur", "pfeiltasten", "wasd"}, `(?i)addEventListener\s*\(\s*['"]keydown['"]|onkeydown|KeyboardEvent|case\s+['"]Arrow|key\.toLowerCase\(\)|case\s+['"]w['"]`, "Die Aufgabe verlangt Tastatursteuerung, aber es ist keine konkrete Keydown-/Tastenlogik erkennbar."},
+		{[]string{"canvas"}, `(?i)<canvas\b|getContext\s*\(\s*['"]2d['"]|requestAnimationFrame`, "Die Aufgabe verlangt Canvas, aber es ist keine konkrete Canvas-Renderlogik erkennbar."},
+		{[]string{"score", "punkte", "zaehler", "zähler", "counter"}, `(?i)\bscore\b|\bcounter\b|\bpoints\b|\bpunkte\b|\bcount\s*(\+\+|\+=|=\s*count\s*\+)`, "Die Aufgabe verlangt Score/Zähler, aber es ist keine konkrete Zählerlogik erkennbar."},
+		{[]string{"leben", "lives", "health", "hp"}, `(?i)\blives\b|\bleben\b|\bhealth\b|\bhp\b`, "Die Aufgabe verlangt Leben/Health, aber es ist kein entsprechender Spiel-/App-Zustand erkennbar."},
+		{[]string{"zustand", "state", "status", "game over", "gewinn", "win", "pause"}, `(?i)\bstate\b|\bstatus\b|\bpaused\b|\bgameState\b|\bsetState\b|\buseState\b|\bstatusText\b|game\s*over|\bwin\b|\bwon\b|\bvictory\b`, "Die Aufgabe verlangt Zustände/Status, aber es ist keine konkrete Zustandslogik erkennbar."},
+		{[]string{"restart", "neustart", "reset", "zuruecksetzen", "zurücksetzen"}, `(?i)\brestart\w*\b|\breset\w*\b|\bnewGame\b`, "Die Aufgabe verlangt Restart/Reset, aber keine konkrete Resetlogik ist erkennbar."},
+		{[]string{"browser-app", "browser app", "web-app", "web app", "lokale browser"}, `(?i)<script\b|type\s*=\s*["']module["']|src\s*=|DOMContentLoaded|defer`, "Die Aufgabe verlangt eine Browser-App, aber es ist keine konkrete Script-/App-Verdrahtung erkennbar."},
+	}
+	var issues []string
+	for _, check := range checks {
+		if containsNormalizedAny(normalizedTask, check.taskMarkers) && !regexp.MustCompile(check.re).MatchString(content) {
+			issues = append(issues, check.issue)
+		}
+	}
+	if containsNormalizedAny(normalizedTask, []string{"funktioniert", "works", "spielbar", "benutzbar", "usable"}) {
+		if regexp.MustCompile(`(?i)alert\s*\(\s*['"][^'"]*(?:win|game over|fertig|done)[^'"]*['"]\s*\)\s*;?\s*(?:reset|restart)\w*\s*\(`).MatchString(content) {
+			issues = append(issues, "Endzustände dürfen nicht nur kurz per alert erscheinen und sofort zurückgesetzt werden; der Zustand muss im Programm sichtbar gehalten werden.")
+		}
+		if regexp.MustCompile(`(?i)(not implemented|nicht implementiert|can be added|placeholder|todo)`).MatchString(content) {
+			issues = append(issues, "Die Umsetzung enthält noch Nicht-implementiert- oder Platzhaltertext.")
+		}
+	}
+	return issues
+}
+
+func missingArtifactImplementationMarkers(task, content string) []string {
+	normalizedTask := normalizedQuestion(task)
+	if !containsNormalizedAny(normalizedTask, []string{"bild", "image", "grafik", "graphic", "zeichne", "male", "draw", "paint", "diagramm", "diagram", "svg", "canvas", "asset"}) {
+		return nil
+	}
+	if regexp.MustCompile(`(?i)<svg\b|<canvas\b|<img\b|drawImage\s*\(|getContext\s*\(|\.(png|jpg|jpeg|webp|gif|bmp|ico)\b|viewBox\s*=`).MatchString(content) {
+		return nil
+	}
+	return []string{"Die Aufgabe verlangt ein Bild/Diagramm/visuelles Asset, aber in den geänderten Dateien ist kein konkretes darstellbares Artefakt erkennbar."}
+}
+
+func missingGameImplementationMarkers(task, content string) []string {
+	normalizedTask := normalizedQuestion(task)
+	if !containsNormalizedAny(normalizedTask, []string{"pac man", "pacman", "pac-man", "spiel", "game", "clone", "klon"}) {
+		return nil
+	}
+	normalizedContent := normalizedQuestion(content)
+	var issues []string
+	if containsNormalizedAny(normalizedTask, []string{"labyrinth", "maze"}) && !regexp.MustCompile(`(?i)\bmaze\b|labyrinth|wall|wand|#`).MatchString(content) {
+		issues = append(issues, "Die Aufgabe verlangt ein Labyrinth/Maze, aber die geänderten Dateien enthalten keine erkennbare Maze-/Wand-Implementierung.")
+	}
+	if containsNormalizedAny(normalizedTask, []string{"pellet", "pellets", "punkte"}) {
+		if !regexp.MustCompile(`(?i)\bpellet(s)?\b|powerPellet|dot(s)?`).MatchString(content) {
+			issues = append(issues, "Die Aufgabe verlangt Pellets/Punkte, aber es ist keine konkrete Pellet-Implementierung erkennbar.")
+		}
+		if !regexp.MustCompile(`(?i)\bscore\s*(\+\+|\+=|=\s*score\s*\+)`).MatchString(content) {
+			issues = append(issues, "Die Aufgabe verlangt Score durch Spielaktionen, aber keine konkrete Score-Erhöhung ist erkennbar.")
+		}
+	}
+	if containsNormalizedAny(normalizedTask, []string{"geist", "geister", "ghost", "ghosts", "gegner"}) && !regexp.MustCompile(`(?i)\bghost(s)?\b|enemy|enemies|gegner|geist`).MatchString(content) {
+		issues = append(issues, "Die Aufgabe verlangt Geister/Gegner, aber in den geänderten Dateien ist keine Gegnerimplementierung erkennbar.")
+	}
+	if containsNormalizedAny(normalizedTask, []string{"kollision", "collision", "collisions"}) && !regexp.MustCompile(`(?i)collision|collisions|kollision|isvalidmove|wallat|canmove`).MatchString(normalizedContent) {
+		issues = append(issues, "Die Aufgabe verlangt Kollisionen, aber keine erkennbare Kollisionslogik ist vorhanden.")
+	}
+	if containsNormalizedAny(normalizedTask, []string{"pac man", "pacman", "pac-man"}) {
+		issues = append(issues, pacManImplementationIssues(content)...)
+	}
+	return issues
+}
+
+func pacManImplementationIssues(content string) []string {
+	var issues []string
+	rows := extractConstStringArray(content, "MAZE")
+	if len(rows) == 0 {
+		issues = append(issues, "Ein Pac-Man-Klon benötigt ein konkretes MAZE-Array.")
+	} else {
+		width := len(rows[0])
+		if len(rows) < 15 || width < 15 {
+			issues = append(issues, "Das Pac-Man-Maze ist zu klein; erwartet werden mindestens 15 Zeilen und 15 Spalten.")
+		}
+		for _, row := range rows {
+			if len(row) != width {
+				issues = append(issues, "Das Pac-Man-Maze ist nicht rechteckig; alle Zeilen müssen gleich lang sein.")
+				break
+			}
+		}
+		joined := strings.Join(rows, "")
+		if !strings.Contains(joined, "#") || !strings.Contains(joined, ".") {
+			issues = append(issues, "Das Pac-Man-Maze muss Wände und Pellets enthalten.")
+		}
+		if !strings.Contains(joined, "P") && !regexp.MustCompile(`(?i)pacmanStart`).MatchString(content) {
+			issues = append(issues, "Pac-Mans Startposition muss aus dem Maze oder aus festen Startdaten abgeleitet werden.")
+		}
+		ghostMarkers := 0
+		for _, marker := range []string{"A", "B", "C", "G"} {
+			ghostMarkers += strings.Count(joined, marker)
+		}
+		if ghostMarkers < 3 && !regexp.MustCompile(`(?i)ghostStarts\s*=\s*\[`).MatchString(content) {
+			issues = append(issues, "Mindestens drei feste Geist-Startpositionen müssen im Maze oder in ghostStarts definiert sein.")
+		}
+	}
+	checks := []struct {
+		re    string
+		issue string
+	}{
+		{`(?i)maze\s*=\s*MAZE\.map`, "Pellets müssen in einer veränderbaren Maze-Kopie gespeichert werden."},
+		{`(?i)\bpelletsLeft\s*--`, "Beim Einsammeln von Pellets muss pelletsLeft reduziert werden."},
+		{`(?i)\bscore\s*(\+=|=\s*score\s*\+)`, "Beim Einsammeln von Pellets muss der Score konkret erhöht werden."},
+		{`(?i)\bgameState\b|\bstate\s*=\s*['"](?:playing|paused|won|gameover)`, "Game Over, Pause und Gewinn müssen als Spielzustand gehalten werden, nicht nur per alert."},
+		{`(?i)restartButton.+addEventListener|addEventListener.+restartButton`, "Der Restart-Button muss an die Neustartlogik gebunden sein."},
+		{`(?i)key\.toLowerCase\(\)|case\s+['"]w['"]`, "WASD-Steuerung muss zusätzlich zu den Pfeiltasten implementiert sein."},
+		{`(?i)isWallAtTile|out\s+of\s+bounds|row\s*<\s*0|col\s*<\s*0`, "Wandkollisionen müssen Außenränder/undefinierte Felder sicher als Wand behandeln."},
+	}
+	for _, check := range checks {
+		if !regexp.MustCompile(check.re).MatchString(content) {
+			issues = append(issues, check.issue)
+		}
+	}
+	if regexp.MustCompile(`(?i)ghost\.\s*[xy]\s*=\s*Math\.floor\s*\(\s*Math\.random\s*\(`).MatchString(content) {
+		issues = append(issues, "Geister dürfen beim Restart oder Lebensverlust nicht zufällig auf mögliche Wände gesetzt werden; nutze feste ghostStarts.")
+	}
+	if regexp.MustCompile(`(?i)(won|you win|game over)[\s\S]{0,120}resetGame\s*\(`).MatchString(content) {
+		issues = append(issues, "Gewinn/Game-over darf nicht sofort resetGame aufrufen; der Endzustand muss sichtbar stehen bleiben.")
+	}
+	return issues
+}
+
+func extractConstStringArray(content, name string) []string {
+	re := regexp.MustCompile(`(?s)\bconst\s+` + regexp.QuoteMeta(name) + `\s*=\s*\[(.*?)\]`)
+	match := re.FindStringSubmatch(content)
+	if len(match) < 2 {
+		return nil
+	}
+	rowRe := regexp.MustCompile(`['"]([^'"]+)['"]`)
+	rowMatches := rowRe.FindAllStringSubmatch(match[1], -1)
+	rows := make([]string, 0, len(rowMatches))
+	for _, row := range rowMatches {
+		if len(row) > 1 {
+			rows = append(rows, row[1])
+		}
+	}
+	return rows
+}
+
+func containsNormalizedAny(haystack string, needles []string) bool {
+	for _, needle := range needles {
+		if strings.Contains(haystack, normalizedQuestion(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
 func trimMessages(messages []OllamaMessage) []OllamaMessage {
 	if len(messages) <= 30 {
 		return messages
@@ -1053,7 +1775,11 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		if count != 1 {
 			return "", fmt.Errorf("old_text muss genau einmal vorkommen, gefunden: %d", count)
 		}
-		return simpleDiff(original, strings.Replace(original, a.OldText, a.NewText, 1)), nil
+		updated := strings.Replace(original, a.OldText, a.NewText, 1)
+		if err := validateManagedStateWrite(project, cfg, a.Path, updated); err != nil {
+			return "", err
+		}
+		return simpleDiff(original, updated), nil
 	case "write_file":
 		full, err := ensureWithinRoot(project, a.Path)
 		if err != nil {
@@ -1065,6 +1791,9 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 				return "", fmt.Errorf("binary file: %s", a.Path)
 			}
 			old = string(data)
+		}
+		if err := validateManagedStateWrite(project, cfg, a.Path, a.Content); err != nil {
+			return "", err
 		}
 		return simpleDiff(old, a.Content), nil
 	case "delete_file":
@@ -1146,11 +1875,46 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 	}
 }
 
+func validateManagedStateWrite(project string, cfg Config, path, content string) error {
+	stateRel := strings.TrimSpace(cfg.StateFile)
+	if stateRel == "" {
+		stateRel = "STATE.md"
+	}
+	cleanPath := filepath.ToSlash(filepath.Clean(path))
+	cleanState := filepath.ToSlash(filepath.Clean(stateRel))
+	if !strings.EqualFold(cleanPath, cleanState) {
+		return nil
+	}
+	existing, err := readProjectFile(project, stateRel)
+	if err != nil {
+		return nil
+	}
+	hasCurrentMarkers := strings.Contains(existing, stateBegin) || strings.Contains(existing, legacyStateBegin)
+	if !hasCurrentMarkers {
+		return nil
+	}
+	hasModernPair := strings.Contains(content, stateBegin) && strings.Contains(content, stateEnd)
+	hasLegacyPair := strings.Contains(content, legacyStateBegin) && strings.Contains(content, legacyStateEnd)
+	if !hasModernPair && !hasLegacyPair {
+		return errors.New("STATE.md contains a LocalCode-managed section; write_file/replace_text must preserve the managed state markers instead of overwriting the handoff state")
+	}
+	return nil
+}
+
 func executeAction(ctx context.Context, project string, cfg Config, a AgentAction) (string, error) {
 	switch a.Action {
 	case "replace_text":
+		if current, err := readProjectFile(project, a.Path); err == nil {
+			updated := strings.Replace(current, a.OldText, a.NewText, 1)
+			if err := validateManagedStateWrite(project, cfg, a.Path, updated); err != nil {
+				return "", err
+			}
+		}
 		return replaceText(project, a.Path, a.OldText, a.NewText)
 	case "write_file":
+		if err := validateManagedStateWrite(project, cfg, a.Path, a.Content); err != nil {
+			return "", err
+		}
 		return writeProjectFile(project, a.Path, a.Content)
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)

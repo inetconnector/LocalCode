@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +110,213 @@ func TestParseAgentAction(t *testing.T) {
 	if a.Action != "read_file" || a.Path != "README.md" {
 		t.Fatalf("unexpected action: %#v", a)
 	}
+	a, err = parseAgentAction(`{"action":"write_file","message":"Schreibe Datei","arguments":{"path":"index.html","content":"<main>ok</main>"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Path != "index.html" || a.Content != "<main>ok</main>" {
+		t.Fatalf("arguments were not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"write_file","message":"Leere Datei","path":"index.html"}`); err == nil {
+		t.Fatal("write_file without content must be rejected")
+	}
+}
+
+func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte("// placeholder\nlet score = 0;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	intent := classifyTaskIntent("Baue game.js mit Pause, Restart und teste ob es funktioniert.")
+	issues := completionGuardIssues(project, intent, intent.OriginalTask, map[string]bool{"game.js": true}, true)
+	joined := strings.Join(issues, "\n")
+	for _, want := range []string{"Platzhalter", "keine passende Prüfung", "Pause", "Neustart"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing issue %q in: %s", want, joined)
+		}
+	}
+}
+
+func TestCompletionGuardAllowsVerifiedConcreteEdit(t *testing.T) {
+	project := t.TempDir()
+	content := `let paused = false;
+let score = 0;
+let lives = 3;
+function pauseGame() { paused = true; }
+function restartGame() { score = 0; lives = 3; }
+function showGameOver() { return "game over"; }
+function showWinState() { return "win"; }
+`
+	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Baue game.js mit Pause, Restart, Game over, Win-State, Score und Leben und teste ob es funktioniert."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"game.js": true}, false)
+	if len(issues) != 0 {
+		t.Fatalf("unexpected completion issues: %v", issues)
+	}
+}
+
+func TestTaskQualityHintAppliesToGeneralImplementationTasks(t *testing.T) {
+	hint := taskQualityHint("Erstelle eine kleine Browser-App mit Button und Tastatursteuerung.")
+	for _, want := range []string{"INTERNE QUALITÄTSANFORDERUNGEN", "sprach- und projektunabhängig", "Button", "Dateioperationen", "Bild"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("quality hint missing %q in: %s", want, hint)
+		}
+	}
+	if strings.Contains(hint, "Pac-Man-Klon") {
+		t.Fatalf("general app hint must not inject Pac-Man-specific requirements: %s", hint)
+	}
+}
+
+func TestImplementationIntentCoversFileAndVisualTasks(t *testing.T) {
+	for _, task := range []string{
+		"Kopiere diese Datei nach assets/output.svg.",
+		"Male ein altes Schloss als SVG.",
+		"Move config.json into backup/config.json.",
+	} {
+		if got := classifyTaskIntent(task); got.Kind != "edit" {
+			t.Fatalf("classifyTaskIntent(%q).Kind = %q, want edit", task, got.Kind)
+		}
+	}
+}
+
+func TestSupervisorBlocksUnrequestedGlobalInstalls(t *testing.T) {
+	intent := classifyTaskIntent("Baue eine lokale Browser-App und pruefe ob sie funktioniert.")
+	allowed, hint := actionAllowedForIntent(intent, AgentAction{Action: "run_command", Command: "npm install -g playwright"})
+	if allowed {
+		t.Fatal("unrequested global install was allowed")
+	}
+	if !strings.Contains(hint, "Globale Installationen") {
+		t.Fatalf("unexpected hint: %s", hint)
+	}
+	intent = classifyTaskIntent("Installiere Playwright global.")
+	allowed, _ = actionAllowedForIntent(intent, AgentAction{Action: "run_command", Command: "npm install -g playwright"})
+	if !allowed {
+		t.Fatal("explicitly requested global install was blocked")
+	}
+}
+
+func TestCompletionGuardBlocksMissingGeneralInteractiveLogic(t *testing.T) {
+	project := t.TempDir()
+	content := `<main><button id="start">Start</button><p>Fertig</p></main>`
+	if err := os.WriteFile(filepath.Join(project, "index.html"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Erstelle eine Browser-App mit Button und Tastatursteuerung und teste ob sie funktioniert."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"index.html": true}, false)
+	joined := strings.Join(issues, "\n")
+	for _, want := range []string{"Button-Interaktion", "Tastatursteuerung"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing issue %q in: %s", want, joined)
+		}
+	}
+}
+
+func TestCompletionRepairDirectivePrioritizesRuntimeLogic(t *testing.T) {
+	directive := completionRepairDirective("Baue eine spielbare Browser-App.", []string{"Button fehlt", "Status fehlt"})
+	for _, want := range []string{"Laufzeitlogik", "Event-Handler", "installiere nicht reflexhaft global", "Kernmechanik"} {
+		if !strings.Contains(directive, want) {
+			t.Fatalf("directive missing %q in: %s", want, directive)
+		}
+	}
+}
+
+func TestCompletionGuardDoesNotTreatNodeJSAsProjectFile(t *testing.T) {
+	project := t.TempDir()
+	content := "function pauseGame(){}\nfunction restartGame(){}\nlet score = 0;\nlet lives = 3;\n"
+	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Prüfe danach tatsächlich die JavaScript-Syntax von game.js mit Node.js."
+	issues := completionGuardIssues(project, classifyTaskIntent("Baue game.js. "+task), "Baue game.js. "+task, map[string]bool{"game.js": true}, false)
+	for _, issue := range issues {
+		if strings.Contains(issue, "Node.js") {
+			t.Fatalf("Node.js was treated as a project file: %v", issues)
+		}
+	}
+}
+
+func TestMentionedProjectFilesSplitsSlashSeparatedFileList(t *testing.T) {
+	got := mentionedProjectFiles("Passe index.html/styles.css/README.md an, aber behalte src/agent.go.")
+	want := []string{"README.md", "index.html", "src/agent.go", "styles.css"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mentionedProjectFiles() = %#v, want %#v", got, want)
+	}
+}
+
+func TestCommandLooksLikeNodeSyntaxVerification(t *testing.T) {
+	for _, command := range []string{"node -c game.js", "node.exe --check game.js"} {
+		if !commandLooksLikeVerification(command) {
+			t.Fatalf("%q was not recognized as verification", command)
+		}
+	}
+}
+
+func TestCommandLooksLikeLanguageAgnosticVerification(t *testing.T) {
+	for _, command := range []string{
+		"go test ./...",
+		"python -m py_compile app.py",
+		"cargo check",
+		"javac Main.java",
+		"dotnet test",
+		"mvn test",
+		"gradle build",
+		"php -l index.php",
+		"ruby -c app.rb",
+		"bash -n script.sh",
+		"gcc -fsyntax-only main.c",
+	} {
+		if !commandLooksLikeVerification(command) {
+			t.Fatalf("%q was not recognized as verification", command)
+		}
+	}
+}
+
+func TestCompletionGuardBlocksIncompletePacManImplementation(t *testing.T) {
+	project := t.TempDir()
+	content := `const TILE_SIZE = 16;
+const MAZE = ['###', '#.#', '###'];
+const GHOSTS = [{ x: 1, y: 1 }, { x: 1, y: 1 }, { x: 1, y: 1 }];
+let score = 0;
+function isValidMove() { return true; }
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'p') {
+    // Pause logic can be added here
+  }
+});
+`
+	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Erstelle einen Pac-Man-Klon mit Labyrinth, Pellets, Geistern, Kollisionen, Score, Pause und teste mit Node.js."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"game.js": true}, false)
+	joined := strings.Join(issues, "\n")
+	for _, want := range []string{"can be added", "Pellets", "Score durch Spielaktionen"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing issue %q in: %s", want, joined)
+		}
+	}
+}
+
+func TestManagedStateWriteMustPreserveMarkers(t *testing.T) {
+	project := t.TempDir()
+	managed := stateBegin + "\nmanaged\n" + stateEnd + "\n\nmanual\n"
+	if err := os.WriteFile(filepath.Join(project, "STATE.md"), []byte(managed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.StateFile = "STATE.md"
+	if _, err := previewAction(project, cfg, AgentAction{Action: "write_file", Path: "STATE.md", Content: "manual replacement"}); err == nil {
+		t.Fatal("expected managed STATE.md overwrite to be blocked")
+	}
+	if _, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "write_file", Path: "STATE.md", Content: "manual replacement"}); err == nil {
+		t.Fatal("executeAction must also block managed STATE.md overwrite")
+	}
+	okContent := stateBegin + "\nupdated\n" + stateEnd + "\n\nmanual replacement\n"
+	if _, err := previewAction(project, cfg, AgentAction{Action: "write_file", Path: "STATE.md", Content: okContent}); err != nil {
+		t.Fatalf("preserving state markers should be allowed: %v", err)
+	}
 }
 
 func TestNormalizeOllamaBaseURL(t *testing.T) {
@@ -173,6 +381,252 @@ func TestAgentLoopExecutesStructuredActions(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("agent did not finish in time")
+}
+
+func TestAgentRejectsEmptyWriteFileAndRetries(t *testing.T) {
+	var chatCalls int
+	var sawInvalidRetry bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			chatCalls++
+			var req OllamaChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatal(err)
+			}
+			content := `{"action":"write_file","message":"Erstelle index.html","path":"index.html"}`
+			if chatCalls == 2 {
+				for _, message := range req.Messages {
+					if strings.Contains(message.Content, "Antwort ungültig") && strings.Contains(message.Content, "write_file action requires non-empty content") {
+						sawInvalidRetry = true
+					}
+				}
+				content = `{"action":"write_file","message":"Erstelle index.html","path":"index.html","content":"<main>Maze Muncher</main>"}`
+			}
+			if chatCalls >= 3 {
+				content = `{"action":"finish","message":"Datei erstellt und geprüft."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.EditingEngine = editingEngineNative
+	cfg.ApprovalMode = "auto"
+	cfg.MaxAgentSteps = 6
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
+	if err := state.StartAgent("Erstelle eine kleine HTML-Datei", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 4*time.Second)
+	if !sawInvalidRetry {
+		t.Fatal("model was not told to repair the missing write_file content")
+	}
+	data, err := os.ReadFile(filepath.Join(project, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "<main>Maze Muncher</main>" {
+		t.Fatalf("unexpected file content: %q", data)
+	}
+}
+
+func TestAgentRepairsRepeatedEmptyWriteFileContent(t *testing.T) {
+	var chatCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			chatCalls++
+			content := `{"action":"write_file","message":"Erstelle index.html","path":"index.html"}`
+			switch chatCalls {
+			case 3:
+				content = `{"content":"<main>Recovered</main>"}`
+			case 4:
+				content = `{"action":"finish","message":"Reparierter Dateiinhalt wurde geschrieben."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.EditingEngine = editingEngineNative
+	cfg.ApprovalMode = "auto"
+	cfg.MaxAgentSteps = 6
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
+	if err := state.StartAgent("Erstelle eine kleine HTML-Datei", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 4*time.Second)
+	data, err := os.ReadFile(filepath.Join(project, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "<main>Recovered</main>" {
+		t.Fatalf("unexpected repaired file content: %q", data)
+	}
+	if chatCalls != 4 {
+		t.Fatalf("chatCalls = %d, want 4", chatCalls)
+	}
+}
+
+func TestAgentContinuesAfterUnrepairableInvalidAction(t *testing.T) {
+	var chatCalls int
+	var sawInvalidWarning bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			chatCalls++
+			content := `{"action":"write_file","message":"bad","path":"game.js"}`
+			switch chatCalls {
+			case 3:
+				content = `{"content":""}`
+			case 4:
+				var req OllamaChatRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatal(err)
+				}
+				for _, message := range req.Messages {
+					if strings.Contains(message.Content, "Die letzte Modellantwort enthielt keine ausführbare Agentenaktion") {
+						sawInvalidWarning = true
+					}
+				}
+				content = `{"action":"write_file","message":"valid","path":"game.js","content":"let score = 0;\\nfunction restartGame() { score = 0; }\\n"}`
+			case 5:
+				content = `{"action":"run_command","message":"check","command":"echo test passed"}`
+			case 6:
+				content = `{"action":"finish","message":"Fertig."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.EditingEngine = editingEngineNative
+	cfg.ApprovalMode = "auto"
+	cfg.MaxAgentSteps = 8
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
+	if err := state.StartAgent("Erstelle game.js und teste ob es funktioniert.", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 5*time.Second)
+	if !sawInvalidWarning {
+		t.Fatal("agent did not continue with an invalid-action recovery hint")
+	}
+	data, err := os.ReadFile(filepath.Join(project, "game.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "restartGame") {
+		t.Fatalf("valid action was not executed: %s", data)
+	}
+}
+
+func TestAgentBlocksPrematurePlaceholderFinish(t *testing.T) {
+	var chatCalls int
+	var sawGuard bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			chatCalls++
+			var req OllamaChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatal(err)
+			}
+			for _, message := range req.Messages {
+				if strings.Contains(message.Content, "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG") {
+					sawGuard = true
+				}
+			}
+			content := `{"action":"write_file","message":"Erstelle game.js","path":"game.js","content":"// placeholder\nlet score = 0;\n"}`
+			switch chatCalls {
+			case 2:
+				content = `{"action":"finish","message":"Fertig."}`
+			case 3:
+				content = `{"action":"write_file","message":"Ersetze Platzhalter durch Spielzustände","path":"game.js","content":"let paused=false;\nlet score=0;\nlet lives=3;\nfunction pauseGame(){paused=true;}\nfunction restartGame(){score=0;lives=3;paused=false;}\nfunction gameOver(){return 'game over';}\nfunction winState(){return 'win';}\n"}`
+			case 4:
+				content = `{"action":"run_command","message":"Prüfe die erzeugte Datei","command":"echo test passed"}`
+			case 5:
+				content = `{"action":"finish","message":"game.js wurde umgesetzt und geprüft."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.EditingEngine = editingEngineNative
+	cfg.ApprovalMode = "auto"
+	cfg.MaxAgentSteps = 8
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
+	task := "Baue game.js mit Pause, Restart, Score, Leben und teste ob es funktioniert."
+	if err := state.StartAgent(task, "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 5*time.Second)
+	if !sawGuard {
+		t.Fatal("premature finish was not blocked by the completion guard")
+	}
+	data, err := os.ReadFile(filepath.Join(project, "game.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(data)), "placeholder") || !strings.Contains(string(data), "pauseGame") || !strings.Contains(string(data), "restartGame") {
+		t.Fatalf("unexpected final game.js: %s", data)
+	}
+	if chatCalls != 5 {
+		t.Fatalf("chatCalls = %d, want 5", chatCalls)
+	}
 }
 
 func TestChatAcceptsStructuredActionFromThinking(t *testing.T) {

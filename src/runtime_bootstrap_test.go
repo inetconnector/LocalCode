@@ -56,6 +56,20 @@ func TestRequiredModelsIncludesMissingExplicitAiderModels(t *testing.T) {
 	}
 }
 
+func TestRequiredModelsIgnoresStaleLastModelWhenModelsExist(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.LastModel = "test-model"
+	cfg.AiderMainModel = ""
+	cfg.AiderArchitectModel = ""
+	cfg.AiderEditorModel = ""
+	cfg.OllamaDefaultModel = "qwen2.5-coder:14b"
+	models := []ModelInfo{{Name: "qwen2.5-coder:14b"}}
+	missing := requiredOllamaModels(cfg, models)
+	if len(missing) != 0 {
+		t.Fatalf("stale last_model triggered required pull: %#v", missing)
+	}
+}
+
 func TestResolveSandboxPathRejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
