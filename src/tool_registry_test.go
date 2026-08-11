@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -603,6 +604,39 @@ func TestContextCompactionThreshold(t *testing.T) {
 	state := deterministicContextSummary(messages, "analysiere das projekt")
 	if state.OriginalTask != "analysiere das projekt" || strings.TrimSpace(renderCompactedState(state)) == "" {
 		t.Fatalf("invalid compacted state: %#v", state)
+	}
+}
+
+func TestContextCompactionFitsRecentMessagesToBudget(t *testing.T) {
+	cfg := normalizeConfig(Config{SchemaVersion: 4, ContextLength: 4096, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 50, ContextCompactionKeepRecent: 12})
+	messages := []OllamaMessage{{Role: "system", Content: "system"}}
+	for i := 0; i < 16; i++ {
+		messages = append(messages, OllamaMessage{Role: "user", Content: strings.Repeat(fmt.Sprintf("recent-%02d ", i), 3000), Thinking: strings.Repeat("hidden", 1000)})
+	}
+	state := deterministicContextSummary(messages, "build")
+	result := buildCompactedMessages(messages, state, 12)
+	if estimateMessageTokens(result) <= postCompactionTokenTarget(cfg) {
+		t.Fatal("test fixture did not exceed post-compaction target")
+	}
+	fitted := truncateCompactedRecentMessages(result, postCompactionTokenTarget(cfg))
+	if got, wantMax := estimateMessageTokens(fitted), postCompactionTokenTarget(cfg); got > wantMax {
+		t.Fatalf("fitted context still too large: got %d want <= %d", got, wantMax)
+	}
+	for _, message := range fitted {
+		if message.Thinking != "" {
+			t.Fatal("thinking content was not stripped from compacted recent messages")
+		}
+	}
+}
+
+func TestContextToolResultLimitIsBounded(t *testing.T) {
+	small := contextToolResultLimit(Config{ContextLength: 4096})
+	large := contextToolResultLimit(Config{ContextLength: 131072})
+	if small < 8000 || small > 60000 {
+		t.Fatalf("small context limit out of bounds: %d", small)
+	}
+	if large != 60000 {
+		t.Fatalf("large context limit = %d, want cap 60000", large)
 	}
 }
 

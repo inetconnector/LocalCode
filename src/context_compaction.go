@@ -77,6 +77,33 @@ func shouldCompactMessages(messages []OllamaMessage, cfg Config) bool {
 	return estimateMessageTokens(messages) >= threshold
 }
 
+func postCompactionTokenTarget(cfg Config) int {
+	contextLength := cfg.ContextLength
+	if contextLength < 4096 {
+		contextLength = 32768
+	}
+	target := contextLength * 55 / 100
+	if target < 2048 {
+		target = 2048
+	}
+	return target
+}
+
+func contextToolResultLimit(cfg Config) int {
+	contextLength := cfg.ContextLength
+	if contextLength < 4096 {
+		contextLength = 32768
+	}
+	limit := contextLength * 2
+	if limit < 8000 {
+		limit = 8000
+	}
+	if limit > 60000 {
+		limit = 60000
+	}
+	return limit
+}
+
 func renderCompactedState(state compactedContext) string {
 	var b strings.Builder
 	b.WriteString("KOMPRIMIERTER ARBEITSKONTEXT\n")
@@ -201,17 +228,65 @@ ORIGINAL TASK:
 		}
 	}
 
-	result := make([]OllamaMessage, 0, keep+2)
-	result = append(result, messages[0])
-	result = append(result, OllamaMessage{Role: "user", Content: renderCompactedState(state)})
-	result = append(result, messages[len(messages)-keep:]...)
+	target := postCompactionTokenTarget(cfg)
+	result := buildCompactedMessages(messages, state, keep)
 	after := estimateMessageTokens(result)
+	for after > target && keep > 4 {
+		keep--
+		result = buildCompactedMessages(messages, state, keep)
+		after = estimateMessageTokens(result)
+	}
+	if after > target {
+		result = truncateCompactedRecentMessages(result, target)
+		after = estimateMessageTokens(result)
+	}
 	s.AddEvent(UIEvent{
 		Type:    "context_compacted",
 		Message: "Kontext komprimiert",
 		Detail:  fmt.Sprintf("Modus: %s\nGeschätzte Tokens: %d → %d\nBeibehaltene aktuelle Nachrichten: %d", mode, before, after, keep),
 	})
 	return result, true
+}
+
+func buildCompactedMessages(messages []OllamaMessage, state compactedContext, keep int) []OllamaMessage {
+	result := make([]OllamaMessage, 0, keep+2)
+	result = append(result, messages[0])
+	result = append(result, OllamaMessage{Role: "user", Content: renderCompactedState(state)})
+	result = append(result, messages[len(messages)-keep:]...)
+	return result
+}
+
+func truncateCompactedRecentMessages(messages []OllamaMessage, target int) []OllamaMessage {
+	if estimateMessageTokens(messages) <= target || len(messages) <= 2 {
+		return messages
+	}
+	for _, limit := range []int{16000, 10000, 6000, 3500, 2000, 1200} {
+		candidate := append([]OllamaMessage(nil), messages...)
+		for i := 2; i < len(candidate); i++ {
+			if utf8.RuneCountInString(candidate[i].Content) > limit {
+				candidate[i].Content = truncateText(candidate[i].Content, limit) + "\n\n[Kontextbudget: diese neuere Nachricht wurde gekürzt; vollständige Ausgabe steht im Ausgabenbereich.]"
+			}
+			if utf8.RuneCountInString(candidate[i].Thinking) > 0 {
+				candidate[i].Thinking = ""
+			}
+		}
+		if estimateMessageTokens(candidate) <= target {
+			return candidate
+		}
+		messages = candidate
+	}
+	for estimateMessageTokens(messages) > target && len(messages) > 4 {
+		messages = append(append([]OllamaMessage(nil), messages[:2]...), messages[3:]...)
+	}
+	if estimateMessageTokens(messages) > target {
+		candidate := append([]OllamaMessage(nil), messages...)
+		for i := 2; i < len(candidate); i++ {
+			candidate[i].Content = truncateText(candidate[i].Content, 600) + "\n\n[Kontextbudget: stark gekürzt; vollständige Ausgabe steht im Ausgabenbereich.]"
+			candidate[i].Thinking = ""
+		}
+		return candidate
+	}
+	return messages
 }
 
 func renderMessagesForCompaction(messages []OllamaMessage) string {

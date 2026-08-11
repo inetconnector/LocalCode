@@ -667,7 +667,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if actionVerifiesProject(action) && !toolFailed {
 			changedSinceVerification = false
 		}
-		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, 120000)
+		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, contextToolResultLimit(cfg))
 		if toolFailed {
 			failedActions[actionSignature(action)]++
 			toolMessage += "\n\n" + toolFailureRecoveryDirective(action, result, errors.New("Werkzeugaktion fehlgeschlagen"), originalTask)
