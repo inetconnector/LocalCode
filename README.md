@@ -58,6 +58,8 @@ Bild-, Zeichen-, Diagramm- und Asset-Aufgaben müssen eine konkrete Artefaktdate
 
 Für lokale Modelle budgetiert LocalCode den Modellkontext aggressiver als die sichtbare UI-Ausgabe. Große Werkzeugresultate werden im Ausgabenbereich weiter angezeigt, aber im nächsten Modellaufruf gekürzt. Nach einer Kontextkomprimierung reduziert LocalCode die unveränderten Recent-Messages adaptiv, kürzt sehr große neuere Nachrichten und fällt notfalls auf wenige jüngste Schritte plus faktischen Arbeitszustand zurück. So bleibt genug Kontextfenster für den nächsten Reparatur- oder Implementierungsschritt frei.
 
+Der native Agent besitzt lokale, dauerhafte Erinnerungen. Mit `memory_remember`, `memory_list` und `memory_forget` kann er wichtige Projekt- oder Nutzerfakten speichern, im nächsten Agentenlauf wieder in den Kontext bekommen und per konkreter ID löschen. Projektbezogene Erinnerungen sind der Standard; globale Erinnerungen sind für ausdrücklich projektübergreifende Präferenzen gedacht. Inhalte, die wie Passwörter, Tokens, private Schlüssel oder API-Keys aussehen, werden abgelehnt.
+
 Direkte Dateioperationen liefern überprüfbare Postconditions zurück. `write_file`, `delete_file`, `copy_path` und `move_path` melden nach der Ausführung Existenz, Typ, Größe und bei Dateien den SHA-256-Hash; Verschieben und Löschen melden ausdrücklich, ob die Quelle beziehungsweise das Ziel fehlt. Dadurch sieht das lokale Modell im nächsten Schritt nicht nur eine Erfolgsmeldung, sondern konkrete Fakten über den Dateisystemzustand.
 
 Die Werkzeugerkennung umfasst Windows-Standardpfade, benutzerlokale Installationen und WinGet-Paketpfade für Node.js/npm/npx. Technologiewörter wie `Node.js` werden in Aufgaben nicht als Projektdatei fehlinterpretiert.
@@ -201,6 +203,8 @@ For creation and modification tasks, LocalCode also adds internal, language- and
 Image, drawing, diagram, and asset tasks must change a concrete artifact file such as SVG, HTML/canvas, CSS, or an image file. A description or SVG example only inside a README does not count as a finished image. Explicit image paths such as `assets/castle.svg` or `preview.webp` are recognized as required project files.
 
 For local models, LocalCode budgets model context more aggressively than visible UI output. Large tool results remain visible in the output panel, but are shortened before being fed back to the next model call. After context compaction, LocalCode adaptively reduces unchanged recent messages, truncates very large newer messages, and can fall back to only a few latest steps plus the factual working state. This keeps enough context window available for the next repair or implementation step.
+
+The native agent has local durable memories. Through `memory_remember`, `memory_list`, and `memory_forget`, it can store important project or user facts, receive them again in later agent context, and delete them by concrete ID. Project-scoped memories are the default; global memories are for explicitly cross-project preferences. Content that looks like passwords, tokens, private keys, or API keys is rejected.
 
 Direct file operations return verifiable postconditions. `write_file`, `delete_file`, `copy_path`, and `move_path` report existence, type, size, and file SHA-256 hashes after execution; moves and deletes explicitly report whether the source or target is gone. This gives the local model concrete filesystem facts on the next step instead of only a success message.
 

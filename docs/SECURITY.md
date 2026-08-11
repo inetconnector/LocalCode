@@ -13,7 +13,7 @@ LocalCode kombiniert folgende Anwendungsschutzschichten:
 - Schutz vor Loopback-, Link-local-, privaten und sonstigen nichtöffentlichen Zieladressen
 - DNS-Rebinding-Schutz: verbunden wird mit genau der zuvor beim Dial validierten IP, nicht mit einer zweiten Namensauflösung
 - explizite MCP-Konfiguration und kontrolliertes Warten auf beendete stdio-Prozesse
-- keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen
+- keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen; dauerhafte Agentenerinnerungen lehnen Inhalte ab, die wie Passwörter, Tokens, private Schlüssel oder API-Keys aussehen
 
 ### Automatische Laufzeitinstallation
 
@@ -34,6 +34,8 @@ LocalCode übergibt Aider eine explizite Minimal-Konfiguration und eine absichtl
 
 Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interaktive Logins werden bewusst in einem sichtbaren Terminal geöffnet. Diese Kontrollen sind Anwendungsschutz und keine identische Betriebssystem- oder Virtualisierungssandbox der proprietären Codex-Infrastruktur.
 
+Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder Global-Scope, werden atomar mit der Konfiguration geschrieben und können nur über eine konkrete Memory-ID gelöscht werden. Sie sind nicht für Zugangsdaten, Geheimnisse oder vertrauliche Schlüssel bestimmt.
+
 ## English
 
 LocalCode combines these application-level controls:
@@ -47,7 +49,7 @@ LocalCode combines these application-level controls:
 - rejection of loopback, link-local, private, and other non-public destinations
 - DNS-rebinding protection by dialing the exact IP validated during connection setup rather than performing a second lookup
 - explicit MCP configuration and controlled reaping of stdio subprocesses
-- no normal settings storage for passwords or tokens
+- no normal settings storage for passwords or tokens; durable agent memories reject content that looks like passwords, tokens, private keys, or API keys
 
 ### Automatic runtime installation
 
@@ -67,3 +69,5 @@ The core runtime is completed automatically by default with additional integrity
 LocalCode passes an explicit minimal configuration and an intentionally empty environment file. Analytics, update checks, browser prompts, shell suggestions, URL detection, notifications, file watching, and prompt caching are disabled. Histories remain outside the repository. Backups and hash manifests are created before edit, lint, and test runs; undo never overwrites later manual changes. Aider's `--yes-always` applies only inside an editing run already approved by LocalCode.
 
 Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system or virtualization sandbox to proprietary Codex infrastructure.
+
+Agent memories are local configuration data. They have project or global scope, are written atomically with the configuration, and can only be deleted through a concrete memory ID. They are not intended for credentials, secrets, or confidential keys.

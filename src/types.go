@@ -51,6 +51,7 @@ type Config struct {
 	ProjectAliases map[string]string `json:"project_aliases,omitempty"`
 	PinnedProjects []string          `json:"pinned_projects,omitempty"`
 	HiddenProjects []string          `json:"hidden_projects,omitempty"`
+	Memories       []MemoryEntry     `json:"memories,omitempty"`
 	Port           int               `json:"port"`
 
 	OllamaURL                         string `json:"ollama_url"`
@@ -150,6 +151,15 @@ type Config struct {
 	AutoDiscoverTools    bool              `json:"auto_discover_tools"`
 	AutoResearchToolHelp bool              `json:"auto_research_tool_help"`
 	ToolOverrides        map[string]string `json:"tool_overrides"`
+}
+
+type MemoryEntry struct {
+	ID        string    `json:"id"`
+	Scope     string    `json:"scope"` // project | global
+	Project   string    `json:"project,omitempty"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Attachment struct {

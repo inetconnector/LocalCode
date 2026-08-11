@@ -10,6 +10,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
 - `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
 - `agent.go`, `agent_supervisor.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
+- `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
 - `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
 - `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
 - `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
@@ -31,6 +32,8 @@ Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofo
 
 Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeldung, sondern den beobachteten Arbeitszustand: geänderte und erwähnte Dateien, erkannte Funktionsmarker, Postconditions von Dateiwerkzeugen und den Nachweis einer passenden Prüfung nach der letzten Code-/App-/Tool-Änderung. Reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe; Dokumentationsaufgaben und reine Dateioperationen werden gesondert erkannt.
 
+Agentenerinnerungen werden als normalisierte Einträge in der lokalen Konfiguration gespeichert. Jeder neue native Agentenlauf erhält globale Erinnerungen und Erinnerungen des aktiven Projekts im eingebetteten Kontext. Schreibende Memory-Aktionen speichern atomar über denselben Konfigurationspfad; Löschungen verlangen eine konkrete ID.
+
 MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
 
 ## English
@@ -43,6 +46,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `server.go`: API, SSE, projects, tasks, settings, and approvals.
 - `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
 - `agent.go`, `agent_supervisor.go`, and `continuation.go`: agent loop, deterministic supervision, completion guard/review, continuations, and cancellation.
+- `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
 - `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
 - `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
 - `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
@@ -63,5 +67,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
 
 Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
+
+Agent memories are stored as normalized entries in the local configuration. Every new native agent run receives global memories and memories for the active project in the embedded context. Writing memory actions persist atomically through the same configuration path; deletion requires a concrete ID.
 
 MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.

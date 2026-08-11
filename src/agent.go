@@ -39,6 +39,8 @@ type AgentAction struct {
 	CommitMessage string         `json:"commit_message,omitempty"`
 	StageAll      bool           `json:"stage_all,omitempty"`
 	Task          string         `json:"task,omitempty"`
+	MemoryID      string         `json:"memory_id,omitempty"`
+	Scope         string         `json:"scope,omitempty"`
 }
 
 var actionSchema = map[string]any{
@@ -48,10 +50,11 @@ var actionSchema = map[string]any{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
+			"memory_remember", "memory_list", "memory_forget",
 			"finish", "ask_user",
 		}},
 		"message": map[string]any{"type": "string"}, "path": map[string]any{"type": "string", "description": "Relative project path."},
-		"query": map[string]any{"type": "string"}, "content": map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file."},
+		"query": map[string]any{"type": "string"}, "content": map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file or memory text for memory_remember."},
 		"old_text": map[string]any{"type": "string", "minLength": 1}, "new_text": map[string]any{"type": "string"},
 		"command": map[string]any{"type": "string"}, "max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
 		"url": map[string]any{"type": "string"}, "max_results": map[string]any{"type": "integer", "minimum": 1, "maximum": 10},
@@ -60,7 +63,9 @@ var actionSchema = map[string]any{
 		"args":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"source": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"},
 		"commit_message": map[string]any{"type": "string"}, "stage_all": map[string]any{"type": "boolean"},
-		"task": map[string]any{"type": "string"},
+		"task":      map[string]any{"type": "string"},
+		"memory_id": map[string]any{"type": "string"},
+		"scope":     map[string]any{"type": "string", "enum": []string{"project", "global"}},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 	"allOf": []map[string]any{
@@ -75,6 +80,8 @@ var actionSchema = map[string]any{
 		conditionalRequired("open_terminal", "command"),
 		conditionalRequired("web_fetch", "url"),
 		conditionalRequired("mcp_call_tool", "server", "tool"),
+		conditionalRequired("memory_remember", "content"),
+		conditionalRequired("memory_forget", "memory_id"),
 	},
 }
 
@@ -121,6 +128,7 @@ Arbeitsweise:
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
+- Wenn der Nutzer eine stabile Präferenz, ein dauerhaft wichtiges Projektfaktum oder eine wiederverwendbare Arbeitsentscheidung nennt, nutze memory_remember. Speichere keine Passwörter, Tokens, privaten Schlüssel oder Geheimnisse. Standard-Scope ist project; global nur für ausdrücklich projektübergreifend nützliche Präferenzen. Wenn der Nutzer das Löschen/Vergessen verlangt, nutze bei Unklarheit zuerst memory_list und lösche dann per konkreter memory_id mit memory_forget.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
 - ask_user nur, wenn eine echte Entscheidung oder interaktive Benutzeraktion blockiert.
 
@@ -140,6 +148,7 @@ Werkzeuge:
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
+- memory_remember(content,scope), memory_list(query,scope), memory_forget(memory_id)
 - finish, ask_user`
 
 func (s *AppState) StartAgent(userMessage, model string, attachments []Attachment) error {
@@ -424,7 +433,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if engine == editingEngineNative {
 		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
 	}
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), toolInventorySummary(project, cfg))
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), toolInventorySummary(project, cfg))
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
@@ -855,6 +864,12 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 	if a.Tool == "" {
 		a.Tool = stringMapArg(a.Arguments, "tool")
 	}
+	if a.MemoryID == "" {
+		a.MemoryID = stringMapArg(a.Arguments, "memory_id")
+	}
+	if a.Scope == "" {
+		a.Scope = stringMapArg(a.Arguments, "scope")
+	}
 	return a
 }
 
@@ -909,6 +924,10 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("tool", a.Tool)
+	case "memory_remember":
+		return require("content", a.Content)
+	case "memory_forget":
+		return require("memory_id", a.MemoryID)
 	}
 	return nil
 }
@@ -1638,6 +1657,8 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 			params["arguments"] = a.Arguments
 		}
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
+	case "memory_remember", "memory_list", "memory_forget":
+		result, err = s.executeMemoryAction(project, a)
 	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":

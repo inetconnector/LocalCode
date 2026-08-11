@@ -641,6 +641,7 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.ToolOverrides == nil {
 		cfg.ToolOverrides = map[string]string{}
 	}
+	cfg.Memories = normalizeMemoryEntries(cfg.Memories)
 
 	root := strings.TrimSpace(cfg.RootProjectDir)
 	if root != "" {
