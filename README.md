@@ -106,6 +106,8 @@ LocalCode 6.4.3 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 Unter **Einstellungen → Plugins** lassen sich Installation, Anmeldung, Aktivierung, Verbindungstest und Sitzungsreset pro Server steuern. LocalCode kann fehlendes uv, portables Node.js LTS und GitHub CLI nach ausdrücklicher Genehmigung benutzerlokal installieren. Eigene stdio- und Streamable-HTTP-Server bleiben über die erweiterte JSON-Konfiguration möglich. Details stehen in `docs/MCP-SUITE.md`.
 
+Beim Initialisieren von MCP-Servern übernimmt LocalCode serverweite `instructions` in den Agentenkontext. Auch die eingebauten Filesystem-, PowerShell- und Git-MCP-Server liefern kurze Nutzungsregeln, damit das lokale Modell Werkzeuggrenzen und Ergebnisprüfung nicht nur aus Toolnamen ableitet.
+
 ### Dateien und Anhänge
 
 Bis zu 20 Dateien pro Anfrage, insgesamt bis 96 MiB:
@@ -247,6 +249,8 @@ LocalCode 6.4.3 includes six managed MCP capability areas:
 - **Playwright MCP** – official Microsoft server with a persistent browser profile and persistent stdio session.
 
 Under **Settings → Plugins**, installation, sign-in, enablement, connection testing, and session reset can be controlled per server. After explicit approval, LocalCode can install missing uv, portable Node.js LTS, and GitHub CLI for the current user. Custom stdio and Streamable HTTP servers remain available through the advanced JSON configuration. See `docs/MCP-SUITE.md` for details.
+
+When initializing MCP servers, LocalCode carries server-wide `instructions` into the agent context. The built-in Filesystem, PowerShell, and Git MCP servers also provide short usage rules so the local model learns tool boundaries and result-checking behavior from more than tool names.
 
 ### Files and attachments
 

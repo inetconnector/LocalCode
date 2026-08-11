@@ -52,31 +52,33 @@ type mcpPendingResult struct {
 }
 
 type mcpStdioSession struct {
-	key         string
-	server      MCPServerConfig
-	project     string
-	protocol    string
-	command     *exec.Cmd
-	stdin       io.WriteCloser
-	writeMu     sync.Mutex
-	nextID      atomic.Int64
-	pendingMu   sync.Mutex
-	pending     map[int64]chan mcpPendingResult
-	stderrMu    sync.Mutex
-	stderr      bytes.Buffer
-	done        chan struct{}
-	processDone chan struct{}
-	closeOnce   sync.Once
+	key          string
+	server       MCPServerConfig
+	project      string
+	protocol     string
+	instructions string
+	command      *exec.Cmd
+	stdin        io.WriteCloser
+	writeMu      sync.Mutex
+	nextID       atomic.Int64
+	pendingMu    sync.Mutex
+	pending      map[int64]chan mcpPendingResult
+	stderrMu     sync.Mutex
+	stderr       bytes.Buffer
+	done         chan struct{}
+	processDone  chan struct{}
+	closeOnce    sync.Once
 }
 
 type mcpHTTPSession struct {
-	server   MCPServerConfig
-	project  string
-	endpoint string
-	session  string
-	protocol string
-	client   *http.Client
-	mu       sync.Mutex
+	server       MCPServerConfig
+	project      string
+	endpoint     string
+	session      string
+	protocol     string
+	instructions string
+	client       *http.Client
+	mu           sync.Mutex
 }
 
 type mcpManager struct {
@@ -136,6 +138,14 @@ func findMCPServer(cfg Config, name string) (MCPServerConfig, error) {
 }
 
 func mcpServersSummary(cfg Config) string {
+	return mcpServersSummaryWithInstructions(context.Background(), "", cfg, false)
+}
+
+func mcpServersSummaryForAgent(ctx context.Context, project string, cfg Config) string {
+	return mcpServersSummaryWithInstructions(ctx, project, cfg, true)
+}
+
+func mcpServersSummaryWithInstructions(ctx context.Context, project string, cfg Config, includeInstructions bool) string {
 	var lines []string
 	for _, s := range cfg.MCPServers {
 		if s.Enabled {
@@ -143,13 +153,33 @@ func mcpServersSummary(cfg Config) string {
 			if strings.TrimSpace(label) == "" {
 				label = s.Name
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s]", label, s.Transport))
+			line := fmt.Sprintf("- %s [%s]", label, s.Transport)
+			if includeInstructions {
+				if instructions := mcpServerInstructionsForSummary(ctx, cfg, project, s); instructions != "" {
+					line += "\n  Instructions: " + truncateText(strings.ReplaceAll(instructions, "\n", " "), 1200)
+				}
+			}
+			lines = append(lines, line)
 		}
 	}
 	if len(lines) == 0 {
 		return localizeConfigText(cfg, "Keine MCP-Server aktiviert.", "No MCP servers enabled.")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func mcpServerInstructionsForSummary(ctx context.Context, cfg Config, project string, server MCPServerConfig) string {
+	timeout := time.Duration(server.TimeoutSec) * time.Second
+	if timeout <= 0 || timeout > 5*time.Second {
+		timeout = 5 * time.Second
+	}
+	instructionCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	instructions, err := defaultMCPManager.serverInstructions(instructionCtx, cfg, project, server)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(instructions)
 }
 
 func expandMCPValue(value, project string) string {
@@ -215,6 +245,35 @@ func mcpInitializeRequest(id int64, protocol string) map[string]any {
 	}}
 }
 
+func mcpInitializeInstructions(raw json.RawMessage) string {
+	var result struct {
+		Instructions string `json:"instructions"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &result) != nil {
+		return ""
+	}
+	return strings.TrimSpace(result.Instructions)
+}
+
+func builtinMCPInstructions(preset string, cfg Config) string {
+	switch strings.ToLower(strings.TrimSpace(preset)) {
+	case "filesystem":
+		return localizeConfigText(cfg,
+			"Nutze Filesystem-MCP nur für projektgebundene Dateioperationen; prüfe Schreib-/Kopier-/Verschiebe-Ergebnisse anhand der zurückgegebenen Postconditions.",
+			"Use Filesystem MCP only for project-scoped file operations; verify write/copy/move results from the returned postconditions.")
+	case "powershell":
+		return localizeConfigText(cfg,
+			"Nutze PowerShell-MCP für Windows-Diagnosen und Skripte mit Exitcode, STDOUT und STDERR; bevorzuge read-only Diagnosen vor Änderungen.",
+			"Use PowerShell MCP for Windows diagnostics and scripts with exit code, STDOUT, and STDERR; prefer read-only diagnostics before changes.")
+	case "git":
+		return localizeConfigText(cfg,
+			"Nutze Git-MCP für Git-Status, Diff, Log, Commit und Push; destruktive Aktionen und Force-Push bleiben blockiert.",
+			"Use Git MCP for Git status, diff, log, commit, and push; destructive actions and force-push remain blocked.")
+	default:
+		return ""
+	}
+}
+
 func mcpRequest(id int64, method string, params any) map[string]any {
 	if params == nil {
 		params = map[string]any{}
@@ -230,25 +289,9 @@ func mcpNotification(method string, params any) map[string]any {
 }
 
 func (m *mcpManager) callStdio(ctx context.Context, cfg Config, project string, server MCPServerConfig, method string, params any) (string, error) {
-	key := mcpServerKey(server, project)
-	m.mu.Lock()
-	session := m.stdio[key]
-	m.mu.Unlock()
-	if session == nil || session.isClosed() {
-		var err error
-		session, err = startMCPStdioSession(ctx, cfg, project, server, key)
-		if err != nil {
-			return "", err
-		}
-		m.mu.Lock()
-		if existing := m.stdio[key]; existing != nil && !existing.isClosed() {
-			m.mu.Unlock()
-			session.close()
-			session = existing
-		} else {
-			m.stdio[key] = session
-			m.mu.Unlock()
-		}
+	session, key, err := m.stdioSession(ctx, cfg, project, server)
+	if err != nil {
+		return "", err
 	}
 	response, err := session.request(ctx, method, params)
 	if err != nil {
@@ -260,6 +303,54 @@ func (m *mcpManager) callStdio(ctx context.Context, cfg Config, project string, 
 		return "", fmt.Errorf("MCP %s/%s: %w; stderr=%s", server.Name, method, err, session.stderrText())
 	}
 	return prettyJSON(response.Result), nil
+}
+
+func (m *mcpManager) stdioSession(ctx context.Context, cfg Config, project string, server MCPServerConfig) (*mcpStdioSession, string, error) {
+	key := mcpServerKey(server, project)
+	m.mu.Lock()
+	session := m.stdio[key]
+	m.mu.Unlock()
+	if session == nil || session.isClosed() {
+		var err error
+		session, err = startMCPStdioSession(ctx, cfg, project, server, key)
+		if err != nil {
+			return nil, "", err
+		}
+		m.mu.Lock()
+		if existing := m.stdio[key]; existing != nil && !existing.isClosed() {
+			m.mu.Unlock()
+			session.close()
+			session = existing
+		} else {
+			m.stdio[key] = session
+			m.mu.Unlock()
+		}
+	}
+	return session, key, nil
+}
+
+func (m *mcpManager) serverInstructions(ctx context.Context, cfg Config, project string, server MCPServerConfig) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(server.Transport)) {
+	case "builtin":
+		return builtinMCPInstructions(server.Preset, cfg), nil
+	case "stdio":
+		session, _, err := m.stdioSession(ctx, cfg, project, server)
+		if err != nil {
+			return "", err
+		}
+		return session.instructions, nil
+	case "http", "streamable-http":
+		session, err := m.httpSession(ctx, project, server)
+		if err != nil {
+			return "", err
+		}
+		if err := session.ensureInitialized(ctx, cfg); err != nil {
+			return "", err
+		}
+		return session.instructions, nil
+	default:
+		return "", fmt.Errorf("unsupported MCP transport %q", server.Transport)
+	}
 }
 
 func quoteCmdToken(value string) string {
@@ -334,6 +425,7 @@ func startMCPStdioSession(ctx context.Context, cfg Config, project string, serve
 		response, initErr := session.requestWithPayload(ctx, mcpInitializeRequest(session.nextID.Add(1), protocol))
 		if initErr == nil && response.Error == nil {
 			session.protocol = protocol
+			session.instructions = mcpInitializeInstructions(response.Result)
 			initialized = true
 			break
 		}
@@ -592,6 +684,14 @@ func (s *mcpStdioSession) close() {
 }
 
 func (m *mcpManager) callHTTP(ctx context.Context, cfg Config, project string, server MCPServerConfig, method string, params any) (string, error) {
+	session, err := m.httpSession(ctx, project, server)
+	if err != nil {
+		return "", err
+	}
+	return session.call(ctx, cfg, method, params)
+}
+
+func (m *mcpManager) httpSession(ctx context.Context, project string, server MCPServerConfig) (*mcpHTTPSession, error) {
 	key := mcpServerKey(server, project)
 	m.mu.Lock()
 	session := m.http[key]
@@ -604,34 +704,14 @@ func (m *mcpManager) callHTTP(ctx context.Context, cfg Config, project string, s
 		m.http[key] = session
 	}
 	m.mu.Unlock()
-	return session.call(ctx, cfg, method, params)
+	return session, nil
 }
 
 func (s *mcpHTTPSession) call(ctx context.Context, cfg Config, method string, params any) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.endpoint == "" {
-		return "", errors.New("MCP HTTP URL is empty")
-	}
-	if s.protocol == "" {
-		var initErrors []string
-		for _, protocol := range mcpProtocolVersions {
-			response, sessionID, err := mcpHTTPPost(ctx, s.client, cfg, s.server, s.project, s.endpoint, "", protocol, mcpInitializeRequest(1, protocol))
-			if err == nil && response.Error == nil {
-				s.protocol = protocol
-				s.session = sessionID
-				_, _, _ = mcpHTTPPost(ctx, s.client, cfg, s.server, s.project, s.endpoint, s.session, protocol, mcpNotification("notifications/initialized", map[string]any{}))
-				break
-			}
-			if err != nil {
-				initErrors = append(initErrors, protocol+": "+err.Error())
-			} else if response.Error != nil {
-				initErrors = append(initErrors, protocol+": "+response.Error.Message)
-			}
-		}
-		if s.protocol == "" {
-			return "", fmt.Errorf("MCP initialize failed for %s: %s", s.server.Name, strings.Join(initErrors, "; "))
-		}
+	if err := s.ensureInitializedLocked(ctx, cfg); err != nil {
+		return "", err
 	}
 	response, sessionID, err := mcpHTTPPost(ctx, s.client, cfg, s.server, s.project, s.endpoint, s.session, s.protocol, mcpRequest(2, method, params))
 	if sessionID != "" {
@@ -644,6 +724,40 @@ func (s *mcpHTTPSession) call(ctx context.Context, cfg Config, method string, pa
 		return "", fmt.Errorf("MCP %s: %s", method, response.Error.Message)
 	}
 	return prettyJSON(response.Result), nil
+}
+
+func (s *mcpHTTPSession) ensureInitialized(ctx context.Context, cfg Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ensureInitializedLocked(ctx, cfg)
+}
+
+func (s *mcpHTTPSession) ensureInitializedLocked(ctx context.Context, cfg Config) error {
+	if s.endpoint == "" {
+		return errors.New("MCP HTTP URL is empty")
+	}
+	if s.protocol == "" {
+		var initErrors []string
+		for _, protocol := range mcpProtocolVersions {
+			response, sessionID, err := mcpHTTPPost(ctx, s.client, cfg, s.server, s.project, s.endpoint, "", protocol, mcpInitializeRequest(1, protocol))
+			if err == nil && response.Error == nil {
+				s.protocol = protocol
+				s.session = sessionID
+				s.instructions = mcpInitializeInstructions(response.Result)
+				_, _, _ = mcpHTTPPost(ctx, s.client, cfg, s.server, s.project, s.endpoint, s.session, protocol, mcpNotification("notifications/initialized", map[string]any{}))
+				break
+			}
+			if err != nil {
+				initErrors = append(initErrors, protocol+": "+err.Error())
+			} else if response.Error != nil {
+				initErrors = append(initErrors, protocol+": "+response.Error.Message)
+			}
+		}
+		if s.protocol == "" {
+			return fmt.Errorf("MCP initialize failed for %s: %s", s.server.Name, strings.Join(initErrors, "; "))
+		}
+	}
+	return nil
 }
 
 func resolveMCPHeaders(ctx context.Context, cfg Config, project string, server MCPServerConfig) map[string]string {

@@ -135,6 +135,7 @@ func TestMCPPersistentHelperProcess(t *testing.T) {
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
 				"protocolVersion": protocol,
 				"capabilities":    map[string]any{"tools": map[string]any{}},
+				"instructions":    "Always call persistent_echo before reporting success.",
 				"serverInfo":      map[string]any{"name": "persistent-helper", "version": "1"},
 			}})
 			initialized = true
@@ -151,6 +152,28 @@ func TestMCPPersistentHelperProcess(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+func TestMCPServerInstructionsReachAgentSummary(t *testing.T) {
+	defaultMCPManager.Close()
+	project := t.TempDir()
+	t.Cleanup(defaultMCPManager.Close)
+	cfg := defaultConfig()
+	cfg.MCPServers = []MCPServerConfig{
+		{Name: "filesystem", DisplayName: "Filesystem", Enabled: true, Transport: "builtin", Preset: "filesystem", ProjectScoped: true},
+		{
+			Name: "persistent", DisplayName: "Persistent", Enabled: true, Transport: "stdio", Command: os.Args[0],
+			Args:       []string{"-test.run=TestMCPPersistentHelperProcess"},
+			Env:        map[string]string{"GO_WANT_MCP_PERSISTENT_HELPER": "1"},
+			TimeoutSec: 10, ProjectScoped: true,
+		},
+	}
+	summary := mcpServersSummaryForAgent(context.Background(), project, cfg)
+	for _, want := range []string{"Filesystem", "Postconditions", "Persistent", "Always call persistent_echo"} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("MCP summary missing %q in:\n%s", want, summary)
+		}
+	}
 }
 
 func TestMCPStdioSessionPersistsAcrossCalls(t *testing.T) {

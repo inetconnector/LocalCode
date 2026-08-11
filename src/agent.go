@@ -424,7 +424,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if engine == editingEngineNative {
 		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
 	}
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummary(cfg), toolInventorySummary(project, cfg))
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), toolInventorySummary(project, cfg))
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."

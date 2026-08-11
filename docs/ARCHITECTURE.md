@@ -31,6 +31,8 @@ Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofo
 
 Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeldung, sondern den beobachteten Arbeitszustand: geänderte und erwähnte Dateien, erkannte Funktionsmarker, Postconditions von Dateiwerkzeugen und den Nachweis einer passenden Prüfung nach der letzten Code-/App-/Tool-Änderung. Reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe; Dokumentationsaufgaben und reine Dateioperationen werden gesondert erkannt.
 
+MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
+
 ## English
 
 LocalCode is a single Go application with an embedded web frontend and an HTTP/SSE API bound exclusively to `127.0.0.1`.
@@ -61,3 +63,5 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
 
 Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
+
+MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.
