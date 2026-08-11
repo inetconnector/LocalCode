@@ -62,6 +62,19 @@
 - Normale Tests, `go vet`, Race Detector, zufällige Testreihenfolgen, UI/API-Simulation, Übersetzungsparität und Windows-amd64-Cross-Build gehören zur Release-Prüfung.
 - Der endgültige Messwert und die exakten Testzahlen stehen in `TEST-REPORT.txt` und `reports/COVERAGE-SUMMARY.txt`.
 
+### Paritäts-TODO
+
+- [ ] Dauerhafte, löschbare Erinnerungen: lokale Speicherung wichtiger Nutzer-/Projektfakten, projektbezogener Standard-Scope, explizites Löschen per ID, Kontext-Einbettung für Agentenläufe und Schutz vor Geheimnissen.
+- [ ] Bild-, Icon- und Ressourcen-Erstellung: konkrete lokale Artefakt-Erzeugung für SVG/Icon/Asset-Dateien, strukturierte Validierung, später optional provider- oder lokalmodellgestützte Rasterbild-Generierung.
+- [ ] Skills-/Regel-Parität: lokale und globale Skills/Regeln progressiv lesen, nur relevante Referenzen laden und in den Agentenkontext schreiben.
+- [ ] Subagent-/Plan-/Review-Parität: getrennte Analyse-, Review- und Umsetzungsläufe mit zusammengeführtem Ergebnis und prüfbaren Übergaben.
+- [ ] Sprach- und Projekt-Parität: bestehende allgemeine Prüfer weiter ausbauen, insbesondere für nicht-JavaScript-Projekte, Dokumente, Assets, Buildsysteme und Framework-spezifische Tests.
+- [ ] Kontext-Performance: Kompression weiter verbessern, Fakten-/Arbeitszustand getrennt von voluminösen Toolausgaben halten und lokale Modelle vor Kontextüberlauf schützen.
+- [ ] Browser-/UI-Parität: sichtbare Web-/App-Aufgaben mit Playwright/Browser-Smoke und Screenshot-/DOM-Prüfungen validieren, wenn die Werkzeuge verfügbar sind.
+- [ ] LSP-/Symbolwerkzeuge: Dateien nicht nur textuell durchsuchen, sondern Symbole, Referenzen, Definitionen und Diagnosen projektsprachlich nutzen.
+- [ ] Integrations-Parität: GitHub-, Mail-, Kalender-, Slack-/Issue- und Hosting-Workflows als optionale, explizit konfigurierte Integrationen dokumentieren und anbinden; keine falschen Offline-Paritätsbehauptungen.
+- [ ] Sicherheits-/Approval-Parität: destruktive Aktionen, Systemzugriff, Netzwerk, Geheimnisse, Memory-Löschung und externe CLIs mit klaren Policies, Logs und Grenzen absichern.
+
 ## English
 
 ### Startup and automatic setup
@@ -120,6 +133,19 @@
 - Exact final statement coverage: **6576/8201 = 80.185343%**.
 - Normal tests, `go vet`, the race detector, randomized test orders, UI/API simulation, translation parity, and Windows-amd64 cross-builds are part of release verification.
 - The exact results are recorded in `TEST-REPORT.txt` and `reports/COVERAGE-SUMMARY.txt`.
+
+### Parity TODO
+
+- [ ] Durable, deletable memories: local storage for important user/project facts, project scope by default, explicit deletion by ID, agent-context injection, and secret protection.
+- [ ] Image, icon, and resource creation: concrete local artifact generation for SVG/icon/asset files, structural validation, and later optional provider-backed or local-model-backed raster image generation.
+- [ ] Skills/rules parity: progressively read local and global skills/rules, load only relevant references, and inject them into the agent context.
+- [ ] Subagent/plan/review parity: separate analysis, review, and implementation runs with merged results and verifiable handoffs.
+- [ ] Language and project parity: keep expanding the general checkers, especially for non-JavaScript projects, documents, assets, build systems, and framework-specific tests.
+- [ ] Context performance: keep improving compression, separate factual working state from bulky tool output, and protect local models from context overflow.
+- [ ] Browser/UI parity: validate visible web/app tasks with Playwright/browser smoke checks and screenshot/DOM checks when tools are available.
+- [ ] LSP/symbol tools: inspect projects through symbols, references, definitions, and diagnostics instead of only text search.
+- [ ] Integration parity: document and add GitHub, mail, calendar, Slack/issue, and hosting workflows as optional explicitly configured integrations; do not claim false offline parity.
+- [ ] Security/approval parity: protect destructive actions, system access, network, secrets, memory deletion, and external CLIs with clear policies, logs, and boundaries.
 
 ## Verification boundary
 
