@@ -296,7 +296,7 @@ func writeProjectFile(projectRoot, path, content string) (string, error) {
 	if err := os.WriteFile(full, []byte(content), mode); err != nil {
 		return "", err
 	}
-	return simpleDiff(old, content), nil
+	return simpleDiff(old, content) + "\n\nPOSTCONDITION:\n" + describePathState("target", full), nil
 }
 
 func deleteProjectFile(projectRoot, path string) (string, error) {
@@ -318,7 +318,7 @@ func deleteProjectFile(projectRoot, path string) (string, error) {
 	if err := os.Remove(full); err != nil {
 		return "", err
 	}
-	return simpleDiff(string(old), ""), nil
+	return simpleDiff(string(old), "") + "\n\nPOSTCONDITION:\n" + describePathState("target", full), nil
 }
 
 func simpleDiff(oldText, newText string) string {

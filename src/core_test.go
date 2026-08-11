@@ -64,6 +64,45 @@ func TestWriteAndReplaceFile(t *testing.T) {
 	}
 }
 
+func TestFileActionsReportPostconditions(t *testing.T) {
+	root := t.TempDir()
+	cfg := defaultConfig()
+	writeOut, err := executeAction(context.Background(), root, cfg, AgentAction{Action: "write_file", Path: "x.txt", Content: "one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"POSTCONDITION", "target: exists=true", "sha256="} {
+		if !strings.Contains(writeOut, want) {
+			t.Fatalf("write postcondition missing %q in: %s", want, writeOut)
+		}
+	}
+	copyOut, err := executeAction(context.Background(), root, cfg, AgentAction{Action: "copy_path", Source: "x.txt", Destination: "copy.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"source: exists=true", "destination: exists=true", "sha256="} {
+		if !strings.Contains(copyOut, want) {
+			t.Fatalf("copy postcondition missing %q in: %s", want, copyOut)
+		}
+	}
+	moveOut, err := executeAction(context.Background(), root, cfg, AgentAction{Action: "move_path", Source: "copy.txt", Destination: "moved.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"source: exists=false", "destination: exists=true"} {
+		if !strings.Contains(moveOut, want) {
+			t.Fatalf("move postcondition missing %q in: %s", want, moveOut)
+		}
+	}
+	deleteOut, err := executeAction(context.Background(), root, cfg, AgentAction{Action: "delete_file", Path: "moved.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(deleteOut, "target: exists=false") {
+		t.Fatalf("delete postcondition missing target removal: %s", deleteOut)
+	}
+}
+
 func TestProjectTreeAndSearch(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
