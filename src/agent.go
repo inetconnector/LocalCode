@@ -958,6 +958,9 @@ func completionGuardIssues(project string, intent taskIntent, originalTask strin
 	if taskRequestsVerification(originalTask) && changedSinceVerification {
 		issues = append(issues, "Nach der letzten Dateiänderung wurde keine passende Prüfung ausgeführt, obwohl die Aufgabe eine Funktions-, Syntax-, Test-, Lint- oder Build-Prüfung verlangt.")
 	}
+	for _, reviewIssue := range completionReviewIssues(originalTask, paths, changedSinceVerification) {
+		issues = append(issues, reviewIssue)
+	}
 	for _, missing := range missingRequestedCapabilityMarkers(originalTask, combined.String()) {
 		issues = append(issues, missing)
 	}
@@ -977,6 +980,7 @@ func completionRepairDirective(task string, issues []string) string {
 	var b strings.Builder
 	b.WriteString("Behebe die Ursachen mit konkreten Werkzeugaktionen. Behandle keine Symptome und melde erst finish, wenn diese Punkte wirklich erfüllt sind.\n")
 	b.WriteString("Priorität: fehlende Laufzeitlogik gehört in Quellcode-/Konfigurations-/Asset-Dateien, nicht in README oder reine Beschreibungstexte. Ändere Dokumentation erst, nachdem die Funktion selbst existiert.\n")
+	b.WriteString("Nutze den Abschluss-Review wie einen zweiten Prüfer: reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe, und Code-/App-/Tool-Änderungen brauchen nach der letzten Änderung eine passende Prüfung.\n")
 	b.WriteString("Wenn eine UI-Kontrolle, Taste, ein Button, Menü, Formular oder Status fehlt, implementiere sowohl das sichtbare Element als auch den Event-Handler und die Zustandsänderung.\n")
 	b.WriteString("Wenn Tests/Prüfungen fehlen oder fehlschlagen, installiere nicht reflexhaft global. Nutze vorhandene, projektlokale, verwaltete oder nicht-invasive Prüfungen.\n")
 	if containsNormalizedAny(normalizedQuestion(task), []string{"spiel", "game", "app", "tool", "browser", "ui"}) {
@@ -1155,6 +1159,81 @@ func taskRequestsVerification(task string) bool {
 		}
 	}
 	return false
+}
+
+func completionReviewIssues(task string, changedPaths []string, changedSinceVerification bool) []string {
+	var issues []string
+	if taskRequiresRuntimeImplementation(task) && !hasRuntimeImplementationPath(changedPaths) {
+		issues = append(issues, "Abschluss-Review: Die Aufgabe verlangt eine Implementierung, aber geändert wurden keine erkennbaren Laufzeit-, Quellcode-, Konfigurations- oder Artefaktdateien. Reine Dokumentation zählt hier nicht.")
+	}
+	if taskRequiresPostEditVerification(task) && changedSinceVerification {
+		issues = append(issues, "Abschluss-Review: Nach einer Code-/App-/Tool-Änderung fehlt eine passende Prüfung nach der letzten Änderung.")
+	}
+	return issues
+}
+
+func taskRequiresRuntimeImplementation(task string) bool {
+	normalizedTask := normalizedQuestion(task)
+	if taskLooksDocumentationOnly(normalizedTask) || taskLooksPureFileOperation(normalizedTask) {
+		return false
+	}
+	return containsNormalizedAny(normalizedTask, []string{
+		"implementiere", "baue", "bau ", "entwickle", "fixe", "behebe", "repariere", "ändere", "aendere", "ergänze", "ergaenze",
+		"refaktoriere", "portiere", "implement", "develop", "fix", "repair", "change", "refactor", "port",
+		"app", "browser", "web", "ui", "spiel", "game", "tool", "feature", "funktion", "function", "bug", "code", "api",
+	})
+}
+
+func taskRequiresPostEditVerification(task string) bool {
+	normalizedTask := normalizedQuestion(task)
+	if taskLooksDocumentationOnly(normalizedTask) || taskLooksPureFileOperation(normalizedTask) {
+		return false
+	}
+	if containsNormalizedAny(normalizedTask, []string{"bild", "image", "grafik", "graphic", "zeichne", "male", "draw", "paint", "diagramm", "diagram", "asset"}) &&
+		!containsNormalizedAny(normalizedTask, []string{"app", "browser", "web", "ui", "spiel", "game", "tool", "code"}) {
+		return false
+	}
+	return containsNormalizedAny(normalizedTask, []string{
+		"implementiere", "baue", "bau ", "entwickle", "fixe", "behebe", "repariere", "refaktoriere", "portiere",
+		"implement", "develop", "fix", "repair", "refactor", "port",
+		"app", "browser", "web", "ui", "spiel", "game", "tool", "feature", "funktion", "function", "bug", "code", "api",
+	})
+}
+
+func taskLooksDocumentationOnly(normalizedTask string) bool {
+	if !containsNormalizedAny(normalizedTask, []string{"readme", "dokumentation", "documentation", "docs", "markdown", "state.md", "agents.md", "changelog", "notiz", "note"}) {
+		return false
+	}
+	return !containsNormalizedAny(normalizedTask, []string{"app", "browser", "web", "ui", "spiel", "game", "tool", "code", "funktion", "function", "bug", "api", "runtime"})
+}
+
+func taskLooksPureFileOperation(normalizedTask string) bool {
+	if !containsNormalizedAny(normalizedTask, []string{"kopiere", "copy", "verschiebe", "move", "benenne um", "rename", "konvertiere", "convert"}) {
+		return false
+	}
+	return !containsNormalizedAny(normalizedTask, []string{"implementiere", "implement", "baue", "develop", "app", "spiel", "game", "tool", "code", "funktion", "function", "bug", "api"})
+}
+
+func hasRuntimeImplementationPath(paths []string) bool {
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "." {
+			return true
+		}
+		if runtimeImplementationExt(filepath.Ext(path)) {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeImplementationExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".go", ".js", ".ts", ".tsx", ".jsx", ".html", ".htm", ".css", ".json", ".yaml", ".yml", ".toml", ".xml", ".py", ".java", ".kt", ".cs", ".cpp", ".c", ".h", ".rs", ".sh", ".ps1", ".bat", ".cmd", ".svg":
+		return true
+	default:
+		return false
+	}
 }
 
 func taskQualityHint(task string) string {

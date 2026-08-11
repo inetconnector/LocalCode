@@ -284,9 +284,66 @@ func TestCompletionGuardRequiresConcreteVisualArtifactFile(t *testing.T) {
 	}
 }
 
+func TestCompletionReviewBlocksDocsOnlyImplementation(t *testing.T) {
+	project := t.TempDir()
+	readme := "# Reparatur\n\nDer Button, Event-Handler und Status wurden beschrieben.\n"
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Repariere die Browser-App mit Button und Status."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"README.md": true}, false)
+	if !strings.Contains(strings.Join(issues, "\n"), "Abschluss-Review") {
+		t.Fatalf("docs-only implementation was not blocked: %v", issues)
+	}
+}
+
+func TestCompletionReviewRequiresVerificationForCodeChanges(t *testing.T) {
+	project := t.TempDir()
+	content := `<main><button id="start">Start</button><p id="status">Bereit</p><script>
+let state = "ready";
+document.getElementById("start").addEventListener("click", () => {
+  state = "running";
+  document.getElementById("status").textContent = state;
+});
+</script></main>`
+	if err := os.WriteFile(filepath.Join(project, "index.html"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Baue eine Browser-App mit Button und Status."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"index.html": true}, true)
+	if !strings.Contains(strings.Join(issues, "\n"), "Prüfung nach der letzten Änderung") {
+		t.Fatalf("unverified code change was not blocked: %v", issues)
+	}
+	issues = completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"index.html": true}, false)
+	if len(issues) != 0 {
+		t.Fatalf("verified code change was blocked: %v", issues)
+	}
+}
+
+func TestCompletionReviewAllowsDocumentationAndFileOperationTasks(t *testing.T) {
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte("# Nutzung\n\nAktualisiert.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	docTask := "Aktualisiere die README-Dokumentation."
+	if issues := completionGuardIssues(project, classifyTaskIntent(docTask), docTask, map[string]bool{"README.md": true}, true); len(issues) != 0 {
+		t.Fatalf("documentation-only task was blocked: %v", issues)
+	}
+	if err := os.MkdirAll(filepath.Join(project, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "docs", "README.txt"), []byte("Aktualisiert.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	copyTask := "Kopiere README.md nach docs/README.txt."
+	if issues := completionGuardIssues(project, classifyTaskIntent(copyTask), copyTask, map[string]bool{"docs/README.txt": true}, true); len(issues) != 0 {
+		t.Fatalf("pure file operation task was blocked: %v", issues)
+	}
+}
+
 func TestCompletionRepairDirectivePrioritizesRuntimeLogic(t *testing.T) {
 	directive := completionRepairDirective("Baue eine spielbare Browser-App.", []string{"Button fehlt", "Status fehlt"})
-	for _, want := range []string{"Laufzeitlogik", "Event-Handler", "installiere nicht reflexhaft global", "Kernmechanik"} {
+	for _, want := range []string{"Laufzeitlogik", "Abschluss-Review", "Event-Handler", "installiere nicht reflexhaft global", "Kernmechanik"} {
 		if !strings.Contains(directive, want) {
 			t.Fatalf("directive missing %q in: %s", want, directive)
 		}
