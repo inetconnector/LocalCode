@@ -34,13 +34,42 @@ func tinyPNGBytes(t *testing.T, width, height int) []byte {
 	return buf.Bytes()
 }
 
+func fakeWebPBytes(width, height int) []byte {
+	if width <= 0 {
+		width = 1
+	}
+	if height <= 0 {
+		height = 1
+	}
+	w := width - 1
+	h := height - 1
+	data := []byte{
+		'R', 'I', 'F', 'F',
+		22, 0, 0, 0,
+		'W', 'E', 'B', 'P',
+		'V', 'P', '8', 'X',
+		10, 0, 0, 0,
+		0, 0, 0, 0,
+		byte(w), byte(w >> 8), byte(w >> 16),
+		byte(h), byte(h >> 8), byte(h >> 16),
+	}
+	return data
+}
+
 func withFakeRenderer(t *testing.T) {
 	t.Helper()
-	original := renderPNGWithChromium
+	originalPNG := renderPNGWithChromium
+	originalWebP := renderWebPWithChromium
 	renderPNGWithChromium = func(ctx context.Context, cfg Config, sourceFull, targetPNG string, width, height int) (string, error) {
 		return "fake chromium", os.WriteFile(targetPNG, tinyPNGBytes(t, width, height), 0o644)
 	}
-	t.Cleanup(func() { renderPNGWithChromium = original })
+	renderWebPWithChromium = func(ctx context.Context, cfg Config, sourceFull, targetWebP string, width, height int) (string, error) {
+		return "fake chromium webp", os.WriteFile(targetWebP, fakeWebPBytes(width, height), 0o644)
+	}
+	t.Cleanup(func() {
+		renderPNGWithChromium = originalPNG
+		renderWebPWithChromium = originalWebP
+	})
 }
 
 func TestCreateSVGAssetWritesValidatedFile(t *testing.T) {
@@ -316,6 +345,34 @@ func TestRenderAssetCreatesICOFromRenderedPNG(t *testing.T) {
 	}
 }
 
+func TestRenderAssetRendersSVGToWebP(t *testing.T) {
+	withFakeRenderer(t)
+	project := t.TempDir()
+	cfg := defaultConfig()
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" fill="#267"/></svg>`
+	if err := os.WriteFile(filepath.Join(project, "source.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "render_asset", Source: "source.svg", Destination: "out.webp"})
+	if err != nil {
+		t.Fatalf("render_asset webp failed: %v", err)
+	}
+	if !strings.Contains(result, "Format: webp") || !strings.Contains(result, "Dimensions: 40x20") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "out.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("out.webp", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Width != 40 || info.Height != 20 {
+		t.Fatalf("unexpected webp dimensions: %dx%d", info.Width, info.Height)
+	}
+}
+
 func TestRenderAssetRejectsExternalHTMLReferences(t *testing.T) {
 	project := t.TempDir()
 	if err := os.WriteFile(filepath.Join(project, "index.html"), []byte(`<img src="https://example.com/a.png">`), 0o644); err != nil {
@@ -366,5 +423,20 @@ func TestRenderAssetWithInstalledChromium(t *testing.T) {
 	}
 	if cfgPNG.Width != 64 || cfgPNG.Height != 32 {
 		t.Fatalf("unexpected installed Chromium render dimensions: %dx%d", cfgPNG.Width, cfgPNG.Height)
+	}
+	result, err = renderAsset(context.Background(), project, cfg, "source.svg", "out.webp", 64, 32)
+	if err != nil {
+		t.Fatalf("installed Chromium WebP render failed: %v\n%s", err, result)
+	}
+	webpData, err := os.ReadFile(filepath.Join(project, "out.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	webpInfo, err := inspectImageAsset("out.webp", webpData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if webpInfo.Width != 64 || webpInfo.Height != 32 {
+		t.Fatalf("unexpected installed Chromium WebP dimensions: %dx%d", webpInfo.Width, webpInfo.Height)
 	}
 }

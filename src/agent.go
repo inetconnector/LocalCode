@@ -133,7 +133,7 @@ Arbeitsweise:
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
 - Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
 - Wenn du lokale Rasterbilder nach PNG/JPG/JPEG/ICO konvertieren sollst, nutze convert_image_asset(source,destination,width,height). LocalCode dekodiert das Quellbild, skaliert bei expliziter Größe, encodiert das Ziel und prüft das Ergebnis erneut.
-- Wenn du SVG oder lokale HTML/Canvas-Dateien in konkrete Dateien rendern sollst, nutze render_asset(source,destination,width,height). Unterstützt werden SVG/HTML/HTM als Quelle und PNG/JPG/JPEG/ICO als Ziel; LocalCode rendert mit lokalem Edge/Chrome, blockiert externe HTML-Netzwerkreferenzen und prüft das gerenderte PNG.
+- Wenn du SVG oder lokale HTML/Canvas-Dateien in konkrete Dateien rendern sollst, nutze render_asset(source,destination,width,height). Unterstützt werden SVG/HTML/HTM als Quelle und PNG/JPG/JPEG/WebP/ICO als Ziel; LocalCode rendert mit lokalem Edge/Chrome, blockiert externe HTML-Netzwerkreferenzen und prüft die erzeugte Bilddatei.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
@@ -159,7 +159,7 @@ Werkzeuge:
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
 - convert_image_asset(source,destination,width,height) für lokale Rasterbild-Konvertierung zu PNG/JPG/JPEG/ICO
-- render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG/JPG/JPEG oder ICO
+- render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG/JPG/JPEG/WebP oder ICO
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
 - engine_repo_map für eine unverändernde Repository-Analyse, engine_lint und engine_test für gezielte Qualitätsläufe

@@ -29,6 +29,7 @@ import (
 const maxRasterAssetBytes = 16 << 20
 
 var renderPNGWithChromium = renderPNGWithChromiumDefault
+var renderWebPWithChromium = renderWebPWithChromiumDefault
 
 func validateSVGAsset(path, content string) error {
 	if !strings.EqualFold(filepath.Ext(strings.TrimSpace(path)), ".svg") {
@@ -370,9 +371,9 @@ func validateRenderAsset(project, source, destination string, width, height int)
 		return renderAssetPlan{}, errors.New("render_asset source must be .svg, .html, or .htm")
 	}
 	switch destinationExt {
-	case ".png", ".jpg", ".jpeg", ".ico":
+	case ".png", ".jpg", ".jpeg", ".ico", ".webp":
 	default:
-		return renderAssetPlan{}, errors.New("render_asset destination must be .png, .jpg, .jpeg, or .ico")
+		return renderAssetPlan{}, errors.New("render_asset destination must be .png, .jpg, .jpeg, .webp, or .ico")
 	}
 	info, err := os.Stat(sourceFull)
 	if err != nil {
@@ -551,6 +552,79 @@ func renderPNGWithChromiumDefault(ctx context.Context, cfg Config, sourceFull, t
 	return diagnostics.String(), errors.New("Chromium render failed")
 }
 
+func renderWebPWithChromiumDefault(ctx context.Context, cfg Config, sourceFull, targetWebP string, width, height int) (string, error) {
+	sourceURI, err := fileURI(sourceFull)
+	if err != nil {
+		return "", err
+	}
+	profileDir, err := os.MkdirTemp("", "localcode-render-webp-profile-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(profileDir)
+	var diagnostics strings.Builder
+	seen := map[string]bool{}
+	for _, browser := range chromiumBrowserCandidates() {
+		browser = strings.TrimSpace(browser)
+		key := strings.ToLower(browser)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if st, err := os.Stat(browser); err != nil || st.IsDir() {
+			continue
+		}
+		for _, headlessFlag := range []string{"--headless=new", "--headless"} {
+			if err := captureWebPWithChromiumScreenshot(ctx, cfg, browser, headlessFlag, sourceURI, profileDir, targetWebP, width, height); err == nil {
+				return "Chromium renderer: " + browser + " " + headlessFlag, nil
+			} else {
+				fmt.Fprintf(&diagnostics, "%s %s: %v\n", browser, headlessFlag, err)
+			}
+		}
+	}
+	if diagnostics.Len() == 0 {
+		return "", errors.New("no supported Chromium browser found for render_asset")
+	}
+	return diagnostics.String(), errors.New("Chromium WebP render failed")
+}
+
+func captureWebPWithChromiumScreenshot(ctx context.Context, cfg Config, browser, headlessFlag, sourceURI, profileDir, targetWebP string, width, height int) error {
+	_ = os.Remove(targetWebP)
+	args := []string{
+		headlessFlag,
+		"--disable-gpu",
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-background-networking",
+		"--disable-sync",
+		"--disable-extensions",
+		"--hide-scrollbars",
+		"--mute-audio",
+		"--proxy-server=http://127.0.0.1:9",
+		"--host-resolver-rules=MAP * 0.0.0.0",
+		"--user-data-dir=" + profileDir,
+		fmt.Sprintf("--window-size=%d,%d", width, height),
+		"--screenshot=" + targetWebP,
+		"--virtual-time-budget=1000",
+		sourceURI,
+	}
+	cmd := exec.CommandContext(ctx, browser, args...)
+	cmd.Env = commandEnvironment(cfg)
+	hideCommandWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	info, err := validateRenderedWebP(targetWebP, width, height)
+	if err != nil {
+		return err
+	}
+	if info.Format != "webp" {
+		return fmt.Errorf("direct screenshot produced %s instead of webp", info.Format)
+	}
+	return nil
+}
+
 func validateRenderedPNG(path string, expectedWidth, expectedHeight int) (imageAssetInfo, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -562,6 +636,21 @@ func validateRenderedPNG(path string, expectedWidth, expectedHeight int) (imageA
 	}
 	if info.Width != expectedWidth || info.Height != expectedHeight {
 		return info, fmt.Errorf("rendered PNG dimensions are %dx%d, expected %dx%d", info.Width, info.Height, expectedWidth, expectedHeight)
+	}
+	return info, nil
+}
+
+func validateRenderedWebP(path string, expectedWidth, expectedHeight int) (imageAssetInfo, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return imageAssetInfo{}, err
+	}
+	info, err := inspectImageAsset("render.webp", data)
+	if err != nil {
+		return imageAssetInfo{}, err
+	}
+	if info.Width != expectedWidth || info.Height != expectedHeight {
+		return info, fmt.Errorf("rendered WebP dimensions are %dx%d, expected %dx%d", info.Width, info.Height, expectedWidth, expectedHeight)
 	}
 	return info, nil
 }
@@ -773,6 +862,32 @@ func renderAsset(ctx context.Context, project string, cfg Config, source, destin
 	}
 	rctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if plan.DestinationExt == ".webp" {
+		tempWebP, err := os.CreateTemp("", "localcode-render-*.webp")
+		if err != nil {
+			return "", err
+		}
+		tempWebPPath := tempWebP.Name()
+		_ = tempWebP.Close()
+		defer os.Remove(tempWebPPath)
+		rendererDetail, err := renderWebPWithChromium(rctx, cfg, plan.SourceFull, tempWebPPath, plan.Width, plan.Height)
+		if err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		info, err := validateRenderedWebP(tempWebPPath, plan.Width, plan.Height)
+		if err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		data, err := os.ReadFile(tempWebPPath)
+		if err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		result, err := writeBinaryProjectFile(project, destination, data)
+		if err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		return fmt.Sprintf("ASSET RENDERED\nSource: %s\nDestination: %s\nRenderer: %s\nFormat: %s\nDimensions: %dx%d\n\n%s", source, destination, strings.TrimSpace(rendererDetail), info.Format, info.Width, info.Height, result), nil
+	}
 	tempPNG, err := os.CreateTemp("", "localcode-render-*.png")
 	if err != nil {
 		return "", err
