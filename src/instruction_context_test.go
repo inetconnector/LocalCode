@@ -183,12 +183,52 @@ func TestSkillResourcesListAndRead(t *testing.T) {
 	}
 }
 
+func TestCopySkillResourceCopiesBinaryAsset(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "asset-skill", "SKILL.md"), "---\ndescription: Asset workflow\n---\n# Asset Skill\n\nCopy binary assets when required.\n")
+	want := []byte{0x00, 0x01, 0x02, 0xff, 'P', 'N', 'G'}
+	mustWriteBytes(t, filepath.Join(project, ".codex", "skills", "asset-skill", "assets", "icon.bin"), want)
+
+	result, err := copySkillResource(project, "asset-skill", "assets/icon.bin", "public/icon.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "SKILL RESOURCE COPIED") || !strings.Contains(result, "POSTCONDITION") || !strings.Contains(result, "public/icon.bin") {
+		t.Fatalf("unexpected copy result:\n%s", result)
+	}
+	got, err := os.ReadFile(filepath.Join(project, "public", "icon.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("copied bytes differ: got %v want %v", got, want)
+	}
+	if _, err := copySkillResource(project, "asset-skill", "../outside.bin", "public/outside.bin"); err == nil {
+		t.Fatal("resource traversal should fail")
+	}
+	if _, err := copySkillResource(project, "asset-skill", "SKILL.md", "public/SKILL.md"); err == nil {
+		t.Fatal("SKILL.md should not be copied through resource path")
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustWriteBytes(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

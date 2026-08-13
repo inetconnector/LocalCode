@@ -95,6 +95,7 @@ func TestCoverageApprovalRulesAndTokens(t *testing.T) {
 		{Action: "run_tool", Tool: "ADB", Args: []string{"devices"}}, {Action: "run_command", Command: " echo   hi "},
 		{Action: "run_command"}, {Action: "write_file", Path: "a/../b.txt"}, {Action: "replace_text", Path: "x"}, {Action: "delete_file", Path: "x"},
 		{Action: "copy_path", Source: "a", Destination: "b"}, {Action: "move_path", Source: "a", Destination: "b"},
+		{Action: "skill_copy_resource", Skill: "asset-skill", Resource: "assets/icon.png", Destination: "public/icon.png"},
 		{Action: "web_search"}, {Action: "web_fetch"}, {Action: "build_project"}, {Action: "deploy_android"}, {Action: "open_terminal"},
 		{Action: "aider_edit"}, {Action: "aider_repo_map"}, {Action: "aider_lint"}, {Action: "aider_test"}, {Action: "install_aider"},
 		{Action: "mcp_call_tool", Server: "fs", Tool: "read"}, {Action: "custom"},
@@ -123,7 +124,7 @@ func TestCoverageApprovalRulesAndTokens(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	for _, a := range []AgentAction{{Action: "git", Args: []string{"status"}}, {Action: "git_commit"}, {Action: "run_tool", Tool: "go", Args: []string{"version"}}, {Action: "run_command", Command: "echo hi"}, {Action: "write_file", Path: "x"}, {Action: "build_project"}, {Action: "unknown"}} {
+	for _, a := range []AgentAction{{Action: "git", Args: []string{"status"}}, {Action: "git_commit"}, {Action: "run_tool", Tool: "go", Args: []string{"version"}}, {Action: "run_command", Command: "echo hi"}, {Action: "write_file", Path: "x"}, {Action: "skill_copy_resource", Skill: "asset-skill", Resource: "assets/icon.png", Destination: "public/icon.png"}, {Action: "build_project"}, {Action: "unknown"}} {
 		if p, ok := persistentApprovalPattern(a); !ok || len(p) == 0 {
 			t.Fatalf("pattern %+v", a)
 		}
@@ -1187,7 +1188,7 @@ func TestCoverageAgentActionsAndApprovals(t *testing.T) {
 	for _, mode := range []string{"strict", "balanced", "auto", "dangerous"} {
 		cfg2 := cfg
 		cfg2.ApprovalMode = mode
-		for _, a := range []AgentAction{{Action: "list_files"}, {Action: "web_search"}, {Action: "replace_text"}, {Action: "aider_repo_map"}, {Action: "git", Args: []string{"status"}}, {Action: "git", Args: []string{"add", "."}}, {Action: "git_commit"}, {Action: "run_tool", Tool: "go", Args: []string{"version"}}, {Action: "run_command", Command: "go test"}, {Action: "delete_file"}} {
+		for _, a := range []AgentAction{{Action: "list_files"}, {Action: "web_search"}, {Action: "replace_text"}, {Action: "skill_copy_resource", Skill: "asset-skill", Resource: "assets/icon.png", Destination: "public/icon.png"}, {Action: "aider_repo_map"}, {Action: "git", Args: []string{"status"}}, {Action: "git", Args: []string{"add", "."}}, {Action: "git_commit"}, {Action: "run_tool", Tool: "go", Args: []string{"version"}}, {Action: "run_command", Command: "go test"}, {Action: "delete_file"}} {
 			_ = actionNeedsApproval(cfg2, project, a)
 		}
 	}

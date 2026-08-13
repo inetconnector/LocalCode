@@ -20,6 +20,7 @@ const (
 	maxSkillDocBytes           = 9000
 	maxSkillReadBytes          = 24000
 	maxSkillResourceBytes      = 20000
+	maxSkillCopyResourceBytes  = 16 << 20
 )
 
 type instructionDocument struct {
@@ -366,31 +367,77 @@ func listSkillResources(project, name string) (string, error) {
 }
 
 func readSkillResource(project, name, resource string) (string, error) {
-	skill, err := findSkillByName(project, name)
+	skill, full, rel, err := resolveSkillResourcePath(project, name, resource)
 	if err != nil {
 		return "", err
-	}
-	resource = strings.TrimSpace(resource)
-	if resource == "" {
-		return "", errors.New("resource is empty")
-	}
-	if filepath.IsAbs(resource) {
-		return "", errors.New("resource must be relative to the skill directory")
-	}
-	root := filepath.Dir(skill.Path)
-	full := filepath.Clean(filepath.Join(root, resource))
-	rel, err := filepath.Rel(root, full)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		return "", errors.New("resource escapes the skill directory")
-	}
-	if strings.EqualFold(filepath.Clean(full), filepath.Clean(skill.Path)) {
-		return "", errors.New("use skill_read for SKILL.md")
 	}
 	content, ok := readInstructionFile(full, maxSkillResourceBytes)
 	if !ok {
 		return "", fmt.Errorf("skill resource %q is missing, empty, binary, or too large to read as text", resource)
 	}
 	return fmt.Sprintf("--- Skill-Ressource: %s / %s ---\nPath: %s\n\n%s", skill.Name, filepath.ToSlash(rel), displayInstructionPath(project, full), content), nil
+}
+
+func copySkillResource(project, name, resource, destination string) (string, error) {
+	skill, full, rel, err := resolveSkillResourcePath(project, name, resource)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxSkillCopyResourceBytes {
+		return "", fmt.Errorf("skill resource exceeds %d bytes", maxSkillCopyResourceBytes)
+	}
+	post, err := writeBinaryProjectFile(project, destination, data)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("SKILL RESOURCE COPIED\nSkill: %s\nResource: %s\nDestination: %s\nBytes: %d\n\n%s", skill.Name, filepath.ToSlash(rel), filepath.ToSlash(destination), len(data), post), nil
+}
+
+func resolveSkillResourcePath(project, name, resource string) (localSkillSummary, string, string, error) {
+	skill, err := findSkillByName(project, name)
+	if err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return localSkillSummary{}, "", "", errors.New("resource is empty")
+	}
+	if filepath.IsAbs(resource) {
+		return localSkillSummary{}, "", "", errors.New("resource must be relative to the skill directory")
+	}
+	root := filepath.Dir(skill.Path)
+	full := filepath.Clean(filepath.Join(root, resource))
+	rel, err := filepath.Rel(root, full)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return localSkillSummary{}, "", "", errors.New("resource escapes the skill directory")
+	}
+	if strings.EqualFold(filepath.Clean(full), filepath.Clean(skill.Path)) {
+		return localSkillSummary{}, "", "", errors.New("use skill_read for SKILL.md")
+	}
+	info, err := os.Stat(full)
+	if err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	if !info.Mode().IsRegular() {
+		return localSkillSummary{}, "", "", fmt.Errorf("resource is not a regular file: %s", filepath.ToSlash(rel))
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	canonicalFull, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	canonicalRel, err := filepath.Rel(canonicalRoot, canonicalFull)
+	if err != nil || canonicalRel == "." || strings.HasPrefix(canonicalRel, "..") || filepath.IsAbs(canonicalRel) {
+		return localSkillSummary{}, "", "", errors.New("resource escapes the skill directory")
+	}
+	return skill, full, rel, nil
 }
 
 func instructionTextRelevant(task, text string) bool {

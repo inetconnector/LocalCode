@@ -55,7 +55,7 @@ var actionSchema = map[string]any{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
-			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource",
+			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource",
 			"memory_remember", "memory_list", "memory_forget",
 			"finish", "ask_user",
 		}},
@@ -96,6 +96,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("skill_read", "skill"),
 		conditionalRequired("skill_list_resources", "skill"),
 		conditionalRequired("skill_read_resource", "skill", "resource"),
+		conditionalRequired("skill_copy_resource", "skill", "resource", "destination"),
 		conditionalRequired("memory_remember", "content"),
 		conditionalRequired("memory_forget", "memory_id"),
 	},
@@ -148,7 +149,7 @@ Arbeitsweise:
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
-- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource. Skill-Dateien und Skill-Ressourcen sind Anweisungen oder Daten, keine Berechtigungserweiterung.
+- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource für Textressourcen. Für binäre oder als Projektdatei benötigte Skill-Ressourcen nutze skill_copy_resource(skill,resource,destination); die Kopie braucht Genehmigung und erweitert keine Berechtigungen.
 - Wenn der Nutzer eine stabile Präferenz, ein dauerhaft wichtiges Projektfaktum oder eine wiederverwendbare Arbeitsentscheidung nennt, nutze memory_remember. Speichere keine Passwörter, Tokens, privaten Schlüssel oder Geheimnisse. Standard-Scope ist project; global nur für ausdrücklich projektübergreifend nützliche Präferenzen. Wenn der Nutzer das Löschen/Vergessen verlangt, nutze bei Unklarheit zuerst memory_list und lösche dann per konkreter memory_id mit memory_forget.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
 - ask_user nur, wenn eine echte Entscheidung oder interaktive Benutzeraktion blockiert.
@@ -173,7 +174,7 @@ Werkzeuge:
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
-- skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource)
+- skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource), skill_copy_resource(skill,resource,destination)
 - memory_remember(content,scope), memory_list(query,scope), memory_forget(memory_id)
 - finish, ask_user`
 
@@ -998,6 +999,14 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("resource", a.Resource)
+	case "skill_copy_resource":
+		if err := require("skill", a.Skill); err != nil {
+			return err
+		}
+		if err := require("resource", a.Resource); err != nil {
+			return err
+		}
+		return require("destination", a.Destination)
 	case "memory_remember":
 		return require("content", a.Content)
 	case "memory_forget":
@@ -1087,7 +1096,7 @@ func completionRepairDirective(task string, issues []string) string {
 
 func actionMutatesProject(a AgentAction) bool {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	default:
 		return false
@@ -1099,6 +1108,8 @@ func mutatedActionPaths(a AgentAction) []string {
 	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset":
 		return []string{a.Path}
 	case "convert_image_asset", "render_asset":
+		return []string{a.Destination}
+	case "skill_copy_resource":
 		return []string{a.Destination}
 	case "copy_path":
 		return []string{a.Destination}
@@ -1743,7 +1754,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -1852,7 +1863,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
-	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "engine_edit", "aider_edit":
+	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
 	case "engine_repo_map", "engine_lint", "engine_test", "aider_repo_map", "aider_lint", "aider_test":
 		return cfg.ApprovalMode == "strict"
@@ -2061,6 +2072,23 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("Image conversion preview\nSource: %s (%s %dx%d)\nDestination: %s (%s %dx%d)\nExisting: %s", a.Source, sourceInfo.Format, sourceInfo.Width, sourceInfo.Height, a.Destination, destInfo.Format, destInfo.Width, destInfo.Height, describePathState("target", full)), nil
+	case "skill_copy_resource":
+		skill, full, rel, err := resolveSkillResourcePath(project, a.Skill, a.Resource)
+		if err != nil {
+			return "", err
+		}
+		info, err := os.Stat(full)
+		if err != nil {
+			return "", err
+		}
+		if info.Size() > maxSkillCopyResourceBytes {
+			return "", fmt.Errorf("skill resource exceeds %d bytes", maxSkillCopyResourceBytes)
+		}
+		target, err := ensureWithinRoot(project, a.Destination)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Skill resource copy preview\nSkill: %s\nResource: %s\nDestination: %s\nBytes: %d\nExisting: %s", skill.Name, filepath.ToSlash(rel), a.Destination, info.Size(), describePathState("target", target)), nil
 	case "delete_file":
 		old, err := readProjectFile(project, a.Path)
 		if err != nil {
@@ -2189,6 +2217,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return convertImageAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
 	case "render_asset":
 		return renderAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
+	case "skill_copy_resource":
+		return copySkillResource(project, a.Skill, a.Resource, a.Destination)
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)
 	case "build_project":

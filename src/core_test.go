@@ -179,6 +179,16 @@ func TestParseAgentAction(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"skill_read_resource","message":"Lies Ressource","skill":"asset-skill"}`); err == nil {
 		t.Fatal("skill_read_resource without resource must be rejected")
 	}
+	a, err = parseAgentAction(`{"action":"skill_copy_resource","message":"Kopiere Ressource","arguments":{"skill":"asset-skill","resource":"assets/icon.png","destination":"public/icon.png"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Skill != "asset-skill" || a.Resource != "assets/icon.png" || a.Destination != "public/icon.png" {
+		t.Fatalf("skill copy arguments were not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"skill_copy_resource","message":"Kopiere Ressource","skill":"asset-skill","resource":"assets/icon.png"}`); err == nil {
+		t.Fatal("skill_copy_resource without destination must be rejected")
+	}
 }
 
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {
