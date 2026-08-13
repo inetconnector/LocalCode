@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -96,10 +97,16 @@ def thread_menu(page):
     page.locator('.thread-row').first.click(button='right'); page.wait_for_selector('#contextMenu:not(.hidden)')
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox'])
+    launch={'headless':True}
+    executable=os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE')
+    if executable:
+        launch['executable_path']=executable
+    if os.name!='nt':
+        launch['args']=['--no-sandbox']
+    browser=p.chromium.launch(**launch)
     page=browser.new_page(viewport={'width':1440,'height':900}); page.set_default_timeout(10000); errors=[]
     page.on('pageerror',lambda e: errors.append(str(e))); page.route('http://localcode.test/api/**',handler)
-    html=(static/'index.html').read_text(); i18n=(static/'i18n.js').read_text()
+    html=(static/'index.html').read_text(encoding='utf-8'); i18n=(static/'i18n.js').read_text(encoding='utf-8')
     html=html.replace('<head>','<head><base href="http://localcode.test/">',1).replace('<script src="/i18n.js"></script>','<script>'+i18n+'</script>').replace('setMainGrid();connectEvents();startHealthMonitor();','setMainGrid();startHealthMonitor();')
     page.set_content(html,wait_until='load'); page.wait_for_selector('.project-group')
     assert page.locator('.new-task-row').first.is_visible(); page.locator('.new-task-row').first.click(); page.wait_for_timeout(150)

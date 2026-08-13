@@ -144,6 +144,14 @@ SHA-256-Erzeugung
 
 Der Release-Testbericht befindet sich in `TEST-REPORT.txt`.
 
+Der optionale UI-Smoke benötigt Python-Playwright und einen Playwright-Chromium-Browser:
+
+```text
+python -m pip install --user playwright
+python -m playwright install chromium
+python scripts\ui-e2e-test.py
+```
+
 ### Sicherheit und Grenzen
 
 Standardmäßig gelten projektbezogene Pfadgrenzen und Genehmigungen für Änderungen, Befehle und Netzwerkaktionen. Pfade werden einschließlich Symlinks und NTFS-Junctions kanonisch geprüft. Webabrufe binden sich an die bereits validierte öffentliche IP, wodurch DNS-Rebinding auf Loopback- oder Privatadressen blockiert wird. Destruktive Git- und Systembefehle werden blockiert oder in ein sichtbares interaktives Terminal ausgelagert. Die native Anwendungssandbox ist nicht identisch mit der proprietären Codex-Infrastruktur. Eine vollständige Modell- oder Cloud-Parität kann mit einem lokalen 14B-/20B-Modell nicht seriös garantiert werden.
@@ -290,6 +298,14 @@ SHA-256 generation
 ```
 
 The release verification report is stored in `TEST-REPORT.txt`.
+
+The optional UI smoke test requires Python Playwright and a Playwright Chromium browser:
+
+```text
+python -m pip install --user playwright
+python -m playwright install chromium
+python scripts\ui-e2e-test.py
+```
 
 ### Security and limitations
 
