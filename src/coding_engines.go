@@ -160,6 +160,9 @@ func openCodeToolRoot() string {
 }
 
 func findClaudeCodeExecutable(cfg Config) string {
+	if configured := strings.TrimSpace(cfg.ClaudeCodeExecutable); configured != "" {
+		return executableCandidate(configured)
+	}
 	name := "claude"
 	if runtime.GOOS == "windows" {
 		name = "claude.exe"
@@ -169,7 +172,6 @@ func findClaudeCodeExecutable(cfg Config) string {
 	localApp := os.Getenv("LOCALAPPDATA")
 	appData := os.Getenv("APPDATA")
 	return firstExecutable(
-		cfg.ClaudeCodeExecutable,
 		pathCandidate,
 		filepath.Join(profile, ".local", "bin", name),
 		filepath.Join(claudeToolRoot(), name),
@@ -186,7 +188,10 @@ func openCodeExecutableNames() []string {
 }
 
 func findOpenCodeExecutable(cfg Config) string {
-	candidates := []string{cfg.OpenCodeExecutable}
+	if configured := strings.TrimSpace(cfg.OpenCodeExecutable); configured != "" {
+		return executableCandidate(configured)
+	}
+	var candidates []string
 	for _, name := range openCodeExecutableNames() {
 		if found, err := exec.LookPath(name); err == nil {
 			candidates = append(candidates, found)

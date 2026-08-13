@@ -82,6 +82,38 @@ func TestCodingEngineConfigurationAndArguments(t *testing.T) {
 	}
 }
 
+func TestConfiguredEngineExecutableIsAuthoritative(t *testing.T) {
+	bin := t.TempDir()
+	globalClaude := filepath.Join(bin, "claude")
+	globalOpenCode := filepath.Join(bin, "opencode")
+	if runtime.GOOS == "windows" {
+		globalClaude += ".cmd"
+		globalOpenCode += ".cmd"
+		writeTestExecutable(t, globalClaude, "@echo off\r\nif \"%1\"==\"--version\" (echo claude global& exit /b 0)\r\nif \"%1\"==\"auth\" (echo logged in& exit /b 0)\r\nexit /b 0\r\n")
+		writeTestExecutable(t, globalOpenCode, "@echo off\r\nif \"%1\"==\"--version\" (echo opencode global& exit /b 0)\r\nif \"%1\"==\"auth\" (echo logged in& exit /b 0)\r\nexit /b 0\r\n")
+	} else {
+		writeTestExecutable(t, globalClaude, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo claude global; exit 0; fi\nif [ \"$1\" = \"auth\" ]; then echo logged in; exit 0; fi\nexit 0\n")
+		writeTestExecutable(t, globalOpenCode, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo opencode global; exit 0; fi\nif [ \"$1\" = \"auth\" ]; then echo logged in; exit 0; fi\nexit 0\n")
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cfg := defaultConfig()
+	cfg.ClaudeCodeExecutable = filepath.Join(t.TempDir(), "missing-claude")
+	cfg.OpenCodeExecutable = filepath.Join(t.TempDir(), "missing-opencode")
+
+	if got := findClaudeCodeExecutable(cfg); got != "" {
+		t.Fatalf("configured missing Claude executable should not fall back to PATH, got %q", got)
+	}
+	if got := findOpenCodeExecutable(cfg); got != "" {
+		t.Fatalf("configured missing OpenCode executable should not fall back to PATH, got %q", got)
+	}
+	if st := codingEngineStatus(context.Background(), cfg, editingEngineClaude); st.Installed || !strings.Contains(st.Error, "not found") {
+		t.Fatalf("Claude status should report configured missing path: %#v", st)
+	}
+	if st := codingEngineStatus(context.Background(), cfg, editingEngineOpenCode); st.Installed || !strings.Contains(st.Error, "not found") {
+		t.Fatalf("OpenCode status should report configured missing path: %#v", st)
+	}
+}
+
 func TestClaudeInstallerCommandAndOpenCodeOllamaEnvironment(t *testing.T) {
 	stable := claudeInstallPowerShell("stable")
 	versioned := claudeInstallPowerShell("2.1.211")

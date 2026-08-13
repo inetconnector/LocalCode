@@ -25,6 +25,7 @@ For all three external engines LocalCode provides:
 - a pre-edit backup and fingerprint-based changed-file detection;
 - restoration of the last engine change with hash checks that protect later manual edits;
 - supervisor routing through generic `engine_*` actions; legacy `aider_*` actions remain compatible aliases.
+- explicitly configured Claude Code and OpenCode executable paths are authoritative; if such a path is missing, LocalCode reports that configuration error instead of falling back to a global executable.
 
 Für alle drei externen Engines bietet LocalCode:
 
@@ -37,6 +38,7 @@ Für alle drei externen Engines bietet LocalCode:
 - ein Backup vor bearbeitenden Läufen sowie Fingerprint-Erkennung geänderter Dateien;
 - Wiederherstellung der letzten Engine-Änderung mit Hash-Prüfung zum Schutz späterer manueller Änderungen;
 - Supervisor-Routing über generische `engine_*`-Aktionen; alte `aider_*`-Aktionen bleiben kompatible Aliase.
+- ausdrücklich konfigurierte Claude-Code- und OpenCode-Programmpfade sind maßgeblich; fehlt ein solcher Pfad, meldet LocalCode diesen Konfigurationsfehler, statt auf eine globale Programmdatei auszuweichen.
 
 ## Aider
 

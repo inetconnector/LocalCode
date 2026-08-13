@@ -78,6 +78,8 @@ Zusätzlich bleibt **LocalCode nativ** als interne Werkzeugschleife verfügbar. 
 
 Für jede externe Engine sind Statusprüfung, Installation/Reparatur, Anmeldung (soweit erforderlich), Repository-Analysetest, kontrollierter Abbruch, Ausgabeerfassung und Wiederherstellung der letzten Änderung integriert. Der Supervisor verwendet für mehrdateilige Änderungen, Repository-Analyse, Linting und Tests immer die aktuell ausgewählte Engine. Die alten `aider_*`-Agentenaktionen bleiben als kompatible Aliase erhalten.
 
+Ein ausdrücklich konfigurierter Programmdateipfad für Claude Code oder OpenCode ist maßgeblich. Wenn dieser Pfad nicht existiert oder nicht ausführbar ist, meldet LocalCode den konkreten Konfigurationsfehler statt still auf eine globale Installation auszuweichen.
+
 Vor bearbeitenden Läufen erstellt LocalCode ein projektbezogenes Backup und ermittelt geänderte Dateien anhand von Fingerprints. **Letzte Engine-Änderung zurücksetzen** schützt spätere manuelle Änderungen durch Hash-Prüfung. LocalCodes Genehmigungsgrenze liegt vor dem Start der externen Engine; die externe Engine läuft anschließend mit ihren eigenen Werkzeug- und Berechtigungsregeln. Der gefährliche Claude-Modus `bypassPermissions` wird in LocalCode bewusst nicht angeboten. OpenCodes automatische Genehmigung kann in den Einstellungen ausgeschaltet werden.
 
 Aider-spezifische Details stehen in `docs/AIDER-INTEGRATION.md`; Vergleich, Installation, Modelle, Anmeldung und Sicherheitsgrenzen aller Engines stehen in `docs/CODING-ENGINES.md`.
@@ -233,6 +235,8 @@ Under **Settings → Configuration → Coding-agent engine**, LocalCode can swit
 **LocalCode native** remains available as the internal tool loop; it is not a fourth external engine.
 
 Each external engine has integrated status checks, installation/repair, sign-in where required, repository-analysis testing, controlled cancellation, output capture, and restoration of the last change. The supervisor uses the selected engine for multi-file edits, repository analysis, linting, and tests. Legacy `aider_*` agent actions remain compatible aliases.
+
+An explicitly configured executable path for Claude Code or OpenCode is authoritative. If that path does not exist or is not executable, LocalCode reports the concrete configuration error instead of silently falling back to a global installation.
 
 Before editing runs, LocalCode creates a project backup and detects changed files through fingerprints. **Restore last engine change** protects later manual edits through hash checks. LocalCode's approval boundary applies before the external process starts; the selected engine then applies its own tool and permission rules. Claude's dangerous `bypassPermissions` mode is intentionally not exposed. OpenCode auto-approval can be disabled in Settings.
 
