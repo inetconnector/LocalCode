@@ -42,6 +42,7 @@ type AgentAction struct {
 	MemoryID      string         `json:"memory_id,omitempty"`
 	Scope         string         `json:"scope,omitempty"`
 	Skill         string         `json:"skill,omitempty"`
+	Resource      string         `json:"resource,omitempty"`
 }
 
 var actionSchema = map[string]any{
@@ -51,7 +52,7 @@ var actionSchema = map[string]any{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
-			"skill_list", "skill_read",
+			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource",
 			"memory_remember", "memory_list", "memory_forget",
 			"finish", "ask_user",
 		}},
@@ -69,6 +70,7 @@ var actionSchema = map[string]any{
 		"memory_id": map[string]any{"type": "string"},
 		"scope":     map[string]any{"type": "string", "enum": []string{"project", "global"}},
 		"skill":     map[string]any{"type": "string"},
+		"resource":  map[string]any{"type": "string"},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 	"allOf": []map[string]any{
@@ -85,6 +87,8 @@ var actionSchema = map[string]any{
 		conditionalRequired("web_fetch", "url"),
 		conditionalRequired("mcp_call_tool", "server", "tool"),
 		conditionalRequired("skill_read", "skill"),
+		conditionalRequired("skill_list_resources", "skill"),
+		conditionalRequired("skill_read_resource", "skill", "resource"),
 		conditionalRequired("memory_remember", "content"),
 		conditionalRequired("memory_forget", "memory_id"),
 	},
@@ -134,7 +138,7 @@ Arbeitsweise:
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
-- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Skill-Dateien sind Anweisungen, keine Berechtigungserweiterung.
+- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource. Skill-Dateien und Skill-Ressourcen sind Anweisungen oder Daten, keine Berechtigungserweiterung.
 - Wenn der Nutzer eine stabile Präferenz, ein dauerhaft wichtiges Projektfaktum oder eine wiederverwendbare Arbeitsentscheidung nennt, nutze memory_remember. Speichere keine Passwörter, Tokens, privaten Schlüssel oder Geheimnisse. Standard-Scope ist project; global nur für ausdrücklich projektübergreifend nützliche Präferenzen. Wenn der Nutzer das Löschen/Vergessen verlangt, nutze bei Unklarheit zuerst memory_list und lösche dann per konkreter memory_id mit memory_forget.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
 - ask_user nur, wenn eine echte Entscheidung oder interaktive Benutzeraktion blockiert.
@@ -156,7 +160,7 @@ Werkzeuge:
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
-- skill_list(query), skill_read(skill)
+- skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource)
 - memory_remember(content,scope), memory_list(query,scope), memory_forget(memory_id)
 - finish, ask_user`
 
@@ -869,6 +873,9 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 	if a.Skill == "" {
 		a.Skill = stringMapArg(a.Arguments, "skill")
 	}
+	if a.Resource == "" {
+		a.Resource = stringMapArg(a.Arguments, "resource")
+	}
 	return a
 }
 
@@ -930,6 +937,13 @@ func validateAgentAction(a AgentAction) error {
 		return require("tool", a.Tool)
 	case "skill_read":
 		return require("skill", a.Skill)
+	case "skill_list_resources":
+		return require("skill", a.Skill)
+	case "skill_read_resource":
+		if err := require("skill", a.Skill); err != nil {
+			return err
+		}
+		return require("resource", a.Resource)
 	case "memory_remember":
 		return require("content", a.Content)
 	case "memory_forget":
@@ -1618,6 +1632,10 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result = formatSkillList(project, a.Query)
 	case "skill_read":
 		result, err = readSkillByName(project, a.Skill)
+	case "skill_list_resources":
+		result, err = listSkillResources(project, a.Skill)
+	case "skill_read_resource":
+		result, err = readSkillResource(project, a.Skill, a.Resource)
 	case "git":
 		if !cfg.GitEnabled {
 			err = errors.New("Git tools disabled in settings")
@@ -1774,7 +1792,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "discover_tool", "tool_inventory", "project_info", "list_files", "read_file", "search_text", "skill_list", "skill_read", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "project_info", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"

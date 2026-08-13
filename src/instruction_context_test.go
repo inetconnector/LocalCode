@@ -125,6 +125,35 @@ func TestSkillListAndRead(t *testing.T) {
 	}
 }
 
+func TestSkillResourcesListAndRead(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "asset-skill", "SKILL.md"), "---\ndescription: Asset workflow\n---\n# Asset Skill\n\nRead references before creating assets.\n")
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "asset-skill", "references", "palette.md"), "# Palette\n\nUse blue and yellow.\n")
+
+	list, err := listSkillResources(project, "asset-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(list, "references/palette.md") {
+		t.Fatalf("resource missing from list:\n%s", list)
+	}
+	read, err := readSkillResource(project, "asset-skill", "references/palette.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(read, "Use blue and yellow.") {
+		t.Fatalf("unexpected resource read:\n%s", read)
+	}
+	if _, err := readSkillResource(project, "asset-skill", "../outside.md"); err == nil {
+		t.Fatal("resource traversal should fail")
+	}
+	if _, err := readSkillResource(project, "asset-skill", "SKILL.md"); err == nil {
+		t.Fatal("SKILL.md should be read through skill_read")
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

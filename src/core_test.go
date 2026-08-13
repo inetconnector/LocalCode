@@ -169,6 +169,16 @@ func TestParseAgentAction(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"skill_read","message":"Lies Skill"}`); err == nil {
 		t.Fatal("skill_read without skill must be rejected")
 	}
+	a, err = parseAgentAction(`{"action":"skill_read_resource","message":"Lies Ressource","arguments":{"skill":"asset-skill","resource":"references/palette.md"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Skill != "asset-skill" || a.Resource != "references/palette.md" {
+		t.Fatalf("skill resource arguments were not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"skill_read_resource","message":"Lies Ressource","skill":"asset-skill"}`); err == nil {
+		t.Fatal("skill_read_resource without resource must be rejected")
+	}
 }
 
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {

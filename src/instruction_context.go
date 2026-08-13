@@ -19,6 +19,7 @@ const (
 	maxRuleDocBytes            = 8000
 	maxSkillDocBytes           = 9000
 	maxSkillReadBytes          = 24000
+	maxSkillResourceBytes      = 20000
 )
 
 type instructionDocument struct {
@@ -270,25 +271,33 @@ func formatSkillList(project, query string) string {
 }
 
 func readSkillByName(project, name string) (string, error) {
+	skill, err := findSkillByName(project, name)
+	if err != nil {
+		return "", err
+	}
+	return formatSkillRead(project, skill)
+}
+
+func findSkillByName(project, name string) (localSkillSummary, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", errors.New("skill is empty")
+		return localSkillSummary{}, errors.New("skill is empty")
 	}
 	skills := localSkillSummaries(project, "")
 	var partial *localSkillSummary
 	for i := range skills {
 		skill := &skills[i]
 		if strings.EqualFold(skill.Name, name) || strings.EqualFold(filepath.ToSlash(skill.Path), filepath.ToSlash(name)) || strings.EqualFold(displayInstructionPath(project, skill.Path), filepath.ToSlash(name)) {
-			return formatSkillRead(project, *skill)
+			return *skill, nil
 		}
 		if partial == nil && strings.Contains(strings.ToLower(skill.Name), strings.ToLower(name)) {
 			partial = skill
 		}
 	}
 	if partial != nil {
-		return formatSkillRead(project, *partial)
+		return *partial, nil
 	}
-	return "", fmt.Errorf("skill %q not found", name)
+	return localSkillSummary{}, fmt.Errorf("skill %q not found", name)
 }
 
 func formatSkillRead(project string, skill localSkillSummary) (string, error) {
@@ -297,6 +306,67 @@ func formatSkillRead(project string, skill localSkillSummary) (string, error) {
 		return "", fmt.Errorf("skill %s cannot be read", skill.Name)
 	}
 	return fmt.Sprintf("--- Skill: %s ---\nPath: %s\nRelevant: %t\n\n%s", skill.Name, displayInstructionPath(project, skill.Path), skill.Relevant, content), nil
+}
+
+func listSkillResources(project, name string) (string, error) {
+	skill, err := findSkillByName(project, name)
+	if err != nil {
+		return "", err
+	}
+	root := filepath.Dir(skill.Path)
+	var lines []string
+	lines = append(lines, fmt.Sprintf("--- Skill-Ressourcen: %s ---", skill.Name))
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() || strings.EqualFold(path, skill.Path) {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		info, statErr := d.Info()
+		size := int64(0)
+		if statErr == nil {
+			size = info.Size()
+		}
+		lines = append(lines, fmt.Sprintf("- %s (%d bytes)", filepath.ToSlash(rel), size))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(lines) == 1 {
+		lines = append(lines, "Keine zusätzlichen Ressourcen gefunden.")
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func readSkillResource(project, name, resource string) (string, error) {
+	skill, err := findSkillByName(project, name)
+	if err != nil {
+		return "", err
+	}
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return "", errors.New("resource is empty")
+	}
+	if filepath.IsAbs(resource) {
+		return "", errors.New("resource must be relative to the skill directory")
+	}
+	root := filepath.Dir(skill.Path)
+	full := filepath.Clean(filepath.Join(root, resource))
+	rel, err := filepath.Rel(root, full)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return "", errors.New("resource escapes the skill directory")
+	}
+	if strings.EqualFold(filepath.Clean(full), filepath.Clean(skill.Path)) {
+		return "", errors.New("use skill_read for SKILL.md")
+	}
+	content, ok := readInstructionFile(full, maxSkillResourceBytes)
+	if !ok {
+		return "", fmt.Errorf("skill resource %q is missing, empty, binary, or too large to read as text", resource)
+	}
+	return fmt.Sprintf("--- Skill-Ressource: %s / %s ---\nPath: %s\n\n%s", skill.Name, filepath.ToSlash(rel), displayInstructionPath(project, full), content), nil
 }
 
 func instructionTextRelevant(task, text string) bool {
