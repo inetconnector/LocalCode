@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -210,6 +211,31 @@ func TestCopySkillResourceCopiesBinaryAsset(t *testing.T) {
 	}
 	if _, err := copySkillResource(project, "asset-skill", "SKILL.md", "public/SKILL.md"); err == nil {
 		t.Fatal("SKILL.md should not be copied through resource path")
+	}
+}
+
+func TestSkillRunScriptExecutesDeclaredCommand(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "script-skill", "SKILL.md"), "---\ndescription: Script workflow\ncommands:\n  - echo skill-ok\n---\n# Script Skill\n\nRun declared commands only.\n")
+	cfg := defaultConfig()
+	cfg.CommandTimeout = 5
+	cfg.Language = "en"
+	cfg.PreferredLanguage = "en"
+
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "skill_run_script", Skill: "script-skill", Script: "echo skill-ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "SKILL SCRIPT EXECUTED") || !strings.Contains(result, "echo skill-ok") || !strings.Contains(result, "skill-ok") {
+		t.Fatalf("unexpected script result:\n%s", result)
+	}
+	if _, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "skill_run_script", Skill: "script-skill", Script: "echo undeclared"}); err == nil {
+		t.Fatal("undeclared script should fail")
+	}
+	if _, _, _, err := resolveSkillScriptCommand(project, cfg, "script-skill", "echo skill-ok", []string{"bad\narg"}); err == nil {
+		t.Fatal("line-breaking script argument should fail")
 	}
 }
 

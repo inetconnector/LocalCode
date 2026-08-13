@@ -46,6 +46,7 @@ type AgentAction struct {
 	Scope         string         `json:"scope,omitempty"`
 	Skill         string         `json:"skill,omitempty"`
 	Resource      string         `json:"resource,omitempty"`
+	Script        string         `json:"script,omitempty"`
 }
 
 var actionSchema = map[string]any{
@@ -55,7 +56,7 @@ var actionSchema = map[string]any{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
-			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource",
+			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
 			"memory_remember", "memory_list", "memory_forget",
 			"finish", "ask_user",
 		}},
@@ -75,6 +76,7 @@ var actionSchema = map[string]any{
 		"scope":     map[string]any{"type": "string", "enum": []string{"project", "global"}},
 		"skill":     map[string]any{"type": "string"},
 		"resource":  map[string]any{"type": "string"},
+		"script":    map[string]any{"type": "string"},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 	"allOf": []map[string]any{
@@ -97,6 +99,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("skill_list_resources", "skill"),
 		conditionalRequired("skill_read_resource", "skill", "resource"),
 		conditionalRequired("skill_copy_resource", "skill", "resource", "destination"),
+		conditionalRequired("skill_run_script", "skill", "script"),
 		conditionalRequired("memory_remember", "content"),
 		conditionalRequired("memory_forget", "memory_id"),
 	},
@@ -149,7 +152,7 @@ Arbeitsweise:
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
-- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource für Textressourcen. Für binäre oder als Projektdatei benötigte Skill-Ressourcen nutze skill_copy_resource(skill,resource,destination); die Kopie braucht Genehmigung und erweitert keine Berechtigungen.
+- Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource für Textressourcen. Für binäre oder als Projektdatei benötigte Skill-Ressourcen nutze skill_copy_resource(skill,resource,destination); die Kopie braucht Genehmigung und erweitert keine Berechtigungen. Deklarierte Skill-Skripte oder -Commands darfst du nur mit skill_run_script(skill,script,args) starten; script muss exakt einem im Skill gelisteten scripts/commands-Eintrag entsprechen.
 - Wenn der Nutzer eine stabile Präferenz, ein dauerhaft wichtiges Projektfaktum oder eine wiederverwendbare Arbeitsentscheidung nennt, nutze memory_remember. Speichere keine Passwörter, Tokens, privaten Schlüssel oder Geheimnisse. Standard-Scope ist project; global nur für ausdrücklich projektübergreifend nützliche Präferenzen. Wenn der Nutzer das Löschen/Vergessen verlangt, nutze bei Unklarheit zuerst memory_list und lösche dann per konkreter memory_id mit memory_forget.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
 - ask_user nur, wenn eine echte Entscheidung oder interaktive Benutzeraktion blockiert.
@@ -174,7 +177,7 @@ Werkzeuge:
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
-- skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource), skill_copy_resource(skill,resource,destination)
+- skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource), skill_copy_resource(skill,resource,destination), skill_run_script(skill,script,args)
 - memory_remember(content,scope), memory_list(query,scope), memory_forget(memory_id)
 - finish, ask_user`
 
@@ -902,6 +905,9 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 	if a.Resource == "" {
 		a.Resource = stringMapArg(a.Arguments, "resource")
 	}
+	if a.Script == "" {
+		a.Script = stringMapArg(a.Arguments, "script")
+	}
 	return a
 }
 
@@ -1007,6 +1013,11 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("destination", a.Destination)
+	case "skill_run_script":
+		if err := require("skill", a.Skill); err != nil {
+			return err
+		}
+		return require("script", a.Script)
 	case "memory_remember":
 		return require("content", a.Content)
 	case "memory_forget":
@@ -1096,7 +1107,7 @@ func completionRepairDirective(task string, issues []string) string {
 
 func actionMutatesProject(a AgentAction) bool {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	default:
 		return false
@@ -1111,6 +1122,8 @@ func mutatedActionPaths(a AgentAction) []string {
 		return []string{a.Destination}
 	case "skill_copy_resource":
 		return []string{a.Destination}
+	case "skill_run_script":
+		return []string{"."}
 	case "copy_path":
 		return []string{a.Destination}
 	case "move_path":
@@ -1754,7 +1767,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -1865,6 +1878,8 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return cfg.ApprovalMode == "strict"
 	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
+	case "skill_run_script":
+		return true
 	case "engine_repo_map", "engine_lint", "engine_test", "aider_repo_map", "aider_lint", "aider_test":
 		return cfg.ApprovalMode == "strict"
 	case "git":
@@ -2089,6 +2104,12 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("Skill resource copy preview\nSkill: %s\nResource: %s\nDestination: %s\nBytes: %d\nExisting: %s", skill.Name, filepath.ToSlash(rel), a.Destination, info.Size(), describePathState("target", target)), nil
+	case "skill_run_script":
+		skill, command, source, err := resolveSkillScriptCommand(project, cfg, a.Skill, a.Script, a.Args)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Skill script preview\nSkill: %s\nDeclared: %s\nSource: %s\nCommand: %s", skill.Name, a.Script, source, command), nil
 	case "delete_file":
 		old, err := readProjectFile(project, a.Path)
 		if err != nil {
@@ -2194,6 +2215,90 @@ func validateManagedStateWrite(project string, cfg Config, path, content string)
 	return nil
 }
 
+func resolveSkillScriptCommand(project string, cfg Config, skillName, script string, args []string) (localSkillSummary, string, string, error) {
+	skill, err := findSkillByName(project, skillName)
+	if err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	script = strings.TrimSpace(script)
+	if script == "" {
+		return localSkillSummary{}, "", "", errors.New("script is empty")
+	}
+	matched := ""
+	for _, declared := range skill.Scripts {
+		if strings.TrimSpace(declared) == script {
+			matched = strings.TrimSpace(declared)
+			break
+		}
+	}
+	if matched == "" {
+		return localSkillSummary{}, "", "", fmt.Errorf("script %q is not declared by skill %s", script, skill.Name)
+	}
+	if len(args) > 64 {
+		return localSkillSummary{}, "", "", errors.New("too many script arguments")
+	}
+	for _, arg := range args {
+		if strings.ContainsAny(arg, "\x00\r\n") {
+			return localSkillSummary{}, "", "", errors.New("script arguments must not contain control line breaks")
+		}
+		if len(arg) > 4096 {
+			return localSkillSummary{}, "", "", errors.New("script argument is too long")
+		}
+	}
+	command := matched
+	source := "declared command"
+	if skillScriptLooksLikeRelativePath(matched) {
+		if cfg.AgentEnvironment == "wsl" || cfg.TerminalShell == "wsl" {
+			return localSkillSummary{}, "", "", errors.New("relative skill script files are not supported in WSL mode; declare an explicit WSL-compatible command in the skill")
+		}
+		_, full, rel, err := resolveSkillResourcePath(project, skill.Name, matched)
+		if err != nil {
+			return localSkillSummary{}, "", "", err
+		}
+		source = filepath.ToSlash(rel)
+		command = invocationForSkillScriptPath(cfg, full)
+	}
+	for _, arg := range args {
+		command += " " + shellQuoteForConfiguredShell(cfg, arg)
+	}
+	if err := commandBlocked(cfg, command); err != nil {
+		return localSkillSummary{}, "", "", err
+	}
+	return skill, command, source, nil
+}
+
+func skillScriptLooksLikeRelativePath(script string) bool {
+	if script == "" || filepath.IsAbs(script) || len(strings.Fields(script)) != 1 {
+		return false
+	}
+	if strings.ContainsAny(script, "\r\n;&|<>`$(){}[]!*?") {
+		return false
+	}
+	normalized := filepath.ToSlash(script)
+	if strings.HasPrefix(normalized, "/") || strings.HasPrefix(normalized, "../") || strings.Contains(normalized, "/../") {
+		return false
+	}
+	return strings.Contains(normalized, "/") || filepath.Ext(normalized) != ""
+}
+
+func invocationForSkillScriptPath(cfg Config, path string) string {
+	quoted := shellQuoteForConfiguredShell(cfg, path)
+	if cfg.TerminalShell != "cmd" && cfg.AgentEnvironment != "wsl" {
+		return "& " + quoted
+	}
+	return quoted
+}
+
+func shellQuoteForConfiguredShell(cfg Config, value string) string {
+	if cfg.AgentEnvironment == "wsl" {
+		return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	}
+	if cfg.TerminalShell == "cmd" {
+		return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+	}
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
 func executeAction(ctx context.Context, project string, cfg Config, a AgentAction) (string, error) {
 	switch a.Action {
 	case "replace_text":
@@ -2219,6 +2324,14 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return renderAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
 	case "skill_copy_resource":
 		return copySkillResource(project, a.Skill, a.Resource, a.Destination)
+	case "skill_run_script":
+		skill, command, source, err := resolveSkillScriptCommand(project, cfg, a.Skill, a.Script, a.Args)
+		if err != nil {
+			return "", err
+		}
+		result, err := executeCommand(ctx, project, command, cfg)
+		header := fmt.Sprintf("SKILL SCRIPT EXECUTED\nSkill: %s\nDeclared: %s\nSource: %s\nCommand: %s\n\n", skill.Name, a.Script, source, command)
+		return header + result, err
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)
 	case "build_project":

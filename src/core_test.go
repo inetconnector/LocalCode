@@ -189,6 +189,16 @@ func TestParseAgentAction(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"skill_copy_resource","message":"Kopiere Ressource","skill":"asset-skill","resource":"assets/icon.png"}`); err == nil {
 		t.Fatal("skill_copy_resource without destination must be rejected")
 	}
+	a, err = parseAgentAction(`{"action":"skill_run_script","message":"Starte Skill-Skript","skill":"asset-skill","script":"scripts/build.ps1","args":["--fast"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Skill != "asset-skill" || a.Script != "scripts/build.ps1" || len(a.Args) != 1 || a.Args[0] != "--fast" {
+		t.Fatalf("skill run arguments were not parsed: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"skill_run_script","message":"Starte Skill-Skript","skill":"asset-skill"}`); err == nil {
+		t.Fatal("skill_run_script without script must be rejected")
+	}
 }
 
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {
