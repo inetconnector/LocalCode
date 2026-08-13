@@ -112,6 +112,48 @@ func TestInstructionContextMatchesGlobs(t *testing.T) {
 	}
 }
 
+func TestSkillActivationExcludesAndConflictResolution(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", configHome)
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(configHome, productDirName, "skills", "dupe", "SKILL.md"), "---\ndescription: Duplicate workflow\nalwaysApply: true\n---\n# Global Duplicate\n\nGLOBAL BODY SHOULD NOT LOAD.\n")
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "dupe", "SKILL.md"), "---\ndescription: Duplicate workflow\ntriggers: web api\n---\n# Project Duplicate\n\nPROJECT BODY SHOULD LOAD.\n")
+	mustWrite(t, filepath.Join(project, ".cursor", "skills", "priority", "SKILL.md"), "---\ndescription: priority workflow\npriority: 5\ntriggers: priority\n---\n# Low Priority\n\nLOW PRIORITY BODY SHOULD NOT LOAD.\n")
+	mustWrite(t, filepath.Join(project, ".opencode", "skills", "priority", "SKILL.md"), "---\ndescription: priority workflow\npriority: 20\ntriggers: priority\n---\n# High Priority\n\nHIGH PRIORITY BODY SHOULD LOAD.\n")
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "excluded", "SKILL.md"), "---\ndescription: excluded workflow\nalwaysApply: true\nexclude_globs: docs/*.md\n---\n# Excluded\n\nEXCLUDED BODY SHOULD NOT LOAD.\n")
+	mustWrite(t, filepath.Join(project, ".cursor", "rules", "no-docs.mdc"), "---\nalwaysApply: true\nexclude_globs: docs/*.md\n---\nEXCLUDED RULE SHOULD NOT LOAD.\n")
+
+	context := projectInstructionContext(project, "Bitte repariere die web api in docs/guide.md und prüfe priority.")
+	for _, want := range []string{
+		"PROJECT BODY SHOULD LOAD",
+		"dupe [loaded]",
+		"activation=web api",
+		"HIGH PRIORITY BODY SHOULD LOAD",
+		"priority [loaded]",
+		"priority=20",
+		"excluded [available]",
+		"exclude=docs/*.md",
+	} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("context missing %q:\n%s", want, context)
+		}
+	}
+	for _, forbidden := range []string{
+		"GLOBAL BODY SHOULD NOT LOAD",
+		"LOW PRIORITY BODY SHOULD NOT LOAD",
+		"EXCLUDED BODY SHOULD NOT LOAD",
+		"EXCLUDED RULE SHOULD NOT LOAD",
+	} {
+		if strings.Contains(context, forbidden) {
+			t.Fatalf("context unexpectedly contains %q:\n%s", forbidden, context)
+		}
+	}
+	if strings.Count(context, "dupe [") != 1 {
+		t.Fatalf("duplicate skill should appear once:\n%s", context)
+	}
+}
+
 func TestSkillListAndRead(t *testing.T) {
 	configHome := t.TempDir()
 	codexHome := t.TempDir()

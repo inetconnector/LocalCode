@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -36,9 +37,14 @@ type localSkillSummary struct {
 	Relevant         bool
 	AlwaysApply      bool
 	Globs            []string
+	Activation       []string
+	ExcludeGlobs     []string
+	Priority         int
 	Permissions      []string
 	Scripts          []string
 	RequiresApproval bool
+	RootTier         int
+	RootRank         int
 }
 
 func projectInstructionContext(project, task string) string {
@@ -173,7 +179,12 @@ func cursorRuleFiles(project, task string) []string {
 			continue
 		}
 		globs := frontmatterList(content, "globs")
-		if cursorRuleAlwaysApplies(content) || instructionGlobsMatchTask(project, task, globs) || instructionTextRelevant(task, name+" "+frontmatterValue(content, "description")+" "+content) {
+		excludeGlobs := frontmatterListAny(content, "exclude", "excludes", "excludeGlobs", "exclude_globs")
+		if instructionGlobsMatchTask(project, task, excludeGlobs) {
+			continue
+		}
+		activation := frontmatterListAny(content, "activation", "activations", "trigger", "triggers", "keywords", "when", "appliesTo", "applies_to")
+		if cursorRuleAlwaysApplies(content) || instructionGlobsMatchTask(project, task, globs) || activationMatchesTask(task, activation) || instructionTextRelevant(task, name+" "+frontmatterValue(content, "description")+" "+content) {
 			paths = append(paths, path)
 		}
 	}
@@ -189,7 +200,11 @@ func cursorRuleAlwaysApplies(content string) bool {
 func localSkillSummaries(project, task string) []localSkillSummary {
 	roots := availableSkillRoots(project)
 	var skills []localSkillSummary
-	for _, root := range roots {
+	for rootRank, root := range roots {
+		rootTier := 1
+		if skillRootIsProjectLocal(project, root) {
+			rootTier = 0
+		}
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.EqualFold(d.Name(), "SKILL.md") {
 				return nil
@@ -205,10 +220,16 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 			}
 			globs := frontmatterList(content, "globs")
 			alwaysApply := cursorRuleAlwaysApplies(content)
+			activation := frontmatterListAny(content, "activation", "activations", "trigger", "triggers", "keywords", "when", "appliesTo", "applies_to")
+			excludeGlobs := frontmatterListAny(content, "exclude", "excludes", "excludeGlobs", "exclude_globs")
+			priority := frontmatterInt(content, "priority")
 			permissions := compactNonEmpty(append(frontmatterList(content, "permissions"), frontmatterList(content, "allowed-tools")...))
 			permissions = compactNonEmpty(append(permissions, frontmatterList(content, "tools")...))
 			scripts := compactNonEmpty(append(frontmatterList(content, "scripts"), frontmatterList(content, "commands")...))
-			relevant := alwaysApply || instructionGlobsMatchTask(project, task, globs) || instructionTextRelevant(task, name+" "+description)
+			relevant := false
+			if !instructionGlobsMatchTask(project, task, excludeGlobs) {
+				relevant = alwaysApply || instructionGlobsMatchTask(project, task, globs) || activationMatchesTask(task, activation) || instructionTextRelevant(task, name+" "+description)
+			}
 			requiresApproval := skillMetadataRequiresApproval(permissions, scripts)
 			skills = append(skills, localSkillSummary{
 				Name:             name,
@@ -217,16 +238,25 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 				Relevant:         relevant,
 				AlwaysApply:      alwaysApply,
 				Globs:            globs,
+				Activation:       activation,
+				ExcludeGlobs:     excludeGlobs,
+				Priority:         priority,
 				Permissions:      permissions,
 				Scripts:          scripts,
 				RequiresApproval: requiresApproval,
+				RootTier:         rootTier,
+				RootRank:         rootRank,
 			})
 			return nil
 		})
 	}
+	skills = resolveSkillConflicts(skills)
 	sort.Slice(skills, func(i, j int) bool {
 		if skills[i].Relevant != skills[j].Relevant {
 			return skills[i].Relevant
+		}
+		if skills[i].Priority != skills[j].Priority {
+			return skills[i].Priority > skills[j].Priority
 		}
 		if strings.EqualFold(skills[i].Name, skills[j].Name) {
 			return strings.ToLower(skills[i].Path) < strings.ToLower(skills[j].Path)
@@ -234,6 +264,42 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 		return strings.ToLower(skills[i].Name) < strings.ToLower(skills[j].Name)
 	})
 	return skills
+}
+
+func skillRootIsProjectLocal(project, root string) bool {
+	rel, err := filepath.Rel(filepath.Clean(project), filepath.Clean(root))
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
+}
+
+func resolveSkillConflicts(skills []localSkillSummary) []localSkillSummary {
+	chosen := map[string]localSkillSummary{}
+	for _, skill := range skills {
+		key := strings.ToLower(skill.Name)
+		if current, ok := chosen[key]; !ok || skillConflictWinner(skill, current) {
+			chosen[key] = skill
+		}
+	}
+	out := make([]localSkillSummary, 0, len(chosen))
+	for _, skill := range chosen {
+		out = append(out, skill)
+	}
+	return out
+}
+
+func skillConflictWinner(candidate, current localSkillSummary) bool {
+	if candidate.RootTier != current.RootTier {
+		return candidate.RootTier < current.RootTier
+	}
+	if candidate.Priority != current.Priority {
+		return candidate.Priority > current.Priority
+	}
+	if candidate.Relevant != current.Relevant {
+		return candidate.Relevant
+	}
+	if candidate.RootRank != current.RootRank {
+		return candidate.RootRank < current.RootRank
+	}
+	return strings.ToLower(candidate.Path) < strings.ToLower(current.Path)
 }
 
 func availableSkillRoots(project string) []string {
@@ -277,6 +343,15 @@ func localSkillIndex(project string, skills []localSkillSummary) string {
 		}
 		if len(skill.Scripts) > 0 {
 			meta += " scripts=" + strings.Join(skill.Scripts, ",")
+		}
+		if skill.Priority != 0 {
+			meta += fmt.Sprintf(" priority=%d", skill.Priority)
+		}
+		if len(skill.Activation) > 0 {
+			meta += " activation=" + strings.Join(skill.Activation, ",")
+		}
+		if len(skill.ExcludeGlobs) > 0 {
+			meta += " exclude=" + strings.Join(skill.ExcludeGlobs, ",")
 		}
 		lines = append(lines, fmt.Sprintf("- %s [%s] %s: %s%s", skill.Name, marker, displayInstructionPath(project, skill.Path), desc, meta))
 	}
@@ -466,6 +541,45 @@ func skillMetadataRequiresApproval(permissions, scripts []string) bool {
 		return true
 	}
 	return false
+}
+
+func activationMatchesTask(task string, activation []string) bool {
+	task = strings.ToLower(task)
+	for _, value := range activation {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			continue
+		}
+		if strings.Contains(task, value) {
+			return true
+		}
+		for _, word := range significantWords(value) {
+			if strings.Contains(task, word) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func frontmatterListAny(content string, keys ...string) []string {
+	var out []string
+	for _, key := range keys {
+		out = append(out, frontmatterList(content, key)...)
+	}
+	return compactNonEmpty(out)
+}
+
+func frontmatterInt(content, key string) int {
+	value := strings.TrimSpace(frontmatterValue(content, key))
+	if value == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func frontmatterList(content, key string) []string {
