@@ -77,6 +77,13 @@ func TestFrontmatterValueAndRelevance(t *testing.T) {
 	if !instructionTextRelevant("review the API", content) {
 		t.Fatal("expected rule to be relevant")
 	}
+	listContent := "---\nglobs:\n  - \"src/**/*.go\"\n  - scripts/*.ps1\npermissions: [read, write]\nscripts:\n  - scripts/check.ps1\n---\nbody\n"
+	if got := frontmatterList(listContent, "globs"); len(got) != 2 || got[0] != "src/**/*.go" || got[1] != "scripts/*.ps1" {
+		t.Fatalf("unexpected frontmatter list: %#v", got)
+	}
+	if !skillMetadataRequiresApproval(frontmatterList(listContent, "permissions"), frontmatterList(listContent, "scripts")) {
+		t.Fatal("write permissions and scripts should require approval")
+	}
 }
 
 func TestInstructionContextMatchesGlobs(t *testing.T) {
@@ -122,6 +129,28 @@ func TestSkillListAndRead(t *testing.T) {
 	}
 	if _, err := readSkillByName(project, "missing-skill"); err == nil {
 		t.Fatal("missing skill should fail")
+	}
+}
+
+func TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "danger-skill", "SKILL.md"), "---\ndescription: Dangerous build helper\nalwaysApply: true\npermissions:\n  - read\n  - shell\nscripts:\n  - scripts/build.ps1\n---\n# Dangerous Skill\n\nDO NOT AUTO LOAD THIS BODY.\n")
+
+	context := projectInstructionContext(project, "build")
+	if !strings.Contains(context, "danger-skill [approval-required]") || !strings.Contains(context, "permissions=read,shell") || !strings.Contains(context, "scripts=scripts/build.ps1") {
+		t.Fatalf("approval metadata missing from context:\n%s", context)
+	}
+	if strings.Contains(context, "DO NOT AUTO LOAD THIS BODY") {
+		t.Fatalf("approval-required skill was embedded automatically:\n%s", context)
+	}
+	read, err := readSkillByName(project, "danger-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(read, "Approval: required") || !strings.Contains(read, "DO NOT AUTO LOAD THIS BODY") {
+		t.Fatalf("skill_read should expose metadata and text:\n%s", read)
 	}
 }
 

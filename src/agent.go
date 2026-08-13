@@ -52,7 +52,7 @@ var actionSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
-			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "render_asset",
+			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource",
@@ -85,6 +85,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("write_file", "path", "content"),
 		conditionalRequired("create_svg_asset", "path", "content"),
 		conditionalRequired("create_image_asset", "path", "content"),
+		conditionalRequired("convert_image_asset", "source", "destination"),
 		conditionalRequired("render_asset", "source", "destination"),
 		conditionalRequired("run_tool", "tool"),
 		conditionalRequired("discover_tool", "tool"),
@@ -131,7 +132,8 @@ Arbeitsweise:
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
 - Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
-- Wenn du SVG oder lokale HTML/Canvas-Dateien in konkrete Dateien rendern sollst, nutze render_asset(source,destination,width,height). Unterstützt werden SVG/HTML/HTM als Quelle und PNG/ICO als Ziel; LocalCode rendert mit lokalem Edge/Chrome, blockiert externe HTML-Netzwerkreferenzen und prüft das gerenderte PNG.
+- Wenn du lokale Rasterbilder nach PNG/JPG/JPEG/ICO konvertieren sollst, nutze convert_image_asset(source,destination,width,height). LocalCode dekodiert das Quellbild, skaliert bei expliziter Größe, encodiert das Ziel und prüft das Ergebnis erneut.
+- Wenn du SVG oder lokale HTML/Canvas-Dateien in konkrete Dateien rendern sollst, nutze render_asset(source,destination,width,height). Unterstützt werden SVG/HTML/HTM als Quelle und PNG/JPG/JPEG/ICO als Ziel; LocalCode rendert mit lokalem Edge/Chrome, blockiert externe HTML-Netzwerkreferenzen und prüft das gerenderte PNG.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
@@ -156,7 +158,8 @@ Werkzeuge:
 - replace_text, write_file, delete_file
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
-- render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG oder ICO
+- convert_image_asset(source,destination,width,height) für lokale Rasterbild-Konvertierung zu PNG/JPG/JPEG/ICO
+- render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG/JPG/JPEG oder ICO
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
 - engine_repo_map für eine unverändernde Repository-Analyse, engine_lint und engine_test für gezielte Qualitätsläufe
@@ -970,7 +973,7 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("content", a.Content)
-	case "render_asset":
+	case "convert_image_asset", "render_asset":
 		if err := require("source", a.Source); err != nil {
 			return err
 		}
@@ -1084,7 +1087,7 @@ func completionRepairDirective(task string, issues []string) string {
 
 func actionMutatesProject(a AgentAction) bool {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "render_asset", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	default:
 		return false
@@ -1095,7 +1098,7 @@ func mutatedActionPaths(a AgentAction) []string {
 	switch a.Action {
 	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset":
 		return []string{a.Path}
-	case "render_asset":
+	case "convert_image_asset", "render_asset":
 		return []string{a.Destination}
 	case "copy_path":
 		return []string{a.Destination}
@@ -1740,7 +1743,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "render_asset", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -1849,7 +1852,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
-	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "render_asset", "engine_edit", "aider_edit":
+	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
 	case "engine_repo_map", "engine_lint", "engine_test", "aider_repo_map", "aider_lint", "aider_test":
 		return cfg.ApprovalMode == "strict"
@@ -2029,6 +2032,28 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			}
 		}
 		return fmt.Sprintf("Render asset preview\nSource: %s\nDestination: %s\nRenderer: %s\nSource format: %s\nTarget format: %s\nDimensions: %dx%d\nNetwork: external HTML references blocked; browser uses a dead local proxy", a.Source, a.Destination, renderer, plan.SourceExt, plan.DestinationExt, plan.Width, plan.Height), nil
+	case "convert_image_asset":
+		sourceFull, err := ensureWithinRoot(project, a.Source)
+		if err != nil {
+			return "", err
+		}
+		data, err := os.ReadFile(sourceFull)
+		if err != nil {
+			return "", err
+		}
+		img, sourceInfo, err := decodeConvertibleImage(data, a.Source)
+		if err != nil {
+			return "", err
+		}
+		_, destInfo, err := encodeImageForDestination(img, a.Destination, a.Width, a.Height)
+		if err != nil {
+			return "", err
+		}
+		full, err := ensureWithinRoot(project, a.Destination)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Image conversion preview\nSource: %s (%s %dx%d)\nDestination: %s (%s %dx%d)\nExisting: %s", a.Source, sourceInfo.Format, sourceInfo.Width, sourceInfo.Height, a.Destination, destInfo.Format, destInfo.Width, destInfo.Height, describePathState("target", full)), nil
 	case "delete_file":
 		old, err := readProjectFile(project, a.Path)
 		if err != nil {
@@ -2153,6 +2178,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return createSVGAsset(project, a.Path, a.Content)
 	case "create_image_asset":
 		return createImageAsset(project, a.Path, a.Content)
+	case "convert_image_asset":
+		return convertImageAsset(project, a.Source, a.Destination, a.Width, a.Height)
 	case "render_asset":
 		return renderAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
 	case "delete_file":

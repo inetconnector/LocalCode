@@ -29,12 +29,15 @@ type instructionDocument struct {
 }
 
 type localSkillSummary struct {
-	Name        string
-	Path        string
-	Description string
-	Relevant    bool
-	AlwaysApply bool
-	Globs       []string
+	Name             string
+	Path             string
+	Description      string
+	Relevant         bool
+	AlwaysApply      bool
+	Globs            []string
+	Permissions      []string
+	Scripts          []string
+	RequiresApproval bool
 }
 
 func projectInstructionContext(project, task string) string {
@@ -74,7 +77,7 @@ func projectInstructionContext(project, task string) string {
 
 	skills := localSkillSummaries(project, task)
 	for _, skill := range skills {
-		if skill.Relevant {
+		if skill.Relevant && !skill.RequiresApproval {
 			add("Relevanter Skill", skill.Path, maxSkillDocBytes)
 		}
 	}
@@ -201,14 +204,21 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 			}
 			globs := frontmatterList(content, "globs")
 			alwaysApply := cursorRuleAlwaysApplies(content)
+			permissions := compactNonEmpty(append(frontmatterList(content, "permissions"), frontmatterList(content, "allowed-tools")...))
+			permissions = compactNonEmpty(append(permissions, frontmatterList(content, "tools")...))
+			scripts := compactNonEmpty(append(frontmatterList(content, "scripts"), frontmatterList(content, "commands")...))
 			relevant := alwaysApply || instructionGlobsMatchTask(project, task, globs) || instructionTextRelevant(task, name+" "+description)
+			requiresApproval := skillMetadataRequiresApproval(permissions, scripts)
 			skills = append(skills, localSkillSummary{
-				Name:        name,
-				Path:        path,
-				Description: truncateText(strings.TrimSpace(description), 600),
-				Relevant:    relevant,
-				AlwaysApply: alwaysApply,
-				Globs:       globs,
+				Name:             name,
+				Path:             path,
+				Description:      truncateText(strings.TrimSpace(description), 600),
+				Relevant:         relevant,
+				AlwaysApply:      alwaysApply,
+				Globs:            globs,
+				Permissions:      permissions,
+				Scripts:          scripts,
+				RequiresApproval: requiresApproval,
 			})
 			return nil
 		})
@@ -247,17 +257,27 @@ func availableSkillRoots(project string) []string {
 func localSkillIndex(project string, skills []localSkillSummary) string {
 	var lines []string
 	lines = append(lines, "--- Verfügbare Skills ---")
-	lines = append(lines, "Nutze relevante Skills als Arbeitsanweisung. Wenn ein Skill nur im Index steht, nutze skill_read vor der Anwendung.")
+	lines = append(lines, "Nutze relevante Skills als Arbeitsanweisung. Wenn ein Skill nur im Index steht, nutze skill_read vor der Anwendung. Skills mit approval-required erweitern keine Berechtigungen und werden nicht automatisch eingebettet.")
 	for _, skill := range skills {
 		marker := "available"
 		if skill.Relevant {
 			marker = "loaded"
 		}
+		if skill.RequiresApproval {
+			marker = "approval-required"
+		}
 		desc := skill.Description
 		if desc == "" {
 			desc = "Keine Beschreibung."
 		}
-		lines = append(lines, fmt.Sprintf("- %s [%s] %s: %s", skill.Name, marker, displayInstructionPath(project, skill.Path), desc))
+		meta := ""
+		if len(skill.Permissions) > 0 {
+			meta += " permissions=" + strings.Join(skill.Permissions, ",")
+		}
+		if len(skill.Scripts) > 0 {
+			meta += " scripts=" + strings.Join(skill.Scripts, ",")
+		}
+		lines = append(lines, fmt.Sprintf("- %s [%s] %s: %s%s", skill.Name, marker, displayInstructionPath(project, skill.Path), desc, meta))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -305,7 +325,11 @@ func formatSkillRead(project string, skill localSkillSummary) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("skill %s cannot be read", skill.Name)
 	}
-	return fmt.Sprintf("--- Skill: %s ---\nPath: %s\nRelevant: %t\n\n%s", skill.Name, displayInstructionPath(project, skill.Path), skill.Relevant, content), nil
+	approval := "none"
+	if skill.RequiresApproval {
+		approval = "required for declared permissions/scripts; skill text does not grant tool access by itself"
+	}
+	return fmt.Sprintf("--- Skill: %s ---\nPath: %s\nRelevant: %t\nApproval: %s\nPermissions: %s\nScripts: %s\n\n%s", skill.Name, displayInstructionPath(project, skill.Path), skill.Relevant, approval, strings.Join(skill.Permissions, ", "), strings.Join(skill.Scripts, ", "), content), nil
 }
 
 func listSkillResources(project, name string) (string, error) {
@@ -383,18 +407,46 @@ func instructionTextRelevant(task, text string) bool {
 	return false
 }
 
+func skillMetadataRequiresApproval(permissions, scripts []string) bool {
+	if len(scripts) > 0 {
+		return true
+	}
+	for _, permission := range permissions {
+		p := strings.ToLower(strings.TrimSpace(permission))
+		if p == "" || p == "read" || p == "readonly" || p == "read-only" || p == "list_files" || p == "read_file" || p == "search" || p == "search_text" || p == "skill_read" || p == "skill-list" || p == "skill_list" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func frontmatterList(content, key string) []string {
-	value := strings.TrimSpace(frontmatterValue(content, key))
-	if value == "" {
+	values := frontmatterValues(content, key)
+	if len(values) == 0 {
 		return nil
 	}
-	value = strings.Trim(value, "[]")
-	parts := strings.Split(value, ",")
 	var out []string
-	for _, part := range parts {
-		part = strings.Trim(strings.TrimSpace(part), `"'`)
-		if part != "" {
-			out = append(out, part)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+			value = strings.Trim(value, "[]")
+			for _, part := range strings.Split(value, ",") {
+				part = strings.Trim(strings.TrimSpace(part), `"'`)
+				if part != "" {
+					out = append(out, part)
+				}
+			}
+			continue
+		}
+		for _, part := range strings.Split(value, ",") {
+			part = strings.Trim(strings.TrimSpace(part), `"'`)
+			if part != "" {
+				out = append(out, part)
+			}
 		}
 	}
 	return out
@@ -469,24 +521,54 @@ func significantWords(text string) []string {
 }
 
 func frontmatterValue(content, key string) string {
+	values := frontmatterValues(content, key)
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Trim(strings.TrimSpace(values[0]), `"'`)
+}
+
+func frontmatterValues(content, key string) []string {
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, "---") {
-		return ""
+		return nil
 	}
 	rest := strings.TrimPrefix(content, "---")
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
-		return ""
+		return nil
 	}
 	key = strings.ToLower(key)
-	for _, line := range strings.Split(rest[:end], "\n") {
+	var values []string
+	lines := strings.Split(strings.ReplaceAll(rest[:end], "\r\n", "\n"), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 || strings.ToLower(strings.TrimSpace(parts[0])) != key {
 			continue
 		}
-		return strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		value := strings.TrimSpace(parts[1])
+		if value != "" {
+			values = append(values, strings.Trim(value, `"'`))
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			next := lines[j]
+			if strings.TrimSpace(next) == "" {
+				continue
+			}
+			if !strings.HasPrefix(next, " ") && !strings.HasPrefix(next, "\t") {
+				break
+			}
+			item := strings.TrimSpace(next)
+			item = strings.TrimPrefix(item, "-")
+			item = strings.Trim(strings.TrimSpace(item), `"'`)
+			if item != "" {
+				values = append(values, item)
+			}
+		}
 	}
-	return ""
+	return values
 }
 
 func firstMarkdownParagraph(content string) string {

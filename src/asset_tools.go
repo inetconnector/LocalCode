@@ -11,9 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"os"
 	"os/exec"
@@ -368,9 +370,9 @@ func validateRenderAsset(project, source, destination string, width, height int)
 		return renderAssetPlan{}, errors.New("render_asset source must be .svg, .html, or .htm")
 	}
 	switch destinationExt {
-	case ".png", ".ico":
+	case ".png", ".jpg", ".jpeg", ".ico":
 	default:
-		return renderAssetPlan{}, errors.New("render_asset destination must be .png or .ico")
+		return renderAssetPlan{}, errors.New("render_asset destination must be .png, .jpg, .jpeg, or .ico")
 	}
 	info, err := os.Stat(sourceFull)
 	if err != nil {
@@ -595,6 +597,171 @@ func pngToICO(pngData []byte, width, height int) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+func decodeConvertibleImage(data []byte, source string) (image.Image, imageAssetInfo, error) {
+	info, err := inspectImageAsset(source, data)
+	if err != nil {
+		return nil, imageAssetInfo{}, err
+	}
+	decodeData := data
+	if strings.EqualFold(filepath.Ext(source), ".ico") {
+		pngData, err := icoPNGPayload(data)
+		if err != nil {
+			return nil, imageAssetInfo{}, err
+		}
+		decodeData = pngData
+	}
+	img, _, err := image.Decode(bytes.NewReader(decodeData))
+	if err != nil {
+		return nil, imageAssetInfo{}, fmt.Errorf("source image cannot be decoded for conversion: %w", err)
+	}
+	return img, info, nil
+}
+
+func icoPNGPayload(data []byte) ([]byte, error) {
+	if len(data) < 22 {
+		return nil, errors.New("ico asset is too small")
+	}
+	if binary.LittleEndian.Uint16(data[0:2]) != 0 || binary.LittleEndian.Uint16(data[2:4]) != 1 || binary.LittleEndian.Uint16(data[4:6]) < 1 {
+		return nil, errors.New("ico asset has invalid ICO header")
+	}
+	size := int(binary.LittleEndian.Uint32(data[14:18]))
+	offset := int(binary.LittleEndian.Uint32(data[18:22]))
+	if size <= 0 || offset < 0 || offset+size > len(data) {
+		return nil, errors.New("ico asset image data is truncated")
+	}
+	payload := data[offset : offset+size]
+	if !bytes.HasPrefix(payload, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return nil, errors.New("ico conversion currently supports PNG-in-ICO sources")
+	}
+	return payload, nil
+}
+
+func normalizeConvertDimensions(src image.Image, width, height int) (int, int) {
+	bounds := src.Bounds()
+	srcW, srcH := bounds.Dx(), bounds.Dy()
+	if width <= 0 {
+		width = srcW
+	}
+	if height <= 0 {
+		height = srcH
+	}
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	if width > 4096 {
+		width = 4096
+	}
+	if height > 4096 {
+		height = 4096
+	}
+	return width, height
+}
+
+func resizeNearest(src image.Image, width, height int) image.Image {
+	bounds := src.Bounds()
+	srcW, srcH := bounds.Dx(), bounds.Dy()
+	if srcW == width && srcH == height {
+		return src
+	}
+	dst := image.NewNRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		sy := bounds.Min.Y + y*srcH/height
+		for x := 0; x < width; x++ {
+			sx := bounds.Min.X + x*srcW/width
+			dst.Set(x, y, src.At(sx, sy))
+		}
+	}
+	return dst
+}
+
+func flattenForJPEG(src image.Image) image.Image {
+	bounds := src.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(dst, dst.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(dst, dst.Bounds(), src, bounds.Min, draw.Over)
+	return dst
+}
+
+func encodeImageForDestination(img image.Image, destination string, width, height int) ([]byte, imageAssetInfo, error) {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(destination)))
+	width, height = normalizeConvertDimensions(img, width, height)
+	if ext == ".ico" && (width > 256 || height > 256) {
+		if width >= height {
+			height = maxRenderInt(1, height*256/width)
+			width = 256
+		} else {
+			width = maxRenderInt(1, width*256/height)
+			height = 256
+		}
+	}
+	img = resizeNearest(img, width, height)
+	var buf bytes.Buffer
+	switch ext {
+	case ".png":
+		if err := png.Encode(&buf, img); err != nil {
+			return nil, imageAssetInfo{}, err
+		}
+	case ".jpg", ".jpeg":
+		if err := jpeg.Encode(&buf, flattenForJPEG(img), &jpeg.Options{Quality: 92}); err != nil {
+			return nil, imageAssetInfo{}, err
+		}
+	case ".ico":
+		var pngBuf bytes.Buffer
+		if err := png.Encode(&pngBuf, img); err != nil {
+			return nil, imageAssetInfo{}, err
+		}
+		ico, err := pngToICO(pngBuf.Bytes(), width, height)
+		if err != nil {
+			return nil, imageAssetInfo{}, err
+		}
+		buf.Write(ico)
+	default:
+		return nil, imageAssetInfo{}, errors.New("image conversion destination must be .png, .jpg, .jpeg, or .ico")
+	}
+	data := buf.Bytes()
+	info, err := inspectImageAsset(destination, data)
+	if err != nil {
+		return nil, imageAssetInfo{}, err
+	}
+	if info.Width != width || info.Height != height {
+		return nil, info, fmt.Errorf("converted image dimensions are %dx%d, expected %dx%d", info.Width, info.Height, width, height)
+	}
+	return data, info, nil
+}
+
+func convertImageAsset(project, source, destination string, width, height int) (string, error) {
+	sourceFull, err := ensureWithinRoot(project, source)
+	if err != nil {
+		return "", err
+	}
+	if _, err := ensureWithinRoot(project, destination); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(sourceFull)
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxRasterAssetBytes {
+		return "", fmt.Errorf("source image exceeds %d bytes", maxRasterAssetBytes)
+	}
+	img, sourceInfo, err := decodeConvertibleImage(data, source)
+	if err != nil {
+		return "", err
+	}
+	out, destInfo, err := encodeImageForDestination(img, destination, width, height)
+	if err != nil {
+		return "", err
+	}
+	result, err := writeBinaryProjectFile(project, destination, out)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("IMAGE ASSET CONVERTED\nSource: %s (%s %dx%d)\nDestination: %s (%s %dx%d, %d bytes)\n\n%s", source, sourceInfo.Format, sourceInfo.Width, sourceInfo.Height, destination, destInfo.Format, destInfo.Width, destInfo.Height, len(out), result), nil
+}
+
 func renderAsset(ctx context.Context, project string, cfg Config, source, destination string, width, height int) (string, error) {
 	plan, err := validateRenderAsset(project, source, destination, width, height)
 	if err != nil {
@@ -625,20 +792,21 @@ func renderAsset(ctx context.Context, project string, cfg Config, source, destin
 	if err != nil {
 		return strings.TrimSpace(rendererDetail), err
 	}
-	format := "png"
-	if plan.DestinationExt == ".ico" {
-		data, err = pngToICO(data, info.Width, info.Height)
+	if plan.DestinationExt != ".png" {
+		img, _, err := image.Decode(bytes.NewReader(data))
 		if err != nil {
 			return strings.TrimSpace(rendererDetail), err
 		}
-		if _, err := inspectImageAsset(destination, data); err != nil {
+		encoded, encodedInfo, err := encodeImageForDestination(img, destination, plan.Width, plan.Height)
+		if err != nil {
 			return strings.TrimSpace(rendererDetail), err
 		}
-		format = "ico"
+		data = encoded
+		info = encodedInfo
 	}
 	result, err := writeBinaryProjectFile(project, destination, data)
 	if err != nil {
 		return strings.TrimSpace(rendererDetail), err
 	}
-	return fmt.Sprintf("ASSET RENDERED\nSource: %s\nDestination: %s\nRenderer: %s\nFormat: %s\nDimensions: %dx%d\n\n%s", source, destination, strings.TrimSpace(rendererDetail), format, info.Width, info.Height, result), nil
+	return fmt.Sprintf("ASSET RENDERED\nSource: %s\nDestination: %s\nRenderer: %s\nFormat: %s\nDimensions: %dx%d\n\n%s", source, destination, strings.TrimSpace(rendererDetail), info.Format, info.Width, info.Height, result), nil
 }

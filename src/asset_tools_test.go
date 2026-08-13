@@ -155,6 +155,75 @@ func TestParseAgentActionCreateImageAsset(t *testing.T) {
 	}
 }
 
+func TestConvertImageAssetConvertsPNGToJPEG(t *testing.T) {
+	project := t.TempDir()
+	cfg := defaultConfig()
+	if err := os.MkdirAll(filepath.Join(project, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "assets", "source.png"), tinyPNGBytes(t, 4, 2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "convert_image_asset", Source: "assets/source.png", Destination: "assets/source.jpg", Width: 8, Height: 4})
+	if err != nil {
+		t.Fatalf("convert_image_asset failed: %v", err)
+	}
+	if !strings.Contains(result, "IMAGE ASSET CONVERTED") || !strings.Contains(result, "jpeg 8x4") || !strings.Contains(result, "POSTCONDITION") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "assets", "source.jpg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("source.jpg", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Format != "jpeg" || info.Width != 8 || info.Height != 4 {
+		t.Fatalf("unexpected jpeg info: %#v", info)
+	}
+}
+
+func TestConvertImageAssetConvertsPNGToICO(t *testing.T) {
+	project := t.TempDir()
+	cfg := defaultConfig()
+	if err := os.WriteFile(filepath.Join(project, "source.png"), tinyPNGBytes(t, 512, 512), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "convert_image_asset", Source: "source.png", Destination: "icon.ico"})
+	if err != nil {
+		t.Fatalf("convert_image_asset ico failed: %v", err)
+	}
+	if !strings.Contains(result, "ico 256x256") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "icon.ico"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("icon.ico", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Width != 256 || info.Height != 256 {
+		t.Fatalf("unexpected ico dimensions: %dx%d", info.Width, info.Height)
+	}
+}
+
+func TestParseAgentActionConvertImageAsset(t *testing.T) {
+	if _, err := parseAgentAction(`{"action":"convert_image_asset","message":"convert","source":"a.png"}`); err == nil {
+		t.Fatal("convert_image_asset without destination must be rejected")
+	}
+	a, err := parseAgentAction(`{"action":"convert_image_asset","message":"convert","arguments":{"source":"a.png","destination":"b.jpg","width":"12","height":6}}`)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if a.Source != "a.png" || a.Destination != "b.jpg" || a.Width != 12 || a.Height != 6 {
+		t.Fatalf("arguments were not normalized: %#v", a)
+	}
+}
+
 func TestRenderAssetRendersSVGToPNG(t *testing.T) {
 	withFakeRenderer(t)
 	project := t.TempDir()
@@ -184,6 +253,34 @@ func TestRenderAssetRendersSVGToPNG(t *testing.T) {
 	}
 	if cfgPNG.Width != 64 || cfgPNG.Height != 32 {
 		t.Fatalf("unexpected png dimensions: %dx%d", cfgPNG.Width, cfgPNG.Height)
+	}
+}
+
+func TestRenderAssetRendersSVGToJPEG(t *testing.T) {
+	withFakeRenderer(t)
+	project := t.TempDir()
+	cfg := defaultConfig()
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 16"><rect width="32" height="16" fill="#e54"/></svg>`
+	if err := os.WriteFile(filepath.Join(project, "source.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "render_asset", Source: "source.svg", Destination: "out.jpg"})
+	if err != nil {
+		t.Fatalf("render_asset jpeg failed: %v", err)
+	}
+	if !strings.Contains(result, "Format: jpeg") || !strings.Contains(result, "Dimensions: 32x16") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "out.jpg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("out.jpg", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Width != 32 || info.Height != 16 {
+		t.Fatalf("unexpected jpeg dimensions: %dx%d", info.Width, info.Height)
 	}
 }
 

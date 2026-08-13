@@ -110,7 +110,7 @@ func approvalActionTokens(a AgentAction) []string {
 		return []string{"shell", command}
 	case "write_file", "replace_text", "delete_file", "create_svg_asset", "create_image_asset":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Path))}
-	case "render_asset":
+	case "convert_image_asset", "render_asset":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Destination))}
 	case "copy_path", "move_path":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Source)), filepath.ToSlash(filepath.Clean(a.Destination))}
@@ -192,7 +192,7 @@ func persistentApprovalPattern(action AgentAction) ([]string, bool) {
 	case "run_command":
 		// Complex shell text is stored as one exact normalized token.
 		return tokens, true
-	case "write_file", "replace_text", "create_svg_asset", "create_image_asset", "render_asset":
+	case "write_file", "replace_text", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset":
 		return tokens, true
 	case "build_project", "deploy_android", "web_search", "web_fetch", "open_terminal", "mcp_call_tool", "copy_path", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
 		return tokens, true
