@@ -159,6 +159,16 @@ func TestParseAgentAction(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"write_file","message":"Leere Datei","path":"index.html"}`); err == nil {
 		t.Fatal("write_file without content must be rejected")
 	}
+	a, err = parseAgentAction(`{"action":"skill_read","message":"Lies Skill","arguments":{"skill":"python-test"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Skill != "python-test" {
+		t.Fatalf("skill argument was not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"skill_read","message":"Lies Skill"}`); err == nil {
+		t.Fatal("skill_read without skill must be rejected")
+	}
 }
 
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {

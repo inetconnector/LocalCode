@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ const (
 	maxInstructionDocBytes     = 14000
 	maxRuleDocBytes            = 8000
 	maxSkillDocBytes           = 9000
+	maxSkillReadBytes          = 24000
 )
 
 type instructionDocument struct {
@@ -30,6 +32,8 @@ type localSkillSummary struct {
 	Path        string
 	Description string
 	Relevant    bool
+	AlwaysApply bool
+	Globs       []string
 }
 
 func projectInstructionContext(project, task string) string {
@@ -82,7 +86,7 @@ func projectInstructionContext(project, task string) string {
 		parts = append(parts, localSkillIndex(project, skills))
 	}
 	if len(parts) == 0 {
-		return "Keine Projektdokumente oder lokalen Regel-/Skill-Dateien vorhanden."
+		return "Keine Projektdokumente oder Regel-/Skill-Dateien vorhanden."
 	}
 	return truncateText(strings.Join(parts, "\n\n"), maxInstructionContextBytes)
 }
@@ -163,7 +167,8 @@ func cursorRuleFiles(project, task string) []string {
 		if !ok {
 			continue
 		}
-		if cursorRuleAlwaysApplies(content) || instructionTextRelevant(task, name+" "+frontmatterValue(content, "description")+" "+content) {
+		globs := frontmatterList(content, "globs")
+		if cursorRuleAlwaysApplies(content) || instructionGlobsMatchTask(project, task, globs) || instructionTextRelevant(task, name+" "+frontmatterValue(content, "description")+" "+content) {
 			paths = append(paths, path)
 		}
 	}
@@ -177,17 +182,7 @@ func cursorRuleAlwaysApplies(content string) bool {
 }
 
 func localSkillSummaries(project, task string) []localSkillSummary {
-	var roots []string
-	for _, root := range []string{
-		filepath.Join(project, ".codex", "skills"),
-		filepath.Join(project, ".cursor", "skills"),
-		filepath.Join(project, ".opencode", "skills"),
-		filepath.Join(project, "skills"),
-	} {
-		if info, err := os.Stat(root); err == nil && info.IsDir() {
-			roots = append(roots, root)
-		}
-	}
+	roots := availableSkillRoots(project)
 	var skills []localSkillSummary
 	for _, root := range roots {
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -203,11 +198,16 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 			if description == "" {
 				description = firstMarkdownParagraph(content)
 			}
+			globs := frontmatterList(content, "globs")
+			alwaysApply := cursorRuleAlwaysApplies(content)
+			relevant := alwaysApply || instructionGlobsMatchTask(project, task, globs) || instructionTextRelevant(task, name+" "+description)
 			skills = append(skills, localSkillSummary{
 				Name:        name,
 				Path:        path,
 				Description: truncateText(strings.TrimSpace(description), 600),
-				Relevant:    instructionTextRelevant(task, name+" "+description),
+				Relevant:    relevant,
+				AlwaysApply: alwaysApply,
+				Globs:       globs,
 			})
 			return nil
 		})
@@ -216,15 +216,37 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 		if skills[i].Relevant != skills[j].Relevant {
 			return skills[i].Relevant
 		}
+		if strings.EqualFold(skills[i].Name, skills[j].Name) {
+			return strings.ToLower(skills[i].Path) < strings.ToLower(skills[j].Path)
+		}
 		return strings.ToLower(skills[i].Name) < strings.ToLower(skills[j].Name)
 	})
 	return skills
 }
 
+func availableSkillRoots(project string) []string {
+	var roots []string
+	for _, root := range []string{
+		filepath.Join(project, ".codex", "skills"),
+		filepath.Join(project, ".cursor", "skills"),
+		filepath.Join(project, ".opencode", "skills"),
+		filepath.Join(project, "skills"),
+		filepath.Join(appDataDir(), "skills"),
+		filepath.Join(codexHomeDir(), "skills"),
+		filepath.Join(userProfileDir(), ".cursor", "skills"),
+		filepath.Join(userProfileDir(), ".opencode", "skills"),
+	} {
+		if info, err := os.Stat(root); err == nil && info.IsDir() {
+			roots = append(roots, root)
+		}
+	}
+	return roots
+}
+
 func localSkillIndex(project string, skills []localSkillSummary) string {
 	var lines []string
-	lines = append(lines, "--- Lokale Skills ---")
-	lines = append(lines, "Nutze relevante Skills als Arbeitsanweisung. Wenn ein Skill nur im Index steht, lies seine SKILL.md vor der Anwendung gezielt nach.")
+	lines = append(lines, "--- Verfügbare Skills ---")
+	lines = append(lines, "Nutze relevante Skills als Arbeitsanweisung. Wenn ein Skill nur im Index steht, nutze skill_read vor der Anwendung.")
 	for _, skill := range skills {
 		marker := "available"
 		if skill.Relevant {
@@ -239,6 +261,44 @@ func localSkillIndex(project string, skills []localSkillSummary) string {
 	return strings.Join(lines, "\n")
 }
 
+func formatSkillList(project, query string) string {
+	skills := localSkillSummaries(project, query)
+	if len(skills) == 0 {
+		return "Keine Skill-Verzeichnisse mit SKILL.md gefunden."
+	}
+	return localSkillIndex(project, skills)
+}
+
+func readSkillByName(project, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", errors.New("skill is empty")
+	}
+	skills := localSkillSummaries(project, "")
+	var partial *localSkillSummary
+	for i := range skills {
+		skill := &skills[i]
+		if strings.EqualFold(skill.Name, name) || strings.EqualFold(filepath.ToSlash(skill.Path), filepath.ToSlash(name)) || strings.EqualFold(displayInstructionPath(project, skill.Path), filepath.ToSlash(name)) {
+			return formatSkillRead(project, *skill)
+		}
+		if partial == nil && strings.Contains(strings.ToLower(skill.Name), strings.ToLower(name)) {
+			partial = skill
+		}
+	}
+	if partial != nil {
+		return formatSkillRead(project, *partial)
+	}
+	return "", fmt.Errorf("skill %q not found", name)
+}
+
+func formatSkillRead(project string, skill localSkillSummary) (string, error) {
+	content, ok := readInstructionFile(skill.Path, maxSkillReadBytes)
+	if !ok {
+		return "", fmt.Errorf("skill %s cannot be read", skill.Name)
+	}
+	return fmt.Sprintf("--- Skill: %s ---\nPath: %s\nRelevant: %t\n\n%s", skill.Name, displayInstructionPath(project, skill.Path), skill.Relevant, content), nil
+}
+
 func instructionTextRelevant(task, text string) bool {
 	taskWords := significantWords(task)
 	if len(taskWords) == 0 {
@@ -251,6 +311,73 @@ func instructionTextRelevant(task, text string) bool {
 		}
 	}
 	return false
+}
+
+func frontmatterList(content, key string) []string {
+	value := strings.TrimSpace(frontmatterValue(content, key))
+	if value == "" {
+		return nil
+	}
+	value = strings.Trim(value, "[]")
+	parts := strings.Split(value, ",")
+	var out []string
+	for _, part := range parts {
+		part = strings.Trim(strings.TrimSpace(part), `"'`)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func instructionGlobsMatchTask(project, task string, globs []string) bool {
+	if len(globs) == 0 {
+		return false
+	}
+	for _, mentioned := range mentionedProjectFiles(task) {
+		for _, glob := range globs {
+			if instructionGlobMatch(project, mentioned, glob) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func instructionGlobMatch(project, mentioned, glob string) bool {
+	mentioned = filepath.ToSlash(strings.TrimSpace(mentioned))
+	glob = filepath.ToSlash(strings.TrimSpace(glob))
+	if mentioned == "" || glob == "" {
+		return false
+	}
+	if filepath.IsAbs(mentioned) {
+		if rel, err := filepath.Rel(project, mentioned); err == nil {
+			mentioned = filepath.ToSlash(rel)
+		}
+	}
+	patterns := []string{glob}
+	if strings.HasPrefix(glob, "**/") {
+		patterns = append(patterns, strings.TrimPrefix(glob, "**/"))
+	}
+	candidates := []string{mentioned, filepath.Base(mentioned)}
+	for _, pattern := range patterns {
+		for _, candidate := range candidates {
+			if ok, _ := pathGlobMatch(pattern, candidate); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func pathGlobMatch(pattern, value string) (bool, error) {
+	pattern = filepath.ToSlash(pattern)
+	value = filepath.ToSlash(value)
+	re := regexp.QuoteMeta(pattern)
+	re = strings.ReplaceAll(re, `\*\*`, ".*")
+	re = strings.ReplaceAll(re, `\*`, `[^/]*`)
+	re = strings.ReplaceAll(re, `\?`, `[^/]`)
+	return regexp.MatchString("^"+re+"$", value)
 }
 
 func significantWords(text string) []string {

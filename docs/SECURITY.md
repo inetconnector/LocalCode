@@ -38,7 +38,7 @@ Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interak
 
 Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder Global-Scope, werden atomar mit der Konfiguration geschrieben und können nur über eine konkrete Memory-ID gelöscht werden. Sie sind nicht für Zugangsdaten, Geheimnisse oder vertrauliche Schlüssel bestimmt.
 
-Globale und projektbezogene Anweisungen sowie lokale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
+Globale und projektbezogene Anweisungen sowie lokale und globale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet oder per `skill_read` gelesen. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
 
 `create_svg_asset` ist ein lokales Vektor-Asset-Werkzeug, kein privilegierter Browser-Renderer. Es schreibt nur `.svg`-Dateien nach XML-Prüfung und ersetzt keine allgemeine Rasterbild- oder Medien-Sandbox.
 
@@ -80,6 +80,6 @@ Background commands start without visible console windows on Windows. Interactiv
 
 Agent memories are local configuration data. They have project or global scope, are written atomically with the configuration, and can only be deleted through a concrete memory ID. They are not intended for credentials, secrets, or confidential keys.
 
-Global and project instructions plus local skills are embedded as unprivileged text in the agent context. A skill or rule cannot directly change LocalCode policy; file, shell, network, MCP, and external engine actions still pass through the normal validation and approval paths.
+Global and project instructions plus local and global skills are embedded as unprivileged text in the agent context or read through `skill_read`. A skill or rule cannot directly change LocalCode policy; file, shell, network, MCP, and external engine actions still pass through the normal validation and approval paths.
 
 `create_svg_asset` is a local vector-asset tool, not a privileged browser renderer. It writes only `.svg` files after XML validation and does not replace a general raster-image or media sandbox.

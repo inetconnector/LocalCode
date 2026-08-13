@@ -18,6 +18,7 @@ func TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills(t *testing.T)
 	mustWrite(t, filepath.Join(configHome, productDirName, "AGENTS.md"), "global localcode base\n")
 	mustWrite(t, filepath.Join(configHome, productDirName, "AGENTS.override.md"), "global localcode override\n")
 	mustWrite(t, filepath.Join(codexHome, "AGENTS.md"), "global codex instruction\n")
+	mustWrite(t, filepath.Join(codexHome, "skills", "global-python", "SKILL.md"), "---\ndescription: Global Python workflow\n---\n# Global Python\n\nUse global pytest guidance.\n")
 
 	project := t.TempDir()
 	mustWrite(t, filepath.Join(project, "AGENTS.md"), "project base should be hidden\n")
@@ -40,6 +41,8 @@ func TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills(t *testing.T)
 		"always cursor rule",
 		"run pytest",
 		"Use pytest and py_compile",
+		"Use global pytest guidance",
+		"global-python [loaded]",
 		"python-test [loaded]",
 		"release [available]",
 	} {
@@ -73,6 +76,52 @@ func TestFrontmatterValueAndRelevance(t *testing.T) {
 	}
 	if !instructionTextRelevant("review the API", content) {
 		t.Fatal("expected rule to be relevant")
+	}
+}
+
+func TestInstructionContextMatchesGlobs(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, ".cursor", "rules", "go.mdc"), "---\ndescription: unrelated\nglobs: src/**/*.go\n---\nuse go vet for matched files\n")
+	mustWrite(t, filepath.Join(project, ".codex", "skills", "python-skill", "SKILL.md"), "---\ndescription: unrelated\nglobs: \"*.py\"\n---\n# Python Glob\n\nUse py_compile for matched files.\n")
+
+	context := projectInstructionContext(project, "Passe src/server/main.go und scripts/check.py an.")
+	if !strings.Contains(context, "use go vet for matched files") {
+		t.Fatalf("cursor glob rule was not loaded:\n%s", context)
+	}
+	if !strings.Contains(context, "Use py_compile for matched files.") {
+		t.Fatalf("skill glob match was not loaded:\n%s", context)
+	}
+	if !instructionGlobMatch(project, "src/server/main.go", "src/**/*.go") {
+		t.Fatal("expected recursive go glob to match")
+	}
+	if !instructionGlobMatch(project, "scripts/check.py", "*.py") {
+		t.Fatal("expected basename glob to match")
+	}
+}
+
+func TestSkillListAndRead(t *testing.T) {
+	configHome := t.TempDir()
+	codexHome := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", configHome)
+	t.Setenv("CODEX_HOME", codexHome)
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(configHome, productDirName, "skills", "global-design", "SKILL.md"), "---\ndescription: Design asset workflow\n---\n# Design\n\nCreate concrete visual assets.\n")
+
+	list := formatSkillList(project, "design asset")
+	if !strings.Contains(list, "global-design [loaded]") {
+		t.Fatalf("global skill missing from list:\n%s", list)
+	}
+	read, err := readSkillByName(project, "global-design")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(read, "Create concrete visual assets.") || !strings.Contains(read, "Skill: global-design") {
+		t.Fatalf("unexpected skill read:\n%s", read)
+	}
+	if _, err := readSkillByName(project, "missing-skill"); err == nil {
+		t.Fatal("missing skill should fail")
 	}
 }
 
