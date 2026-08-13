@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/xml"
@@ -15,11 +16,17 @@ import (
 	_ "image/png"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const maxRasterAssetBytes = 16 << 20
+
+var renderPNGWithChromium = renderPNGWithChromiumDefault
 
 func validateSVGAsset(path, content string) error {
 	if !strings.EqualFold(filepath.Ext(strings.TrimSpace(path)), ".svg") {
@@ -333,4 +340,305 @@ func createImageAsset(project, path, content string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("IMAGE ASSET CREATED\nValidation: format=%s dimensions=%dx%d bytes=%d\n\n%s", info.Format, info.Width, info.Height, info.Bytes, result), nil
+}
+
+type renderAssetPlan struct {
+	SourceFull      string
+	DestinationFull string
+	SourceExt       string
+	DestinationExt  string
+	Width           int
+	Height          int
+}
+
+func validateRenderAsset(project, source, destination string, width, height int) (renderAssetPlan, error) {
+	sourceFull, err := ensureWithinRoot(project, source)
+	if err != nil {
+		return renderAssetPlan{}, err
+	}
+	destinationFull, err := ensureWithinRoot(project, destination)
+	if err != nil {
+		return renderAssetPlan{}, err
+	}
+	sourceExt := strings.ToLower(filepath.Ext(strings.TrimSpace(source)))
+	destinationExt := strings.ToLower(filepath.Ext(strings.TrimSpace(destination)))
+	switch sourceExt {
+	case ".svg", ".html", ".htm":
+	default:
+		return renderAssetPlan{}, errors.New("render_asset source must be .svg, .html, or .htm")
+	}
+	switch destinationExt {
+	case ".png", ".ico":
+	default:
+		return renderAssetPlan{}, errors.New("render_asset destination must be .png or .ico")
+	}
+	info, err := os.Stat(sourceFull)
+	if err != nil {
+		return renderAssetPlan{}, err
+	}
+	if info.IsDir() {
+		return renderAssetPlan{}, fmt.Errorf("render_asset source is a directory: %s", source)
+	}
+	if info.Size() > 4<<20 {
+		return renderAssetPlan{}, fmt.Errorf("render_asset source exceeds 4 MiB: %s", source)
+	}
+	data, err := os.ReadFile(sourceFull)
+	if err != nil {
+		return renderAssetPlan{}, err
+	}
+	if !isProbablyText(data) {
+		return renderAssetPlan{}, fmt.Errorf("render_asset source must be text: %s", source)
+	}
+	content := string(data)
+	if sourceExt == ".svg" {
+		if err := validateSVGAsset(source, content); err != nil {
+			return renderAssetPlan{}, err
+		}
+	} else if err := validateHTMLRenderSource(content); err != nil {
+		return renderAssetPlan{}, err
+	}
+	width, height = normalizeRenderDimensions(content, sourceExt, destinationExt, width, height)
+	return renderAssetPlan{SourceFull: sourceFull, DestinationFull: destinationFull, SourceExt: sourceExt, DestinationExt: destinationExt, Width: width, Height: height}, nil
+}
+
+func validateHTMLRenderSource(content string) error {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return errors.New("html render source is empty")
+	}
+	if regexp.MustCompile(`(?i)\bhttps?://|src\s*=\s*["']\s*//|href\s*=\s*["']\s*//`).MatchString(trimmed) {
+		return errors.New("html render source contains external network references")
+	}
+	return nil
+}
+
+func normalizeRenderDimensions(content, sourceExt, destinationExt string, width, height int) (int, int) {
+	if width <= 0 || height <= 0 {
+		if sourceExt == ".svg" {
+			if svgWidth, svgHeight := svgRenderDimensions(content); svgWidth > 0 && svgHeight > 0 {
+				if width <= 0 {
+					width = svgWidth
+				}
+				if height <= 0 {
+					height = svgHeight
+				}
+			}
+		}
+	}
+	if width <= 0 {
+		if destinationExt == ".ico" {
+			width = 256
+		} else {
+			width = 1024
+		}
+	}
+	if height <= 0 {
+		if destinationExt == ".ico" {
+			height = 256
+		} else {
+			height = 768
+		}
+	}
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	if width > 4096 {
+		width = 4096
+	}
+	if height > 4096 {
+		height = 4096
+	}
+	if destinationExt == ".ico" && (width > 256 || height > 256) {
+		if width >= height {
+			height = maxRenderInt(1, height*256/width)
+			width = 256
+		} else {
+			width = maxRenderInt(1, width*256/height)
+			height = 256
+		}
+	}
+	return width, height
+}
+
+func maxRenderInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func svgRenderDimensions(content string) (int, int) {
+	re := regexp.MustCompile(`(?i)\bviewBox\s*=\s*["']\s*[-+]?[0-9.]+\s+[-+]?[0-9.]+\s+([-+]?[0-9.]+)\s+([-+]?[0-9.]+)`)
+	if m := re.FindStringSubmatch(content); len(m) == 3 {
+		w, _ := strconv.ParseFloat(m[1], 64)
+		h, _ := strconv.ParseFloat(m[2], 64)
+		if w > 0 && h > 0 {
+			return int(w + 0.5), int(h + 0.5)
+		}
+	}
+	attr := func(name string) int {
+		re := regexp.MustCompile(`(?i)\b` + name + `\s*=\s*["']\s*([0-9.]+)`)
+		if m := re.FindStringSubmatch(content); len(m) == 2 {
+			v, _ := strconv.ParseFloat(m[1], 64)
+			if v > 0 {
+				return int(v + 0.5)
+			}
+		}
+		return 0
+	}
+	return attr("width"), attr("height")
+}
+
+func renderPNGWithChromiumDefault(ctx context.Context, cfg Config, sourceFull, targetPNG string, width, height int) (string, error) {
+	sourceURI, err := fileURI(sourceFull)
+	if err != nil {
+		return "", err
+	}
+	profileDir, err := os.MkdirTemp("", "localcode-render-profile-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(profileDir)
+	baseArgs := []string{
+		"--disable-gpu",
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-background-networking",
+		"--disable-sync",
+		"--disable-extensions",
+		"--hide-scrollbars",
+		"--mute-audio",
+		"--proxy-server=http://127.0.0.1:9",
+		"--host-resolver-rules=MAP * 0.0.0.0",
+		"--user-data-dir=" + profileDir,
+		fmt.Sprintf("--window-size=%d,%d", width, height),
+		"--screenshot=" + targetPNG,
+		"--virtual-time-budget=1000",
+		sourceURI,
+	}
+	var diagnostics strings.Builder
+	seen := map[string]bool{}
+	for _, browser := range chromiumBrowserCandidates() {
+		browser = strings.TrimSpace(browser)
+		key := strings.ToLower(browser)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if st, err := os.Stat(browser); err != nil || st.IsDir() {
+			continue
+		}
+		for _, headlessFlag := range []string{"--headless=new", "--headless"} {
+			args := append([]string{headlessFlag}, baseArgs...)
+			cmd := exec.CommandContext(ctx, browser, args...)
+			cmd.Env = commandEnvironment(cfg)
+			hideCommandWindow(cmd)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				return "Chromium renderer: " + browser + " " + headlessFlag, nil
+			}
+			fmt.Fprintf(&diagnostics, "%s %s: %v\n%s\n", browser, headlessFlag, err, strings.TrimSpace(string(out)))
+		}
+	}
+	if diagnostics.Len() == 0 {
+		return "", errors.New("no supported Chromium browser found for render_asset")
+	}
+	return diagnostics.String(), errors.New("Chromium render failed")
+}
+
+func validateRenderedPNG(path string, expectedWidth, expectedHeight int) (imageAssetInfo, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return imageAssetInfo{}, err
+	}
+	info, err := inspectImageAsset("render.png", data)
+	if err != nil {
+		return imageAssetInfo{}, err
+	}
+	if info.Width != expectedWidth || info.Height != expectedHeight {
+		return info, fmt.Errorf("rendered PNG dimensions are %dx%d, expected %dx%d", info.Width, info.Height, expectedWidth, expectedHeight)
+	}
+	return info, nil
+}
+
+func pngToICO(pngData []byte, width, height int) ([]byte, error) {
+	if _, err := inspectImageAsset("icon.png", pngData); err != nil {
+		return nil, err
+	}
+	if width > 256 || height > 256 {
+		return nil, errors.New("ico destination supports rendered dimensions up to 256x256")
+	}
+	var out bytes.Buffer
+	_ = binary.Write(&out, binary.LittleEndian, uint16(0))
+	_ = binary.Write(&out, binary.LittleEndian, uint16(1))
+	_ = binary.Write(&out, binary.LittleEndian, uint16(1))
+	if width == 256 {
+		out.WriteByte(0)
+	} else {
+		out.WriteByte(byte(width))
+	}
+	if height == 256 {
+		out.WriteByte(0)
+	} else {
+		out.WriteByte(byte(height))
+	}
+	out.WriteByte(0)
+	out.WriteByte(0)
+	_ = binary.Write(&out, binary.LittleEndian, uint16(1))
+	_ = binary.Write(&out, binary.LittleEndian, uint16(32))
+	_ = binary.Write(&out, binary.LittleEndian, uint32(len(pngData)))
+	_ = binary.Write(&out, binary.LittleEndian, uint32(22))
+	out.Write(pngData)
+	return out.Bytes(), nil
+}
+
+func renderAsset(ctx context.Context, project string, cfg Config, source, destination string, width, height int) (string, error) {
+	plan, err := validateRenderAsset(project, source, destination, width, height)
+	if err != nil {
+		return "", err
+	}
+	timeout := time.Duration(cfg.CommandTimeout) * time.Second
+	if timeout <= 0 || timeout > 2*time.Minute {
+		timeout = 2 * time.Minute
+	}
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	tempPNG, err := os.CreateTemp("", "localcode-render-*.png")
+	if err != nil {
+		return "", err
+	}
+	tempPNGPath := tempPNG.Name()
+	_ = tempPNG.Close()
+	defer os.Remove(tempPNGPath)
+	rendererDetail, err := renderPNGWithChromium(rctx, cfg, plan.SourceFull, tempPNGPath, plan.Width, plan.Height)
+	if err != nil {
+		return strings.TrimSpace(rendererDetail), err
+	}
+	info, err := validateRenderedPNG(tempPNGPath, plan.Width, plan.Height)
+	if err != nil {
+		return strings.TrimSpace(rendererDetail), err
+	}
+	data, err := os.ReadFile(tempPNGPath)
+	if err != nil {
+		return strings.TrimSpace(rendererDetail), err
+	}
+	format := "png"
+	if plan.DestinationExt == ".ico" {
+		data, err = pngToICO(data, info.Width, info.Height)
+		if err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		if _, err := inspectImageAsset(destination, data); err != nil {
+			return strings.TrimSpace(rendererDetail), err
+		}
+		format = "ico"
+	}
+	result, err := writeBinaryProjectFile(project, destination, data)
+	if err != nil {
+		return strings.TrimSpace(rendererDetail), err
+	}
+	return fmt.Sprintf("ASSET RENDERED\nSource: %s\nDestination: %s\nRenderer: %s\nFormat: %s\nDimensions: %dx%d\n\n%s", source, destination, strings.TrimSpace(rendererDetail), format, info.Width, info.Height, result), nil
 }

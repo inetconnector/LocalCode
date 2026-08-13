@@ -33,6 +33,16 @@ func openStartupBrowser(url string) error   { return openBrowser(url) }
 func showFatal(title, message string)       { fmt.Printf("%s: %s\n", title, message) }
 func startOllamaDetached(path string) error { return exec.Command(path, "serve").Start() }
 func findOllamaExecutable() string          { p, _ := exec.LookPath("ollama"); return p }
+func chromiumBrowserCandidates() []string {
+	names := []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "msedge"}
+	var out []string
+	for _, name := range names {
+		if p, err := exec.LookPath(name); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 func detectGPU() string {
 	out, _ := exec.Command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader").Output()
 	return strings.TrimSpace(string(out))

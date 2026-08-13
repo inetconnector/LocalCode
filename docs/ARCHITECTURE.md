@@ -42,6 +42,8 @@ SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `c
 
 Raster- und Icon-Dateien laufen über `create_image_asset`, wenn der Agent vollständige Bildbytes als Data-URL oder Base64 besitzt. Unterstützt werden `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` und `.bmp`. LocalCode dekodiert die Binärdaten, begrenzt sie auf 16 MiB, prüft Format-Signaturen und Dimensionen und schreibt danach über dieselbe kanonische Projektpfadgrenze mit Backup und Datei-Postcondition.
 
+SVG-/HTML-/Canvas-Rendering läuft über `render_asset`. Die Quelle muss lokal im Projekt liegen und auf `.svg`, `.html` oder `.htm` enden; Ziele sind `.png` oder `.ico`. SVG wird vorher mit dem SVG-Validator geprüft. HTML-Quellen mit externen HTTP(S)-Referenzen werden abgelehnt. Der Renderer nutzt ein vorhandenes Edge/Chrome im Headless-Modus mit temporärem Profil, totem lokalen Proxy und Dimensionsvorgabe. Das erzeugte PNG wird dekodiert und gegen die erwarteten Maße geprüft; ICO-Dateien werden als PNG-in-ICO erzeugt und anschließend über dieselbe Bildsignaturprüfung validiert.
+
 MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
 
 ## English
@@ -85,5 +87,7 @@ Agent memories are stored as normalized entries in the local configuration. Ever
 SVG/icon resources use a dedicated tool when the native agent calls `create_svg_asset`. The path must end in `.svg`, content must be valid XML with an `<svg>` root and size metadata, and scripts, event handlers, and `javascript:` URLs are blocked before the file operation.
 
 Raster and icon files use `create_image_asset` when the agent has complete image bytes as a data URL or Base64. Supported extensions are `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, and `.bmp`. LocalCode decodes the binary data, caps it at 16 MiB, checks format signatures and dimensions, and then writes through the same canonical project path boundary with backup and file postcondition.
+
+SVG/HTML/canvas rendering uses `render_asset`. The source must be local to the project and end in `.svg`, `.html`, or `.htm`; targets are `.png` or `.ico`. SVG is checked with the SVG validator first. HTML sources with external HTTP(S) references are rejected. Rendering uses an installed Edge/Chrome browser in headless mode with a temporary profile, dead local proxy, and explicit dimensions. The produced PNG is decoded and checked against the expected dimensions; ICO files are written as PNG-in-ICO and then validated through the same image-signature checks.
 
 MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.
