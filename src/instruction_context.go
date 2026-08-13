@@ -481,22 +481,62 @@ func frontmatterList(content, key string) []string {
 		}
 		if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
 			value = strings.Trim(value, "[]")
-			for _, part := range strings.Split(value, ",") {
-				part = strings.Trim(strings.TrimSpace(part), `"'`)
+			for _, part := range splitFrontmatterInlineList(value) {
+				part = trimFrontmatterListItem(part)
 				if part != "" {
 					out = append(out, part)
 				}
 			}
 			continue
 		}
-		for _, part := range strings.Split(value, ",") {
-			part = strings.Trim(strings.TrimSpace(part), `"'`)
+		for _, part := range splitFrontmatterInlineList(value) {
+			part = trimFrontmatterListItem(part)
 			if part != "" {
 				out = append(out, part)
 			}
 		}
 	}
 	return out
+}
+
+func splitFrontmatterInlineList(value string) []string {
+	var parts []string
+	var current strings.Builder
+	var quote rune
+	for _, r := range value {
+		if quote != 0 {
+			current.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			current.WriteRune(r)
+			continue
+		}
+		if r == ',' {
+			parts = append(parts, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	parts = append(parts, current.String())
+	return parts
+}
+
+func trimFrontmatterListItem(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			value = value[1 : len(value)-1]
+		}
+	}
+	return strings.TrimSpace(value)
 }
 
 func instructionGlobsMatchTask(project, task string, globs []string) bool {
@@ -596,7 +636,7 @@ func frontmatterValues(content, key string) []string {
 		}
 		value := strings.TrimSpace(parts[1])
 		if value != "" {
-			values = append(values, strings.Trim(value, `"'`))
+			values = append(values, value)
 			continue
 		}
 		for j := i + 1; j < len(lines); j++ {
@@ -609,7 +649,7 @@ func frontmatterValues(content, key string) []string {
 			}
 			item := strings.TrimSpace(next)
 			item = strings.TrimPrefix(item, "-")
-			item = strings.Trim(strings.TrimSpace(item), `"'`)
+			item = strings.TrimSpace(item)
 			if item != "" {
 				values = append(values, item)
 			}

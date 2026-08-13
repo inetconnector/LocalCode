@@ -78,9 +78,12 @@ func TestFrontmatterValueAndRelevance(t *testing.T) {
 	if !instructionTextRelevant("review the API", content) {
 		t.Fatal("expected rule to be relevant")
 	}
-	listContent := "---\nglobs:\n  - \"src/**/*.go\"\n  - scripts/*.ps1\npermissions: [read, write]\nscripts:\n  - scripts/check.ps1\n---\nbody\n"
-	if got := frontmatterList(listContent, "globs"); len(got) != 2 || got[0] != "src/**/*.go" || got[1] != "scripts/*.ps1" {
+	listContent := "---\nglobs:\n  - \"src/**/*.go\"\n  - scripts/*.ps1\n  - \"docs, notes/*.md\"\npermissions: [read, write]\nscripts: \"scripts/check.ps1\", \"scripts/lint, strict.ps1\"\n---\nbody\n"
+	if got := frontmatterList(listContent, "globs"); len(got) != 3 || got[0] != "src/**/*.go" || got[1] != "scripts/*.ps1" || got[2] != "docs, notes/*.md" {
 		t.Fatalf("unexpected frontmatter list: %#v", got)
+	}
+	if got := frontmatterList(listContent, "scripts"); len(got) != 2 || got[0] != "scripts/check.ps1" || got[1] != "scripts/lint, strict.ps1" {
+		t.Fatalf("unexpected script frontmatter list: %#v", got)
 	}
 	if !skillMetadataRequiresApproval(frontmatterList(listContent, "permissions"), frontmatterList(listContent, "scripts")) {
 		t.Fatal("write permissions and scripts should require approval")
