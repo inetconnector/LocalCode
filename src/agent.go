@@ -49,7 +49,7 @@ var actionSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
-			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset",
+			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset",
 			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource",
@@ -80,6 +80,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("replace_text", "path", "old_text"),
 		conditionalRequired("write_file", "path", "content"),
 		conditionalRequired("create_svg_asset", "path", "content"),
+		conditionalRequired("create_image_asset", "path", "content"),
 		conditionalRequired("run_tool", "tool"),
 		conditionalRequired("discover_tool", "tool"),
 		conditionalRequired("run_command", "command"),
@@ -124,6 +125,7 @@ Arbeitsweise:
 - Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
+- Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
@@ -147,6 +149,7 @@ Werkzeuge:
 - list_files, read_file, search_text
 - replace_text, write_file, delete_file
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
+- create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
 - engine_repo_map für eine unverändernde Repository-Analyse, engine_lint und engine_test für gezielte Qualitätsläufe
@@ -919,7 +922,7 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("content", a.Content)
-	case "create_svg_asset":
+	case "create_svg_asset", "create_image_asset":
 		if err := require("path", a.Path); err != nil {
 			return err
 		}
@@ -1033,7 +1036,7 @@ func completionRepairDirective(task string, issues []string) string {
 
 func actionMutatesProject(a AgentAction) bool {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	default:
 		return false
@@ -1042,7 +1045,7 @@ func actionMutatesProject(a AgentAction) bool {
 
 func mutatedActionPaths(a AgentAction) []string {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset":
+	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset":
 		return []string{a.Path}
 	case "copy_path":
 		return []string{a.Destination}
@@ -1687,7 +1690,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -1796,7 +1799,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"
-	case "replace_text", "write_file", "create_svg_asset", "engine_edit", "aider_edit":
+	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
 	case "engine_repo_map", "engine_lint", "engine_test", "aider_repo_map", "aider_lint", "aider_test":
 		return cfg.ApprovalMode == "strict"
@@ -1953,6 +1956,16 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			old = string(data)
 		}
 		return simpleDiff(old, strings.TrimSpace(a.Content)+"\n"), nil
+	case "create_image_asset":
+		data, info, err := validateImageAsset(a.Path, a.Content)
+		if err != nil {
+			return "", err
+		}
+		full, err := ensureWithinRoot(project, a.Path)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Image asset write preview\nPath: %s\nFormat: %s\nDimensions: %dx%d\nBytes: %d\nExisting: %s", a.Path, info.Format, info.Width, info.Height, len(data), describePathState("target", full)), nil
 	case "delete_file":
 		old, err := readProjectFile(project, a.Path)
 		if err != nil {
@@ -2075,6 +2088,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return writeProjectFile(project, a.Path, a.Content)
 	case "create_svg_asset":
 		return createSVGAsset(project, a.Path, a.Content)
+	case "create_image_asset":
+		return createImageAsset(project, a.Path, a.Content)
 	case "delete_file":
 		return deleteProjectFile(project, a.Path)
 	case "build_project":

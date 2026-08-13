@@ -12,7 +12,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `agent.go`, `agent_supervisor.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
 - `instruction_context.go`: globale und projektbezogene Regelkette, Cursor-Regeln sowie lokale Skill-Indizes und relevante Skill-Inhalte für den Agentenstart.
 - `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
-- `asset_tools.go`: validierte lokale SVG-/Icon-Erzeugung mit XML- und Sicherheitsprüfung vor dem Schreiben.
+- `asset_tools.go`: validierte lokale SVG-/Icon-Erzeugung sowie Raster-/Icon-Asset-Erzeugung mit XML-, Signatur-, Größen- und Dimensionsprüfung vor dem Schreiben.
 - `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
 - `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
 - `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
@@ -40,6 +40,8 @@ Agentenerinnerungen werden als normalisierte Einträge in der lokalen Konfigurat
 
 SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `create_svg_asset` nutzt. Der Pfad muss auf `.svg` enden, der Inhalt muss gültiges XML mit `<svg>`-Wurzel und Größenangabe sein, und Skripte, Event-Handler sowie `javascript:`-URLs werden vor der Dateioperation blockiert.
 
+Raster- und Icon-Dateien laufen über `create_image_asset`, wenn der Agent vollständige Bildbytes als Data-URL oder Base64 besitzt. Unterstützt werden `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` und `.bmp`. LocalCode dekodiert die Binärdaten, begrenzt sie auf 16 MiB, prüft Format-Signaturen und Dimensionen und schreibt danach über dieselbe kanonische Projektpfadgrenze mit Backup und Datei-Postcondition.
+
 MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
 
 ## English
@@ -54,7 +56,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `agent.go`, `agent_supervisor.go`, and `continuation.go`: agent loop, deterministic supervision, completion guard/review, continuations, and cancellation.
 - `instruction_context.go`: global and project rule chain, Cursor rules, plus local skill indexes and relevant skill contents for agent startup.
 - `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
-- `asset_tools.go`: validated local SVG/icon creation with XML and safety checks before writing.
+- `asset_tools.go`: validated local SVG/icon creation plus raster/icon asset creation with XML, signature, size, and dimension checks before writing.
 - `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
 - `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
 - `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
@@ -81,5 +83,7 @@ Agent startup builds a bounded instruction chain. For each global directory, `AG
 Agent memories are stored as normalized entries in the local configuration. Every new native agent run receives global memories and memories for the active project in the embedded context. Writing memory actions persist atomically through the same configuration path; deletion requires a concrete ID.
 
 SVG/icon resources use a dedicated tool when the native agent calls `create_svg_asset`. The path must end in `.svg`, content must be valid XML with an `<svg>` root and size metadata, and scripts, event handlers, and `javascript:` URLs are blocked before the file operation.
+
+Raster and icon files use `create_image_asset` when the agent has complete image bytes as a data URL or Base64. Supported extensions are `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, and `.bmp`. LocalCode decodes the binary data, caps it at 16 MiB, checks format signatures and dimensions, and then writes through the same canonical project path boundary with backup and file postcondition.
 
 MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.

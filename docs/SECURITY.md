@@ -16,6 +16,7 @@ LocalCode kombiniert folgende Anwendungsschutzschichten:
 - keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen; dauerhafte Agentenerinnerungen lehnen Inhalte ab, die wie Passwörter, Tokens, private Schlüssel oder API-Keys aussehen
 - lokale Regel-/Skill-Dateien erweitern nur den Modellkontext und umgehen keine Genehmigungen, Sandboxgrenzen oder blockierten Befehle
 - validierte SVG-/Icon-Erzeugung blockiert Skripte, Event-Handler und `javascript:`-URLs, bevor Asset-Dateien geschrieben werden
+- validierte Raster-/Icon-Erzeugung dekodiert Data-URL/Base64, begrenzt die Dateigröße, prüft Format-Signaturen und Dimensionen und schreibt nur unterstützte Bildendungen
 
 ### Automatische Laufzeitinstallation
 
@@ -40,7 +41,7 @@ Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder 
 
 Globale und projektbezogene Anweisungen sowie lokale und globale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet oder per `skill_read` gelesen. Zusätzliche Skill-Ressourcen können nur relativ zum jeweiligen Skill-Verzeichnis gelesen werden; Pfad-Traversal und direkte Nutzung von `SKILL.md` über den Ressourcenpfad werden blockiert. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
 
-`create_svg_asset` ist ein lokales Vektor-Asset-Werkzeug, kein privilegierter Browser-Renderer. Es schreibt nur `.svg`-Dateien nach XML-Prüfung und ersetzt keine allgemeine Rasterbild- oder Medien-Sandbox.
+`create_svg_asset` ist ein lokales Vektor-Asset-Werkzeug, kein privilegierter Browser-Renderer. Es schreibt nur `.svg`-Dateien nach XML-Prüfung. `create_image_asset` ist die separate lokale Binärgrenze für `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` und `.bmp`; es validiert Signatur, Größe und Dimensionen, erzeugt aber selbst keine KI-Bilder und rendert kein HTML/SVG in Rasterbilder.
 
 ## English
 
@@ -58,6 +59,7 @@ LocalCode combines these application-level controls:
 - no normal settings storage for passwords or tokens; durable agent memories reject content that looks like passwords, tokens, private keys, or API keys
 - local rule/skill files extend only model context and do not bypass approvals, sandbox boundaries, or blocked commands
 - validated SVG/icon creation blocks scripts, event handlers, and `javascript:` URLs before asset files are written
+- validated raster/icon creation decodes data URLs/Base64, limits file size, checks format signatures and dimensions, and writes only supported image extensions
 
 ### Automatic runtime installation
 
@@ -82,4 +84,4 @@ Agent memories are local configuration data. They have project or global scope, 
 
 Global and project instructions plus local and global skills are embedded as unprivileged text in the agent context or read through `skill_read`. Additional skill resources can only be read relative to their skill directory; path traversal and direct `SKILL.md` access through the resource path are blocked. A skill or rule cannot directly change LocalCode policy; file, shell, network, MCP, and external engine actions still pass through the normal validation and approval paths.
 
-`create_svg_asset` is a local vector-asset tool, not a privileged browser renderer. It writes only `.svg` files after XML validation and does not replace a general raster-image or media sandbox.
+`create_svg_asset` is a local vector-asset tool, not a privileged browser renderer. It writes only `.svg` files after XML validation. `create_image_asset` is the separate local binary boundary for `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, and `.bmp`; it validates signatures, size, and dimensions, but does not generate AI images by itself or render HTML/SVG into raster images.
