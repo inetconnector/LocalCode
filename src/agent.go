@@ -132,7 +132,7 @@ Arbeitsweise:
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
 - Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
-- Wenn du lokale Rasterbilder nach PNG/JPG/JPEG/ICO konvertieren sollst, nutze convert_image_asset(source,destination,width,height). LocalCode dekodiert das Quellbild, skaliert bei expliziter Größe, encodiert das Ziel und prüft das Ergebnis erneut.
+- Wenn du lokale Rasterbilder nach PNG/JPG/JPEG/WebP/ICO konvertieren sollst, nutze convert_image_asset(source,destination,width,height). LocalCode dekodiert das Quellbild, skaliert bei expliziter Größe, encodiert das Ziel und prüft das Ergebnis erneut.
 - Wenn du SVG oder lokale HTML/Canvas-Dateien in konkrete Dateien rendern sollst, nutze render_asset(source,destination,width,height). Unterstützt werden SVG/HTML/HTM als Quelle und PNG/JPG/JPEG/WebP/ICO als Ziel; LocalCode rendert mit lokalem Edge/Chrome, blockiert externe HTML-Netzwerkreferenzen und prüft die erzeugte Bilddatei.
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
@@ -158,7 +158,7 @@ Werkzeuge:
 - replace_text, write_file, delete_file
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
-- convert_image_asset(source,destination,width,height) für lokale Rasterbild-Konvertierung zu PNG/JPG/JPEG/ICO
+- convert_image_asset(source,destination,width,height) für lokale Rasterbild-Konvertierung zu PNG/JPG/JPEG/WebP/ICO
 - render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG/JPG/JPEG/WebP oder ICO
 - project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
@@ -2045,9 +2045,16 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		_, destInfo, err := encodeImageForDestination(img, a.Destination, a.Width, a.Height)
-		if err != nil {
-			return "", err
+		var destInfo imageAssetInfo
+		if strings.EqualFold(filepath.Ext(strings.TrimSpace(a.Destination)), ".webp") {
+			width, height := normalizeConvertDimensions(img, a.Width, a.Height)
+			destInfo = imageAssetInfo{Format: "webp", Width: width, Height: height}
+		} else {
+			_, info, err := encodeImageForDestination(img, a.Destination, a.Width, a.Height)
+			if err != nil {
+				return "", err
+			}
+			destInfo = info
 		}
 		full, err := ensureWithinRoot(project, a.Destination)
 		if err != nil {
@@ -2179,7 +2186,7 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 	case "create_image_asset":
 		return createImageAsset(project, a.Path, a.Content)
 	case "convert_image_asset":
-		return convertImageAsset(project, a.Source, a.Destination, a.Width, a.Height)
+		return convertImageAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
 	case "render_asset":
 		return renderAsset(ctx, project, cfg, a.Source, a.Destination, a.Width, a.Height)
 	case "delete_file":

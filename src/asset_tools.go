@@ -10,6 +10,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/draw"
@@ -808,7 +809,7 @@ func encodeImageForDestination(img image.Image, destination string, width, heigh
 		}
 		buf.Write(ico)
 	default:
-		return nil, imageAssetInfo{}, errors.New("image conversion destination must be .png, .jpg, .jpeg, or .ico")
+		return nil, imageAssetInfo{}, errors.New("image conversion destination must be .png, .jpg, .jpeg, .webp, or .ico")
 	}
 	data := buf.Bytes()
 	info, err := inspectImageAsset(destination, data)
@@ -821,7 +822,55 @@ func encodeImageForDestination(img image.Image, destination string, width, heigh
 	return data, info, nil
 }
 
-func convertImageAsset(project, source, destination string, width, height int) (string, error) {
+func encodeWebPForDestination(ctx context.Context, cfg Config, img image.Image, destination string, width, height int) ([]byte, imageAssetInfo, string, error) {
+	width, height = normalizeConvertDimensions(img, width, height)
+	img = resizeNearest(img, width, height)
+	tempDir, err := os.MkdirTemp("", "localcode-convert-webp-*")
+	if err != nil {
+		return nil, imageAssetInfo{}, "", err
+	}
+	defer os.RemoveAll(tempDir)
+	sourcePNG := filepath.Join(tempDir, "source.png")
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		return nil, imageAssetInfo{}, "", err
+	}
+	if err := os.WriteFile(sourcePNG, pngBuf.Bytes(), 0o644); err != nil {
+		return nil, imageAssetInfo{}, "", err
+	}
+	sourceURI, err := fileURI(sourcePNG)
+	if err != nil {
+		return nil, imageAssetInfo{}, "", err
+	}
+	sourceHTML := filepath.Join(tempDir, "source.html")
+	htmlContent := fmt.Sprintf(`<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;width:%dpx;height:%dpx;overflow:hidden;background:transparent;}
+img{display:block;width:%dpx;height:%dpx;}
+</style></head><body><img alt="" src="%s"></body></html>`, width, height, width, height, html.EscapeString(sourceURI))
+	if err := os.WriteFile(sourceHTML, []byte(htmlContent), 0o644); err != nil {
+		return nil, imageAssetInfo{}, "", err
+	}
+	targetWebP := filepath.Join(tempDir, "target.webp")
+	rendererDetail, err := renderWebPWithChromium(ctx, cfg, sourceHTML, targetWebP, width, height)
+	if err != nil {
+		return nil, imageAssetInfo{}, strings.TrimSpace(rendererDetail), err
+	}
+	data, err := os.ReadFile(targetWebP)
+	if err != nil {
+		return nil, imageAssetInfo{}, strings.TrimSpace(rendererDetail), err
+	}
+	info, err := inspectImageAsset(destination, data)
+	if err != nil {
+		return nil, imageAssetInfo{}, strings.TrimSpace(rendererDetail), err
+	}
+	if info.Width != width || info.Height != height {
+		return nil, info, strings.TrimSpace(rendererDetail), fmt.Errorf("converted WebP dimensions are %dx%d, expected %dx%d", info.Width, info.Height, width, height)
+	}
+	return data, info, strings.TrimSpace(rendererDetail), nil
+}
+
+func convertImageAsset(ctx context.Context, project string, cfg Config, source, destination string, width, height int) (string, error) {
 	sourceFull, err := ensureWithinRoot(project, source)
 	if err != nil {
 		return "", err
@@ -840,15 +889,32 @@ func convertImageAsset(project, source, destination string, width, height int) (
 	if err != nil {
 		return "", err
 	}
-	out, destInfo, err := encodeImageForDestination(img, destination, width, height)
+	var out []byte
+	var destInfo imageAssetInfo
+	rendererDetail := ""
+	if strings.EqualFold(filepath.Ext(strings.TrimSpace(destination)), ".webp") {
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout <= 0 || timeout > 2*time.Minute {
+			timeout = 2 * time.Minute
+		}
+		cctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		out, destInfo, rendererDetail, err = encodeWebPForDestination(cctx, cfg, img, destination, width, height)
+	} else {
+		out, destInfo, err = encodeImageForDestination(img, destination, width, height)
+	}
 	if err != nil {
-		return "", err
+		return rendererDetail, err
 	}
 	result, err := writeBinaryProjectFile(project, destination, out)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("IMAGE ASSET CONVERTED\nSource: %s (%s %dx%d)\nDestination: %s (%s %dx%d, %d bytes)\n\n%s", source, sourceInfo.Format, sourceInfo.Width, sourceInfo.Height, destination, destInfo.Format, destInfo.Width, destInfo.Height, len(out), result), nil
+	detail := fmt.Sprintf("IMAGE ASSET CONVERTED\nSource: %s (%s %dx%d)\nDestination: %s (%s %dx%d, %d bytes)", source, sourceInfo.Format, sourceInfo.Width, sourceInfo.Height, destination, destInfo.Format, destInfo.Width, destInfo.Height, len(out))
+	if rendererDetail != "" {
+		detail += "\nRenderer: " + rendererDetail
+	}
+	return detail + "\n\n" + result, nil
 }
 
 func renderAsset(ctx context.Context, project string, cfg Config, source, destination string, width, height int) (string, error) {

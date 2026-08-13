@@ -240,15 +240,42 @@ func TestConvertImageAssetConvertsPNGToICO(t *testing.T) {
 	}
 }
 
+func TestConvertImageAssetConvertsPNGToWebP(t *testing.T) {
+	withFakeRenderer(t)
+	project := t.TempDir()
+	cfg := defaultConfig()
+	if err := os.WriteFile(filepath.Join(project, "source.png"), tinyPNGBytes(t, 4, 2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "convert_image_asset", Source: "source.png", Destination: "out.webp", Width: 6, Height: 3})
+	if err != nil {
+		t.Fatalf("convert_image_asset webp failed: %v", err)
+	}
+	if !strings.Contains(result, "webp 6x3") || !strings.Contains(result, "Renderer: fake chromium webp") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "out.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("out.webp", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Width != 6 || info.Height != 3 {
+		t.Fatalf("unexpected webp dimensions: %dx%d", info.Width, info.Height)
+	}
+}
+
 func TestParseAgentActionConvertImageAsset(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"convert_image_asset","message":"convert","source":"a.png"}`); err == nil {
 		t.Fatal("convert_image_asset without destination must be rejected")
 	}
-	a, err := parseAgentAction(`{"action":"convert_image_asset","message":"convert","arguments":{"source":"a.png","destination":"b.jpg","width":"12","height":6}}`)
+	a, err := parseAgentAction(`{"action":"convert_image_asset","message":"convert","arguments":{"source":"a.png","destination":"b.webp","width":"12","height":6}}`)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if a.Source != "a.png" || a.Destination != "b.jpg" || a.Width != 12 || a.Height != 6 {
+	if a.Source != "a.png" || a.Destination != "b.webp" || a.Width != 12 || a.Height != 6 {
 		t.Fatalf("arguments were not normalized: %#v", a)
 	}
 }
@@ -438,5 +465,23 @@ func TestRenderAssetWithInstalledChromium(t *testing.T) {
 	}
 	if webpInfo.Width != 64 || webpInfo.Height != 32 {
 		t.Fatalf("unexpected installed Chromium WebP dimensions: %dx%d", webpInfo.Width, webpInfo.Height)
+	}
+	if err := os.WriteFile(filepath.Join(project, "convert-source.png"), tinyPNGBytes(t, 16, 8), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err = convertImageAsset(context.Background(), project, cfg, "convert-source.png", "converted.webp", 32, 16)
+	if err != nil {
+		t.Fatalf("installed Chromium WebP conversion failed: %v\n%s", err, result)
+	}
+	convertedData, err := os.ReadFile(filepath.Join(project, "converted.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	convertedInfo, err := inspectImageAsset("converted.webp", convertedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if convertedInfo.Width != 32 || convertedInfo.Height != 16 {
+		t.Fatalf("unexpected installed Chromium converted WebP dimensions: %dx%d", convertedInfo.Width, convertedInfo.Height)
 	}
 }
