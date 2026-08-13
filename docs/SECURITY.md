@@ -14,6 +14,7 @@ LocalCode kombiniert folgende Anwendungsschutzschichten:
 - DNS-Rebinding-Schutz: verbunden wird mit genau der zuvor beim Dial validierten IP, nicht mit einer zweiten Namensauflösung
 - explizite MCP-Konfiguration und kontrolliertes Warten auf beendete stdio-Prozesse
 - keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen; dauerhafte Agentenerinnerungen lehnen Inhalte ab, die wie Passwörter, Tokens, private Schlüssel oder API-Keys aussehen
+- lokale Regel-/Skill-Dateien erweitern nur den Modellkontext und umgehen keine Genehmigungen, Sandboxgrenzen oder blockierten Befehle
 - validierte SVG-/Icon-Erzeugung blockiert Skripte, Event-Handler und `javascript:`-URLs, bevor Asset-Dateien geschrieben werden
 
 ### Automatische Laufzeitinstallation
@@ -37,6 +38,8 @@ Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interak
 
 Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder Global-Scope, werden atomar mit der Konfiguration geschrieben und können nur über eine konkrete Memory-ID gelöscht werden. Sie sind nicht für Zugangsdaten, Geheimnisse oder vertrauliche Schlüssel bestimmt.
 
+Globale und projektbezogene Anweisungen sowie lokale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
+
 `create_svg_asset` ist ein lokales Vektor-Asset-Werkzeug, kein privilegierter Browser-Renderer. Es schreibt nur `.svg`-Dateien nach XML-Prüfung und ersetzt keine allgemeine Rasterbild- oder Medien-Sandbox.
 
 ## English
@@ -53,6 +56,7 @@ LocalCode combines these application-level controls:
 - DNS-rebinding protection by dialing the exact IP validated during connection setup rather than performing a second lookup
 - explicit MCP configuration and controlled reaping of stdio subprocesses
 - no normal settings storage for passwords or tokens; durable agent memories reject content that looks like passwords, tokens, private keys, or API keys
+- local rule/skill files extend only model context and do not bypass approvals, sandbox boundaries, or blocked commands
 - validated SVG/icon creation blocks scripts, event handlers, and `javascript:` URLs before asset files are written
 
 ### Automatic runtime installation
@@ -75,5 +79,7 @@ LocalCode passes an explicit minimal configuration and an intentionally empty en
 Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system or virtualization sandbox to proprietary Codex infrastructure.
 
 Agent memories are local configuration data. They have project or global scope, are written atomically with the configuration, and can only be deleted through a concrete memory ID. They are not intended for credentials, secrets, or confidential keys.
+
+Global and project instructions plus local skills are embedded as unprivileged text in the agent context. A skill or rule cannot directly change LocalCode policy; file, shell, network, MCP, and external engine actions still pass through the normal validation and approval paths.
 
 `create_svg_asset` is a local vector-asset tool, not a privileged browser renderer. It writes only `.svg` files after XML validation and does not replace a general raster-image or media sandbox.

@@ -110,7 +110,7 @@ const agentSystemPrompt = `Du bist LocalCode, ein präziser autonomer Software-A
 Du arbeitest in einer kontrollierten Werkzeugschleife. Jede Antwort MUSS genau ein JSON-Objekt gemäß dem vorgegebenen Schema enthalten. Kein Markdown um das JSON und keine sichtbare Gedankenkette.
 
 Arbeitsweise:
-- AGENTS.md, README.md, STATE.md, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
+- Globale/Projekt-Anweisungen, README.md, STATE.md, relevante Cursor-Regeln, lokale Skill-Hinweise, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
 - Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
@@ -427,7 +427,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.AddEvent(UIEvent{Type: "error", Message: "Projekt konnte nicht gelesen werden", Detail: err.Error()})
 		return
 	}
-	instructions := projectInstructionContext(project)
+	instructions := projectInstructionContext(project, userMessage)
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
@@ -691,19 +691,6 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	}
 	s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
 	return "limit"
-}
-
-func projectInstructionContext(project string) string {
-	var parts []string
-	for _, name := range []string{"AGENTS.md", "README.md", "STATE.md"} {
-		if content, err := readProjectFile(project, name); err == nil {
-			parts = append(parts, "--- "+name+" ---\n"+truncateText(content, 18000))
-		}
-	}
-	if len(parts) == 0 {
-		return "Keine Projektdokumente vorhanden."
-	}
-	return strings.Join(parts, "\n\n")
 }
 
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {

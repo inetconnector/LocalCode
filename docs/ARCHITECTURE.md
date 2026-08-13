@@ -10,6 +10,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
 - `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
 - `agent.go`, `agent_supervisor.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
+- `instruction_context.go`: globale und projektbezogene Regelkette, Cursor-Regeln sowie lokale Skill-Indizes und relevante Skill-Inhalte für den Agentenstart.
 - `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
 - `asset_tools.go`: validierte lokale SVG-/Icon-Erzeugung mit XML- und Sicherheitsprüfung vor dem Schreiben.
 - `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
@@ -33,6 +34,8 @@ Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofo
 
 Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeldung, sondern den beobachteten Arbeitszustand: geänderte und erwähnte Dateien, erkannte Funktionsmarker, Postconditions von Dateiwerkzeugen und den Nachweis einer passenden Prüfung nach der letzten Code-/App-/Tool-Änderung. Reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe; Dokumentationsaufgaben und reine Dateioperationen werden gesondert erkannt.
 
+Der Agentenstart baut eine begrenzte Instruktionskette. Pro globalem Verzeichnis gilt `AGENTS.override.md` vor `AGENTS.md`; unterstützt werden LocalCode-Konfiguration und `CODEX_HOME`. Projektseitig gilt ebenfalls Override vor Basis, danach Fallback-Dateien wie `CLAUDE.md`, `README.md` und `STATE.md`. `.cursor/rules` werden eingebettet, wenn sie `alwaysApply` setzen oder zur Nutzeraufgabe passen. Lokale Skills werden indexiert; relevante `SKILL.md`-Dateien werden zusätzlich vollständig begrenzt eingebettet.
+
 Agentenerinnerungen werden als normalisierte Einträge in der lokalen Konfiguration gespeichert. Jeder neue native Agentenlauf erhält globale Erinnerungen und Erinnerungen des aktiven Projekts im eingebetteten Kontext. Schreibende Memory-Aktionen speichern atomar über denselben Konfigurationspfad; Löschungen verlangen eine konkrete ID.
 
 SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `create_svg_asset` nutzt. Der Pfad muss auf `.svg` enden, der Inhalt muss gültiges XML mit `<svg>`-Wurzel und Größenangabe sein, und Skripte, Event-Handler sowie `javascript:`-URLs werden vor der Dateioperation blockiert.
@@ -49,6 +52,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `server.go`: API, SSE, projects, tasks, settings, and approvals.
 - `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
 - `agent.go`, `agent_supervisor.go`, and `continuation.go`: agent loop, deterministic supervision, completion guard/review, continuations, and cancellation.
+- `instruction_context.go`: global and project rule chain, Cursor rules, plus local skill indexes and relevant skill contents for agent startup.
 - `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
 - `asset_tools.go`: validated local SVG/icon creation with XML and safety checks before writing.
 - `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
@@ -71,6 +75,8 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
 
 Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
+
+Agent startup builds a bounded instruction chain. For each global directory, `AGENTS.override.md` wins over `AGENTS.md`; LocalCode configuration and `CODEX_HOME` are supported. Project-side discovery uses the same override-before-base rule, then fallback files such as `CLAUDE.md`, `README.md`, and `STATE.md`. `.cursor/rules` are embedded when they set `alwaysApply` or match the user task. Local skills are indexed; relevant `SKILL.md` files are also embedded with limits.
 
 Agent memories are stored as normalized entries in the local configuration. Every new native agent run receives global memories and memories for the active project in the embedded context. Writing memory actions persist atomically through the same configuration path; deletion requires a concrete ID.
 
