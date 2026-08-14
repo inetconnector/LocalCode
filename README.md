@@ -1,4 +1,4 @@
-# LocalCode 6.4.3
+# LocalCode 6.4.4
 
 [Deutsch](#deutsch) · [English](#english)
 
@@ -45,6 +45,12 @@ Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhand
 - Enter sendet; Umschalt+Enter erzeugt eine neue Zeile.
 - Nach Abschluss oder kontrolliertem Abbruch wird das Eingabefeld wieder fokussiert.
 - Modell- und Werkzeugaufrufe besitzen Zeitlimits und können kontrolliert beendet werden.
+
+### Handy-Remote
+
+LocalCode startet zusätzlich eine token-geschützte Remote-Web-App für Handys im lokalen Netzwerk. Im Desktop-Menü **Hilfe → Remote koppeln** erzeugt LocalCode einen kurzlebigen sechsstelligen Pairing-Code und zeigt die LAN-Adresse der Remote-App. Auf dem Handy wird `/remote` geöffnet, der Code eingegeben und ein Geräte-Token erzeugt. Das Token wird nur auf dem Handy gespeichert; LocalCode persistiert nur den Hash.
+
+Die Remote-App folgt dem schmalen dunklen AHSMA-Handylayout: Projekt- und Task-Auswahl, laufende Chatansicht, neue Aufgaben, Datei-/Kamera-Anhänge über den Browser-Dateidialog, Stopp und Genehmigungen sind direkt bedienbar. Die eigentliche Arbeit läuft weiterhin auf dem Windows-Rechner mit dessen Projekten, Werkzeugen, Modellen, Genehmigungen und Sicherheitsregeln. Eine verpackte native Android-Hülle und automatische mDNS/QR-Erkennung bleiben Folgeaufgaben.
 
 ### Agent und Kontext
 
@@ -109,7 +115,7 @@ Die Kernlaufzeit (Ollama, konfigurierte Ollama-Modelle und die ausgewählte Engi
 
 ### Verwaltete MCP-Suite
 
-LocalCode 6.4.3 enthält sechs verwaltete MCP-Funktionsbereiche:
+LocalCode 6.4.4 enthält sechs verwaltete MCP-Funktionsbereiche:
 
 - **Filesystem MCP** – integrierte, projektgebundene Datei- und Verzeichniswerkzeuge.
 - **PowerShell MCP** – integrierte Skriptausführung, Cmdlet-Erkennung und Hilfe ohne sichtbare Konsolenfenster.
@@ -212,6 +218,12 @@ Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama ins
 - The prompt is focused again after completion or controlled cancellation.
 - Model and tool calls have time limits and can be stopped in a controlled manner.
 
+### Phone Remote
+
+LocalCode also starts a token-protected Remote web app for phones on the local network. From the desktop menu **Help → Pair Remote**, LocalCode creates a short-lived six-digit pairing code and shows the LAN address for the Remote app. The phone opens `/remote`, enters the code, and receives a device token. The token is stored only on the phone; LocalCode persists only its hash.
+
+The Remote app follows the narrow dark AHSMA phone layout: project and task selection, live chat review, new tasks, browser file/camera attachments, stop, and approvals are directly usable. The actual work still runs on the Windows computer with its projects, tools, models, approvals, and security rules. A packaged native Android shell and automatic mDNS/QR discovery remain follow-up tasks.
+
 ### Agent and context
 
 The supervisor detects common tasks such as analysis, builds, Android deployment, Git initialization, and web research. Repeated identical questions or tool actions are blocked. Before the context limit is reached, older history is compacted while preserving the task, decisions, files read or changed, commands, failures, open items, and the next planned action.
@@ -275,7 +287,7 @@ The core runtime (Ollama, configured Ollama models, and the selected engine) is 
 
 ### Managed MCP suite
 
-LocalCode 6.4.3 includes six managed MCP capability areas:
+LocalCode 6.4.4 includes six managed MCP capability areas:
 
 - **Filesystem MCP** – built-in, project-scoped file and directory tools.
 - **PowerShell MCP** – built-in script execution, command discovery, and help without visible console windows.

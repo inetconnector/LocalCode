@@ -53,6 +53,10 @@ type Config struct {
 	HiddenProjects []string          `json:"hidden_projects,omitempty"`
 	Memories       []MemoryEntry     `json:"memories,omitempty"`
 	Port           int               `json:"port"`
+	RemoteEnabled  bool              `json:"remote_enabled"`
+	RemoteBindHost string            `json:"remote_bind_host"`
+	RemotePort     int               `json:"remote_port"`
+	RemoteDevices  []RemoteDevice    `json:"remote_devices,omitempty"`
 
 	OllamaURL                         string  `json:"ollama_url"`
 	SetupDownloadsEnabled             bool    `json:"setup_downloads_enabled"`
@@ -166,6 +170,14 @@ type MemoryEntry struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type RemoteDevice struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	TokenHash  string    `json:"token_hash"`
+	PairedAt   time.Time `json:"paired_at"`
+	LastSeenAt time.Time `json:"last_seen_at,omitempty"`
+}
+
 type Attachment struct {
 	Name string `json:"name"`
 	MIME string `json:"mime"`
@@ -262,11 +274,14 @@ type AppState struct {
 	RunStartedAt   time.Time
 	LastProgressAt time.Time
 
-	Events        []UIEvent
-	Pending       *PendingAction
-	Continuation  *AgentContinuation
-	Threads       map[string]*ChatThread
-	CurrentThread string
+	Events           []UIEvent
+	Pending          *PendingAction
+	Continuation     *AgentContinuation
+	Threads          map[string]*ChatThread
+	CurrentThread    string
+	RemoteListenAddr string
+	RemoteURLs       []string
+	RemotePairing    *RemotePairingState
 
 	LastTask         string
 	LastSummary      string
@@ -279,6 +294,11 @@ type AppState struct {
 	threadSaveStop      chan struct{}
 	threadSaveDone      chan struct{}
 	threadSaveCloseOnce sync.Once
+}
+
+type RemotePairingState struct {
+	CodeHash  string
+	ExpiresAt time.Time
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {

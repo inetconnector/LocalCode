@@ -6,5 +6,5 @@ taskkill /F /IM LocalCode.exe >nul 2>&1
 powershell.exe -NoLogo -NoProfile -Command "$n='Local'+'Codex'; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
 call "%~dp0BUILD.bat"
 if errorlevel 1 exit /b 1
-start "LocalCode 6.4.3" "%~dp0dist\LocalCode.exe"
+start "LocalCode 6.4.4" "%~dp0dist\LocalCode.exe"
 exit /b 0

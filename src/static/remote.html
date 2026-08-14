@@ -1,0 +1,124 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1626">
+<title>LocalCode Remote</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1626;--top:#0a111d;--panel:#202226;--sheet:#090a0c;--card:#303642;--chip:#323844;--text:#f5f7fb;--muted:#a6aab3;--soft:#747984;--line:#343943;--accent:#06b6d4;--send:#a3a3a3;--danger:#ef7070;--ok:#54d18c;--font:Inter,"Segoe UI",system-ui,sans-serif;--code:"Cascadia Mono",Consolas,monospace}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:16px/1.45 var(--font)}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hidden{display:none!important}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:linear-gradient(#121a2b,#0f1626)}
+.top{height:calc(70px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 18px 0;background:#0b1220;display:flex;align-items:center;gap:12px}
+.mark{width:34px;height:34px;color:white;display:grid;place-items:center}
+.mark svg{width:30px;height:30px;fill:currentColor}
+.title{min-width:0;flex:1}.title b{display:block;font-size:17px}.title span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status-dot{width:10px;height:10px;border-radius:50%;background:var(--soft)}.status-dot.on{background:var(--ok)}.status-dot.warn{background:#f7c65f}
+.tabs{height:48px;background:#0b1220;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #172033;overflow:auto}
+.tab{height:34px;border:0;border-radius:999px;background:transparent;color:var(--muted);padding:0 13px;white-space:nowrap}.tab.active{background:#273041;color:#fff}
+.main{min-height:0;overflow:hidden;position:relative}.view{height:100%;overflow:auto;padding:18px 16px 150px;scrollbar-width:none}.view::-webkit-scrollbar{display:none}
+.empty{height:100%;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}.empty h1{margin:0 0 12px;color:#fff;font-size:38px;letter-spacing:0}.empty p{margin:0;font-size:19px;line-height:1.55}
+.row{border:0;background:transparent;width:100%;min-height:58px;padding:10px 3px;display:flex;gap:12px;align-items:center;text-align:left;border-bottom:1px solid rgba(255,255,255,.06)}
+.row-icon{width:36px;height:36px;border-radius:12px;background:#252c3b;display:grid;place-items:center;color:#d9dde6;font-weight:700}.row-main{min-width:0;flex:1}.row-title{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-meta{font-size:12px;color:var(--soft)}
+.section-title{font-size:12px;text-transform:uppercase;letter-spacing:.11em;color:var(--soft);font-weight:750;margin:16px 0 6px}
+.bubble-row{display:flex;margin:20px 0;gap:10px}.bubble-row.user{justify-content:flex-end}.bubble{max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere}.bubble-row.user .bubble{background:#333947;border-radius:28px;padding:12px 17px;font-size:18px}.bubble-row.agent .bubble{font-size:20px;line-height:1.55}.event-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;color:var(--muted);font-size:13px}.event-chip{display:inline-flex;align-items:center;gap:5px;border-radius:9px;background:#303642;padding:4px 8px;color:#c7cad1}
+.code{margin-top:9px;background:#06080c;border:1px solid #242936;border-radius:10px;padding:10px;white-space:pre-wrap;font:12px/1.5 var(--code);color:#d8dde8;max-height:220px;overflow:auto}
+.approval-card{background:#211c11;border:1px solid #7c6030;border-radius:14px;padding:14px;margin:12px 0}.approval-card h2{font-size:17px;margin:0 0 8px}.approval-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.approval-actions button{height:42px;border-radius:12px;border:0;font-weight:700}.approve{background:#f3f5f4;color:#101215}.always{background:#235f9f;color:white}.reject{background:#3b2424;color:#ffd6d6;border:1px solid #704141!important}
+.composer{position:absolute;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#202226;border:1px solid #4a4d55;border-radius:34px;padding:14px 14px 12px;box-shadow:0 22px 70px rgba(0,0,0,.45)}
+.attachments{display:flex;gap:8px;overflow:auto;padding:0 0 8px}.att{height:38px;max-width:180px;border-radius:12px;background:#30333a;display:flex;align-items:center;gap:7px;padding:0 10px;color:#e8ebf2;font-size:13px}.att span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.att button{width:22px;height:22px;border:0;border-radius:50%;background:#50545d}
+textarea{width:100%;min-height:62px;max-height:180px;resize:none;border:0;outline:0;background:transparent;padding:4px 40px 8px 40px;font-size:22px;line-height:1.35;color:#f4f4f4}textarea::placeholder{color:#b1b1b1}
+.toolbar{display:flex;align-items:center;gap:10px}.round{width:48px;height:48px;border:0;border-radius:50%;background:#33363d;color:white;display:grid;place-items:center}.round.primary{background:var(--accent)}.round.send{margin-left:auto;background:var(--send);color:#171717}.round.send:disabled{opacity:.45}.model-chip{min-width:0;max-width:52%;height:38px;border:0;border-radius:12px;background:#343842;color:#fff;padding:0 12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pair{height:100%;display:grid;place-items:center;padding:24px;background:#0f1626}.pair-card{width:min(430px,100%);background:#101827;border:1px solid #2c3444;border-radius:24px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.35)}.pair-card h1{margin:0 0 8px;font-size:28px}.pair-card p{margin:0 0 18px;color:var(--muted)}.pair-card input{width:100%;height:52px;border-radius:16px;border:1px solid #3c4658;background:#080d16;padding:0 15px;outline:0;font-size:22px;letter-spacing:.1em;text-align:center}.pair-card button{width:100%;height:48px;border:0;border-radius:14px;background:#f3f5f4;color:#101215;font-weight:800;margin-top:12px}.pair-error{min-height:22px;color:#ff9e9e;margin-top:10px;font-size:13px}
+@media(min-width:760px){.app{max-width:520px;margin:0 auto;border-left:1px solid #273041;border-right:1px solid #273041}.composer{left:calc(50% - 244px);right:calc(50% - 244px)}}
+</style>
+</head>
+<body>
+<section id="pairScreen" class="pair hidden">
+  <div class="pair-card">
+    <div class="mark"><svg viewBox="0 0 24 24"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div>
+    <h1 data-i18n="pair_title">LocalCode koppeln</h1>
+    <p data-i18n="pair_help">Gib den Pairing-Code vom verbundenen Windows-Rechner ein.</p>
+    <input id="pairCode" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="000000">
+    <button id="pairBtn" data-i18n="pair_button">Verbinden</button>
+    <div id="pairError" class="pair-error"></div>
+  </div>
+</section>
+
+<section id="app" class="app hidden">
+  <header class="top">
+    <div class="mark"><svg viewBox="0 0 24 24"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div>
+    <div class="title"><b>LocalCode</b><span id="subtitle">Remote</span></div>
+    <div id="dot" class="status-dot"></div>
+  </header>
+  <nav class="tabs">
+    <button class="tab active" data-view="tasks" data-i18n="tasks">Tasks</button>
+    <button class="tab" data-view="approve" data-i18n="approve">Approve</button>
+    <button class="tab" data-view="review" data-i18n="review">Review</button>
+    <button class="tab" data-view="new" data-i18n="new_task">New task</button>
+  </nav>
+  <main class="main">
+    <div id="tasksView" class="view"></div>
+    <div id="approveView" class="view hidden"></div>
+    <div id="reviewView" class="view hidden"></div>
+    <div id="newView" class="view hidden"></div>
+    <form id="composer" class="composer">
+      <div id="attachments" class="attachments hidden"></div>
+      <textarea id="prompt" data-i18n-placeholder="placeholder" placeholder="Nachricht eingeben..."></textarea>
+      <div class="toolbar">
+        <button id="attachBtn" class="round" type="button" title="Add">+</button>
+        <input id="fileInput" class="hidden" type="file" multiple accept="image/*,.txt,.md,.json,.xml,.csv,.pdf,.docx,.pptx,.xlsx,.zip">
+        <select id="projectSelect" class="model-chip"></select>
+        <button id="stopBtn" class="round primary hidden" type="button">■</button>
+        <button id="sendBtn" class="round send" type="submit">↑</button>
+      </div>
+    </form>
+  </main>
+</section>
+
+<script>
+(() => {
+'use strict';
+const dict={
+de:{pair_title:'LocalCode koppeln',pair_help:'Gib den Pairing-Code vom verbundenen Windows-Rechner ein.',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht eingeben...',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Einmal genehmigen',approve_project:'Immer Projekt',reject:'Ablehnen',running:'Läuft',ready:'Bereit',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',files:'Dateien',agent:'Agent',you:'Du',status:'Status'},
+en:{pair_title:'Pair LocalCode',pair_help:'Enter the pairing code from the connected Windows computer.',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Enter message...',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve once',approve_project:'Always project',reject:'Deny',running:'Running',ready:'Ready',select_project:'Select project',new_chat:'Start new task',files:'Files',agent:'Agent',you:'You',status:'Status'}
+};
+const lang=(navigator.language||'en').toLowerCase().startsWith('de')?'de':'en';
+const t=k=>dict[lang][k]||k;
+document.documentElement.lang=lang;
+document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));
+document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=t(e.dataset.i18nPlaceholder));
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'tasks',es:null};
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function api(path,opts={}){const h={'Accept':'application/json',...(opts.headers||{})};if(state.token)h['X-LocalCode-Remote-Token']=state.token;if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';const r=await fetch(path,{...opts,headers:h});if(!r.ok)throw new Error((await r.text()).trim()||`HTTP ${r.status}`);return r.headers.get('content-type')?.includes('json')?r.json():r.text()}
+function showPair(){ $('#pairScreen').classList.remove('hidden'); $('#app').classList.add('hidden'); setTimeout(()=>$('#pairCode').focus(),30) }
+function showApp(){ $('#pairScreen').classList.add('hidden'); $('#app').classList.remove('hidden') }
+async function pair(){try{$('#pairError').textContent='';const r=await api('/remote/api/pair',{method:'POST',body:JSON.stringify({code:$('#pairCode').value.trim(),device_name:navigator.userAgent.slice(0,80)})});state.token=r.token;localStorage.setItem('localcodeRemoteToken',state.token);showApp();await refresh();connectEvents()}catch(e){$('#pairError').textContent=t('pair_failed')+' '+e.message}}
+async function refresh(){try{state.status=await api('/remote/api/status');const p=await api('/remote/api/projects');state.projects=p.projects||[];const th=await api('/remote/api/threads');state.threads=th.threads||[];state.currentThread=th.current||state.status.current_thread||'';const snap=await api('/remote/api/snapshot'+(state.currentThread?`?thread_id=${encodeURIComponent(state.currentThread)}`:''));state.events=snap.events||[];state.pending=snap.pending||null;state.project=snap.project||state.status.project||'';render();$('#dot').className='status-dot on'}catch(e){$('#dot').className='status-dot warn';if(String(e.message).includes('token')){state.token='';localStorage.removeItem('localcodeRemoteToken');showPair()}else console.warn(e)}}
+function render(){const running=!!state.status?.running;$('#subtitle').textContent=[state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#stopBtn').classList.toggle('hidden',!running);$('#sendBtn').disabled=running&&!$('#prompt').value.trim();renderProjects();renderEvents();renderApproval();renderNew();renderFiles()}
+function renderProjects(){const sel=$('#projectSelect');sel.innerHTML=`<option value="">${t('select_project')}</option>`+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('');const host=$('#tasksView');if(!state.projects.length){host.innerHTML=`<div class="empty"><div><h1>LocalCode</h1><p>${t('no_projects')}</p></div></div>`;return}let html='<div class="section-title">Pinned</div>';for(const p of state.projects){html+=`<button class="row" data-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div><div class="row-meta">${p.pinned?'Pinned':''}</div></button>`}html+='<div class="section-title">Today</div>';for(const th of state.threads.filter(x=>!x.archived).slice(0,40)){html+=`<button class="row" data-thread="${esc(th.id)}"><div class="row-icon">#</div><div class="row-main"><div class="row-title">${esc(th.title)}</div><div class="row-sub">${esc(projectName(th.project))}</div></div><div class="row-meta">${esc((th.model||'').split(':')[0])}</div></button>`}host.innerHTML=html;host.querySelectorAll('[data-thread]').forEach(b=>b.onclick=()=>selectThread(b.dataset.thread));host.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>startProjectTask(b.dataset.project))}
+function projectName(path){return state.projects.find(p=>p.path===path)?.name||String(path||'').split(/[\\/]/).pop()||''}
+async function selectThread(id){await api('/remote/api/select-chat',{method:'POST',body:JSON.stringify({id})});state.currentThread=id;await refresh();showView('review')}
+async function startProjectTask(project){const r=await api('/remote/api/new-chat',{method:'POST',body:JSON.stringify({project})});state.currentThread=r.thread?.id||'';state.project=project;await refresh();showView('new');$('#prompt').focus()}
+function renderEvents(){const host=$('#reviewView');if(!state.events.length){host.innerHTML=`<div class="empty"><div><h1>Hallo</h1><p>${t('no_events')}</p></div></div>`;return}host.innerHTML=state.events.map(ev=>eventHTML(ev)).join('');host.scrollTop=host.scrollHeight}
+function eventHTML(ev){const user=ev.type==='user';const kind=user?'user':'agent';let detail=ev.detail?`<div class="code">${esc(ev.detail)}</div>`:'';if(ev.preview)detail+=`<div class="code">${esc(ev.preview)}</div>`;const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');return `<div class="bubble-row ${kind}"><div class="bubble"><div>${esc(ev.message||ev.type||'')}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`}
+function renderApproval(){const host=$('#approveView');const p=state.pending;if(!p){host.innerHTML=`<div class="empty"><div><h1>${t('approve')}</h1><p>${t('pending_none')}</p></div></div>`;return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
+function renderNew(){const host=$('#newView');host.innerHTML=`<div class="empty"><div><h1>LocalCode</h1><p>${t('new_chat')}</p></div></div>`}
+function renderFiles(){const box=$('#attachments');box.classList.toggle('hidden',!state.files.length);box.innerHTML=state.files.map((f,i)=>`<div class="att"><span>${esc(f.name)}</span><button type="button" data-remove="${i}">×</button></div>`).join('');box.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.files.splice(Number(b.dataset.remove),1);renderFiles()})}
+async function approve(decision){if(!state.pending)return;await api('/remote/api/approve',{method:'POST',body:JSON.stringify({id:state.pending.id,decision,approve:decision!=='reject'})});state.pending=null;await refresh()}
+function readFile(file){return new Promise((res,rej)=>{if(file.size>32*1024*1024)return rej(new Error(file.name+' too large'));const fr=new FileReader();fr.onerror=()=>rej(fr.error);fr.onload=()=>{const v=String(fr.result||''),i=v.indexOf(',');res({name:file.name,mime:file.type||'application/octet-stream',size:file.size,data:i>=0?v.slice(i+1):v})};fr.readAsDataURL(file)})}
+async function send(ev){ev?.preventDefault();const msg=$('#prompt').value.trim();if(!msg&&!state.files.length)return;const project=$('#projectSelect').value||state.project;const attachments=state.files.map(({name,mime,size,data})=>({name,mime,size,data}));await api('/remote/api/chat',{method:'POST',body:JSON.stringify({message:msg,project,thread_id:state.currentThread,model:state.status?.model||'',attachments})});$('#prompt').value='';state.files=[];renderFiles();await refresh();showView('review')}
+function showView(name){state.view=name;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));for(const v of ['tasks','approve','review','new'])$('#'+v+'View').classList.toggle('hidden',v!==name)}
+function connectEvents(){if(state.es)state.es.close();if(!state.token)return;const es=new EventSource('/remote/api/events?token='+encodeURIComponent(state.token));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required'){state.pending=ev;showView('approve')}if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}
+$('#pairBtn').onclick=pair;$('#pairCode').onkeydown=e=>{if(e.key==='Enter')pair()};$$('.tab').forEach(b=>b.onclick=()=>showView(b.dataset.view));$('#attachBtn').onclick=()=>$('#fileInput').click();$('#fileInput').onchange=async e=>{for(const f of e.target.files||[])state.files.push(await readFile(f));e.target.value='';renderFiles()};$('#composer').onsubmit=send;$('#stopBtn').onclick=async()=>{await api('/remote/api/stop',{method:'POST'});await refresh()};$('#prompt').oninput=()=>render();$('#projectSelect').onchange=e=>{state.project=e.target.value};
+if(state.token){showApp();refresh().then(connectEvents)}else showPair();
+setInterval(refresh,5000);
+})();
+</script>
+</body>
+</html>

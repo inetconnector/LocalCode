@@ -123,7 +123,7 @@ func TestPullWithProgressDecodesOllamaStream(t *testing.T) {
 
 func TestSchemaNineMigrationSeparatesSetupDownloadsFromAgentNetwork(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 9, NetworkEnabled: false})
-	if cfg.SchemaVersion != 10 {
+	if cfg.SchemaVersion != 11 {
 		t.Fatalf("schema=%d", cfg.SchemaVersion)
 	}
 	if cfg.NetworkEnabled {

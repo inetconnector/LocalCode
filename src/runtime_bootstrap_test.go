@@ -160,7 +160,7 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 
 func TestSchemaEightEnablesRuntimeAutoSetupDuringMigration(t *testing.T) {
 	cfg := normalizeConfig(Config{SchemaVersion: 6})
-	if cfg.SchemaVersion != 10 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
+	if cfg.SchemaVersion != 11 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
 		t.Fatalf("runtime bootstrap migration incomplete: %#v", cfg)
 	}
 	if cfg.OllamaDefaultModel != defaultCodingModel {

@@ -37,6 +37,12 @@ Die Kernlaufzeit wird standardmäßig selbstständig vervollständigt. Dabei gel
 - Das temporäre Startfenster ist ausschließlich an `127.0.0.1` gebunden, verwendet ein zufälliges Zugriffstoken, prüft den Host-Header und lädt keine externen Ressourcen.
 - MCP-`uvx` wird aus demselben versions- und SHA-256-gebundenen uv-Archiv installiert; es wird kein heruntergeladenes Installationsskript direkt ausgeführt.
 
+### Handy-Remote
+
+Der Desktop-Server bleibt an Loopback gebunden. Die Handy-Fernsteuerung läuft auf einem separaten Remote-Server, der nur die Remote-Web-App und eine kleine Remote-API bereitstellt. Der Pairing-Code kann nur über die loopback-geschützte Desktop-API erzeugt werden, ist sechs Ziffern lang und zehn Minuten gültig. Erst nach erfolgreichem Pairing erhält das Handy ein zufälliges 256-Bit-Token; LocalCode speichert davon ausschließlich einen SHA-256-Hash.
+
+Remote-Aufrufe für Status, Projekte, Aufgaben, Chat, Stop, Genehmigungen und SSE benötigen dieses Token per `X-LocalCode-Remote-Token`, Bearer-Header oder für EventSource per Query-Parameter. Die Remote-App erweitert keine Genehmigungen, Sandboxgrenzen, Werkzeugrechte oder Projektgrenzen. Sie ruft dieselben Backendfunktionen wie die Desktop-Oberfläche auf; Datei-Anhänge laufen durch dieselbe Größen- und Typvalidierung. Cross-Origin-POSTs werden über Origin- und Fetch-Site-Prüfung abgelehnt. Windows-Firewall- und Netzwerksegment-Regeln bleiben Betriebssystem-/Netzwerkaufgabe.
+
 ### Aider-Unterprozessgrenze
 
 LocalCode übergibt Aider eine explizite Minimal-Konfiguration und eine absichtlich leere Umgebungsdatei. Analytics, Update-Prüfung, Browseraufforderungen, Shell-Vorschläge, URL-Erkennung, Benachrichtigungen, Dateiüberwachung und Prompt-Caching sind deaktiviert. Historien liegen außerhalb des Repositories. Vor Bearbeitungs-, Lint- und Testläufen werden Backups und Hash-Manifeste erzeugt; Undo überschreibt keine später manuell geänderten Dateien. Aiders `--yes-always` gilt nur innerhalb des bereits durch LocalCode genehmigten Bearbeitungslaufs.
@@ -91,6 +97,12 @@ The core runtime is completed automatically by default with additional integrity
 - Setup downloads have their own switch and are separate from agent/web network access. Web research can remain disabled without blocking explicitly enabled first-run setup.
 - The temporary startup window binds only to `127.0.0.1`, uses a random access token, validates the Host header, and loads no external resources.
 - MCP `uvx` is installed from the same version- and SHA-256-pinned uv archive; no downloaded installer script is executed directly.
+
+### Phone Remote
+
+The desktop server remains bound to loopback. Phone remote control runs on a separate Remote server that serves only the Remote web app and a small Remote API. Pairing codes can be created only through the loopback-protected desktop API, are six digits long, and expire after ten minutes. After successful pairing the phone receives a random 256-bit token; LocalCode stores only its SHA-256 hash.
+
+Remote calls for status, projects, tasks, chat, stop, approvals, and SSE require that token through `X-LocalCode-Remote-Token`, a Bearer header, or, for EventSource, a query parameter. The Remote app does not extend approvals, sandbox boundaries, tool rights, or project boundaries. It calls the same backend functions as the desktop UI; file attachments pass through the same size and type validation. Cross-origin POSTs are rejected through Origin and Fetch-Site checks. Windows Firewall and network-segment rules remain operating-system and network responsibilities.
 
 ### Aider subprocess boundary
 

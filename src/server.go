@@ -63,6 +63,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/events", s.handleEvents)
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
+	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
 	s.mux.HandleFunc("/api/mcp/test", s.handleMCPTest)
 	s.mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
 	s.mux.HandleFunc("/api/mcp/setup", s.handleMCPSetup)

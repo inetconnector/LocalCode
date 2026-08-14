@@ -1,4 +1,4 @@
-LOCALCODE 6.4.3 - SCHNELLSTART / QUICK START
+LOCALCODE 6.4.4 - SCHNELLSTART / QUICK START
 =============================================
 
 DEUTSCH
@@ -24,6 +24,9 @@ DEUTSCH
    Cloud-Provider verbunden werden.
 8. Große Modell-Downloads können beim ersten Start dauern. Details stehen in
    %LOCALAPPDATA%\LocalCode\localcode.log.
+9. Für die Handy-Fernsteuerung im selben Netzwerk: LocalCode starten, im Menü
+   Hilfe -> Remote koppeln wählen, die angezeigte LAN-Adresse auf dem Handy
+   öffnen und den Pairing-Code eingeben.
 
 Für einen vollständigen Neuaufbau: BUILD-AND-RUN.bat
 Für Diagnoseausgabe: DIAGNOSE.bat
@@ -50,6 +53,9 @@ ENGLISH
    connect to a cloud provider through opencode auth login.
 8. Large model downloads can take time on first startup. Details are written to
    %LOCALAPPDATA%\LocalCode\localcode.log.
+9. For phone remote control on the same network: start LocalCode, choose Help
+   -> Pair Remote, open the shown LAN address on the phone, and enter the
+   pairing code.
 
 For a complete rebuild: BUILD-AND-RUN.bat
 For diagnostics: DIAGNOSE.bat

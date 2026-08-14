@@ -112,7 +112,7 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		SchemaVersion: 10, RootProjectDir: preferredProjectRoot(), Port: 32145, ProjectAliases: map[string]string{},
+		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: true, RemoteBindHost: "0.0.0.0", RemotePort: 32146, ProjectAliases: map[string]string{},
 		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
@@ -338,11 +338,37 @@ func normalizeProjectPathList(values []string) []string {
 	return out
 }
 
+func normalizeRemoteDevices(values []RemoteDevice) []RemoteDevice {
+	out := make([]RemoteDevice, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value.ID = strings.TrimSpace(value.ID)
+		value.Name = strings.Join(strings.Fields(strings.TrimSpace(value.Name)), " ")
+		value.TokenHash = strings.TrimSpace(value.TokenHash)
+		if value.ID == "" || value.TokenHash == "" {
+			continue
+		}
+		if value.Name == "" {
+			value.Name = "Phone"
+		}
+		if runes := []rune(value.Name); len(runes) > 80 {
+			value.Name = strings.TrimSpace(string(runes[:80]))
+		}
+		key := strings.ToLower(value.ID)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
+}
+
 func normalizeConfig(cfg Config) Config {
 	d := defaultConfig()
 	oldSchema := cfg.SchemaVersion
-	if cfg.SchemaVersion < 10 {
-		cfg.SchemaVersion = 10
+	if cfg.SchemaVersion < 11 {
+		cfg.SchemaVersion = 11
 	}
 	if oldSchema < 3 {
 		cfg.AutoDiscoverTools = true
@@ -357,6 +383,16 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.Port == 0 {
 		cfg.Port = d.Port
+	}
+	if cfg.RemotePort == 0 || cfg.RemotePort < 0 || cfg.RemotePort > 65535 {
+		cfg.RemotePort = d.RemotePort
+	}
+	if strings.TrimSpace(cfg.RemoteBindHost) == "" {
+		cfg.RemoteBindHost = d.RemoteBindHost
+	}
+	cfg.RemoteBindHost = strings.TrimSpace(cfg.RemoteBindHost)
+	if oldSchema < 11 {
+		cfg.RemoteEnabled = d.RemoteEnabled
 	}
 	if oldSchema < 8 {
 		cfg.OllamaAutoInstall = true
@@ -662,6 +698,7 @@ func normalizeConfig(cfg Config) Config {
 		cfg.ToolOverrides = map[string]string{}
 	}
 	cfg.Memories = normalizeMemoryEntries(cfg.Memories)
+	cfg.RemoteDevices = normalizeRemoteDevices(cfg.RemoteDevices)
 
 	root := strings.TrimSpace(cfg.RootProjectDir)
 	if root != "" {

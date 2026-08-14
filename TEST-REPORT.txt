@@ -1,36 +1,34 @@
-LOCALCODE 6.4.3 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
+LOCALCODE 6.4.4 - RELEASE VERIFICATION REPORT / PRUEFBERICHT
 
-Reported native-Windows failures fixed
----------------------------------------
-- TestCodingEngineServerAdditionalErrorBranches disables SetupDownloadsEnabled and cannot invoke the real Claude Code installer.
-- TestCoverageServerEndpointMatrix injects a deterministic folder selector and does not open a Windows Forms folder dialog.
-- TestCoverageAgentActionsAndApprovals and the terminal-command matrix use the cross-platform `echo` command instead of PowerShell-incompatible `printf`.
-- Folder-picker error, cancellation, and success paths have explicit regression coverage.
+Implemented feature
+-------------------
+- Token-protected phone Remote web app for the local network at `/remote`.
+- Loopback-only desktop pairing endpoint with short-lived six-digit code.
+- Hash-only persisted remote device tokens.
+- Remote project/task selection, chat snapshots, SSE updates, stop, approvals, and browser file/camera attachments.
+- Mobile UI follows the dark AHSMA phone layout.
 
 Automated verification
 ----------------------
-- Go test functions: 191
-- Normal test run: PASS
-- go vet ./...: PASS
-- Randomized-order runs (seeds 11, 22, 33): PASS
-- Race detector: PASS for the complete suite
-- Statement coverage: 6570/8206 = 80.063368267122 %
-- UI/API simulation: PASS, 37 requests
-- Windows amd64 GUI cross-build: PASS
-- Windows amd64 diagnostics cross-build: PASS
-- Windows amd64 test executable compilation: PASS
-- Batch files: ASCII, BOM-free, Windows CRLF: PASS
-- Archive paths, duplicate entries, checksums, and source manifest: verified during packaging
+- Focused regression tests for schema migration, Remote pairing/auth/status/approval/page serving, and batch CRLF checks: PASS.
+- `go fmt ./...` in `src`: PASS.
+- Full `go test -count=1 ./...` in `src`: PASS (`ok localcode 49.093s`).
+- `go vet ./...` in `src`: PASS.
+- Race detector with `CGO_ENABLED=1` and `C:\msys64\ucrt64\bin` prepended to PATH: PASS (`ok localcode 57.600s`).
+- JavaScript syntax: `node --check src\static\i18n.js`: PASS.
+- Inline scripts from `src\static\index.html` and `src\static\remote.html` compiled with Node `new Function`: PASS.
+- `git diff --check`: PASS after removing markdown trailing whitespace.
+- Browser UI smoke: PASS (`FULL UI E2E OK 37 requests`).
+- `scripts\build.ps1`: PASS with isolated tests (`ok localcode 51.965s`), `go vet`, randomized tests (`ok localcode 48.479s`), Windows GUI build, and diagnostics build.
+- Coverage rerun: initial command with a module-external coverprofile path failed after the package tests themselves passed; rerun with an in-module coverprofile succeeded (`ok localcode 48.474s`, statement coverage 72.3% by `go tool cover -func`).
 
 Generated Windows files
 -----------------------
-- dist/LocalCode.exe: 10139136 bytes
-  SHA-256: 1f619f6e6b53ba4dcb43aeaf04171aab67fe317a77bb507ce0420373db5fd609
-- dist/LocalCode-Debug.exe: 14337536 bytes
-  SHA-256: d67732e0e9f5998d402e3c05bc3fe6edac82aa4a7fecb36115c91ed892d6ac4c
-- reports/localcode-windows-amd64.test.exe: 16893952 bytes
-  SHA-256: b007b6bc46d73ac0ed3a7a7c753f001488b6a61c9c75f31f15f8c0a41cdb68ea
+- dist/LocalCode.exe: 12164608 bytes
+  SHA-256: 21DED98D284CF353BDDADEF1546C0F0EAD9BEC45A422B25C67207963D017F0B4
+- dist/LocalCode-Debug.exe: 16862720 bytes
+  SHA-256: D86FB6413C51C9CD056CD1A549DDAAE30D2C44D76980FFE54F74A34C2D461FE1
 
-Limitation
-----------
-The Windows PE files and batch/PowerShell launch flow were cross-built and statically verified in a Linux environment; they were not natively executed here. dist/REBUILD-NATIVE.txt therefore remains in the package so START.bat runs the full isolated test/vet/randomized-build path on the target Windows computer before first use.
+Known remaining boundary
+------------------------
+- The current phone Remote is a local PWA/web app served by LocalCode. Native Android packaging, QR/mDNS discovery, push notifications, firewall onboarding, and a desktop device-management UI remain planned follow-up work.

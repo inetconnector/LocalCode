@@ -2,12 +2,13 @@
 
 ## Deutsch
 
-LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und einer ausschließlich an `127.0.0.1` gebundenen HTTP-/SSE-API.
+LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend, einer ausschließlich an `127.0.0.1` gebundenen Desktop-HTTP-/SSE-API und einem getrennten token-geschützten Remote-HTTP-/SSE-Server für Handys im lokalen Netzwerk.
 
 - `main.go`: Versionsübergabe, kompaktes Startfenster, automatische Laufzeiteinrichtung und lokaler Serverstart.
 - `runtime_bootstrap.go`: Fortschrittsgesteuerte Prüfung und automatische Vervollständigung von Ollama, konfigurierten Modellen und der ausgewählten Coding-Agent-Engine.
 - `ollama.go`: Dienstsuche, Modellinventar, Modell-Download, Chat und lokale Bildanalyse.
 - `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
+- `remote_server.go`: LAN-Remote-Web-App, Pairing-Code-Austausch, Hash-basierte Gerätetokens, Remote-Status, Projekte, Aufgaben, Chat, Stop, Genehmigungen und SSE.
 - `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
 - `agent.go`, `agent_supervisor.go`, `subagent.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, read-only Subagent-Handoffs, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
 - `instruction_context.go`: globale und projektbezogene Regelkette, Cursor-Regeln sowie lokale Skill-Indizes und relevante Skill-Inhalte für den Agentenstart.
@@ -19,6 +20,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `web_tools.go`: öffentliche Webabrufe mit IP-Prüfung beim Verbindungsaufbau.
 - `tool_registry.go`, `tool_install.go`, `project_automation.go`: Werkzeugerkennung, Installation, Build und Deployment.
 - `static/index.html` und `static/i18n.js`: Desktop-Oberfläche und vollständige deutsche/englische Sprachkataloge.
+- `static/remote.html`: eigenständige mobile Remote-Oberfläche im dunklen AHSMA-nahen Layout mit eigenem kleinen Deutsch/Englisch-Katalog.
 
 ### Start- und Bootstrap-Ablauf
 
@@ -29,8 +31,11 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 5. Fehlende für LocalCode und die ausgewählte Engine benötigte Modelle werden über die Ollama-API geladen. Auf einem frischen System wird nur das konfigurierte Standardmodell geladen, damit ein alter gespeicherter Modellname keinen zweiten großen Download auslöst.
 6. Die ausgewählte externe Engine wird geprüft; Aider wird gegen die angeheftete Version geprüft. Falls nötig, installiert LocalCode das geprüfte portable `uv`, eine isolierte Python-3.12-Laufzeit und `aider-chat==0.86.2`.
 7. Erst nach erfolgreicher Verifikation startet die lokale UI-API. Details und Fehler werden im LocalCode-Log festgehalten.
+8. Wenn Remote aktiviert ist, startet zusätzlich ein zweiter HTTP-Server auf dem konfigurierten Remote-Port. Dieser Server liefert `/remote` und akzeptiert Projekt-, Chat- und Genehmigungsaktionen nur mit einem zuvor gekoppelten Gerätetoken. Der Pairing-Code wird ausschließlich über die loopback-geschützte Desktop-API erzeugt und läuft nach zehn Minuten ab.
 
 Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofort veröffentlicht und durch einen zusammenfassenden Hintergrundschreiber atomar persistiert. Offene Genehmigungen sind Backendzustand und erscheinen zusätzlich als feste Entscheidungsleiste. Jede UI-Instanz fordert ihren Snapshot mit konkreter Projekt- und Aufgaben-ID an; ein Agentenlauf bleibt global auf eine gleichzeitig aktive Ausführung begrenzt.
+
+Die Remote-App verwendet dieselben `AppState`-Operationen wie die Desktop-Oberfläche: `StartAgentForThread`, Chat-Auswahl, neue Aufgaben, `StopAgent`, Genehmigungsentscheidungen und SSE-Abonnements. Sie besitzt keine eigenen Werkzeugrechte. Gerätetokens werden auf dem Handy als Browser-LocalStorage gehalten; LocalCode speichert nur SHA-256-Hashes mit Geräte-ID, Name, Pairing-Zeit und optionalem Last-Seen-Zeitpunkt.
 
 Task-Hooks laufen am Anfang und Ende eines Agentenlaufs. Tool-Hooks laufen direkt vor beziehungsweise nach einer konkreten Werkzeugaktion innerhalb der Agentenschleife. Before-Tool-Hooks werden vor `handleAgentAction` ausgeführt und brechen den Lauf bei Fehler ab, damit ein fehlschlagender Policy-/Vorbereitungscheck keine Werkzeugmutation zulässt. After-Tool-Hooks laufen nach nicht-finalen Werkzeugaktionen und werden separat als Ereignis oder Warnung protokolliert. Hook-Befehle werden mit `runProjectCommand`, konfigurierter Befehlsumgebung, Timeout und Prozessbaum-Abbruch ausgeführt.
 
@@ -60,12 +65,13 @@ MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die 
 
 ## English
 
-LocalCode is a single Go application with an embedded web frontend and an HTTP/SSE API bound exclusively to `127.0.0.1`.
+LocalCode is a single Go application with an embedded web frontend, a desktop HTTP/SSE API bound exclusively to `127.0.0.1`, and a separate token-protected Remote HTTP/SSE server for phones on the local network.
 
 - `main.go`: version handover, compact startup window, automatic runtime setup, and local server startup.
 - `runtime_bootstrap.go`: progress-driven verification and automatic completion of Ollama, configured models, and the selected coding-agent engine.
 - `ollama.go`: service discovery, model inventory, model pulls, chat, and local image analysis.
 - `server.go`: API, SSE, projects, tasks, settings, and approvals.
+- `remote_server.go`: LAN Remote web app, pairing-code exchange, hash-based device tokens, remote status, projects, tasks, chat, stop, approvals, and SSE.
 - `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
 - `agent.go`, `agent_supervisor.go`, `subagent.go`, and `continuation.go`: agent loop, deterministic supervision, read-only subagent handoffs, completion guard/review, continuations, and cancellation.
 - `instruction_context.go`: global and project rule chain, Cursor rules, plus local skill indexes and relevant skill contents for agent startup.
@@ -77,6 +83,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `web_tools.go`: public web fetches with IP validation at connection time.
 - `tool_registry.go`, `tool_install.go`, and `project_automation.go`: tool discovery, installation, build, and deployment.
 - `static/index.html` and `static/i18n.js`: desktop UI and complete German/English catalogs.
+- `static/remote.html`: standalone mobile Remote UI in a dark AHSMA-adjacent layout with its own small German/English catalog.
 
 ### Startup and bootstrap flow
 
@@ -87,8 +94,11 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 5. Missing models required by LocalCode and the selected engine are pulled through the Ollama API. On a fresh system only the configured default is pulled so a stale historical model does not trigger a second large download.
 6. The selected external engine is checked; Aider is checked against the pinned version. When needed, LocalCode installs the verified portable `uv`, an isolated Python 3.12 runtime, and `aider-chat==0.86.2`.
 7. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
+8. When Remote is enabled, a second HTTP server starts on the configured Remote port. It serves `/remote` and accepts project, chat, and approval actions only with a previously paired device token. Pairing codes are created only through the loopback-protected desktop API and expire after ten minutes.
 
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
+
+The Remote app uses the same `AppState` operations as the desktop UI: `StartAgentForThread`, chat selection, new tasks, `StopAgent`, approval decisions, and SSE subscriptions. It has no separate tool privileges. Device tokens are kept on the phone in browser localStorage; LocalCode stores only SHA-256 hashes with the device ID, name, pairing time, and optional last-seen timestamp.
 
 Task hooks run at the beginning and end of an agent run. Tool hooks run directly before or after one concrete tool action inside the agent loop. Before-tool hooks execute before `handleAgentAction` and abort the run on failure so a failed policy or preparation check cannot allow a tool mutation. After-tool hooks run after non-final tool actions and are logged separately as events or warnings. Hook commands are executed through `runProjectCommand` with the configured command environment, timeout, and process-tree cancellation.
 
