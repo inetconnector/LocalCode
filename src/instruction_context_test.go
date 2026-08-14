@@ -226,6 +226,44 @@ func TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding(t *testing.T) {
 	}
 }
 
+func TestSkillPermissionReadOnlyAliases(t *testing.T) {
+	readOnly := []string{
+		"read",
+		"Read",
+		"read-only",
+		"Glob",
+		"Grep",
+		"LS",
+		"Read(path)",
+		"skill-read",
+		"command_read",
+		"mcp_list_tools",
+		"mcp_read_resource",
+	}
+	if skillMetadataRequiresApproval(readOnly, nil) {
+		t.Fatalf("read-only aliases should not require approval: %#v", readOnly)
+	}
+	dangerous := []string{
+		"write",
+		"write_file",
+		"Edit",
+		"Bash(git status)",
+		"run_command",
+		"network",
+		"web_fetch",
+		"mcp_call_tool",
+		"memory_forget",
+	}
+	for _, permission := range dangerous {
+		if !skillMetadataRequiresApproval([]string{permission}, nil) {
+			t.Fatalf("permission %q should require approval", permission)
+		}
+	}
+	if !skillMetadataRequiresApproval([]string{"read"}, []string{"scripts/check.ps1"}) {
+		t.Fatal("declared scripts should require approval even with read-only permissions")
+	}
+}
+
 func TestSkillResourcesListAndRead(t *testing.T) {
 	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
 	t.Setenv("CODEX_HOME", t.TempDir())

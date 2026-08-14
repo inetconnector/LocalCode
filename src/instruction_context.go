@@ -540,11 +540,66 @@ func skillMetadataRequiresApproval(permissions, scripts []string) bool {
 		return true
 	}
 	for _, permission := range permissions {
-		p := strings.ToLower(strings.TrimSpace(permission))
-		if p == "" || p == "read" || p == "readonly" || p == "read-only" || p == "list_files" || p == "read_file" || p == "search" || p == "search_text" || p == "skill_read" || p == "skill-list" || p == "skill_list" {
+		if skillPermissionIsReadOnly(permission) {
 			continue
 		}
 		return true
+	}
+	return false
+}
+
+func skillPermissionIsReadOnly(permission string) bool {
+	p := strings.ToLower(strings.TrimSpace(permission))
+	if p == "" {
+		return true
+	}
+	if i := strings.IndexAny(p, "(:"); i >= 0 {
+		p = strings.TrimSpace(p[:i])
+	}
+	p = strings.ReplaceAll(p, "-", "_")
+	p = strings.ReplaceAll(p, " ", "_")
+	readOnly := map[string]bool{
+		"read":                 true,
+		"readonly":             true,
+		"read_only":            true,
+		"view":                 true,
+		"cat":                  true,
+		"ls":                   true,
+		"tree":                 true,
+		"glob":                 true,
+		"grep":                 true,
+		"list":                 true,
+		"list_files":           true,
+		"read_file":            true,
+		"search":               true,
+		"search_text":          true,
+		"project_info":         true,
+		"subagent_analyze":     true,
+		"skill_list":           true,
+		"skill_read":           true,
+		"skill_list_resources": true,
+		"skill_read_resource":  true,
+		"command_list":         true,
+		"command_read":         true,
+		"mcp_list_tools":       true,
+		"mcp_list_resources":   true,
+		"mcp_read_resource":    true,
+		"mcp_list_prompts":     true,
+		"mcp_get_prompt":       true,
+	}
+	if readOnly[p] {
+		return true
+	}
+	unsafeMarkers := []string{
+		"write", "edit", "replace", "delete", "remove", "move", "copy", "create",
+		"shell", "bash", "powershell", "cmd", "terminal", "exec", "execute", "run",
+		"network", "http", "fetch", "web", "mcp_call", "tool", "deploy", "build",
+		"git", "memory", "install",
+	}
+	for _, marker := range unsafeMarkers {
+		if strings.Contains(p, marker) {
+			return false
+		}
 	}
 	return false
 }
