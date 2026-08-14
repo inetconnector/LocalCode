@@ -540,6 +540,60 @@ func TestCompletionGuardDoesNotTreatNodeJSAsProjectFile(t *testing.T) {
 	}
 }
 
+func TestCompletionGuardEnforcesSingleOutputFile(t *testing.T) {
+	project := t.TempDir()
+	index := `<canvas id="game"></canvas><button id="restartButton">Restart</button><script>
+const MAZE = [
+"#################",
+"#P....#....#...G#",
+"#.###.#.##.#.##.#",
+"#.....#....#....#",
+"#.###.####.###..#",
+"#...............#",
+"#.##.###.###.##.#",
+"#....#G....#....#",
+"###..#.###.#..###",
+"#....#.....#....#",
+"#.##.###.###.##.#",
+"#...............#",
+"#.###.####.###..#",
+"#G....#....#....#",
+"#################",
+];
+let maze = MAZE.map(row => row.split(""));
+let pelletsLeft = 10;
+let score = 0;
+let gameState = "playing";
+function collectPellet(){ pelletsLeft--; score += 10; }
+function isWallAtTile(row, col){ return row < 0 || col < 0 || MAZE[row][col] === "#"; }
+const ghostStarts = [{x:1,y:1},{x:2,y:2}];
+const restartButton = document.getElementById("restartButton");
+restartButton.addEventListener("click", restartGame);
+document.addEventListener("keydown", event => { switch(event.key.toLowerCase()){ case "w": break; case "arrowup": break; } });
+function restartGame(){ maze = MAZE.map(row => row.split("")); gameState = "playing"; }
+</script>`
+	if err := os.WriteFile(filepath.Join(project, "index.html"), []byte(index), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte("console.log('extra');"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := "Erstelle einen vollständigen Pac-Man-Klon als einzelne Datei index.html."
+	issues := completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"index.html": true, "game.js": true}, false)
+	if !strings.Contains(strings.Join(issues, "\n"), "einzelne Ausgabedatei") {
+		t.Fatalf("extra runtime file was not blocked: %v", issues)
+	}
+	if err := os.Remove(filepath.Join(project, "game.js")); err != nil {
+		t.Fatal(err)
+	}
+	issues = completionGuardIssues(project, classifyTaskIntent(task), task, map[string]bool{"index.html": true, "game.js": true}, false)
+	for _, issue := range issues {
+		if strings.Contains(issue, "game.js") {
+			t.Fatalf("deleted extra file was still blocked: %v", issues)
+		}
+	}
+}
+
 func TestMentionedProjectFilesSplitsSlashSeparatedFileList(t *testing.T) {
 	got := mentionedProjectFiles("Passe index.html/styles.css/README.md an, aber behalte src/agent.go.")
 	want := []string{"README.md", "index.html", "src/agent.go", "styles.css"}
@@ -576,6 +630,16 @@ func TestCommandLooksLikeLanguageAgnosticVerification(t *testing.T) {
 	}
 }
 
+func TestReadFileVerificationRequiresExplicitFileCheckTask(t *testing.T) {
+	action := AgentAction{Action: "read_file", Path: "index.html"}
+	if !actionVerifiesProject(action, "Prüfe danach, dass index.html existiert und die Spiellogik enthalten ist.") {
+		t.Fatal("explicit file/content check should allow read_file as verification")
+	}
+	if actionVerifiesProject(action, "Baue eine Browser-App und teste ob sie funktioniert.") {
+		t.Fatal("generic functional test must not be satisfied by read_file")
+	}
+}
+
 func TestCompletionGuardBlocksIncompletePacManImplementation(t *testing.T) {
 	project := t.TempDir()
 	content := `const TILE_SIZE = 16;
@@ -599,6 +663,112 @@ document.addEventListener('keydown', (event) => {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing issue %q in: %s", want, joined)
 		}
+	}
+}
+
+func TestPacManGuardAcceptsEquivalentMazeArrayNames(t *testing.T) {
+	content := `const levelLayout = [
+"#################",
+"#P....#....#...G#",
+"#.###.#.##.#.##.#",
+"#.....#....#....#",
+"#.###.####.###..#",
+"#...............#",
+"#.##.###.###.##.#",
+"#....#G....#....#",
+"###..#.###.#..###",
+"#....#.....#....#",
+"#.##.###.###.##.#",
+"#...............#",
+"#.###.####.###..#",
+"#G....#....#....#",
+"#################",
+];
+let maze = levelLayout.map(row => row.split(""));
+let pelletsRemaining = 10;
+let score = 0;
+let gameState = "playing";
+function collectPellet(){ pelletsRemaining -= 1; score += 10; }
+function isWallAtTile(row, col){ return row < 0 || col < 0 || levelLayout[row][col] === "#"; }
+const ghostStarts = [{x:1,y:1},{x:2,y:2}];
+const restartButton = document.getElementById("restartButton");
+restartButton.addEventListener("click", restartGame);
+document.addEventListener("keydown", event => { switch(event.key.toLowerCase()){ case "w": break; case "arrowup": break; } });
+function restartGame(){ maze = levelLayout.map(row => row.split("")); gameState = "playing"; }`
+	issues := pacManImplementationIssues(content)
+	if len(issues) != 0 {
+		t.Fatalf("equivalent maze implementation was blocked: %v", issues)
+	}
+}
+
+func TestPacManGuardAcceptsNumericMazeGrid(t *testing.T) {
+	content := `const levelGrid = [
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,2,0,0,0,0,1,0,0,0,0,0,0,3,1],
+[1,0,1,1,1,0,1,0,1,1,1,0,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,0,1,1,1,1,1,0,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,0,1,1,0,1,0,1,1,0,1,0,1],
+[1,0,0,0,1,3,0,0,0,0,1,0,0,0,1],
+[1,1,1,0,1,0,1,1,1,0,1,0,1,1,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,0,1,1,1,1,1,0,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,0,1,0,1,1,1,0,1,0,1],
+[1,3,0,0,0,0,1,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+];
+let maze = levelGrid.map(row => row.slice());
+let pelletsRemaining = 10;
+let score = 0;
+let gameState = "playing";
+function collectPellet(row, col){ pelletsRemaining--; score += 10; maze[row][col] = 4; }
+function isWallAtTile(row, col){ return row < 0 || col < 0 || levelGrid[row][col] === 1; }
+const ghostStarts = [{x:1,y:1},{x:2,y:2}];
+const restartButton = document.getElementById("restartButton");
+restartButton.addEventListener("click", restartGame);
+document.addEventListener("keydown", event => { switch(event.key.toLowerCase()){ case "w": break; case "arrowup": break; } });
+function restartGame(){ maze = levelGrid.map(row => row.slice()); gameState = "playing"; }`
+	issues := pacManImplementationIssues(content)
+	if len(issues) != 0 {
+		t.Fatalf("numeric maze implementation was blocked: %v", issues)
+	}
+}
+
+func TestPacManGuardAcceptsCommonAlternateStateNames(t *testing.T) {
+	content := `const layout = [
+"#################",
+"#.....#....#....#",
+"#.###.#.##.#.##.#",
+"#.....#....#....#",
+"#.###.####.###..#",
+"#...............#",
+"#.##.###.###.##.#",
+"#....#.....#....#",
+"###..#.###.#..###",
+"#....#.....#....#",
+"#.##.###.###.##.#",
+"#...............#",
+"#.###.####.###..#",
+"#.....#....#....#",
+"#################",
+];
+let board = layout.map(row => row.split(""));
+let pacman = { x: 1, y: 1 };
+let ghosts = [{ x: 13, y: 1 }, { x: 1, y: 13 }];
+let pelletsLeft = 10;
+let score = 0;
+let isGameOver = false, hasWon = false, paused = false;
+function collectPellet(row, col){ pelletsLeft--; score++; board[row][col] = " "; }
+function canMove(nextX, nextY){ if (nextX < 0 || nextY < 0 || nextY >= board.length || nextX >= board[0].length) return false; return board[nextY][nextX] !== "#"; }
+const resetButton = document.getElementById("reset");
+resetButton.addEventListener("click", resetGame);
+document.addEventListener("keydown", event => { switch(event.key.toLowerCase()){ case "w": break; case "arrowup": break; } });
+function resetGame(){ board = layout.map(row => row.split("")); isGameOver = false; hasWon = false; paused = false; }`
+	issues := pacManImplementationIssues(content)
+	if len(issues) != 0 {
+		t.Fatalf("alternate state names were blocked: %v", issues)
 	}
 }
 
@@ -929,6 +1099,69 @@ func TestAgentBlocksPrematurePlaceholderFinish(t *testing.T) {
 	}
 	if chatCalls != 5 {
 		t.Fatalf("chatCalls = %d, want 5", chatCalls)
+	}
+}
+
+func TestAgentEscalatesRepeatedSingleFileCompletionBlock(t *testing.T) {
+	var chatCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{{"name": "test-model", "size": 1, "modified_at": time.Now()}}})
+		case "/api/chat":
+			chatCalls++
+			content := `{"action":"finish","message":"Fertig."}`
+			switch chatCalls {
+			case 1:
+				content = `{"action":"write_file","message":"Erstelle index.html","path":"index.html","content":"<button>Start</button><p>TODO</p>"}`
+			case 5:
+				content = `{"content":"<main><button id=\"restartButton\">Restart</button><p id=\"status\">Bereit</p><script>let gameState='ready';function restartGame(){gameState='ready';document.getElementById('status').textContent=gameState;}document.getElementById('restartButton').addEventListener('click',restartGame);document.addEventListener('keydown',event=>{if(event.key.toLowerCase()==='r')restartGame();});</script></main>"}`
+			case 6:
+				content = `{"action":"run_command","message":"Prüfe index.html","command":"echo test passed"}`
+			case 7:
+				content = `{"action":"finish","message":"index.html wurde repariert und geprüft."}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "test-model"
+	cfg.EditingEngine = editingEngineNative
+	cfg.ApprovalMode = "auto"
+	cfg.MaxAgentSteps = 10
+	cfg.CreateProjectDocs = false
+	state := NewAppState(cfg, client)
+	t.Cleanup(state.Close)
+	if err := state.StartAgent("Erstelle eine Browser-App als einzelne Datei index.html mit Button, Status, Restart und Tastatur und teste ob sie funktioniert.", "test-model", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStop(t, state, 5*time.Second)
+	data, err := os.ReadFile(filepath.Join(project, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "addEventListener") || strings.Contains(string(data), "TODO") {
+		t.Fatalf("focused completion repair did not replace the file: %s", data)
+	}
+	var escalated bool
+	state.mu.RLock()
+	for _, event := range state.Events {
+		if event.Message == "Abschlussreparatur eskaliert" || event.Message == "Completion repair escalated" {
+			escalated = true
+		}
+	}
+	state.mu.RUnlock()
+	if !escalated {
+		t.Fatal("completion guard did not escalate repeated identical blocks")
 	}
 }
 

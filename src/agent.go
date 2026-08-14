@@ -573,7 +573,7 @@ func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, mod
 			action := *continuation.SuggestedAction
 			s.AddEvent(UIEvent{Type: "agent_step", Message: "Bestätigte Aktion wird direkt ausgeführt", Action: action.Action, Detail: action.Message})
 			result, actionErr := s.executeConfirmedContinuationAction(ctx, project, cfg, action)
-			messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(action)})
+			messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(actionForModelContext(action, cfg))})
 			toolText := "TOOL RESULT for confirmed " + action.Action + ":\n" + truncateText(result, 120000)
 			if actionErr != nil {
 				toolText += "\n\n" + toolFailureRecoveryDirective(action, result, actionErr, continuation.OriginalTask)
@@ -612,6 +612,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	repeatBlocks := 0
 	supervisorBlocks := 0
 	invalidActionBlocks := 0
+	blockedFinishCounts := map[string]int{}
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -674,7 +675,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			s.mu.Unlock()
 			_ = saveConfig(cfg)
 		}
-		messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(action)})
+		messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(actionForModelContext(action, cfg))})
 		if allowed, hint := actionAllowedForIntent(intent, action); !allowed {
 			supervisorBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: "Aktion passt nicht zur Nutzeraufgabe und wurde blockiert", Detail: action.Action + ": " + action.Message})
@@ -738,14 +739,39 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			s.UpdateProjectState("Agent wartet auf Nutzer")
 			return "question"
 		}
+		if action.Action == "finish" {
+			issues := completionGuardIssues(project, intent, originalTask, changedPaths, changedSinceVerification)
+			if len(issues) > 0 {
+				supervisorBlocks++
+				detail := "- " + strings.Join(issues, "\n- ")
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussprüfung blockiert", "Completion guard blocked finish"), Detail: detail})
+				signature := strings.Join(issues, "\n")
+				blockedFinishCounts[signature]++
+				if blockedFinishCounts[signature] >= 3 {
+					repairTimeout := cfg.ModelTimeout
+					if repairTimeout < 120 {
+						repairTimeout = 120
+					}
+					repairCtx, repairCancel := context.WithTimeout(ctx, time.Duration(repairTimeout)*time.Second)
+					repairAction, repairErr := s.completionRepairWriteFileAction(repairCtx, model, messages, originalTask, issues)
+					repairCancel()
+					if repairErr == nil {
+						action = repairAction
+						messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG:\n" + detail + "\nWiederholte identische Abschlussblockade: LocalCode führt jetzt eine fokussierte Einzeldatei-Reparaturaktion aus."})
+						messages = append(messages, OllamaMessage{Role: "assistant", Content: mustJSON(actionForModelContext(action, cfg))})
+						s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussreparatur eskaliert", "Completion repair escalated"), Detail: localizeConfigText(cfg, "Wiederholte identische Guard-Blockade; ersetze die geforderte Einzeldatei mit vollständigem Modellinhalt.", "Repeated identical guard block; replacing the requested single file with complete model-generated content."), Action: action.Action, Path: action.Path})
+					} else {
+						messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG:\n" + detail + "\n" + completionRepairDirective(originalTask, issues) + "\nDie fokussierte Einzeldatei-Reparatur konnte nicht erzeugt werden: " + repairErr.Error()})
+						continue
+					}
+				} else {
+					messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG:\n" + detail + "\n" + completionRepairDirective(originalTask, issues)})
+					continue
+				}
+			}
+		}
 		if action.Action != "finish" {
 			s.AddEvent(UIEvent{Type: "agent_step", Message: action.Message, Action: action.Action, Path: action.Path, Command: action.Command})
-		} else if issues := completionGuardIssues(project, intent, originalTask, changedPaths, changedSinceVerification); len(issues) > 0 {
-			supervisorBlocks++
-			detail := "- " + strings.Join(issues, "\n- ")
-			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussprüfung blockiert", "Completion guard blocked finish"), Detail: detail})
-			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS ZUR ABSCHLUSSPRÜFUNG:\n" + detail + "\n" + completionRepairDirective(originalTask, issues)})
-			continue
 		}
 		s.setRunPhase(runID, "tool:"+action.Action)
 		if agentToolHookEligible(action) && strings.TrimSpace(cfg.HookBeforeTool) != "" {
@@ -778,7 +804,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 			changedSinceVerification = true
 		}
-		if actionVerifiesProject(action) && !toolFailed {
+		if actionVerifiesProject(action, originalTask) && !toolFailed {
 			changedSinceVerification = false
 		}
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, contextToolResultLimit(cfg))
@@ -902,6 +928,53 @@ Erzeuge jetzt ausschließlich den vollständigen nicht-leeren Inhalt für diese 
 	}
 	action.Content = payload.Content
 	return action, nil
+}
+
+func actionForModelContext(action AgentAction, cfg Config) AgentAction {
+	limit := 3000
+	if cfg.ContextLength > 65536 {
+		limit = 6000
+	}
+	if len(action.Content) > limit {
+		action.Content = fmt.Sprintf("[omitted from model history: %d bytes of content for %s; use read_file if exact content is needed]", len(action.Content), action.Path)
+	}
+	if len(action.OldText) > limit {
+		action.OldText = fmt.Sprintf("[omitted from model history: %d bytes]", len(action.OldText))
+	}
+	if len(action.NewText) > limit {
+		action.NewText = fmt.Sprintf("[omitted from model history: %d bytes]", len(action.NewText))
+	}
+	return action
+}
+
+func (s *AppState) completionRepairWriteFileAction(ctx context.Context, model string, messages []OllamaMessage, task string, issues []string) (AgentAction, error) {
+	target := requestedSingleOutputFile(task)
+	if target == "" {
+		return AgentAction{}, errors.New("no single output target detected")
+	}
+	repairMessages := append([]OllamaMessage(nil), messages...)
+	repairPrompt := fmt.Sprintf(`Die Abschlussprüfung wurde wiederholt mit denselben Ursachen blockiert.
+Nutzeraufgabe: %s
+Zieldatei: %s
+Offene Ursachen:
+- %s
+
+Erzeuge jetzt ausschließlich den vollständigen Inhalt für die Zieldatei. Die Datei muss eigenständig sein: keine lokalen src/href-Verweise auf zusätzliche JS-/CSS-Dateien, keine README-only-Lösung, keine Platzhalter. Antworte nur mit dem JSON-Objekt {"content":"..."} gemäß Schema. Schreibe keinen Markdown-Zaun.`, task, target, strings.Join(issues, "\n- "))
+	repairMessages = append(repairMessages, OllamaMessage{Role: "user", Content: repairPrompt})
+	content, err := s.Ollama.Chat(ctx, model, trimMessages(repairMessages), writeFileContentSchema)
+	if err != nil {
+		return AgentAction{}, err
+	}
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		return AgentAction{}, err
+	}
+	if strings.TrimSpace(payload.Content) == "" {
+		return AgentAction{}, errors.New("completion repair returned empty content")
+	}
+	return AgentAction{Action: "write_file", Message: "Fokussierte Abschlussreparatur für " + target, Path: target, Content: payload.Content}, nil
 }
 
 func parseAgentAction(content string) (AgentAction, error) {
@@ -1129,6 +1202,25 @@ func completionGuardIssues(project string, intent taskIntent, originalTask strin
 		}
 	}
 	sort.Strings(paths)
+	if target := requestedSingleOutputFile(originalTask); target != "" {
+		for _, path := range paths {
+			if strings.EqualFold(filepath.ToSlash(filepath.Clean(path)), target) {
+				continue
+			}
+			full, err := ensureWithinRoot(project, path)
+			if err == nil {
+				if _, statErr := os.Stat(full); statErr != nil && os.IsNotExist(statErr) {
+					continue
+				}
+			}
+			if !strings.EqualFold(filepath.ToSlash(filepath.Clean(path)), target) {
+				issues = append(issues, fmt.Sprintf("Die Aufgabe verlangt eine einzelne Ausgabedatei `%s`; zusätzliche Projektdatei `%s` darf nicht Teil der Lösung bleiben.", target, path))
+			}
+		}
+		if content, err := readProjectFile(project, target); err == nil && regexp.MustCompile(`(?i)<(?:script|link)\b[^>]+(?:src|href)\s*=\s*["'][^"']+\.(?:js|css)["']`).MatchString(content) {
+			issues = append(issues, fmt.Sprintf("`%s` soll eine eigenständige Einzeldatei sein; lokale externe script/link-Dateien müssen inline integriert werden.", target))
+		}
+	}
 	var combined strings.Builder
 	for _, path := range paths {
 		content, err := readProjectFile(project, path)
@@ -1181,6 +1273,9 @@ func completionRepairDirective(task string, issues []string) string {
 	if containsNormalizedAny(normalizedQuestion(task), []string{"spiel", "game", "app", "tool", "browser", "ui"}) {
 		b.WriteString("Bei Apps, Spielen und Tools: behebe zuerst die Kernmechanik und den Datenfluss in der Laufzeitlogik; kosmetische Änderungen zählen nicht als Reparatur fehlender Funktion.\n")
 	}
+	if target := requestedSingleOutputFile(task); target != "" {
+		b.WriteString("Die Aufgabe verlangt eine einzelne Ausgabedatei `" + target + "`. Führe CSS/JavaScript/Assets, soweit technisch möglich, in diese Datei zusammen, entferne unangeforderte Zusatzdateien mit delete_file erst nach erfolgreicher Zusammenführung und verifiziere danach die Einzeldatei.\n")
+	}
 	if len(issues) > 1 {
 		b.WriteString("Bearbeite den wichtigsten fehlenden Punkt in der nächsten Aktion vollständig, verifiziere danach, und lass die Abschlussprüfung die verbleibenden Punkte erneut bestimmen.\n")
 	}
@@ -1217,7 +1312,7 @@ func mutatedActionPaths(a AgentAction) []string {
 	}
 }
 
-func actionVerifiesProject(a AgentAction) bool {
+func actionVerifiesProject(a AgentAction, task string) bool {
 	switch a.Action {
 	case "build_project", "deploy_android", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
@@ -1225,9 +1320,30 @@ func actionVerifiesProject(a AgentAction) bool {
 		return commandLooksLikeVerification(strings.Join(append([]string{a.Tool}, a.Args...), " "))
 	case "run_command", "open_terminal":
 		return commandLooksLikeVerification(a.Command)
+	case "read_file":
+		if !taskAllowsReadOnlyVerification(task) {
+			return false
+		}
+		for _, path := range mentionedProjectFiles(task) {
+			if strings.EqualFold(filepath.ToSlash(filepath.Clean(path)), filepath.ToSlash(filepath.Clean(a.Path))) {
+				return true
+			}
+		}
+		return false
+	case "search_text":
+		return taskAllowsReadOnlyVerification(task) && strings.TrimSpace(a.Query) != ""
 	default:
 		return false
 	}
+}
+
+func taskAllowsReadOnlyVerification(task string) bool {
+	normalized := normalizedQuestion(task)
+	return containsNormalizedAny(normalized, []string{
+		"prüfe dass", "pruefe dass", "prüfe danach dass", "pruefe danach dass",
+		"existiert", "datei existiert", "inhalt enthalten", "content contains",
+		"check that", "verify that", "verify file", "file exists",
+	})
 }
 
 func agentToolResultFailed(result string) bool {
@@ -1648,7 +1764,13 @@ func pacManImplementationIssues(content string) []string {
 	var issues []string
 	rows := extractConstStringArray(content, "MAZE")
 	if len(rows) == 0 {
-		issues = append(issues, "Ein Pac-Man-Klon benötigt ein konkretes MAZE-Array.")
+		rows = extractLikelyMazeStringArray(content)
+	}
+	if len(rows) == 0 {
+		rows = extractLikelyNumericMazeArray(content)
+	}
+	if len(rows) == 0 {
+		issues = append(issues, "Ein Pac-Man-Klon benötigt ein konkretes rechteckiges Maze-String-Array.")
 	} else {
 		width := len(rows[0])
 		if len(rows) < 15 || width < 15 {
@@ -1664,28 +1786,28 @@ func pacManImplementationIssues(content string) []string {
 		if !strings.Contains(joined, "#") || !strings.Contains(joined, ".") {
 			issues = append(issues, "Das Pac-Man-Maze muss Wände und Pellets enthalten.")
 		}
-		if !strings.Contains(joined, "P") && !regexp.MustCompile(`(?i)pacmanStart`).MatchString(content) {
+		if !strings.Contains(joined, "P") && !regexp.MustCompile(`(?i)(pacman|pac|player)\w*\s*=\s*\{[\s\S]*?\b[xy]\s*:|\bpacmanStart\b|\bplayerStart\b|\bstart(?:X|Y)\b`).MatchString(content) {
 			issues = append(issues, "Pac-Mans Startposition muss aus dem Maze oder aus festen Startdaten abgeleitet werden.")
 		}
 		ghostMarkers := 0
 		for _, marker := range []string{"A", "B", "C", "G"} {
 			ghostMarkers += strings.Count(joined, marker)
 		}
-		if ghostMarkers < 3 && !regexp.MustCompile(`(?i)ghostStarts\s*=\s*\[`).MatchString(content) {
-			issues = append(issues, "Mindestens drei feste Geist-Startpositionen müssen im Maze oder in ghostStarts definiert sein.")
+		if ghostMarkers < 2 && !regexp.MustCompile(`(?i)(ghost|enemy|geist)\w*(?:Starts?)?\s*=\s*\[[\s\S]*?\{[\s\S]*?\{`).MatchString(content) {
+			issues = append(issues, "Mindestens zwei feste Geist-/Gegner-Startpositionen müssen im Maze oder in Startdaten definiert sein.")
 		}
 	}
 	checks := []struct {
 		re    string
 		issue string
 	}{
-		{`(?i)maze\s*=\s*MAZE\.map`, "Pellets müssen in einer veränderbaren Maze-Kopie gespeichert werden."},
-		{`(?i)\bpelletsLeft\s*--`, "Beim Einsammeln von Pellets muss pelletsLeft reduziert werden."},
-		{`(?i)\bscore\s*(\+=|=\s*score\s*\+)`, "Beim Einsammeln von Pellets muss der Score konkret erhöht werden."},
-		{`(?i)\bgameState\b|\bstate\s*=\s*['"](?:playing|paused|won|gameover)`, "Game Over, Pause und Gewinn müssen als Spielzustand gehalten werden, nicht nur per alert."},
-		{`(?i)restartButton.+addEventListener|addEventListener.+restartButton`, "Der Restart-Button muss an die Neustartlogik gebunden sein."},
+		{`(?i)\b\w*maze\w*\s*=\s*\w+\s*\.\s*map\s*\(|\.split\s*\(\s*['"]{2}\s*\)|structuredClone\s*\(|\bpellets\s*=\s*\[|\bpellets\s*\.\s*push\s*\(|new\s+Set\s*\(`, "Pellets müssen in einer veränderbaren Maze-Kopie oder Pellet-Sammlung gespeichert werden."},
+		{`(?i)\b(pelletsLeft|pelletCount|pelletsRemaining|remainingPellets)\b\s*(--|-=|=\s*\b\w+\b\s*-)|\bpellets\s*\.\s*(splice|delete)\s*\(|\bmaze\s*\[[^\]]+\]\s*\[[^\]]+\]\s*=\s*['"]?\s*['"]?`, "Beim Einsammeln von Pellets muss die verbleibende Pellet-Zahl reduziert oder das Pellet aus Maze/Sammlung entfernt werden."},
+		{`(?i)\bscore\s*(\+=|=\s*score\s*\+|\+\+)`, "Beim Einsammeln von Pellets muss der Score konkret erhöht werden."},
+		{`(?i)\bgameState\b|\bstate\s*=\s*['"](?:playing|paused|won|gameover)|\b(gameOver|isGameOver|won|hasWon|paused)\b\s*=`, "Game Over, Pause und Gewinn müssen als Spielzustand gehalten werden, nicht nur per alert."},
+		{`(?i)(restart|reset)\w*Button.+addEventListener|addEventListener.+(restart|reset)\w*Button|getElementById\s*\(\s*['"](restart|reset)[^'"]*['"]\s*\)[\s\S]{0,160}addEventListener`, "Der Restart-/Reset-Button muss an die Neustartlogik gebunden sein."},
 		{`(?i)key\.toLowerCase\(\)|case\s+['"]w['"]`, "WASD-Steuerung muss zusätzlich zu den Pfeiltasten implementiert sein."},
-		{`(?i)isWallAtTile|out\s+of\s+bounds|row\s*<\s*0|col\s*<\s*0`, "Wandkollisionen müssen Außenränder/undefinierte Felder sicher als Wand behandeln."},
+		{`(?i)isWallAtTile|out\s+of\s+bounds|row\s*<\s*0|col\s*<\s*0|(?:new|next)?[xy]\s*<\s*0|>=\s*\w+(?:\.length|Width|Height)|return\s+false[\s\S]{0,120}wall`, "Wandkollisionen müssen Außenränder/undefinierte Felder sicher als Wand behandeln."},
 	}
 	for _, check := range checks {
 		if !regexp.MustCompile(check.re).MatchString(content) {
@@ -1701,14 +1823,103 @@ func pacManImplementationIssues(content string) []string {
 	return issues
 }
 
+func requestedSingleOutputFile(task string) string {
+	normalized := normalizedQuestion(task)
+	if !containsNormalizedAny(normalized, []string{"einzelne datei", "eine einzelne datei", "als eine datei", "nur eine datei", "single file", "single-file", "one file"}) {
+		return ""
+	}
+	mentioned := mentionedProjectFiles(task)
+	if len(mentioned) != 1 {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(mentioned[0]))
+}
+
+func extractLikelyMazeStringArray(content string) []string {
+	best := []string{}
+	re := regexp.MustCompile(`(?is)\b(?:const|let|var)\s+\w*(?:maze|map|level|layout|board|grid|labyrinth)\w*\s*=\s*\[(.*?)\]`)
+	for _, match := range re.FindAllStringSubmatch(content, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		rows := extractQuotedRows(match[1])
+		if len(rows) > len(best) && looksLikeMazeRows(rows) {
+			best = rows
+		}
+	}
+	return best
+}
+
+func looksLikeMazeRows(rows []string) bool {
+	if len(rows) == 0 {
+		return false
+	}
+	width := len(rows[0])
+	if width == 0 {
+		return false
+	}
+	joined := strings.Join(rows, "")
+	return strings.ContainsAny(joined, "#X1W") && strings.ContainsAny(joined, ".o ")
+}
+
+func extractLikelyNumericMazeArray(content string) []string {
+	re := regexp.MustCompile(`(?is)\b(?:const|let|var)\s+\w*(?:maze|map|level|layout|board|grid|labyrinth)\w*\s*=\s*\[(.*?)\]\s*;`)
+	for _, match := range re.FindAllStringSubmatch(content, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		rows := numericMazeRows(match[1])
+		if looksLikeMazeRows(rows) {
+			return rows
+		}
+	}
+	return nil
+}
+
+func numericMazeRows(content string) []string {
+	rowRe := regexp.MustCompile(`\[((?:\s*-?\d+\s*,?)+)\]`)
+	matches := rowRe.FindAllStringSubmatch(content, -1)
+	rows := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		fields := strings.Split(match[1], ",")
+		var row strings.Builder
+		for _, field := range fields {
+			value := strings.TrimSpace(field)
+			switch value {
+			case "":
+				continue
+			case "1":
+				row.WriteByte('#')
+			case "2":
+				row.WriteByte('P')
+			case "3":
+				row.WriteByte('G')
+			default:
+				row.WriteByte('.')
+			}
+		}
+		if row.Len() > 0 {
+			rows = append(rows, row.String())
+		}
+	}
+	return rows
+}
+
 func extractConstStringArray(content, name string) []string {
 	re := regexp.MustCompile(`(?s)\bconst\s+` + regexp.QuoteMeta(name) + `\s*=\s*\[(.*?)\]`)
 	match := re.FindStringSubmatch(content)
 	if len(match) < 2 {
 		return nil
 	}
+	return extractQuotedRows(match[1])
+}
+
+func extractQuotedRows(content string) []string {
 	rowRe := regexp.MustCompile(`['"]([^'"]+)['"]`)
-	rowMatches := rowRe.FindAllStringSubmatch(match[1], -1)
+	rowMatches := rowRe.FindAllStringSubmatch(content, -1)
 	rows := make([]string, 0, len(rowMatches))
 	for _, row := range rowMatches {
 		if len(row) > 1 {
