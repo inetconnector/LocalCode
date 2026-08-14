@@ -54,7 +54,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset",
-			"project_info", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
+			"project_info", "subagent_analyze", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
 			"memory_remember", "memory_list", "memory_forget",
@@ -89,6 +89,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("create_image_asset", "path", "content"),
 		conditionalRequired("convert_image_asset", "source", "destination"),
 		conditionalRequired("render_asset", "source", "destination"),
+		conditionalRequired("subagent_analyze", "task"),
 		conditionalRequired("run_tool", "tool"),
 		conditionalRequired("discover_tool", "tool"),
 		conditionalRequired("run_command", "command"),
@@ -141,6 +142,7 @@ Arbeitsweise:
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
+- Nutze subagent_analyze(task), wenn eine getrennte, unverändernde Exploration oder Testlog-Analyse sinnvoll ist. Diese Aktion liest nur Projektkontext, ausdrücklich erwähnte Dateien und Suchtreffer und liefert einen strukturierten Handoff; sie darf keine Dateien ändern, keine Befehle ausführen, keine Netzwerkzugriffe starten und keine MCP-Tools aufrufen.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
 - LocalCode verwaltet die MCP-Server filesystem, powershell, git, fetch, github und playwright. Liste bei einem noch unbekannten Server zuerst seine Fähigkeiten. Nutze filesystem für sichere Projektdateien, powershell für PowerShell-spezifische Aufgaben, git für strukturierte Git-Aktionen, fetch für Webinhalte, github für GitHub-Objekte und playwright für zustandsbehaftete Browserautomation. Wenn eine Laufzeit oder Anmeldung fehlt, löst LocalCode Installation beziehungsweise Login kontrolliert aus; gib nicht vorschnell auf.
 - Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Android SDK, Visual-Studio-Installationen, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR. Fehlt ein unterstütztes Werkzeug, bietet LocalCode dem Nutzer automatisch eine kontrollierte Installation an und wiederholt danach exakt den ursprünglichen Aufruf; frage dafür nicht zusätzlich mit ask_user.
@@ -164,7 +166,7 @@ Werkzeuge:
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
 - convert_image_asset(source,destination,width,height) für lokale Rasterbild-Konvertierung zu PNG/JPG/JPEG/WebP/ICO
 - render_asset(source,destination,width,height) für lokales Rendering von SVG/HTML/Canvas zu PNG/JPG/JPEG/WebP oder ICO
-- project_info, build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
+- project_info, subagent_analyze(task), build_project, deploy_android für deterministische Projekt-, Build- und Android-Deployment-Abläufe
 - engine_edit(task) für robuste mehrdateilige Codeänderungen mit der ausgewählten Engine und lokalem Backup
 - engine_repo_map für eine unverändernde Repository-Analyse, engine_lint und engine_test für gezielte Qualitätsläufe
 - aider_edit/aider_repo_map/aider_lint/aider_test sind nur rückwärtskompatible Aliasnamen
@@ -985,6 +987,8 @@ func validateAgentAction(a AgentAction) error {
 			return err
 		}
 		return require("destination", a.Destination)
+	case "subagent_analyze":
+		return require("task", a.Task)
 	case "run_tool", "discover_tool":
 		return require("tool", a.Tool)
 	case "run_command", "open_terminal":
@@ -1698,6 +1702,8 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		}
 	case "project_info":
 		result = projectInfo(project, cfg)
+	case "subagent_analyze":
+		result, err = runReadOnlySubagent(project, cfg, a.Task)
 	case "tool_inventory":
 		infos := toolInventory(project, cfg, false)
 		data, _ := json.MarshalIndent(infos, "", "  ")
@@ -1872,7 +1878,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "discover_tool", "tool_inventory", "project_info", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"

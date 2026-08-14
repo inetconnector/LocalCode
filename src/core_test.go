@@ -199,6 +199,51 @@ func TestParseAgentAction(t *testing.T) {
 	if _, err := parseAgentAction(`{"action":"skill_run_script","message":"Starte Skill-Skript","skill":"asset-skill"}`); err == nil {
 		t.Fatal("skill_run_script without script must be rejected")
 	}
+	a, err = parseAgentAction(`{"action":"subagent_analyze","message":"Analysiere","arguments":{"task":"Untersuche src/main.go"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Task != "Untersuche src/main.go" {
+		t.Fatalf("subagent task argument was not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"subagent_analyze","message":"Analysiere"}`); err == nil {
+		t.Fatal("subagent_analyze without task must be rejected")
+	}
+	if actionNeedsApproval(defaultConfig(), t.TempDir(), AgentAction{Action: "subagent_analyze", Task: "check"}) {
+		t.Fatal("subagent_analyze must be read-only")
+	}
+}
+
+func TestReadOnlySubagentHandoff(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(root, "src", "main.go")
+	before := []byte("package main\n// failing parser path\nfunc main() {}\n")
+	if err := os.WriteFile(mainPath, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# Demo\nparser notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := runReadOnlySubagent(root, defaultConfig(), "Untersuche failing parser in src/main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"READ-ONLY SUBAGENT HANDOFF", "Mode: read-only", "src/main.go", "failing parser", "SEARCH EVIDENCE"} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("missing %q in report:\n%s", want, report)
+		}
+	}
+	after, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("read-only subagent modified project file")
+	}
 }
 
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {
