@@ -12,7 +12,7 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 - `agent.go`, `agent_supervisor.go`, `subagent.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, read-only Subagent-Handoffs, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
 - `instruction_context.go`: globale und projektbezogene Regelkette, Cursor-Regeln sowie lokale Skill-Indizes und relevante Skill-Inhalte für den Agentenstart.
 - `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
-- `asset_tools.go`: validierte lokale SVG-/Icon-Erzeugung, Raster-/Icon-Asset-Erzeugung, Rendering und Konvertierung mit XML-, Signatur-, Größen- und Dimensionsprüfung vor dem Schreiben.
+- `asset_tools.go` und `image_generator.go`: validierte lokale SVG-/Icon-Erzeugung, Raster-/Icon-Asset-Erzeugung, lokale Bildmodell-Generierung, Rendering und Konvertierung mit XML-, Signatur-, Größen- und Dimensionsprüfung vor dem Schreiben.
 - `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
 - `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
 - `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
@@ -48,6 +48,8 @@ SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `c
 
 Raster- und Icon-Dateien laufen über `create_image_asset`, wenn der Agent vollständige Bildbytes als Data-URL oder Base64 besitzt. Unterstützt werden `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` und `.bmp`. LocalCode dekodiert die Binärdaten, begrenzt sie auf 16 MiB, prüft Format-Signaturen und Dimensionen und schreibt danach über dieselbe kanonische Projektpfadgrenze mit Backup und Datei-Postcondition.
 
+Neue Rasterbilder laufen über `generate_image_asset`, wenn ein lokal erreichbarer AUTOMATIC1111-/Forge-kompatibler Generator konfiguriert ist. Die Standard-URL ist `http://127.0.0.1:7860`; akzeptiert werden nur Loopback-Hosts wie `localhost`, `127.0.0.1` oder `::1`. LocalCode sendet einen `txt2img`-Auftrag an `/sdapi/v1/txt2img`, begrenzt Prompt und Zielgröße, dekodiert die zurückgegebene Base64-PNG, konvertiert bei Bedarf nach `.jpg`, `.jpeg`, `.webp` oder `.ico` und schreibt erst nach erneuter Signatur- und Dimensionsprüfung.
+
 Vorhandene Rasterdateien laufen über `convert_image_asset`, wenn ein lokales Bild in ein anderes Projektbild umgewandelt werden soll. Quellen sind decodierbare PNG/JPG/JPEG/GIF-Dateien und PNG-basierte ICO-Dateien; Ziele sind `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. Optional angegebene Zielgrößen werden mit einer deterministischen lokalen Skalierung angewendet. PNG/JPEG/ICO werden lokal encodiert; WebP wird aus einer temporären lokalen HTML/PNG-Zwischenquelle über denselben Headless-Browser-Renderer erzeugt. Nach dem Encoding wird die Zieldatei erneut per Signatur und Dimensionen validiert.
 
 SVG-/HTML-/Canvas-Rendering läuft über `render_asset`. Die Quelle muss lokal im Projekt liegen und auf `.svg`, `.html` oder `.htm` enden; Ziele sind `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. SVG wird vorher mit dem SVG-Validator geprüft. HTML-Quellen mit externen HTTP(S)-Referenzen werden abgelehnt. Der Renderer nutzt ein vorhandenes Edge/Chrome im Headless-Modus mit temporärem Profil, totem lokalen Proxy und Dimensionsvorgabe. PNG wird direkt aus dem Browser-Screenshot validiert; JPEG und ICO werden aus dem validierten PNG erzeugt und anschließend über dieselbe Bildsignaturprüfung validiert. WebP wird direkt als Headless-Browser-Screenshot erzeugt und über RIFF/WebP-Signatur sowie Dimensionen geprüft.
@@ -66,7 +68,7 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 - `agent.go`, `agent_supervisor.go`, `subagent.go`, and `continuation.go`: agent loop, deterministic supervision, read-only subagent handoffs, completion guard/review, continuations, and cancellation.
 - `instruction_context.go`: global and project rule chain, Cursor rules, plus local skill indexes and relevant skill contents for agent startup.
 - `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
-- `asset_tools.go`: validated local SVG/icon creation plus raster/icon asset creation, rendering, and conversion with XML, signature, size, and dimension checks before writing.
+- `asset_tools.go` and `image_generator.go`: validated local SVG/icon creation plus raster/icon asset creation, local image-model generation, rendering, and conversion with XML, signature, size, and dimension checks before writing.
 - `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
 - `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
 - `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
@@ -101,6 +103,8 @@ Agent memories are stored as normalized entries in the local configuration. Ever
 SVG/icon resources use a dedicated tool when the native agent calls `create_svg_asset`. The path must end in `.svg`, content must be valid XML with an `<svg>` root and size metadata, and scripts, event handlers, and `javascript:` URLs are blocked before the file operation.
 
 Raster and icon files use `create_image_asset` when the agent has complete image bytes as a data URL or Base64. Supported extensions are `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, and `.bmp`. LocalCode decodes the binary data, caps it at 16 MiB, checks format signatures and dimensions, and then writes through the same canonical project path boundary with backup and file postcondition.
+
+New raster images use `generate_image_asset` when a locally reachable AUTOMATIC1111/Forge-compatible generator is configured. The default URL is `http://127.0.0.1:7860`; only loopback hosts such as `localhost`, `127.0.0.1`, or `::1` are accepted. LocalCode sends a `txt2img` request to `/sdapi/v1/txt2img`, limits prompt and target dimensions, decodes the returned Base64 PNG, converts to `.jpg`, `.jpeg`, `.webp`, or `.ico` when needed, and writes only after renewed signature and dimension validation.
 
 Existing raster files use `convert_image_asset` when a local image should be converted into another project image. Sources are decodable PNG/JPG/JPEG/GIF files and PNG-backed ICO files; targets are `.png`, `.jpg`, `.jpeg`, `.webp`, or `.ico`. Optional target dimensions are applied with deterministic local scaling. PNG/JPEG/ICO are encoded locally; WebP is produced from a temporary local HTML/PNG intermediate through the same headless-browser renderer. After encoding, the target file is validated again by signature and dimensions.
 

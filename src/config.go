@@ -122,7 +122,8 @@ func defaultConfig() Config {
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
-		WebFetchMaxBytes: 2 << 20, GitEnabled: true, AutoStateUpdate: true,
+		WebFetchMaxBytes: 2 << 20, ImageGeneratorProvider: "automatic1111", ImageGeneratorURL: "http://127.0.0.1:7860", ImageGeneratorSteps: 20, ImageGeneratorCFGScale: 7.0,
+		GitEnabled: true, AutoStateUpdate: true,
 		StateFile: "STATE.md", CreateProjectDocs: true, BlockedCommandPatterns: defaultBlockedPatterns(),
 		UITheme: "dark", UIAccent: "#2f81f7", UIBackground: "#171717", UIForeground: "#f3f4f6",
 		UIFont: "Segoe UI", CodeFont: "Cascadia Mono", UILeftWidth: 296, UIRightWidth: 340,
@@ -497,6 +498,25 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.WebFetchMaxBytes < 65536 || cfg.WebFetchMaxBytes > 16<<20 {
 		cfg.WebFetchMaxBytes = d.WebFetchMaxBytes
+	}
+	if strings.TrimSpace(cfg.ImageGeneratorProvider) == "" {
+		cfg.ImageGeneratorProvider = d.ImageGeneratorProvider
+	}
+	cfg.ImageGeneratorProvider = strings.ToLower(strings.TrimSpace(cfg.ImageGeneratorProvider))
+	switch cfg.ImageGeneratorProvider {
+	case "disabled", "automatic1111":
+	default:
+		cfg.ImageGeneratorProvider = d.ImageGeneratorProvider
+	}
+	if strings.TrimSpace(cfg.ImageGeneratorURL) == "" {
+		cfg.ImageGeneratorURL = d.ImageGeneratorURL
+	}
+	cfg.ImageGeneratorURL = strings.TrimRight(strings.TrimSpace(cfg.ImageGeneratorURL), "/")
+	if cfg.ImageGeneratorSteps < 1 || cfg.ImageGeneratorSteps > 80 {
+		cfg.ImageGeneratorSteps = d.ImageGeneratorSteps
+	}
+	if cfg.ImageGeneratorCFGScale < 1 || cfg.ImageGeneratorCFGScale > 30 {
+		cfg.ImageGeneratorCFGScale = d.ImageGeneratorCFGScale
 	}
 	if cfg.StateFile == "" {
 		cfg.StateFile = d.StateFile

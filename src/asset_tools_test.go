@@ -6,9 +6,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,6 +183,82 @@ func TestParseAgentActionCreateImageAsset(t *testing.T) {
 		t.Fatalf("parse failed: %v", err)
 	}
 	if a.Path != "assets/icon.png" || a.Content != "aW1hZ2U=" {
+		t.Fatalf("arguments were not normalized: %#v", a)
+	}
+}
+
+func TestGenerateImageAssetUsesLocalAutomatic1111API(t *testing.T) {
+	project := t.TempDir()
+	var gotRequest struct {
+		Prompt    string  `json:"prompt"`
+		Steps     int     `json:"steps"`
+		CFGScale  float64 `json:"cfg_scale"`
+		Width     int     `json:"width"`
+		Height    int     `json:"height"`
+		BatchSize int     `json:"batch_size"`
+		NIter     int     `json:"n_iter"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sdapi/v1/txt2img" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotRequest); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"images": []string{base64.StdEncoding.EncodeToString(tinyPNGBytes(t, 1, 1))},
+		})
+	}))
+	defer server.Close()
+
+	cfg := defaultConfig()
+	cfg.ImageGeneratorProvider = "automatic1111"
+	cfg.ImageGeneratorURL = server.URL
+	cfg.ImageGeneratorSteps = 3
+	cfg.ImageGeneratorCFGScale = 4.5
+	result, err := executeAction(context.Background(), project, cfg, AgentAction{Action: "generate_image_asset", Path: "assets/generated.png", Content: "small red square", Width: 64, Height: 96})
+	if err != nil {
+		t.Fatalf("generate_image_asset failed: %v", err)
+	}
+	if gotRequest.Prompt != "small red square" || gotRequest.Steps != 3 || gotRequest.CFGScale != 4.5 || gotRequest.Width != 64 || gotRequest.Height != 96 || gotRequest.BatchSize != 1 || gotRequest.NIter != 1 {
+		t.Fatalf("unexpected request: %#v", gotRequest)
+	}
+	if !strings.Contains(result, "IMAGE ASSET GENERATED") || !strings.Contains(result, "format=png") || !strings.Contains(result, "dimensions=64x96") || !strings.Contains(result, "POSTCONDITION") {
+		t.Fatalf("unexpected result: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "assets", "generated.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectImageAsset("generated.png", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Width != 64 || info.Height != 96 {
+		t.Fatalf("unexpected generated dimensions: %#v", info)
+	}
+}
+
+func TestGenerateImageAssetRejectsNonLocalEndpoint(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.ImageGeneratorURL = "https://example.com:7860"
+	if _, err := validateImageGenerationRequest(t.TempDir(), cfg, "out.png", "prompt", 128, 128); err == nil {
+		t.Fatal("expected non-local endpoint to be rejected")
+	}
+}
+
+func TestParseAgentActionGenerateImageAsset(t *testing.T) {
+	if _, err := parseAgentAction(`{"action":"generate_image_asset","message":"image","path":"assets/out.png"}`); err == nil {
+		t.Fatal("generate_image_asset without content must be rejected")
+	}
+	a, err := parseAgentAction(`{"action":"generate_image_asset","message":"image","arguments":{"path":"assets/out.webp","content":"neon icon","width":"256","height":128}}`)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if a.Path != "assets/out.webp" || a.Content != "neon icon" || a.Width != 256 || a.Height != 128 {
 		t.Fatalf("arguments were not normalized: %#v", a)
 	}
 }

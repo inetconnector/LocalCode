@@ -54,58 +54,62 @@ type Config struct {
 	Memories       []MemoryEntry     `json:"memories,omitempty"`
 	Port           int               `json:"port"`
 
-	OllamaURL                         string `json:"ollama_url"`
-	SetupDownloadsEnabled             bool   `json:"setup_downloads_enabled"`
-	OllamaAutoInstall                 bool   `json:"ollama_auto_install"`
-	OllamaAutoPull                    bool   `json:"ollama_auto_pull"`
-	OllamaDefaultModel                string `json:"ollama_default_model"`
-	EditingEngine                     string `json:"editing_engine"` // aider | claude | opencode | native
-	AiderEnabled                      bool   `json:"aider_enabled"`
-	AiderAutoInstall                  bool   `json:"aider_auto_install"`
-	AiderVersion                      string `json:"aider_version"`
-	AiderExecutable                   string `json:"aider_executable,omitempty"`
-	AiderMainModel                    string `json:"aider_main_model,omitempty"`
-	AiderArchitectMode                bool   `json:"aider_architect_mode"`
-	AiderArchitectModel               string `json:"aider_architect_model,omitempty"`
-	AiderEditorModel                  string `json:"aider_editor_model,omitempty"`
-	AiderEditFormat                   string `json:"aider_edit_format"`
-	AiderEditorEditFormat             string `json:"aider_editor_edit_format"`
-	AiderMapTokens                    int    `json:"aider_map_tokens"`
-	AiderMaxChatHistoryTokens         int    `json:"aider_max_chat_history_tokens"`
-	AiderAutoLint                     bool   `json:"aider_auto_lint"`
-	AiderAutoTest                     bool   `json:"aider_auto_test"`
-	AiderLintCommand                  string `json:"aider_lint_command,omitempty"`
-	AiderTestCommand                  string `json:"aider_test_command,omitempty"`
-	AiderUseGit                       bool   `json:"aider_use_git"`
-	AiderAutoCommits                  bool   `json:"aider_auto_commits"`
-	ClaudeCodeEnabled                 bool   `json:"claude_code_enabled"`
-	ClaudeCodeAutoInstall             bool   `json:"claude_code_auto_install"`
-	ClaudeCodeChannel                 string `json:"claude_code_channel"`
-	ClaudeCodeExecutable              string `json:"claude_code_executable,omitempty"`
-	ClaudeCodeModel                   string `json:"claude_code_model,omitempty"`
-	ClaudeCodePermissionMode          string `json:"claude_code_permission_mode"`
-	ClaudeCodeMaxTurns                int    `json:"claude_code_max_turns"`
-	OpenCodeEnabled                   bool   `json:"opencode_enabled"`
-	OpenCodeAutoInstall               bool   `json:"opencode_auto_install"`
-	OpenCodeVersion                   string `json:"opencode_version"`
-	OpenCodeExecutable                string `json:"opencode_executable,omitempty"`
-	OpenCodeModel                     string `json:"opencode_model,omitempty"`
-	OpenCodeAgent                     string `json:"opencode_agent,omitempty"`
-	OpenCodeAutoApprove               bool   `json:"opencode_auto_approve"`
-	ContextLength                     int    `json:"context_length"`
-	ContextCompactionEnabled          bool   `json:"context_compaction_enabled"`
-	ContextCompactionThresholdPercent int    `json:"context_compaction_threshold_percent"`
-	ContextCompactionKeepRecent       int    `json:"context_compaction_keep_recent"`
-	MaxAgentSteps                     int    `json:"max_agent_steps"`
-	CommandTimeout                    int    `json:"command_timeout_seconds"`
-	ModelTimeout                      int    `json:"model_timeout_seconds"`
-	ApprovalMode                      string `json:"approval_mode"` // strict | balanced | auto | dangerous
-	SandboxMode                       string `json:"sandbox_mode"`  // project | workspace | unrestricted
-	NetworkEnabled                    bool   `json:"network_enabled"`
-	WebSearchProvider                 string `json:"web_search_provider"` // disabled | duckduckgo | ollama
-	WebSearchAPIKeyEnv                string `json:"web_search_api_key_env"`
-	WebSearchMaxResults               int    `json:"web_search_max_results"`
-	WebFetchMaxBytes                  int64  `json:"web_fetch_max_bytes"`
+	OllamaURL                         string  `json:"ollama_url"`
+	SetupDownloadsEnabled             bool    `json:"setup_downloads_enabled"`
+	OllamaAutoInstall                 bool    `json:"ollama_auto_install"`
+	OllamaAutoPull                    bool    `json:"ollama_auto_pull"`
+	OllamaDefaultModel                string  `json:"ollama_default_model"`
+	EditingEngine                     string  `json:"editing_engine"` // aider | claude | opencode | native
+	AiderEnabled                      bool    `json:"aider_enabled"`
+	AiderAutoInstall                  bool    `json:"aider_auto_install"`
+	AiderVersion                      string  `json:"aider_version"`
+	AiderExecutable                   string  `json:"aider_executable,omitempty"`
+	AiderMainModel                    string  `json:"aider_main_model,omitempty"`
+	AiderArchitectMode                bool    `json:"aider_architect_mode"`
+	AiderArchitectModel               string  `json:"aider_architect_model,omitempty"`
+	AiderEditorModel                  string  `json:"aider_editor_model,omitempty"`
+	AiderEditFormat                   string  `json:"aider_edit_format"`
+	AiderEditorEditFormat             string  `json:"aider_editor_edit_format"`
+	AiderMapTokens                    int     `json:"aider_map_tokens"`
+	AiderMaxChatHistoryTokens         int     `json:"aider_max_chat_history_tokens"`
+	AiderAutoLint                     bool    `json:"aider_auto_lint"`
+	AiderAutoTest                     bool    `json:"aider_auto_test"`
+	AiderLintCommand                  string  `json:"aider_lint_command,omitempty"`
+	AiderTestCommand                  string  `json:"aider_test_command,omitempty"`
+	AiderUseGit                       bool    `json:"aider_use_git"`
+	AiderAutoCommits                  bool    `json:"aider_auto_commits"`
+	ClaudeCodeEnabled                 bool    `json:"claude_code_enabled"`
+	ClaudeCodeAutoInstall             bool    `json:"claude_code_auto_install"`
+	ClaudeCodeChannel                 string  `json:"claude_code_channel"`
+	ClaudeCodeExecutable              string  `json:"claude_code_executable,omitempty"`
+	ClaudeCodeModel                   string  `json:"claude_code_model,omitempty"`
+	ClaudeCodePermissionMode          string  `json:"claude_code_permission_mode"`
+	ClaudeCodeMaxTurns                int     `json:"claude_code_max_turns"`
+	OpenCodeEnabled                   bool    `json:"opencode_enabled"`
+	OpenCodeAutoInstall               bool    `json:"opencode_auto_install"`
+	OpenCodeVersion                   string  `json:"opencode_version"`
+	OpenCodeExecutable                string  `json:"opencode_executable,omitempty"`
+	OpenCodeModel                     string  `json:"opencode_model,omitempty"`
+	OpenCodeAgent                     string  `json:"opencode_agent,omitempty"`
+	OpenCodeAutoApprove               bool    `json:"opencode_auto_approve"`
+	ContextLength                     int     `json:"context_length"`
+	ContextCompactionEnabled          bool    `json:"context_compaction_enabled"`
+	ContextCompactionThresholdPercent int     `json:"context_compaction_threshold_percent"`
+	ContextCompactionKeepRecent       int     `json:"context_compaction_keep_recent"`
+	MaxAgentSteps                     int     `json:"max_agent_steps"`
+	CommandTimeout                    int     `json:"command_timeout_seconds"`
+	ModelTimeout                      int     `json:"model_timeout_seconds"`
+	ApprovalMode                      string  `json:"approval_mode"` // strict | balanced | auto | dangerous
+	SandboxMode                       string  `json:"sandbox_mode"`  // project | workspace | unrestricted
+	NetworkEnabled                    bool    `json:"network_enabled"`
+	WebSearchProvider                 string  `json:"web_search_provider"` // disabled | duckduckgo | ollama
+	WebSearchAPIKeyEnv                string  `json:"web_search_api_key_env"`
+	WebSearchMaxResults               int     `json:"web_search_max_results"`
+	WebFetchMaxBytes                  int64   `json:"web_fetch_max_bytes"`
+	ImageGeneratorProvider            string  `json:"image_generator_provider"` // disabled | automatic1111
+	ImageGeneratorURL                 string  `json:"image_generator_url"`
+	ImageGeneratorSteps               int     `json:"image_generator_steps"`
+	ImageGeneratorCFGScale            float64 `json:"image_generator_cfg_scale"`
 
 	GitEnabled        bool   `json:"git_enabled"`
 	AutoStateUpdate   bool   `json:"auto_state_update"`
