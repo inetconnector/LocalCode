@@ -112,6 +112,32 @@ func TestInstructionContextMatchesGlobs(t *testing.T) {
 	}
 }
 
+func TestInstructionContextLoadsCompatibleInstructionsAndNestedCursorRules(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+	mustWrite(t, filepath.Join(project, "CLAUDE.md"), "claude project instruction\n")
+	mustWrite(t, filepath.Join(project, "GEMINI.md"), "gemini project instruction\n")
+	mustWrite(t, filepath.Join(project, "QWEN.md"), "qwen project instruction\n")
+	mustWrite(t, filepath.Join(project, ".github", "copilot-instructions.md"), "copilot project instruction\n")
+	mustWrite(t, filepath.Join(project, ".cursorrules"), "legacy cursor rule\n")
+	mustWrite(t, filepath.Join(project, ".cursor", "rules", "frontend", "react.mdc"), "---\nglobs: web/**/*.tsx\n---\nnested react cursor rule\n")
+
+	context := projectInstructionContext(project, "Passe web/app/page.tsx an.")
+	for _, want := range []string{
+		"claude project instruction",
+		"gemini project instruction",
+		"qwen project instruction",
+		"copilot project instruction",
+		"legacy cursor rule",
+		"nested react cursor rule",
+	} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("context missing %q:\n%s", want, context)
+		}
+	}
+}
+
 func TestSkillActivationExcludesAndConflictResolution(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("LOCALCODE_CONFIG_HOME", configHome)

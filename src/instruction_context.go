@@ -144,50 +144,56 @@ func firstExistingInstructionFile(dir string) string {
 }
 
 func projectInstructionFiles(project string) []string {
-	return compactNonEmpty([]string{firstExistingInstructionFile(project), firstExistingFallbackInstructionFile(project)})
-}
-
-func firstExistingFallbackInstructionFile(project string) string {
-	for _, name := range []string{"CLAUDE.md", ".agents.md", "TEAM_GUIDE.md"} {
-		path := filepath.Join(project, name)
+	paths := []string{firstExistingInstructionFile(project)}
+	for _, rel := range []string{
+		"CLAUDE.md",
+		"GEMINI.md",
+		"QWEN.md",
+		".agents.md",
+		"TEAM_GUIDE.md",
+		filepath.Join(".github", "copilot-instructions.md"),
+	} {
+		path := filepath.Join(project, rel)
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path
+			paths = append(paths, path)
 		}
 	}
-	return ""
+	return compactNonEmpty(paths)
 }
 
 func cursorRuleFiles(project, task string) []string {
-	root := filepath.Join(project, ".cursor", "rules")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
 	var paths []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+	legacy := filepath.Join(project, ".cursorrules")
+	if info, err := os.Stat(legacy); err == nil && !info.IsDir() {
+		if _, ok := readInstructionFile(legacy, maxRuleDocBytes); ok {
+			paths = append(paths, legacy)
+		}
+	}
+	root := filepath.Join(project, ".cursor", "rules")
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
 		}
 		name := entry.Name()
 		ext := strings.ToLower(filepath.Ext(name))
 		if ext != ".md" && ext != ".mdc" {
-			continue
+			return nil
 		}
-		path := filepath.Join(root, name)
 		content, ok := readInstructionFile(path, maxRuleDocBytes)
 		if !ok {
-			continue
+			return nil
 		}
 		globs := frontmatterList(content, "globs")
 		excludeGlobs := frontmatterListAny(content, "exclude", "excludes", "excludeGlobs", "exclude_globs")
 		if instructionGlobsMatchTask(project, task, excludeGlobs) {
-			continue
+			return nil
 		}
 		activation := frontmatterListAny(content, "activation", "activations", "trigger", "triggers", "keywords", "when", "appliesTo", "applies_to")
 		if cursorRuleAlwaysApplies(content) || instructionGlobsMatchTask(project, task, globs) || activationMatchesTask(task, activation) || instructionTextRelevant(task, name+" "+frontmatterValue(content, "description")+" "+content) {
 			paths = append(paths, path)
 		}
-	}
+		return nil
+	})
 	sort.Strings(paths)
 	return paths
 }
