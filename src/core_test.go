@@ -246,6 +246,25 @@ func TestReadOnlySubagentHandoff(t *testing.T) {
 	}
 }
 
+func TestAgentToolHooksRunConfiguredCommands(t *testing.T) {
+	root := t.TempDir()
+	cfg := defaultConfig()
+	cfg.CommandTimeout = 5
+	cfg.HookBeforeTool = "echo before-hook"
+	cfg.HookAfterTool = "echo after-hook"
+	before, err := runAgentToolHook(context.Background(), root, cfg, "before", AgentAction{Action: "read_file", Path: "README.md", Message: "read"})
+	if err != nil || !strings.Contains(before, "before-hook") {
+		t.Fatalf("before hook output=%q err=%v", before, err)
+	}
+	after, err := runAgentToolHook(context.Background(), root, cfg, "after", AgentAction{Action: "read_file", Path: "README.md", Message: "read"})
+	if err != nil || !strings.Contains(after, "after-hook") {
+		t.Fatalf("after hook output=%q err=%v", after, err)
+	}
+	if agentToolHookEligible(AgentAction{Action: "finish"}) || agentToolHookEligible(AgentAction{Action: "ask_user"}) {
+		t.Fatal("finish and ask_user must not trigger tool hooks")
+	}
+}
+
 func TestCompletionGuardBlocksPlaceholderAndUnverifiedCapabilities(t *testing.T) {
 	project := t.TempDir()
 	if err := os.WriteFile(filepath.Join(project, "game.js"), []byte("// placeholder\nlet score = 0;\n"), 0o644); err != nil {

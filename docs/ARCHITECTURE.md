@@ -32,6 +32,8 @@ LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend und eine
 
 Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofort veröffentlicht und durch einen zusammenfassenden Hintergrundschreiber atomar persistiert. Offene Genehmigungen sind Backendzustand und erscheinen zusätzlich als feste Entscheidungsleiste. Jede UI-Instanz fordert ihren Snapshot mit konkreter Projekt- und Aufgaben-ID an; ein Agentenlauf bleibt global auf eine gleichzeitig aktive Ausführung begrenzt.
 
+Task-Hooks laufen am Anfang und Ende eines Agentenlaufs. Tool-Hooks laufen direkt vor beziehungsweise nach einer konkreten Werkzeugaktion innerhalb der Agentenschleife. Before-Tool-Hooks werden vor `handleAgentAction` ausgeführt und brechen den Lauf bei Fehler ab, damit ein fehlschlagender Policy-/Vorbereitungscheck keine Werkzeugmutation zulässt. After-Tool-Hooks laufen nach nicht-finalen Werkzeugaktionen und werden separat als Ereignis oder Warnung protokolliert. Hook-Befehle werden mit `runProjectCommand`, konfigurierter Befehlsumgebung, Timeout und Prozessbaum-Abbruch ausgeführt.
+
 Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeldung, sondern den beobachteten Arbeitszustand: geänderte und erwähnte Dateien, erkannte Funktionsmarker, Postconditions von Dateiwerkzeugen und den Nachweis einer passenden Prüfung nach der letzten Code-/App-/Tool-Änderung. Reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe; Dokumentationsaufgaben und reine Dateioperationen werden gesondert erkannt.
 
 `subagent_analyze` ist die erste getrennte Subagent-Stufe. Sie ist deterministisch read-only und sammelt einen strukturierten Handoff aus Projektinfo, Projektbaum, erwähnten Dateien und begrenzten Suchtreffern. Die Implementierung ruft keine Shell-, Netzwerk-, MCP- oder Schreibwerkzeuge auf; spätere modellgetriebene Subagent- oder Review-Phasen müssen diese Handoff-Grenze beibehalten oder explizit über normale Genehmigungs- und Mutationspfade laufen.
@@ -81,6 +83,8 @@ LocalCode is a single Go application with an embedded web frontend and an HTTP/S
 7. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
 
 State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
+
+Task hooks run at the beginning and end of an agent run. Tool hooks run directly before or after one concrete tool action inside the agent loop. Before-tool hooks execute before `handleAgentAction` and abort the run on failure so a failed policy or preparation check cannot allow a tool mutation. After-tool hooks run after non-final tool actions and are logged separately as events or warnings. Hook commands are executed through `runProjectCommand` with the configured command environment, timeout, and process-tree cancellation.
 
 Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
 

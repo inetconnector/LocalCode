@@ -9,6 +9,7 @@ LocalCode kombiniert folgende Anwendungsschutzschichten:
 - kanonische Pfadprüfung nach Auflösung vorhandener Symlinks und NTFS-Junctions, auch bei neu anzulegenden Zieldateien
 - blockierte Befehlsmuster und harte Schutzregeln für destruktive Git-/Systemaktionen
 - Zeitlimits, Prozessgruppen und vollständigen Prozessbaum-Abbruch unter Windows
+- Task- und Tool-Hooks laufen als normale nicht-interaktive Projektbefehle mit denselben Timeouts, Umgebungsregeln, Blocklisten und Prozessabbrüchen; Before-Tool-Fehler stoppen die Werkzeugaktion
 - einen globalen Netzwerkschalter
 - Schutz vor Loopback-, Link-local-, privaten und sonstigen nichtöffentlichen Zieladressen
 - DNS-Rebinding-Schutz: verbunden wird mit genau der zuvor beim Dial validierten IP, nicht mit einer zweiten Namensauflösung
@@ -40,6 +41,8 @@ LocalCode übergibt Aider eine explizite Minimal-Konfiguration und eine absichtl
 
 Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interaktive Logins werden bewusst in einem sichtbaren Terminal geöffnet. Diese Kontrollen sind Anwendungsschutz und keine identische Betriebssystem- oder Virtualisierungssandbox der proprietären Codex-Infrastruktur.
 
+Hooks sind Automatisierung innerhalb derselben Befehlsgrenze. Sie erhalten Aktionsmetadaten über `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH` und `LOCALCODE_ACTION_COMMAND`, aber keine zusätzliche Berechtigung. Before-Tool-Hooks können eine Werkzeugaktion durch Fehler abbrechen; After-Tool-Hooks werden als eigenes Ereignis protokolliert und verändern das ursprüngliche Werkzeugresultat nicht.
+
 Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder Global-Scope, werden atomar mit der Konfiguration geschrieben und können nur über eine konkrete Memory-ID gelöscht werden. Sie sind nicht für Zugangsdaten, Geheimnisse oder vertrauliche Schlüssel bestimmt.
 
 Globale und projektbezogene Anweisungen sowie lokale und globale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet oder per `skill_read` gelesen. Skill-Frontmatter mit `permissions`, `allowed-tools`, `tools`, `scripts` oder `commands` ist nur Metadaten: nicht-read-only Berechtigungen und deklarierte Skripte markieren den Skill als `approval-required`, verhindern automatische Einbettung und ändern keine Werkzeugfreigabe. Zusätzliche Skill-Ressourcen können nur relativ zum jeweiligen Skill-Verzeichnis gelesen werden; Pfad-Traversal und direkte Nutzung von `SKILL.md` über den Ressourcenpfad werden blockiert. Binäre oder anderweitig projektbenötigte Skill-Ressourcen können mit `skill_copy_resource` nur nach Genehmigung kopiert werden: Die Quelle muss eine reguläre Datei innerhalb des Skill-Verzeichnisses bleiben, Symlink-/Junction-Ausbrüche werden verworfen, die Größe ist begrenzt, und das Ziel läuft durch die normale Projektpfadgrenze mit Backup und Postcondition. `skill_run_script` akzeptiert nur einen exakten `scripts`-/`commands`-Eintrag aus dem Skill, begrenzt Argumente, prüft die Command-Blockliste und verlangt eine eigene Genehmigung; relative Skriptdateien müssen innerhalb des Skill-Verzeichnisses bleiben. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
@@ -57,6 +60,7 @@ LocalCode combines these application-level controls:
 - canonical path checks after resolving existing symlinks and NTFS junctions, including destinations that do not exist yet
 - blocked command patterns and hard guards for destructive Git/system operations
 - timeouts, process groups, and complete Windows process-tree termination
+- task and tool hooks run as normal non-interactive project commands with the same timeouts, environment rules, blocklists, and process cancellation; before-tool failures stop the tool action
 - a global network switch
 - rejection of loopback, link-local, private, and other non-public destinations
 - DNS-rebinding protection by dialing the exact IP validated during connection setup rather than performing a second lookup
@@ -87,6 +91,8 @@ The core runtime is completed automatically by default with additional integrity
 LocalCode passes an explicit minimal configuration and an intentionally empty environment file. Analytics, update checks, browser prompts, shell suggestions, URL detection, notifications, file watching, and prompt caching are disabled. Histories remain outside the repository. Backups and hash manifests are created before edit, lint, and test runs; undo never overwrites later manual changes. Aider's `--yes-always` applies only inside an editing run already approved by LocalCode.
 
 Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system or virtualization sandbox to proprietary Codex infrastructure.
+
+Hooks are automation inside the same command boundary. They receive action metadata through `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH`, and `LOCALCODE_ACTION_COMMAND`, but no additional permission. Before-tool hooks can abort a tool action by failing; after-tool hooks are logged as separate events and do not change the original tool result.
 
 Agent memories are local configuration data. They have project or global scope, are written atomically with the configuration, and can only be deleted through a concrete memory ID. They are not intended for credentials, secrets, or confidential keys.
 

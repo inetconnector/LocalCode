@@ -691,9 +691,25 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			continue
 		}
 		s.setRunPhase(runID, "tool:"+action.Action)
+		if agentToolHookEligible(action) && strings.TrimSpace(cfg.HookBeforeTool) != "" {
+			hookOut, hookErr := runAgentToolHook(ctx, project, cfg, "before", action)
+			if hookErr != nil {
+				s.AddEvent(UIEvent{Type: "error", Message: localizeConfigText(cfg, "Hook vor Werkzeug fehlgeschlagen", "Before-tool hook failed"), Detail: truncateText(hookOut+"\n"+hookErr.Error(), 12000), Action: "hook_before_tool"})
+				return "error"
+			}
+			s.AddEvent(UIEvent{Type: "tool_result", Message: localizeConfigText(cfg, "Hook vor Werkzeug ausgeführt", "Before-tool hook executed"), Detail: truncateText(hookOut, 12000), Action: "hook_before_tool"})
+		}
 		result, done := s.handleAgentAction(ctx, project, action)
 		if done {
 			return "done"
+		}
+		if agentToolHookEligible(action) && strings.TrimSpace(cfg.HookAfterTool) != "" {
+			hookOut, hookErr := runAgentToolHook(ctx, project, cfg, "after", action)
+			if hookErr != nil {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Hook nach Werkzeug fehlgeschlagen", "After-tool hook failed"), Detail: truncateText(hookOut+"\n"+hookErr.Error(), 12000), Action: "hook_after_tool"})
+			} else {
+				s.AddEvent(UIEvent{Type: "tool_result", Message: localizeConfigText(cfg, "Hook nach Werkzeug ausgeführt", "After-tool hook executed"), Detail: truncateText(hookOut, 12000), Action: "hook_after_tool"})
+			}
 		}
 		completedActions[action.Action] = true
 		toolFailed := agentToolResultFailed(result)

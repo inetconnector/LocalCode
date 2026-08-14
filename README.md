@@ -66,6 +66,8 @@ Der native Agent besitzt lokale, dauerhafte Erinnerungen. Mit `memory_remember`,
 
 Direkte Dateioperationen liefern überprüfbare Postconditions zurück. `write_file`, `delete_file`, `copy_path` und `move_path` melden nach der Ausführung Existenz, Typ, Größe und bei Dateien den SHA-256-Hash; Verschieben und Löschen melden ausdrücklich, ob die Quelle beziehungsweise das Ziel fehlt. Dadurch sieht das lokale Modell im nächsten Schritt nicht nur eine Erfolgsmeldung, sondern konkrete Fakten über den Dateisystemzustand.
 
+Hooks können vor und nach Aufgaben sowie vor und nach einzelnen Werkzeugaktionen nicht-interaktive Projektbefehle ausführen. Before-Tool-Hooks stoppen die jeweilige Werkzeugausführung bei Fehlern; After-Tool-Hooks werden separat protokolliert, ohne das ursprüngliche Werkzeugresultat zu überschreiben. Hook-Befehle laufen durch dieselbe Befehlsumgebung, Timeouts und Prozessabbruchlogik wie andere nicht-interaktive Projektkommandos.
+
 Die Werkzeugerkennung umfasst Windows-Standardpfade, benutzerlokale Installationen und WinGet-Paketpfade für Node.js/npm/npx. Technologiewörter wie `Node.js` werden in Aufgaben nicht als Projektdatei fehlinterpretiert.
 
 ### Umschaltbare Coding-Agent-Engines
@@ -225,6 +227,8 @@ For local models, LocalCode budgets model context more aggressively than visible
 The native agent has local durable memories. Through `memory_remember`, `memory_list`, and `memory_forget`, it can store important project or user facts, receive them again in later agent context, and delete them by concrete ID. Project-scoped memories are the default; global memories are for explicitly cross-project preferences. Content that looks like passwords, tokens, private keys, or API keys is rejected.
 
 Direct file operations return verifiable postconditions. `write_file`, `delete_file`, `copy_path`, and `move_path` report existence, type, size, and file SHA-256 hashes after execution; moves and deletes explicitly report whether the source or target is gone. This gives the local model concrete filesystem facts on the next step instead of only a success message.
+
+Hooks can run non-interactive project commands before and after tasks and before and after individual tool actions. Before-tool hooks stop the tool execution on failure; after-tool hooks are logged separately without overwriting the original tool result. Hook commands use the same command environment, timeouts, and process-cancellation logic as other non-interactive project commands.
 
 Tool discovery covers Windows standard paths, per-user installations, and WinGet package paths for Node.js/npm/npx. Technology names such as `Node.js` are not mistaken for requested project files.
 
