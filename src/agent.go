@@ -42,6 +42,7 @@ type AgentAction struct {
 	CommitMessage string         `json:"commit_message,omitempty"`
 	StageAll      bool           `json:"stage_all,omitempty"`
 	Task          string         `json:"task,omitempty"`
+	Name          string         `json:"name,omitempty"`
 	MemoryID      string         `json:"memory_id,omitempty"`
 	Scope         string         `json:"scope,omitempty"`
 	Skill         string         `json:"skill,omitempty"`
@@ -54,7 +55,7 @@ var actionSchema = map[string]any{
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset",
-			"project_info", "subagent_analyze", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
+			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
 			"memory_remember", "memory_list", "memory_forget",
@@ -72,6 +73,7 @@ var actionSchema = map[string]any{
 		"source": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"},
 		"commit_message": map[string]any{"type": "string"}, "stage_all": map[string]any{"type": "boolean"},
 		"task":      map[string]any{"type": "string"},
+		"name":      map[string]any{"type": "string"},
 		"memory_id": map[string]any{"type": "string"},
 		"scope":     map[string]any{"type": "string", "enum": []string{"project", "global"}},
 		"skill":     map[string]any{"type": "string"},
@@ -90,6 +92,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("convert_image_asset", "source", "destination"),
 		conditionalRequired("render_asset", "source", "destination"),
 		conditionalRequired("subagent_analyze", "task"),
+		conditionalRequired("command_read", "name"),
 		conditionalRequired("run_tool", "tool"),
 		conditionalRequired("discover_tool", "tool"),
 		conditionalRequired("run_command", "command"),
@@ -154,6 +157,7 @@ Arbeitsweise:
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
+- Wenn der Nutzer einen Slash-Command wie /review verwendet, kann LocalCode ihn vor dem Lauf in eine gespeicherte Projektanweisung expandieren. Nutze command_list und command_read(name), wenn du verfügbare wiederverwendbare Projektanweisungen inspizieren musst.
 - Wenn ein benötigter Skill nur im Skill-Index steht oder unklar ist, nutze skill_list und skill_read, bevor du ihn als Arbeitsanweisung anwendest. Wenn ein Skill auf zusätzliche Ressourcen verweist, nutze skill_list_resources und skill_read_resource für Textressourcen. Für binäre oder als Projektdatei benötigte Skill-Ressourcen nutze skill_copy_resource(skill,resource,destination); die Kopie braucht Genehmigung und erweitert keine Berechtigungen. Deklarierte Skill-Skripte oder -Commands darfst du nur mit skill_run_script(skill,script,args) starten; script muss exakt einem im Skill gelisteten scripts/commands-Eintrag entsprechen.
 - Wenn der Nutzer eine stabile Präferenz, ein dauerhaft wichtiges Projektfaktum oder eine wiederverwendbare Arbeitsentscheidung nennt, nutze memory_remember. Speichere keine Passwörter, Tokens, privaten Schlüssel oder Geheimnisse. Standard-Scope ist project; global nur für ausdrücklich projektübergreifend nützliche Präferenzen. Wenn der Nutzer das Löschen/Vergessen verlangt, nutze bei Unklarheit zuerst memory_list und lösche dann per konkreter memory_id mit memory_forget.
 - finish muss Ergebnis, geänderte Dateien, Tests/Prüfungen, Git-Zustand, Quellen und verbleibende Risiken zusammenfassen.
@@ -179,6 +183,7 @@ Werkzeuge:
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
+- command_list, command_read(name)
 - skill_list(query), skill_read(skill), skill_list_resources(skill), skill_read_resource(skill,resource), skill_copy_resource(skill,resource,destination), skill_run_script(skill,script,args)
 - memory_remember(content,scope), memory_list(query,scope), memory_forget(memory_id)
 - finish, ask_user`
@@ -284,6 +289,20 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	cfg := s.Config
 	s.mu.Unlock()
 
+	agentMessage := userMessage
+	if !isContinuation {
+		expanded, cmd, ok, expandErr := expandSlashCommandPrompt(project, userMessage)
+		if expandErr != nil {
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Projekt-Command konnte nicht expandiert werden", "Project command could not be expanded"), Detail: expandErr.Error(), Action: "command_expand"})
+		} else if ok && cmd != nil {
+			agentMessage = expanded
+			s.mu.Lock()
+			s.LastTask = agentMessage
+			s.mu.Unlock()
+			s.AddEvent(UIEvent{Type: "agent_step", Message: localizeConfigText(cfg, "Projekt-Command expandiert", "Project command expanded"), Detail: "/" + cmd.Name + "\n" + cmd.Source, Action: "command_expand"})
+		}
+	}
+
 	_ = saveConfig(cfg)
 	_ = ensureProjectDocs(project, cfg)
 	if isContinuation {
@@ -295,7 +314,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	if isContinuation {
 		go s.runAgentContinuation(ctx, runID, project, model, userMessage, attachments, continuation)
 	} else {
-		go s.runAgent(ctx, runID, project, model, userMessage, attachments)
+		go s.runAgent(ctx, runID, project, model, agentMessage, attachments)
 	}
 	return nil
 }
@@ -465,7 +484,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if engine == editingEngineNative {
 		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
 	}
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), toolInventorySummary(project, cfg))
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nPROJEKT-COMMANDS:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), projectCommandsContext(project), toolInventorySummary(project, cfg))
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
@@ -896,6 +915,9 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 	if a.Task == "" {
 		a.Task = stringMapArg(a.Arguments, "task")
 	}
+	if a.Name == "" {
+		a.Name = stringMapArg(a.Arguments, "name")
+	}
 	if a.Tool == "" {
 		a.Tool = stringMapArg(a.Arguments, "tool")
 	}
@@ -1005,6 +1027,8 @@ func validateAgentAction(a AgentAction) error {
 		return require("destination", a.Destination)
 	case "subagent_analyze":
 		return require("task", a.Task)
+	case "command_read":
+		return require("name", a.Name)
 	case "run_tool", "discover_tool":
 		return require("tool", a.Tool)
 	case "run_command", "open_terminal":
@@ -1720,6 +1744,14 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result = projectInfo(project, cfg)
 	case "subagent_analyze":
 		result, err = runReadOnlySubagent(project, cfg, a.Task)
+	case "command_list":
+		result = formatProjectCommandList(project)
+	case "command_read":
+		var cmd ProjectCommand
+		cmd, err = readProjectCommand(project, a.Name)
+		if err == nil {
+			result = formatProjectCommand(cmd)
+		}
 	case "tool_inventory":
 		infos := toolInventory(project, cfg, false)
 		data, _ := json.MarshalIndent(infos, "", "  ")
@@ -1894,7 +1926,7 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "command_list", "command_read", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
 		return cfg.ApprovalMode == "strict"

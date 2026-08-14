@@ -212,6 +212,77 @@ func TestParseAgentAction(t *testing.T) {
 	if actionNeedsApproval(defaultConfig(), t.TempDir(), AgentAction{Action: "subagent_analyze", Task: "check"}) {
 		t.Fatal("subagent_analyze must be read-only")
 	}
+	a, err = parseAgentAction(`{"action":"command_read","message":"Lies Command","arguments":{"name":"review"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Name != "review" {
+		t.Fatalf("command_read name argument was not normalized: %#v", a)
+	}
+	if _, err := parseAgentAction(`{"action":"command_read","message":"Lies Command"}`); err == nil {
+		t.Fatal("command_read without name must be rejected")
+	}
+	if actionNeedsApproval(defaultConfig(), t.TempDir(), AgentAction{Action: "command_read", Name: "review"}) {
+		t.Fatal("command_read must be read-only")
+	}
+}
+
+func TestProjectCommandsListReadAndExpand(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	mustWrite(t, filepath.Join(root, ".localcode", "commands", "review.md"), "---\ndescription: Review workflow\n---\nBitte prüfe {{args}} in {{project}} unter {{cwd}}.")
+	mustWrite(t, filepath.Join(root, ".codex", "commands", "review.md"), "shadowed")
+	mustWrite(t, filepath.Join(root, ".opencode", "commands", "plan.txt"), "Plane {{args}}.")
+
+	commands := listProjectCommands(root)
+	if len(commands) != 2 {
+		t.Fatalf("unexpected command count %d: %#v", len(commands), commands)
+	}
+	byName := map[string]ProjectCommand{}
+	for _, cmd := range commands {
+		byName[cmd.Name] = cmd
+	}
+	if byName["review"].Description != "Review workflow" || !strings.Contains(byName["review"].Source, ".localcode/commands/review.md") {
+		t.Fatalf("unexpected review command: %#v", byName["review"])
+	}
+	if byName["plan"].Name != "plan" || byName["plan"].Scope != "project" {
+		t.Fatalf("unexpected plan command: %#v", byName["plan"])
+	}
+	listOut := formatProjectCommandList(root)
+	if !strings.Contains(listOut, "/review") || !strings.Contains(listOut, "/plan") {
+		t.Fatalf("list output missing commands:\n%s", listOut)
+	}
+	read, err := readProjectCommand(root, "review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(read.Body, "shadowed") {
+		t.Fatal("project command precedence loaded a shadowed command")
+	}
+	expanded, cmd, ok, err := expandSlashCommandPrompt(root, "/review src/main.go")
+	if err != nil || !ok || cmd == nil {
+		t.Fatalf("expand ok=%t cmd=%#v err=%v", ok, cmd, err)
+	}
+	for _, want := range []string{"SLASH COMMAND /review", "Arguments: src/main.go", "Bitte prüfe src/main.go", filepath.Base(root)} {
+		if !strings.Contains(expanded, want) {
+			t.Fatalf("expanded command missing %q:\n%s", want, expanded)
+		}
+	}
+}
+
+func TestProjectCommandReadTool(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	mustWrite(t, filepath.Join(root, ".localcode", "commands", "fix.md"), "---\ndescription: Fix workflow\n---\nBehebe {{args}}.")
+	state := &AppState{Config: defaultConfig()}
+	list, wait := state.handleAgentAction(context.Background(), root, AgentAction{Action: "command_list", Message: "Liste Commands"})
+	if wait || !strings.Contains(list, "/fix") {
+		t.Fatalf("unexpected command_list wait=%t output=\n%s", wait, list)
+	}
+	read, wait := state.handleAgentAction(context.Background(), root, AgentAction{Action: "command_read", Message: "Lies Command", Name: "fix"})
+	if wait || !strings.Contains(read, "COMMAND /fix") || !strings.Contains(read, "Behebe {{args}}.") {
+		t.Fatalf("unexpected command_read wait=%t output=\n%s", wait, read)
+	}
 }
 
 func TestReadOnlySubagentHandoff(t *testing.T) {

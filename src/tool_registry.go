@@ -743,7 +743,7 @@ func actionSignature(a AgentAction) string {
 	if a.Action == "ask_user" {
 		return "ask_user|" + normalizedQuestion(a.Message)
 	}
-	return strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination + "|" + a.Task))
+	return strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination + "|" + a.Task + "|" + a.Name))
 }
 
 func normalizedQuestion(s string) string {

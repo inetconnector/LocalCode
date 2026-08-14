@@ -220,7 +220,7 @@ func actionAllowedForIntent(intent taskIntent, action AgentAction) (bool, string
 	}
 	if intent.Kind == "analyze" {
 		switch action.Action {
-		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "memory_list", "finish", "ask_user":
+		case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "command_list", "command_read", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "memory_list", "finish", "ask_user":
 			return true, ""
 		case "git":
 			if gitActionIsReadOnly(action.Args) {

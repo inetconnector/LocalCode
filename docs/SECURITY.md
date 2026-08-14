@@ -15,6 +15,7 @@ LocalCode kombiniert folgende Anwendungsschutzschichten:
 - DNS-Rebinding-Schutz: verbunden wird mit genau der zuvor beim Dial validierten IP, nicht mit einer zweiten Namensauflösung
 - explizite MCP-Konfiguration und kontrolliertes Warten auf beendete stdio-Prozesse
 - keine Speicherung von Passwörtern oder Tokens in normalen Einstellungen; dauerhafte Agentenerinnerungen lehnen Inhalte ab, die wie Passwörter, Tokens, private Schlüssel oder API-Keys aussehen
+- Slash-/Projekt-Commands sind read-only Text-Templates und erweitern keine Genehmigungen, Sandboxgrenzen oder Werkzeugrechte
 - lokale Regel-/Skill-Dateien erweitern nur den Modellkontext und umgehen keine Genehmigungen, Sandboxgrenzen oder blockierten Befehle; Skills mit deklarierten Skripten oder nicht-read-only Berechtigungen werden nicht automatisch eingebettet
 - read-only Subagent-Handoffs lesen nur Projektinfo, Projektbaum, erwähnte Textdateien und Suchtreffer; sie starten keine Shell-, Netzwerk-, MCP- oder Schreibaktionen
 - validierte SVG-/Icon-Erzeugung blockiert Skripte, Event-Handler und `javascript:`-URLs, bevor Asset-Dateien geschrieben werden
@@ -43,6 +44,8 @@ Hintergrundbefehle starten unter Windows ohne sichtbare Konsolenfenster. Interak
 
 Hooks sind Automatisierung innerhalb derselben Befehlsgrenze. Sie erhalten Aktionsmetadaten über `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH` und `LOCALCODE_ACTION_COMMAND`, aber keine zusätzliche Berechtigung. Before-Tool-Hooks können eine Werkzeugaktion durch Fehler abbrechen; After-Tool-Hooks werden als eigenes Ereignis protokolliert und verändern das ursprüngliche Werkzeugresultat nicht.
 
+Projekt-Commands sind reine Text-Templates. LocalCode liest nur `.md`- und `.txt`-Dateien mit validierten Command-Namen aus bekannten Command-Verzeichnissen, begrenzt die Größe, prüft Textkodierung und verwirft Symlink-/Junction-Ausbrüche aus dem jeweiligen Command-Root. Ein Slash-Command kann den Modellauftrag präzisieren, aber keine Genehmigungsregel, Sandboxgrenze oder Werkzeugberechtigung ändern und führt selbst keinen Shell-Befehl aus.
+
 Agentenerinnerungen sind lokale Konfigurationsdaten. Sie besitzen Projekt- oder Global-Scope, werden atomar mit der Konfiguration geschrieben und können nur über eine konkrete Memory-ID gelöscht werden. Sie sind nicht für Zugangsdaten, Geheimnisse oder vertrauliche Schlüssel bestimmt.
 
 Globale und projektbezogene Anweisungen sowie lokale und globale Skills werden als unprivilegierter Text in den Agentenkontext eingebettet oder per `skill_read` gelesen. Skill-Frontmatter mit `permissions`, `allowed-tools`, `tools`, `scripts` oder `commands` ist nur Metadaten: nicht-read-only Berechtigungen und deklarierte Skripte markieren den Skill als `approval-required`, verhindern automatische Einbettung und ändern keine Werkzeugfreigabe. Zusätzliche Skill-Ressourcen können nur relativ zum jeweiligen Skill-Verzeichnis gelesen werden; Pfad-Traversal und direkte Nutzung von `SKILL.md` über den Ressourcenpfad werden blockiert. Binäre oder anderweitig projektbenötigte Skill-Ressourcen können mit `skill_copy_resource` nur nach Genehmigung kopiert werden: Die Quelle muss eine reguläre Datei innerhalb des Skill-Verzeichnisses bleiben, Symlink-/Junction-Ausbrüche werden verworfen, die Größe ist begrenzt, und das Ziel läuft durch die normale Projektpfadgrenze mit Backup und Postcondition. `skill_run_script` akzeptiert nur einen exakten `scripts`-/`commands`-Eintrag aus dem Skill, begrenzt Argumente, prüft die Command-Blockliste und verlangt eine eigene Genehmigung; relative Skriptdateien müssen innerhalb des Skill-Verzeichnisses bleiben. Ein Skill oder eine Regel kann keine LocalCode-Policy direkt ändern; Datei-, Shell-, Netzwerk-, MCP- und externe Engine-Aktionen laufen weiterhin durch die normalen Validierungs- und Genehmigungspfade.
@@ -66,6 +69,7 @@ LocalCode combines these application-level controls:
 - DNS-rebinding protection by dialing the exact IP validated during connection setup rather than performing a second lookup
 - explicit MCP configuration and controlled reaping of stdio subprocesses
 - no normal settings storage for passwords or tokens; durable agent memories reject content that looks like passwords, tokens, private keys, or API keys
+- slash/project commands are read-only text templates and do not extend approvals, sandbox boundaries, or tool permissions
 - local rule/skill files extend only model context and do not bypass approvals, sandbox boundaries, or blocked commands; skills with declared scripts or non-read-only permissions are not embedded automatically
 - read-only subagent handoffs only read project info, the project tree, mentioned text files, and search hits; they start no shell, network, MCP, or write actions
 - validated SVG/icon creation blocks scripts, event handlers, and `javascript:` URLs before asset files are written
@@ -93,6 +97,8 @@ LocalCode passes an explicit minimal configuration and an intentionally empty en
 Background commands start without visible console windows on Windows. Interactive logins deliberately open in a visible terminal. These controls are application-level protections, not an identical operating-system or virtualization sandbox to proprietary Codex infrastructure.
 
 Hooks are automation inside the same command boundary. They receive action metadata through `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH`, and `LOCALCODE_ACTION_COMMAND`, but no additional permission. Before-tool hooks can abort a tool action by failing; after-tool hooks are logged as separate events and do not change the original tool result.
+
+Project commands are plain text templates. LocalCode reads only `.md` and `.txt` files with validated command names from known command directories, caps file size, checks text encoding, and rejects symlink/junction escapes from the respective command root. A slash command can refine the model task, but it cannot change approval rules, sandbox boundaries, or tool permissions and does not execute shell code by itself.
 
 Agent memories are local configuration data. They have project or global scope, are written atomically with the configuration, and can only be deleted through a concrete memory ID. They are not intended for credentials, secrets, or confidential keys.
 
