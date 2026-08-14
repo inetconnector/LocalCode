@@ -290,16 +290,22 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	s.mu.Unlock()
 
 	agentMessage := userMessage
+	directMemory, isDirectMemory := directMemoryRequest{}, false
 	if !isContinuation {
-		expanded, cmd, ok, expandErr := expandSlashCommandPrompt(project, userMessage)
-		if expandErr != nil {
-			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Projekt-Command konnte nicht expandiert werden", "Project command could not be expanded"), Detail: expandErr.Error(), Action: "command_expand"})
-		} else if ok && cmd != nil {
-			agentMessage = expanded
-			s.mu.Lock()
-			s.LastTask = agentMessage
-			s.mu.Unlock()
-			s.AddEvent(UIEvent{Type: "agent_step", Message: localizeConfigText(cfg, "Projekt-Command expandiert", "Project command expanded"), Detail: "/" + cmd.Name + "\n" + cmd.Source, Action: "command_expand"})
+		if req, ok := detectDirectMemoryRequest(userMessage); ok && len(attachments) == 0 {
+			directMemory = req
+			isDirectMemory = true
+		} else {
+			expanded, cmd, ok, expandErr := expandSlashCommandPrompt(project, userMessage)
+			if expandErr != nil {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Projekt-Command konnte nicht expandiert werden", "Project command could not be expanded"), Detail: expandErr.Error(), Action: "command_expand"})
+			} else if ok && cmd != nil {
+				agentMessage = expanded
+				s.mu.Lock()
+				s.LastTask = agentMessage
+				s.mu.Unlock()
+				s.AddEvent(UIEvent{Type: "agent_step", Message: localizeConfigText(cfg, "Projekt-Command expandiert", "Project command expanded"), Detail: "/" + cmd.Name + "\n" + cmd.Source, Action: "command_expand"})
+			}
 		}
 	}
 
@@ -311,6 +317,35 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.UpdateProjectState("Agentenaufgabe gestartet")
 	}
 	s.AddEvent(UIEvent{Type: "user", Message: userMessage, Attachments: attachmentSummaries(attachments)})
+	if isDirectMemory {
+		result, memoryErr := s.executeDirectMemoryRequest(project, directMemory)
+		if memoryErr != nil {
+			s.AddEvent(UIEvent{Type: "error", Message: localizeConfigText(cfg, "Erinnerung konnte nicht verarbeitet werden", "Memory request could not be processed"), Detail: memoryErr.Error(), Action: "memory"})
+			s.mu.Lock()
+			s.Running = false
+			s.Cancel = nil
+			s.Pending = nil
+			s.RunPhase = "idle"
+			s.LastProgressAt = time.Now()
+			s.mu.Unlock()
+			s.UpdateProjectState(localizeConfigText(cfg, "Erinnerungsaktion fehlgeschlagen", "Memory action failed"))
+			s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+			return nil
+		}
+		s.mu.Lock()
+		s.LastSummary = result
+		s.Running = false
+		s.Cancel = nil
+		s.Pending = nil
+		s.RunPhase = "idle"
+		s.LastProgressAt = time.Now()
+		s.mu.Unlock()
+		s.AddEvent(UIEvent{Type: "final", Message: result, Action: "memory"})
+		s.recordAction("Erinnerungsaktion: " + directMemory.Kind)
+		s.UpdateProjectState(localizeConfigText(cfg, "Erinnerungsaktion abgeschlossen", "Memory action completed"))
+		s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+		return nil
+	}
 	if isContinuation {
 		go s.runAgentContinuation(ctx, runID, project, model, userMessage, attachments, continuation)
 	} else {

@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,6 +98,79 @@ func TestParseAgentActionMemoryArguments(t *testing.T) {
 	}
 	if _, err := parseAgentAction(`{"action":"memory_remember","message":"remember"}`); err == nil {
 		t.Fatal("memory_remember without content must be rejected")
+	}
+}
+
+func TestDirectMemoryPromptStoresGlobalWithoutModel(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	project := t.TempDir()
+	state := NewAppState(defaultConfig(), nil)
+	state.Project = project
+	state.Model = "local-model"
+
+	err := state.StartAgentForThread("Mache immer Ursachen statt Symptome beheben, merke dir das.", "local-model", nil, project, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Running {
+		t.Fatal("direct memory request must not start a model run")
+	}
+	if len(state.Config.Memories) != 1 {
+		t.Fatalf("expected one memory, got %d", len(state.Config.Memories))
+	}
+	entry := state.Config.Memories[0]
+	if entry.Scope != memoryScopeGlobal {
+		t.Fatalf("always memory should be global, got %#v", entry)
+	}
+	if !strings.Contains(entry.Content, "Ursachen statt Symptome") || strings.Contains(strings.ToLower(entry.Content), "merke dir") {
+		t.Fatalf("unexpected remembered content: %q", entry.Content)
+	}
+	context := memoryContextForAgent(state.Config, filepath.Join(project, "sub"))
+	if !strings.Contains(context, "Ursachen statt Symptome") {
+		t.Fatalf("global memory not injected across projects: %s", context)
+	}
+}
+
+func TestDirectMemoryPromptListsAndDeletesByQuery(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	project := t.TempDir()
+	state := NewAppState(defaultConfig(), nil)
+	state.Project = project
+	state.Model = "local-model"
+	if _, err := state.executeMemoryAction(project, AgentAction{Action: "memory_remember", Content: "Kurze Antworten bevorzugen.", Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := state.StartAgentForThread("Zeige gemerkt Liste", "local-model", nil, project, ""); err != nil {
+		t.Fatal(err)
+	}
+	if state.Running {
+		t.Fatal("direct memory list must not start a model run")
+	}
+	if !strings.Contains(state.LastSummary, "Kurze Antworten") {
+		t.Fatalf("list result missing memory: %s", state.LastSummary)
+	}
+
+	if err := state.StartAgentForThread("Entferne aus der gemerkt Liste kurze Antworten", "local-model", nil, project, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Config.Memories) != 0 {
+		t.Fatalf("expected memory to be deleted, got %s", memoriesJSON(state.Config.Memories))
+	}
+}
+
+func TestDetectDirectMemoryRequestScopes(t *testing.T) {
+	req, ok := detectDirectMemoryRequest("Merke dir für dieses Projekt: build läuft mit go test ./...")
+	if !ok || req.Kind != "remember" || req.Scope != memoryScopeProject || !strings.Contains(req.Content, "build läuft") {
+		t.Fatalf("unexpected project memory request: %#v ok=%t", req, ok)
+	}
+	req, ok = detectDirectMemoryRequest("Always answer concise, remember that")
+	if !ok || req.Kind != "remember" || req.Scope != memoryScopeGlobal {
+		t.Fatalf("unexpected global memory request: %#v ok=%t", req, ok)
+	}
+	req, ok = detectDirectMemoryRequest("Lösche Erinnerung abcdef1234567890")
+	if !ok || req.Kind != "forget" || req.MemoryID != "abcdef1234567890" {
+		t.Fatalf("unexpected forget request: %#v ok=%t", req, ok)
 	}
 }
 
