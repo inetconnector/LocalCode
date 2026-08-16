@@ -20,36 +20,32 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
       - name: Route SSE through one-time tickets
         shell: pwsh
         run: |
           $serverPath = 'src/remote_server.go'
           $server = Get-Content -LiteralPath $serverPath -Raw
-          $oldRoutes = @'
-          	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
-          	s.mux.HandleFunc("/remote/api/events", s.withAuth(s.handleEvents))
-          '@
-          $newRoutes = @'
-          	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
+
+          $routePattern = '(?m)^\s*s\.mux\.HandleFunc\("/remote/api/events",\s*s\.withAuth\(s\.handleEvents\)\)\s*$'
+          $routeReplacement = @'
           	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
           	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
           '@
-          if (-not $server.Contains($oldRoutes)) { throw 'Remote route block not found' }
-          $server = $server.Replace($oldRoutes, $newRoutes)
+          $routeRegex = [regex]::new($routePattern)
+          $updatedServer = $routeRegex.Replace($server, $routeReplacement, 1)
+          if ($updatedServer -eq $server) { throw 'Authenticated legacy SSE route not found' }
+          $server = $updatedServer
 
-          $legacyQuery = @'
-          		// EventSource cannot attach custom headers. Keep the legacy query-token
-          		// path narrowly scoped to SSE until the remote client is migrated to
-          		// short-lived stream tickets; all ordinary API calls require headers.
-          		if token == "" && r.URL.Path == "/remote/api/events" {
-          			token = strings.TrimSpace(r.URL.Query().Get("token"))
-          		}
-          '@
-          if (-not $server.Contains($legacyQuery)) { throw 'Legacy SSE query-token block not found' }
-          $server = $server.Replace($legacyQuery, '')
+          $legacyPattern = '(?ms)\n\s*// EventSource cannot attach custom headers\..*?\n\s*if token == "" && r\.URL\.Path == "/remote/api/events" \{\s*\n\s*token = strings\.TrimSpace\(r\.URL\.Query\(\)\.Get\("token"\)\)\s*\n\s*\}'
+          $legacyRegex = [regex]::new($legacyPattern)
+          $updatedServer = $legacyRegex.Replace($server, '', 1)
+          if ($updatedServer -eq $server) { throw 'Legacy SSE device-token query path not found' }
+          $server = $updatedServer
+          if ($server -match 'Query\(\)\.Get\("token"\)') { throw 'Long-lived device query token remains in remote server auth' }
           [System.IO.File]::WriteAllText((Resolve-Path $serverPath), $server, [System.Text.UTF8Encoding]::new($false))
           gofmt -w $serverPath
 
@@ -60,9 +56,12 @@ jobs:
           async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required'){state.pending=ev;showView('approve')}if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
           $('#pairBtn')
           '@
-          $updatedHtml = [regex]::Replace($html, $pattern, $replacement, 1, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+          $htmlRegex = [regex]::new($pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+          $updatedHtml = $htmlRegex.Replace($html, $replacement, 1)
           if ($updatedHtml -eq $html) { throw 'Remote connectEvents function not found' }
+          $updatedHtml = $updatedHtml.Replace('maxlength="12" placeholder="000000"', 'maxlength="8" placeholder="00000000"')
           if ($updatedHtml.Contains('/remote/api/events?token=')) { throw 'Long-lived token still appears in SSE URL' }
+          if (-not $updatedHtml.Contains('/remote/api/event-ticket')) { throw 'Remote client does not request stream tickets' }
           [System.IO.File]::WriteAllText((Resolve-Path $htmlPath), $updatedHtml, [System.Text.UTF8Encoding]::new($false))
       - name: Add stream ticket regression tests
         shell: pwsh
@@ -140,7 +139,7 @@ jobs:
       - name: Verify remote stream ticket migration
         shell: pwsh
         working-directory: src
-        run: go test ./... -run 'TestRemoteStreamTicket|TestRemoteEventTicket|TestRemoteSSERejectsDeviceTokenInQuery|TestRemotePairingTokenAndStatus' -count=1
+        run: go test ./... -run 'TestRemoteStreamTicket|TestRemoteEventTicket|TestRemoteSSERejectsDeviceTokenInQuery|TestRemotePairingTokenAndStatus' -count=1 -timeout=10m
       - name: Commit migration and remove one-time workflow
         shell: pwsh
         run: |
