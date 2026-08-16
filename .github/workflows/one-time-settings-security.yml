@@ -1,0 +1,69 @@
+name: One-time settings security hardening
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-settings-security.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-settings-security-hardening
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Redact and preserve remote-device security state
+        shell: pwsh
+        run: |
+          $path = 'src/server.go'
+          $content = Get-Content -LiteralPath $path -Raw
+
+          $getPattern = '(?ms)(func \(s \*Server\) handleSettings\(w http\.ResponseWriter, r \*http\.Request\) \{.*?case http\.MethodGet:.*?_ = writeJSON\(w, )cfg(\))'
+          $updated = [regex]::Replace($content, $getPattern, '$1publicSettingsConfig(cfg)$2', 1)
+          if ($updated -eq $content) { throw 'settings GET serialization boundary not found' }
+          $content = $updated
+
+          $preserveNeedle = "`t`t`tincoming.Port = current.Port"
+          if (-not $content.Contains($preserveNeedle)) { throw 'settings protected-field block not found' }
+          $preserveReplacement = $preserveNeedle + "`n`t`t`tincoming.RemoteDevices = append([]RemoteDevice(nil), current.RemoteDevices...)"
+          $content = $content.Replace($preserveNeedle, $preserveReplacement)
+
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $content, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path src/settings_security.go src/settings_security_test.go
+      - name: Verify settings security and config transactions
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'TestPublicSettingsConfig|TestSettingsAPI|TestSettingsGET|TestSettingsAndApprovalRule|TestMutateConfig' -count=1 -timeout=10m
+      - name: Commit and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-settings-security.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: isolate remote credentials from generic settings'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push settings security hardening.'
