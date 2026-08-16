@@ -13,7 +13,7 @@ jobs:
   migrate:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Replace unsafe free-form shell classifier
@@ -21,35 +21,32 @@ jobs:
         run: |
           $path = 'src/agent.go'
           $content = Get-Content -LiteralPath $path -Raw
-          $old = @'
-          func commandLooksReadOnly(command string) bool {
-          	c := strings.ToLower(strings.TrimSpace(command))
-          	for _, p := range []string{"git status", "git diff", "git log", "go test", "go vet", "go list", "npm test", "npm run lint", "pytest", "cargo test", "dotnet test", "dir", "type ", "findstr ", "where ", "echo "} {
-          		if strings.HasPrefix(c, p) {
-          			return true
-          		}
-          	}
-          	return false
+          $pattern = '(?ms)^func commandLooksReadOnly\(command string\) bool \{.*?^func toolActionLooksReadOnly'
+          $replacement = @(
+            'func commandLooksReadOnly(command string) bool {'
+            "`t// Free-form shell strings are not a safe read-only capability boundary."
+            "`t// Redirection, chaining, shell expansion, project test hooks and tool"
+            "`t// configuration can turn apparently harmless prefixes into mutations."
+            "`t// Use structured run_tool/git actions for auto-approved read-only work."
+            "`treturn false"
+            '}'
+            ''
+            'func toolActionLooksReadOnly'
+          ) -join "`n"
+          $regex = [regex]::new($pattern)
+          $updated = $regex.Replace($content, $replacement, 1)
+          if ($updated -eq $content) {
+            throw 'commandLooksReadOnly function boundary was not found; refusing non-deterministic patch.'
           }
-          '@
-          $new = @'
-          func commandLooksReadOnly(command string) bool {
-          	// Free-form shell strings are not a safe read-only capability boundary.
-          	// Redirection, chaining, shell expansion, project test hooks and tool
-          	// configuration can turn apparently harmless prefixes into mutations.
-          	// Use structured run_tool/git actions for auto-approved read-only work.
-          	return false
+          if ([regex]::Matches($updated, 'func commandLooksReadOnly\(').Count -ne 1) {
+            throw 'Unexpected commandLooksReadOnly function count after migration.'
           }
-          '@
-          if (-not $content.Contains($old)) {
-            throw 'Expected commandLooksReadOnly implementation not found; refusing non-deterministic patch.'
-          }
-          $content = $content.Replace($old, $new)
-          [System.IO.File]::WriteAllText((Resolve-Path $path), $content, [System.Text.UTF8Encoding]::new($false))
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
           gofmt -w $path
-          if (Select-String -Path $path -Pattern 'git status.*go test.*npm test' -Quiet) {
-            throw 'Legacy shell prefix allowlist is still present.'
-          }
+      - name: Verify conservative policy
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'TestShellReadOnlyClassifierRejectsCompoundAndRedirectedCommands' -count=1
       - name: Commit migration and remove one-time workflow
         shell: pwsh
         run: |
