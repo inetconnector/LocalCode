@@ -32,10 +32,11 @@ jobs:
           $content = Get-Content -LiteralPath $path -Raw
           $old = '"README.md", "STATE.md", "COMMIT_MESSAGE.txt", "NOTICE-AIDER.md",'
           $new = '"README.md", "STATE.md", "NOTICE-AIDER.md",'
-          if (-not $content.Contains($old)) { throw 'stale COMMIT_MESSAGE.txt Aider expectation not found' }
-          $content = $content.Replace($old, $new)
-          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
-          gofmt -w $path
+          if ($content.Contains($old)) {
+            $content = $content.Replace($old, $new)
+            [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+            gofmt -w $path
+          }
 
       - name: Add exact shell approval helper for agent tests
         shell: pwsh
@@ -45,9 +46,9 @@ jobs:
 
           package main
 
-          // allowExactShellForTest models an explicit, persisted user decision.
-          // It keeps tests deterministic without weakening production's rule that
-          // free-form shell strings are never inferred to be read-only.
+          // allowExactShellForTest models an explicit persisted user decision.
+          // It keeps mocked agent tests deterministic without weakening the
+          // production rule that free-form shell strings are never inferred safe.
           func allowExactShellForTest(cfg *Config, command string) {
           	cfg.ApprovalRules = append(cfg.ApprovalRules, ApprovalRule{
           		Scope:    "global",
@@ -58,26 +59,46 @@ jobs:
           '@ | Set-Content -LiteralPath 'src/test_approval_helpers_test.go' -Encoding utf8NoBOM
           gofmt -w src/test_approval_helpers_test.go
 
-      - name: Make agent tests explicitly approve their verification shell command
+      - name: Explicitly approve mocked verification shell commands
         shell: pwsh
         run: |
-          $path = 'src/core_test.go'
-          $content = Get-Content -LiteralPath $path -Raw
-          $cases = @(
-            @{ Name='TestAgentRetriesIncompleteWriteFileContent'; Command='echo test passed' },
-            @{ Name='TestAgentRecoversWrongFirstTool'; Command='echo lint passed' },
-            @{ Name='TestAgentCompletionGuardRepairsMissingRequestedUI'; Command='echo syntax ok' }
-          )
-          foreach ($case in $cases) {
-            $pattern = '(?ms)(func ' + [regex]::Escape($case.Name) + '\(t \*testing\.T\) \{.*?cfg\.ApprovalMode = "auto")'
-            $regex = [regex]::new($pattern)
-            $replacement = '$1' + "`n`tallowExactShellForTest(&cfg, `"" + $case.Command + "`")"
-            $updated = $regex.Replace($content, $replacement, 1)
-            if ($updated -eq $content) { throw "approval insertion point not found for $($case.Name)" }
-            $content = $updated
+          $commands = @('echo test passed', 'echo lint passed', 'echo syntax ok')
+          $functionRegex = [regex]::new('(?ms)^func Test\w+\(t \*testing\.T\) \{.*?(?=^func |\z)')
+          $totalInsertions = 0
+
+          foreach ($path in Get-ChildItem -LiteralPath 'src' -Filter '*_test.go') {
+            $content = Get-Content -LiteralPath $path.FullName -Raw
+            $updated = $functionRegex.Replace($content, {
+              param($match)
+              $block = $match.Value
+              foreach ($command in $commands) {
+                $jsonNeedle = '"command":"' + $command + '"'
+                $helperNeedle = 'allowExactShellForTest(&cfg, "' + $command + '")'
+                if (-not $block.Contains($jsonNeedle) -or $block.Contains($helperNeedle)) {
+                  continue
+                }
+                $stateRegex = [regex]::new('(?m)^(\s*)state := NewAppState\(cfg,')
+                $stateMatch = $stateRegex.Match($block)
+                if (-not $stateMatch.Success) {
+                  continue
+                }
+                $indent = $stateMatch.Groups[1].Value
+                $insertion = $indent + 'allowExactShellForTest(&cfg, "' + $command + '")' + "`n" + $stateMatch.Value
+                $block = $stateRegex.Replace($block, $insertion, 1)
+                $script:totalInsertions++
+              }
+              return $block
+            })
+            if ($updated -ne $content) {
+              [IO.File]::WriteAllText($path.FullName, $updated, [Text.UTF8Encoding]::new($false))
+              gofmt -w $path.FullName
+            }
           }
-          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
-          gofmt -w $path
+
+          if ($totalInsertions -lt 1) {
+            throw 'No mocked verification shell command required explicit approval; expected at least one insertion.'
+          }
+          Write-Host "Inserted $totalInsertions exact shell approval rules."
 
       - name: Make terminal-command handler injectable for deterministic HTTP tests
         shell: pwsh
@@ -91,8 +112,11 @@ jobs:
           }
           $old = 'out, err := runProjectCommand(ctx, project, command, cfg)'
           $new = 'out, err := terminalCommandRunner(ctx, project, command, cfg)'
-          if (-not $content.Contains($old)) { throw 'terminal command runner call not found' }
-          $content = $content.Replace($old, $new)
+          if ($content.Contains($old)) {
+            $content = $content.Replace($old, $new)
+          } elseif (-not $content.Contains($new)) {
+            throw 'terminal command runner call not found'
+          }
           [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
           gofmt -w $path
 
@@ -101,27 +125,28 @@ jobs:
         run: |
           $path = 'src/coverage_expansion_test.go'
           $content = Get-Content -LiteralPath $path -Raw
-          $needle = @'
-          	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "echo hi", "path": project})
-          '@
-          if (-not $content.Contains($needle.TrimEnd())) { throw 'terminal-command endpoint coverage call not found' }
-          $replacement = @'
-          	oldTerminalCommandRunner := terminalCommandRunner
-          	terminalCommandRunner = func(ctx context.Context, project, command string, cfg Config) (string, error) {
-          		return "mock terminal command", nil
-          	}
-          	defer func() { terminalCommandRunner = oldTerminalCommandRunner }()
-          	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "echo hi", "path": project})
-          '@
-          $content = $content.Replace($needle.TrimEnd(), $replacement.TrimEnd())
-          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
-          gofmt -w $path
+          if (-not $content.Contains('oldTerminalCommandRunner := terminalCommandRunner')) {
+            $pattern = '(?m)^(\s*)rr = serveCoverageRequest\(t, server, http\.MethodPost, "/api/terminal-command", map\[string\]any\{"command": "echo hi", "path": project\}\)'
+            $regex = [regex]::new($pattern)
+            $match = $regex.Match($content)
+            if (-not $match.Success) { throw 'terminal-command endpoint coverage call not found' }
+            $indent = $match.Groups[1].Value
+            $replacement = $indent + 'oldTerminalCommandRunner := terminalCommandRunner' + "`n" +
+              $indent + 'terminalCommandRunner = func(ctx context.Context, project, command string, cfg Config) (string, error) {' + "`n" +
+              $indent + "`treturn `"mock terminal command`", nil" + "`n" +
+              $indent + '}' + "`n" +
+              $indent + 'defer func() { terminalCommandRunner = oldTerminalCommandRunner }()' + "`n" +
+              $match.Value
+            $content = $regex.Replace($content, $replacement, 1)
+            [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+            gofmt -w $path
+          }
 
-      - name: Verify previously failing tests
+      - name: Verify hardened-shell and endpoint regressions
         shell: pwsh
         working-directory: src
         run: |
-          go test ./... -run 'TestAiderDocumentationAndLicenseFilesArePresent|TestAgentRetriesIncompleteWriteFileContent|TestAgentRecoversWrongFirstTool|TestAgentCompletionGuardRepairsMissingRequestedUI|TestCoverageServerEndpointMatrix' -count=1 -timeout=12m
+          go test ./... -run 'TestAiderDocumentationAndLicenseFilesArePresent|TestAgent.*(InvalidAction|Placeholder|Completion|WrongFirstTool|RetriesIncomplete)|TestCoverageServerEndpointMatrix' -count=1 -timeout=12m
 
       - name: Compile entire test package
         shell: pwsh
