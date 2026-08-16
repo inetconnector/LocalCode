@@ -24,8 +24,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.25.x'
-          check-latest: true
+          go-version: '1.25.13'
           cache-dependency-path: src/go.mod
 
       - name: Verify tag matches VERSION.txt
@@ -81,14 +80,13 @@ jobs:
         with:
           subject-path: 'dist/LocalCode*.exe'
 
-      - name: Create immutable release payload
+      - name: Create release payload
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notes = Get-ChildItem -LiteralPath . -Filter 'RELEASE-NOTES-*.md' |
-            Sort-Object Name -Descending |
-            Select-Object -First 1
+          $version = (Get-Content -LiteralPath 'VERSION.txt' -Raw).Trim()
+          $notesPath = Join-Path $PWD ("RELEASE-NOTES-$version.md")
           $args = @(
             'release', 'create', '${{ github.ref_name }}',
             'dist/LocalCode.exe',
@@ -98,8 +96,8 @@ jobs:
             '--title', 'LocalCode ${{ github.ref_name }}',
             '--verify-tag'
           )
-          if ($notes) {
-            $args += @('--notes-file', $notes.FullName)
+          if (Test-Path -LiteralPath $notesPath -PathType Leaf) {
+            $args += @('--notes-file', $notesPath)
           } else {
             $args += '--generate-notes'
           }
