@@ -182,11 +182,10 @@ func persistentApprovalPattern(action AgentAction) ([]string, bool) {
 		if err := validateGitArgs(action.Args); err != nil {
 			return nil, false
 		}
-		if len(tokens) >= 2 {
-			// Match the Git subcommand, like Codex prefix rules, while still
-			// keeping destructive commands blocked by validateGitArgs.
-			return tokens[:2], true
-		}
+		// Persist the complete structured argument vector. Approving one
+		// branch/tag/remote action must not authorize every future action
+		// sharing the same Git subcommand.
+		return tokens, true
 	case "git_commit":
 		return []string{"git", "commit"}, true
 	case "run_tool":
