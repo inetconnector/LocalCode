@@ -225,7 +225,7 @@ func (s *RemoteServer) handlePair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": device})
+	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
 }
 
 func (s *RemoteServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
