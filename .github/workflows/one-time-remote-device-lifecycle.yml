@@ -29,11 +29,15 @@ jobs:
         run: |
           $serverPath = 'src/server.go'
           $server = Get-Content -LiteralPath $serverPath -Raw
-          $routeNeedle = "`ts.mux.HandleFunc(\"/api/remote/pairing\", s.handleRemotePairing)"
-          if (-not $server.Contains($routeNeedle)) { throw 'desktop remote pairing route not found' }
-          $routeReplacement = $routeNeedle + "`n`t" + 's.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)' + "`n`t" + 's.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)'
-          $server = $server.Replace($routeNeedle, $routeReplacement)
-          [System.IO.File]::WriteAllText((Resolve-Path $serverPath), $server, [System.Text.UTF8Encoding]::new($false))
+          $routePattern = '(?m)^\s*s\.mux\.HandleFunc\("/api/remote/pairing",\s*s\.handleRemotePairing\)\s*$'
+          $routeReplacement = @'
+          	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+          	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
+          	s.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)
+          '@
+          $updatedServer = [regex]::Replace($server, $routePattern, $routeReplacement, 1)
+          if ($updatedServer -eq $server) { throw 'desktop remote pairing route not found' }
+          [System.IO.File]::WriteAllText((Resolve-Path $serverPath), $updatedServer, [System.Text.UTF8Encoding]::new($false))
           gofmt -w $serverPath
 
           $remotePath = 'src/remote_server.go'
