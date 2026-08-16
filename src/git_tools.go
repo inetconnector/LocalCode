@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -71,25 +70,35 @@ func gitActionIsReadOnly(args []string) bool {
 	cmd := strings.ToLower(strings.TrimSpace(args[0]))
 	rest := args[1:]
 	switch cmd {
-	case "status", "log", "rev-parse", "ls-files", "grep", "blame":
+	case "status", "rev-parse", "ls-files":
 		return true
-	case "diff", "show":
-		for _, arg := range rest {
-			lower := strings.ToLower(arg)
-			if lower == "--no-index" || lower == "--ext-diff" || lower == "--textconv" {
-				return false
-			}
-		}
-		return true
+	case "log", "diff", "show":
+		return gitDiffLikeArgsReadOnly(rest)
 	case "branch":
 		return gitBranchArgsReadOnly(rest)
 	case "tag":
 		return gitTagArgsReadOnly(rest)
 	case "remote":
 		return gitRemoteArgsReadOnly(rest)
+	// grep may invoke textconv or an external pager; blame can read a caller-
+	// supplied --contents file. Keep both approval-gated rather than trying to
+	// maintain a fragile negative flag list.
+	case "grep", "blame":
+		return false
 	default:
 		return false
 	}
+}
+
+func gitDiffLikeArgsReadOnly(args []string) bool {
+	for _, arg := range args {
+		lower := strings.ToLower(strings.TrimSpace(arg))
+		if lower == "--no-index" || lower == "--ext-diff" || lower == "--textconv" ||
+			strings.HasPrefix(lower, "--output=") || lower == "--output" {
+			return false
+		}
+	}
+	return true
 }
 
 func gitBranchArgsReadOnly(args []string) bool {
@@ -424,6 +433,3 @@ func commitGitChanges(ctx context.Context, project string, cfg Config, requested
 	}
 	return report.String(), nil
 }
-
-// keep sort imported in older Go toolchains that may build only selected files
-var _ = sort.Strings
