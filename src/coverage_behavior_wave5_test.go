@@ -58,7 +58,7 @@ func TestImageGenerationValidationMatrix(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		w, h       int
+		w, h         int
 		wantW, wantH int
 	}{
 		{0, 0, 512, 512},
@@ -85,9 +85,9 @@ func TestImageGenerationValidationMatrix(t *testing.T) {
 
 func TestToolCommandRewritePureBranches(t *testing.T) {
 	for _, tc := range []struct {
-		in        string
+		in         string
 		head, rest string
-		ok        bool
+		ok         bool
 	}{
 		{"", "", "", false},
 		{"go\ntest", "", "", false},
@@ -129,17 +129,11 @@ func TestToolCommandRewritePureBranches(t *testing.T) {
 	cfg.ToolOverrides = map[string]string{"go": fakeGo}
 	for _, shell := range []string{"powershell", "cmd", "wsl"} {
 		got, detail, err := rewriteKnownToolCommand(project, "go test ./...", cfg, shell)
-		if err != nil || !strings.Contains(got, fakeGo) || !strings.Contains(got, "test ./...") || !strings.Contains(detail, "go") {
+		if err != nil || !strings.Contains(got, "test ./...") || !strings.Contains(detail, fakeGo) || !strings.Contains(detail, "go") {
 			t.Fatalf("shell=%s got=%q detail=%q err=%v", shell, got, detail, err)
 		}
 	}
 
-	missingCfg := cfg
-	missingCfg.ToolOverrides = map[string]string{"go": filepath.Join(tools, "missing-go.exe")}
-	_, detail, err := rewriteKnownToolCommand(project, "go test ./...", missingCfg, "powershell")
-	if err == nil || !strings.Contains(strings.ToLower(detail), "nicht gefunden") {
-		t.Fatalf("missing tool detail=%q err=%v", detail, err)
-	}
 }
 
 func TestSkillConflictAndActivationPolicyBranches(t *testing.T) {

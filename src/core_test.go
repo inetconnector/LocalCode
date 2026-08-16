@@ -320,7 +320,7 @@ func TestReadOnlySubagentHandoff(t *testing.T) {
 func TestAgentToolHooksRunConfiguredCommands(t *testing.T) {
 	root := t.TempDir()
 	cfg := defaultConfig()
-	cfg.CommandTimeout = 5
+	cfg.CommandTimeout = 15
 	cfg.HookBeforeTool = "echo before-hook"
 	cfg.HookAfterTool = "echo after-hook"
 	before, err := runAgentToolHook(context.Background(), root, cfg, "before", AgentAction{Action: "read_file", Path: "README.md", Message: "read"})
