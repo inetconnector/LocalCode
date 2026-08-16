@@ -2,12 +2,17 @@ name: Quality
 
 on:
   push:
-    branches: [master, 'agent/**']
+    branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
