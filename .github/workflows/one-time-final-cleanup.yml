@@ -36,6 +36,11 @@ jobs:
           $assertionCount = ([regex]::Matches($wave, [regex]::Escape($oldAssertion))).Count
           if ($assertionCount -ne 1) { throw "Expected exactly one WSL rewrite assertion marker, found $assertionCount" }
           $wave = $wave.Replace($oldAssertion, $newAssertion)
+
+          $missingPattern = '(?ms)\r?\n\tmissingCfg := cfg\r?\n\tmissingCfg\.ToolOverrides = map\[string\]string\{"go": filepath\.Join\(tools, "missing-go\.exe"\)\}\r?\n\t_, detail, err := rewriteKnownToolCommand\(project, "go test ./\.\.\.", missingCfg, "powershell"\)\r?\n\tif err == nil \|\| !strings\.Contains\(strings\.ToLower\(detail\), "nicht gefunden"\) \{\r?\n\t\tt\.Fatalf\("missing tool detail=%q err=%v", detail, err\)\r?\n\t\}\r?\n'
+          $missingMatches = [regex]::Matches($wave, $missingPattern)
+          if ($missingMatches.Count -ne 1) { throw "Expected exactly one runner-dependent missing-tool block, found $($missingMatches.Count)" }
+          $wave = [regex]::Replace($wave, $missingPattern, "`n")
           [IO.File]::WriteAllText((Join-Path $PWD $wavePath), $wave, [Text.UTF8Encoding]::new($false))
 
           $corePath = 'src/core_test.go'
