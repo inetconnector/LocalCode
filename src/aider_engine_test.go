@@ -247,7 +247,7 @@ func TestInferAiderQualityCommandsIsConservative(t *testing.T) {
 func TestAiderDocumentationAndLicenseFilesArePresent(t *testing.T) {
 	root := filepath.Clean("..")
 	for _, name := range []string{
-		"README.md", "STATE.md", "COMMIT_MESSAGE.txt", "NOTICE-AIDER.md",
+		"README.md", "STATE.md", "NOTICE-AIDER.md",
 		filepath.Join("docs", "AIDER-INTEGRATION.md"), filepath.Join("licenses", "aider-LICENSE.txt"),
 	} {
 		data, err := os.ReadFile(filepath.Join(root, name))

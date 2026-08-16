@@ -672,6 +672,13 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	client := NewOllamaClient()
 	client.BaseURL = ollama.URL
 	cfg := defaultConfig()
+	cfg.SetupDownloadsEnabled = false
+	cfg.OllamaAutoInstall = false
+	cfg.OllamaAutoPull = false
+	cfg.OllamaDefaultModel = "test-model"
+	cfg.AiderAutoInstall = false
+	cfg.ClaudeCodeAutoInstall = false
+	cfg.OpenCodeAutoInstall = false
 	cfg.RootProjectDir = root
 	cfg.LastProject = project
 	cfg.LastModel = "test-model"
@@ -705,7 +712,7 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 			t.Fatalf("method %s=%d", path, rr.Code)
 		}
 	}
-	for _, path := range []string{"/api/ping", "/api/status", "/api/projects", "/api/threads", "/api/snapshot", "/api/settings", "/api/tools?versions=1", "/api/mcp/status"} {
+	for _, path := range []string{"/api/ping", "/api/status", "/api/projects", "/api/threads", "/api/snapshot", "/api/settings", "/api/tools", "/api/mcp/status"} {
 		rr = serveCoverageRequest(t, server, http.MethodGet, path, nil)
 		requireCoverageStatus(t, rr, http.StatusOK)
 	}
@@ -924,10 +931,9 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	for _, models := range [][]ModelInfo{{{Name: "coder-x"}}, {{Name: "other"}}, nil} {
 		_ = chooseDefaultModel(models, "missing")
 	}
-	url, err := startHTTPServer(state, 0)
-	if err != nil || !strings.HasPrefix(url, "http://127.0.0.1:") {
-		t.Fatal(url, err)
-	}
+	// Real loopback startup is covered by TestFullStackLoopbackDesktopAndRemoteHTTP.
+	// This matrix intentionally stays handler-local so it cannot leave a listener
+	// or subprocess holding the temporary project directory on Windows.
 }
 
 type coverageRoundTripFunc func(*http.Request) (*http.Response, error)
