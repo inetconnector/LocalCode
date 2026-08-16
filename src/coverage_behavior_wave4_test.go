@@ -140,11 +140,11 @@ func TestAgentActionValidationAndClassificationMatrix(t *testing.T) {
 		{AgentAction{Action: "run_tool", Tool: "echo", Args: []string{"x"}}, "", false},
 		{AgentAction{Action: "run_command", Command: "go test ./..."}, "", true},
 		{AgentAction{Action: "open_terminal", Command: "echo x"}, "", false},
-		{AgentAction{Action: "read_file", Path: "README.md"}, "prüfe README.md", true},
+		{AgentAction{Action: "read_file", Path: "README.md"}, "prüfe dass README.md existiert", true},
 		{AgentAction{Action: "read_file", Path: "README.md"}, "ändere README.md", false},
-		{AgentAction{Action: "search_text", Query: "needle"}, "prüfe ob needle vorhanden ist", true},
-		{AgentAction{Action: "search_text"}, "prüfe die dateien", false},
-		{AgentAction{Action: "finish"}, "prüfe", false},
+		{AgentAction{Action: "search_text", Query: "needle"}, "check that content contains needle", true},
+		{AgentAction{Action: "search_text"}, "check that content contains needle", false},
+		{AgentAction{Action: "finish"}, "prüfe dass README.md existiert", false},
 	}
 	for _, tc := range verification {
 		if got := actionVerifiesProject(tc.a, tc.task); got != tc.want {
@@ -219,8 +219,8 @@ func TestAssetValidationBranchMatrix(t *testing.T) {
 	}
 	bmp := make([]byte, 26)
 	copy(bmp, "BM")
-	binary.LittleEndian.PutUint32(bmp[18:22], uint32(12))
-	binary.LittleEndian.PutUint32(bmp[22:26], uint32(int32(-34)))
+	binary.LittleEndian.PutUint32(bmp[18:22], 12)
+	binary.LittleEndian.PutUint32(bmp[22:26], 0xffffffde)
 	if w, h, err := bmpDimensions(bmp); err != nil || w != 12 || h != 34 {
 		t.Fatalf("BMP dimensions=%dx%d err=%v", w, h, err)
 	}
