@@ -762,7 +762,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg := s.state.Config
 		s.state.mu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSON(w, cfg)
+		_ = writeJSON(w, publicSettingsConfig(cfg))
 	case http.MethodPost:
 		var patch map[string]json.RawMessage
 		if err := readJSONPermissive(r.Body, &patch); err != nil {
@@ -795,6 +795,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			incoming.LastProject = current.LastProject
 			incoming.LastModel = current.LastModel
 			incoming.Port = current.Port
+			incoming.RemoteDevices = append([]RemoteDevice(nil), current.RemoteDevices...)
 			*current = incoming
 			return nil
 		})
