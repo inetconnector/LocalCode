@@ -168,8 +168,10 @@ func TestManagedPortableToolInstallersUseVerifiedLocalFixtures(t *testing.T) {
 
 func TestManagedToolInstallerFailureAndDownloadBranches(t *testing.T) {
 	isolateToolInstallGlobals(t)
+	seenUserAgent := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/ok" {
+			seenUserAgent = r.Header.Get("User-Agent")
 			_, _ = io.WriteString(w, "payload")
 			return
 		}
@@ -181,6 +183,9 @@ func TestManagedToolInstallerFailureAndDownloadBranches(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "nested", "payload.bin")
 	if err := downloadToFile(context.Background(), server.URL+"/ok", target); err != nil {
 		t.Fatal(err)
+	}
+	if seenUserAgent != localCodeUserAgent()+" tool-installer" {
+		t.Fatalf("installer User-Agent=%q want %q", seenUserAgent, localCodeUserAgent()+" tool-installer")
 	}
 	if data, err := os.ReadFile(target); err != nil || string(data) != "payload" {
 		t.Fatalf("downloaded data=%q err=%v", data, err)
