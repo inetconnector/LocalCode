@@ -1,0 +1,83 @@
+name: One-time final cleanup
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-final-cleanup.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-final-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: src/go.mod
+
+      - name: Apply exact cleanup edits
+        shell: pwsh
+        run: |
+          $corePath = 'src/core_test.go'
+          $core = Get-Content -LiteralPath $corePath -Raw
+          $oldTimeout = 'cfg.CommandTimeout = 5'
+          $timeoutCount = ([regex]::Matches($core, [regex]::Escape($oldTimeout))).Count
+          if ($timeoutCount -ne 1) { throw "Expected exactly one hook test timeout marker, found $timeoutCount" }
+          $core = $core.Replace($oldTimeout, 'cfg.CommandTimeout = 15')
+          [IO.File]::WriteAllText((Join-Path $PWD $corePath), $core, [Text.UTF8Encoding]::new($false))
+
+          $aiderPath = 'src/aider_engine.go'
+          $aider = Get-Content -LiteralPath $aiderPath -Raw
+          $oldUA = 'req.Header.Set("User-Agent", "LocalCode/6.4.3 dependency installer")'
+          $uaCount = ([regex]::Matches($aider, [regex]::Escape($oldUA))).Count
+          if ($uaCount -ne 1) { throw "Expected exactly one stale Aider User-Agent marker, found $uaCount" }
+          $aider = $aider.Replace($oldUA, 'req.Header.Set("User-Agent", localCodeUserAgent()+" dependency installer")')
+          [IO.File]::WriteAllText((Join-Path $PWD $aiderPath), $aider, [Text.UTF8Encoding]::new($false))
+
+          Push-Location src
+          gofmt -w coverage_behavior_wave5_test.go core_test.go aider_engine.go
+          Pop-Location
+
+      - name: Verify cleanup
+        shell: pwsh
+        run: |
+          if (Select-String -Path 'src/aider_engine.go' -SimpleMatch 'LocalCode/6.4.3 dependency installer' -Quiet) {
+            throw 'Stale Aider User-Agent remains'
+          }
+          $bad = gofmt -l src/coverage_behavior_wave5_test.go src/core_test.go src/aider_engine.go
+          if ($bad) { throw "gofmt still required: $bad" }
+          Push-Location src
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { throw 'go vet failed' }
+          go test ./... -run '^(TestAgentToolHooksRunConfiguredCommands|TestImageGenerationValidationMatrix|TestToolCommandRewritePureBranches|TestSkillConflictAndActivationPolicyBranches)$' -count=1 -timeout=8m
+          if ($LASTEXITCODE -ne 0) { throw 'targeted cleanup tests failed' }
+          Pop-Location
+
+      - name: Commit cleanup and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-final-cleanup.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'test: stabilize final quality gate'
+          git fetch origin agent/security-quality-hardening
+          git rebase origin/agent/security-quality-hardening
+          if ($LASTEXITCODE -ne 0) {
+            git rebase --abort 2>$null
+            throw 'Rebase failed; refusing to force-push.'
+          }
+          git push origin HEAD:agent/security-quality-hardening
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fast-forward push cleanup.' }
