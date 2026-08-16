@@ -1,0 +1,50 @@
+name: One-time coverage gap analysis
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-coverage-analysis.yml
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Generate coverage profile
+        shell: pwsh
+        run: go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out -timeout=20m
+      - name: Show coverage gaps
+        shell: pwsh
+        run: |
+          $lines = & go tool cover '-func=coverage.out'
+          if ($LASTEXITCODE -ne 0) { throw 'go tool cover failed' }
+          $lines | Write-Host
+          $items = @()
+          foreach ($line in $lines) {
+            if ($line -match '^(.+?):(\d+):\s+([^\s]+)\s+([0-9.]+)%$') {
+              $items += [pscustomobject]@{
+                File = $matches[1]
+                Line = [int]$matches[2]
+                Function = $matches[3]
+                Coverage = [double]$matches[4]
+              }
+            }
+          }
+          Write-Host "`n=== LOWEST COVERAGE FUNCTIONS ==="
+          $items | Sort-Object Coverage, File, Line | Select-Object -First 120 | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
+          Write-Host "`n=== ZERO COVERAGE FUNCTIONS ==="
+          $items | Where-Object Coverage -eq 0 | Sort-Object File, Line | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
+          $total = $lines | Where-Object { $_ -match '^total:' } | Select-Object -Last 1
+          Write-Host "`n$total"
