@@ -1,0 +1,64 @@
+name: One-time format behavior wave 2
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-gofmt-wave2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-format-behavior-wave-2
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: src/go.mod
+      - name: Format touched Go files
+        shell: pwsh
+        run: |
+          gofmt -w coverage_behavior_wave2_test.go tool_install.go coverage_behavior_windows_test.go
+          $bad = gofmt -l coverage_behavior_wave2_test.go tool_install.go coverage_behavior_windows_test.go
+          if ($bad) { throw "gofmt still required: $bad" }
+      - name: Vet
+        run: go vet ./...
+      - name: Targeted behavior tests
+        shell: pwsh
+        run: |
+          go test ./... -run '^(TestMCPHTTPInitializationSummaryHeadersAndReset|TestAttachmentExtractionDispatchCoversStructuredFormats|TestPreviewActionBehaviorAcrossMutatingAndToolCapabilities|TestCommitMessageFallbackAndConfigMutationUnwrap|TestWindowsPlatformDiscoveryAndSafeFailureBranches|TestBuildProjectUsesControlledToolOverrides|TestDeployAndroidControlledDeviceBranches|TestManagedPortableToolInstallersUseVerifiedLocalFixtures|TestManagedToolInstallerFailureAndDownloadBranches)$' -count=1 -timeout=10m
+      - name: Commit repair and remove one-time workflow
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-gofmt-wave2.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'test: format and verify second behavior wave'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push formatting repair.'
