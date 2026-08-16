@@ -1,0 +1,140 @@
+name: One-time config recovery migration
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-config-recovery.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-config-recovery-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - name: Add last-known-good config recovery
+        shell: pwsh
+        run: |
+          $path = 'src/config.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $pattern = '(?ms)^func loadConfig\(\) Config \{.*?^func configsEqual'
+          $replacement = @'
+          func readConfigFile(path string) (Config, map[string]json.RawMessage, error) {
+          	cfg := defaultConfig()
+          	data, err := os.ReadFile(path)
+          	if err != nil {
+          		return Config{}, nil, err
+          	}
+          	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+          	var raw map[string]json.RawMessage
+          	if err := json.Unmarshal(data, &raw); err != nil {
+          		return Config{}, nil, err
+          	}
+          	if err := json.Unmarshal(data, &cfg); err != nil {
+          		return Config{}, nil, err
+          	}
+          	return cfg, raw, nil
+          }
+
+          func applyMissingConfigDefaults(cfg Config, raw map[string]json.RawMessage) Config {
+          	defaults := defaultConfig()
+          	if _, ok := raw["network_enabled"]; !ok {
+          		cfg.NetworkEnabled = defaults.NetworkEnabled
+          	}
+          	if _, ok := raw["git_enabled"]; !ok {
+          		cfg.GitEnabled = defaults.GitEnabled
+          	}
+          	if _, ok := raw["auto_state_update"]; !ok {
+          		cfg.AutoStateUpdate = defaults.AutoStateUpdate
+          	}
+          	if _, ok := raw["create_project_docs"]; !ok {
+          		cfg.CreateProjectDocs = defaults.CreateProjectDocs
+          	}
+          	if _, ok := raw["show_bottom_bar"]; !ok {
+          		cfg.ShowBottomBar = defaults.ShowBottomBar
+          	}
+          	return cfg
+          }
+
+          func loadConfig() Config {
+          	migrateLegacyProductData()
+          	path := configPath()
+          	cfg, raw, err := readConfigFile(path)
+          	recovered := false
+          	if err != nil {
+          		if backupCfg, backupRaw, backupErr := readConfigFile(path + ".bak"); backupErr == nil {
+          			cfg, raw = backupCfg, backupRaw
+          			recovered = true
+          			if !os.IsNotExist(err) {
+          				corrupt := path + ".corrupt"
+          				_ = os.Remove(corrupt)
+          				if renameErr := os.Rename(path, corrupt); renameErr == nil {
+          					if copyErr := copyFileIfMissing(path+".bak", path); copyErr != nil {
+          						_ = os.Rename(corrupt, path)
+          					}
+          				}
+          			}
+          		} else {
+          			cfg = defaultConfig()
+          			raw = map[string]json.RawMessage{}
+          		}
+          	}
+          	cfg = applyMissingConfigDefaults(cfg, raw)
+          	normalized := normalizeConfig(cfg)
+          	if !recovered && !configsEqual(normalized, cfg) {
+          		_ = saveConfig(normalized)
+          	}
+          	return normalized
+          }
+
+          func configsEqual
+          '@
+          $regex = [regex]::new($pattern)
+          $updated = $regex.Replace($content, $replacement, 1)
+          if ($updated -eq $content) {
+            throw 'loadConfig function boundary was not found; refusing non-deterministic patch.'
+          }
+
+          $removePattern = '(?ms)(if err := os\.Rename\(tmpName, path\); err != nil \{\s*_ = os\.Rename\(backup, path\)\s*return err\s*\})\s*_ = os\.Remove\(backup\)\s*return nil'
+          $updated2 = [regex]::Replace($updated, $removePattern, '$1' + "`n`t// Keep the previous complete config as last-known-good recovery data.`n`treturn nil", 1)
+          if ($updated2 -eq $updated) {
+            throw 'saveConfig backup cleanup was not found; refusing partial recovery patch.'
+          }
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $updated2, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+      - name: Verify config recovery
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'TestConfigKeepsLastKnownGoodBackup|TestLoadConfigRecoversCorruptPrimaryFromBackup|TestLoadConfigCorruptWithoutBackupFallsBackSafely' -count=1
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-config-recovery.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: recover configuration from last-known-good backup'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push config recovery migration after three attempts.'
