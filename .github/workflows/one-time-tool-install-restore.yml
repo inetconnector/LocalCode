@@ -42,14 +42,14 @@ jobs:
 
           $testPath = Join-Path $PWD 'src/coverage_behavior_windows_test.go'
           $test = Get-Content -LiteralPath $testPath -Raw
-          $oldHelper = 'path := filepath.Join(dir, name+".cmd")'
-          $newHelper = "fileName := name`n`tif filepath.Ext(fileName) == \"\" {`n`t`tfileName += \".cmd\"`n`t}`n`tpath := filepath.Join(dir, fileName)"
-          if (-not $test.Contains($oldHelper)) { throw 'Windows command fixture helper was not found' }
-          $test = $test.Replace($oldHelper, $newHelper)
-          $oldGradle = 'gradle := writeWindowsCmdFixture(t, project, "gradlew", `'
-          $newGradle = 'gradle := writeWindowsCmdFixture(t, project, "gradlew.bat", `'
-          if (-not $test.Contains($oldGradle)) { throw 'Android gradle fixture call was not found' }
-          $test = $test.Replace($oldGradle, $newGradle)
+          $oldLine = "`t_ = gradle"
+          $newBlock = @'
+	if err := os.Rename(gradle, filepath.Join(project, "gradlew.bat")); err != nil {
+		t.Fatal(err)
+	}
+'@
+          if (-not $test.Contains($oldLine)) { throw 'Android gradle fixture marker was not found' }
+          $test = $test.Replace($oldLine, $newBlock.TrimEnd("`r", "`n"))
           [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
 
           Push-Location src
