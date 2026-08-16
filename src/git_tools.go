@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 func gitAvailable(project string, cfg Config) bool {
@@ -19,6 +21,9 @@ func gitAvailable(project string, cfg Config) bool {
 func runGit(ctx context.Context, project string, args []string, cfg Config) (string, error) {
 	if len(args) == 0 {
 		return "", errors.New("git arguments are empty")
+	}
+	if err := validateGitArgs(args); err != nil {
+		return "", err
 	}
 	resolvedArgs := append([]string(nil), args...)
 	if gitActionIsReadOnly(args) {
@@ -55,23 +60,133 @@ func gitBranchName(project string, cfg Config) string {
 	return strings.TrimSpace(out)
 }
 
+// gitActionIsReadOnly is deliberately conservative because its result is used
+// by the approval policy. Unknown forms are treated as mutating. In
+// particular branch/tag/remote are not read-only merely because their
+// subcommand name often appears in inspection commands.
 func gitActionIsReadOnly(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	switch strings.ToLower(args[0]) {
-	case "status", "diff", "log", "show", "branch", "rev-parse", "ls-files", "remote", "tag", "grep", "blame":
-		if strings.EqualFold(args[0], "branch") {
-			for _, a := range args[1:] {
-				if a == "-d" || a == "-D" || a == "-m" || a == "-M" || a == "--delete" || a == "--move" {
-					return false
-				}
+	cmd := strings.ToLower(strings.TrimSpace(args[0]))
+	rest := args[1:]
+	switch cmd {
+	case "status", "log", "rev-parse", "ls-files", "grep", "blame":
+		return true
+	case "diff", "show":
+		for _, arg := range rest {
+			lower := strings.ToLower(arg)
+			if lower == "--no-index" || lower == "--ext-diff" || lower == "--textconv" {
+				return false
 			}
 		}
 		return true
+	case "branch":
+		return gitBranchArgsReadOnly(rest)
+	case "tag":
+		return gitTagArgsReadOnly(rest)
+	case "remote":
+		return gitRemoteArgsReadOnly(rest)
 	default:
 		return false
 	}
+}
+
+func gitBranchArgsReadOnly(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	valueFlags := map[string]bool{
+		"--contains": true, "--no-contains": true, "--merged": true,
+		"--no-merged": true, "--points-at": true, "--sort": true,
+		"--format": true,
+	}
+	flagOnly := map[string]bool{
+		"--show-current": true, "--list": true, "--all": true, "-a": true,
+		"--remotes": true, "-r": true, "--verbose": true, "-v": true,
+		"-vv": true, "--no-color": true, "--ignore-case": true,
+		"--column": true, "--no-column": true,
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		lower := strings.ToLower(arg)
+		if strings.HasPrefix(lower, "--sort=") || strings.HasPrefix(lower, "--format=") ||
+			strings.HasPrefix(lower, "--color=") || strings.HasPrefix(lower, "--column=") ||
+			strings.HasPrefix(lower, "--contains=") || strings.HasPrefix(lower, "--no-contains=") ||
+			strings.HasPrefix(lower, "--merged=") || strings.HasPrefix(lower, "--no-merged=") ||
+			strings.HasPrefix(lower, "--points-at=") {
+			continue
+		}
+		if flagOnly[lower] {
+			continue
+		}
+		if valueFlags[lower] {
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+			}
+			continue
+		}
+		// A positional branch name, or an unknown flag, can create/delete/move
+		// refs and therefore requires approval.
+		return false
+	}
+	return true
+}
+
+func gitTagArgsReadOnly(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	listing := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		lower := strings.ToLower(arg)
+		switch {
+		case lower == "--list" || lower == "-l":
+			listing = true
+		case lower == "-n" || strings.HasPrefix(lower, "-n"):
+			listing = true
+		case lower == "--contains" || lower == "--no-contains" || lower == "--points-at" || lower == "--sort" || lower == "--format":
+			listing = true
+			if i+1 >= len(args) {
+				return false
+			}
+			i++
+		case strings.HasPrefix(lower, "--contains=") || strings.HasPrefix(lower, "--no-contains=") ||
+			strings.HasPrefix(lower, "--points-at=") || strings.HasPrefix(lower, "--sort=") ||
+			strings.HasPrefix(lower, "--format=") || lower == "--merged" || lower == "--no-merged" ||
+			strings.HasPrefix(lower, "--merged=") || strings.HasPrefix(lower, "--no-merged=") || lower == "--ignore-case":
+			listing = true
+		case strings.HasPrefix(arg, "-"):
+			return false
+		default:
+			// Positional patterns are safe only after an explicit listing option;
+			// otherwise `git tag NAME` creates a tag.
+			if !listing {
+				return false
+			}
+		}
+	}
+	return listing
+}
+
+func gitRemoteArgsReadOnly(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	if len(args) == 1 && (args[0] == "-v" || args[0] == "--verbose") {
+		return true
+	}
+	if strings.EqualFold(args[0], "get-url") {
+		// get-url accepts --all/--push and a remote name; none mutate config.
+		for _, arg := range args[1:] {
+			if strings.EqualFold(arg, "add") || strings.EqualFold(arg, "set-url") || strings.EqualFold(arg, "remove") || strings.EqualFold(arg, "rename") {
+				return false
+			}
+		}
+		return len(args) >= 2
+	}
+	return false
 }
 
 func previewGit(args []string) string { return "$ git " + strings.Join(args, " ") }
@@ -86,9 +201,9 @@ func validateGitArgs(args []string) error {
 		}
 	}
 	destructive := strings.ToLower(strings.Join(args, " "))
-	for _, forbidden := range []string{"clean -fdx", "reset --hard", "push --force", "push -f", "rebase --onto"} {
+	for _, forbidden := range []string{"clean -fdx", "reset --hard", "push --force", "push -f", "rebase --onto", "diff --no-index"} {
 		if strings.Contains(destructive, forbidden) {
-			return fmt.Errorf("destructive git operation requires manual terminal execution: %s", forbidden)
+			return fmt.Errorf("destructive or sandbox-bypassing git operation requires manual terminal execution: %s", forbidden)
 		}
 	}
 	return nil
@@ -210,14 +325,18 @@ func deriveCommitMessage(task string) string {
 	case strings.Contains(lower, "refactor") || strings.Contains(lower, "umstruktur"):
 		prefix = "refactor"
 	}
-	if len(message) > 72 {
-		message = strings.TrimSpace(message[:72])
+	runes := []rune(message)
+	if len(runes) > 72 {
+		runes = runes[:72]
+		message = strings.TrimSpace(string(runes))
 	}
 	message = strings.TrimRight(message, ".;:, ")
 	if message == "" {
 		message = "update project files"
 	}
-	return prefix + ": " + strings.ToLower(message[:1]) + message[1:]
+	runes = []rune(message)
+	runes[0] = unicode.ToLower(runes[0])
+	return prefix + ": " + string(runes)
 }
 
 func commitMessageFromProject(project, fallback string) (message string, useFile bool) {
@@ -251,14 +370,15 @@ func commitGitChanges(ctx context.Context, project string, cfg Config, requested
 		_ = rmErr // --ignore-unmatch is best effort; the real verification is below.
 	}
 
-	if !stageAll {
-		stageAll = true
-	}
-	stageArgs := []string{"add", "-A", "--", ".", ":(exclude).vs/**"}
-	stageOut, stageErr := runGit(ctx, project, stageArgs, cfg)
-	report.WriteString("STAGE:\n" + stageOut + "\n\n")
-	if stageErr != nil {
-		return report.String(), fmt.Errorf("git add failed: %w", stageErr)
+	if stageAll {
+		stageArgs := []string{"add", "-A", "--", ".", ":(exclude).vs/**"}
+		stageOut, stageErr := runGit(ctx, project, stageArgs, cfg)
+		report.WriteString("STAGE:\n" + stageOut + "\n\n")
+		if stageErr != nil {
+			return report.String(), fmt.Errorf("git add failed: %w", stageErr)
+		}
+	} else {
+		report.WriteString("STAGE:\nstage_all=false; existing index preserved.\n\n")
 	}
 
 	check := runDirectTool(ctx, project, discoverTool(project, "git", cfg, false).Path, []string{"diff", "--cached", "--quiet"}, cfg)
@@ -304,3 +424,6 @@ func commitGitChanges(ctx context.Context, project string, cfg Config, requested
 	}
 	return report.String(), nil
 }
+
+// keep sort imported in older Go toolchains that may build only selected files
+var _ = sort.Strings
