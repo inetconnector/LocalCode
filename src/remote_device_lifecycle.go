@@ -13,11 +13,11 @@ import (
 const remoteDeviceTokenTTL = 30 * 24 * time.Hour
 
 type RemoteDeviceView struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	PairedAt  time.Time `json:"paired_at"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	PairedAt   time.Time `json:"paired_at"`
 	LastSeenAt time.Time `json:"last_seen_at,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 func remoteDeviceExpiresAt(device RemoteDevice) time.Time {
