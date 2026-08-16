@@ -25,17 +25,22 @@ jobs:
       - name: Generate coverage profile
         shell: pwsh
         run: |
-          go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out -timeout=20m
+          $profile = Join-Path $env:RUNNER_TEMP 'localcode-coverage.out'
+          Remove-Item -LiteralPath $profile -Force -ErrorAction SilentlyContinue
+          go test ./... -count=1 -covermode=atomic "-coverprofile=$profile" -timeout=20m
           $testExit = $LASTEXITCODE
-          if (-not (Test-Path -LiteralPath coverage.out -PathType Leaf)) {
-            throw "coverage.out missing after go test exit $testExit"
+          if (-not (Test-Path -LiteralPath $profile -PathType Leaf)) {
+            throw "coverage profile missing after go test exit $testExit at $profile"
           }
-          Write-Host "go test exit code: $testExit (profile will still be analyzed)"
+          Write-Host "go test exit code: $testExit (profile: $profile)"
+          "LOCALCODE_COVERAGE_PROFILE=$profile" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           exit 0
       - name: Show coverage gaps
         shell: pwsh
         run: |
-          $lines = & go tool cover '-func=coverage.out'
+          $profile = $env:LOCALCODE_COVERAGE_PROFILE
+          if (-not (Test-Path -LiteralPath $profile -PathType Leaf)) { throw "coverage profile missing: $profile" }
+          $lines = & go tool cover ("-func=" + $profile)
           if ($LASTEXITCODE -ne 0) { throw 'go tool cover failed' }
           $lines | Write-Host
           $items = @()
@@ -56,4 +61,5 @@ jobs:
           Write-Host "`n=== LOW COVERAGE BY FILE ==="
           $items | Where-Object Coverage -lt 50 | Group-Object File | Sort-Object Count -Descending | Select-Object -First 40 Name,Count | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           $total = $lines | Where-Object { $_ -match '^total:' } | Select-Object -Last 1
+          if (-not $total) { throw 'coverage total missing' }
           Write-Host "`n$total"
