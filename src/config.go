@@ -9,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const productDirName = "LocalCode"
 const legacyProductDirName = "Local" + "Codex"
+
+var configFileMu sync.Mutex
 
 func userProfileDir() string {
 	if override := strings.TrimSpace(os.Getenv("LOCALCODE_USER_HOME")); override != "" {
@@ -70,7 +73,7 @@ func defaultMCPServers() []MCPServerConfig {
 		},
 		{
 			Name: "fetch", DisplayName: "Fetch", Description: "Offizieller MCP-Referenzserver zum Abrufen und Umwandeln von Webseiten.",
-			Enabled: true, Transport: "stdio", Preset: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"},
+			Enabled: false, Transport: "stdio", Preset: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch==2026.7.10"},
 			Env: map[string]string{"PYTHONIOENCODING": "utf-8"}, AutoInstall: true, TimeoutSec: 120,
 		},
 		{
@@ -80,7 +83,7 @@ func defaultMCPServers() []MCPServerConfig {
 		},
 		{
 			Name: "playwright", DisplayName: "Playwright Browser", Description: "Offizieller Microsoft Playwright MCP Server für Browserautomation; ersetzt den archivierten Puppeteer-Server.",
-			Enabled: true, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@latest", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
+			Enabled: false, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@0.0.78", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
 			AutoInstall: true, ProjectScoped: true, TimeoutSec: 180,
 		},
 	}
@@ -112,13 +115,13 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: true, RemoteBindHost: "0.0.0.0", RemotePort: 32146, ProjectAliases: map[string]string{},
+		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: false, RemoteBindHost: "127.0.0.1", RemotePort: 32146, ProjectAliases: map[string]string{},
 		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
 		ClaudeCodeEnabled: true, ClaudeCodeAutoInstall: true, ClaudeCodeChannel: "stable", ClaudeCodeModel: "sonnet", ClaudeCodePermissionMode: "acceptEdits", ClaudeCodeMaxTurns: 24,
-		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "latest", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
+		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "1.18.16", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
@@ -797,6 +800,9 @@ func configsEqual(a, b Config) bool {
 }
 
 func saveConfig(cfg Config) error {
+	configFileMu.Lock()
+	defer configFileMu.Unlock()
+
 	cfg = normalizeConfig(cfg)
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
