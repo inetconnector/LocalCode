@@ -1,0 +1,85 @@
+name: One-time restore tool installer
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-tool-install-restore.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-tool-installer-restore
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: src/go.mod
+      - name: Restore last good installer and apply minimal User-Agent fix
+        shell: pwsh
+        run: |
+          $baseline = '9006004c6d5747cf0b005ac4b17825ef332bf92c'
+          $lines = & git show ($baseline + ':src/tool_install.go')
+          if ($LASTEXITCODE -ne 0 -or -not $lines) { throw 'Could not read baseline tool_install.go' }
+          $content = ($lines -join "`n") + "`n"
+          $needle = '"LocalCode/6.4.3 tool-installer"'
+          $replacement = 'localCodeUserAgent()+" tool-installer"'
+          $count = ([regex]::Matches($content, [regex]::Escape($needle))).Count
+          if ($count -lt 1) { throw 'Expected stale tool installer User-Agent was not found in baseline' }
+          $content = $content.Replace($needle, $replacement)
+          if ($content.Contains('LocalCode/6.4.3 tool-installer')) { throw 'Stale installer User-Agent remains' }
+          [IO.File]::WriteAllText((Join-Path $PWD 'src/tool_install.go'), $content, [Text.UTF8Encoding]::new($false))
+          Push-Location src
+          gofmt -w tool_install.go coverage_behavior_wave2_test.go coverage_behavior_windows_test.go
+          Pop-Location
+      - name: Verify only intended installer delta from baseline
+        shell: pwsh
+        run: |
+          $baseline = '9006004c6d5747cf0b005ac4b17825ef332bf92c'
+          $old = (& git show ($baseline + ':src/tool_install.go')) -join "`n"
+          $new = Get-Content -LiteralPath 'src/tool_install.go' -Raw
+          $normalized = $new.Replace('localCodeUserAgent()+" tool-installer"', '"LocalCode/6.4.3 tool-installer"')
+          $normalize = { param($s) (($s -replace "`r`n", "`n").TrimEnd()) }
+          if ((& $normalize $old) -ne (& $normalize $normalized)) {
+            throw 'tool_install.go contains changes beyond User-Agent replacement/gofmt'
+          }
+      - name: Vet
+        working-directory: src
+        run: go vet ./...
+      - name: Targeted behavior tests
+        shell: pwsh
+        working-directory: src
+        run: |
+          go test ./... -run '^(TestMCPHTTPInitializationSummaryHeadersAndReset|TestAttachmentExtractionDispatchCoversStructuredFormats|TestPreviewActionBehaviorAcrossMutatingAndToolCapabilities|TestCommitMessageFallbackAndConfigMutationUnwrap|TestWindowsPlatformDiscoveryAndSafeFailureBranches|TestBuildProjectUsesControlledToolOverrides|TestDeployAndroidControlledDeviceBranches|TestManagedPortableToolInstallersUseVerifiedLocalFixtures|TestManagedToolInstallerFailureAndDownloadBranches)$' -count=1 -timeout=12m
+      - name: Commit repair and remove temporary workflows
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-tool-install-restore.yml'
+          Remove-Item -LiteralPath '.github/workflows/one-time-gofmt-wave2.yml' -ErrorAction SilentlyContinue
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: preserve installer behavior while centralizing version'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push installer repair.'
