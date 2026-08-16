@@ -1,0 +1,209 @@
+name: One-time remote device lifecycle completion
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-remote-lifecycle.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-remote-device-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+
+      - name: Register remote device desktop routes
+        shell: pwsh
+        run: |
+          $path = 'src/server.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $needle = "`ts.mux.HandleFunc(`"/api/remote/pairing`", s.handleRemotePairing)"
+          if (-not $content.Contains($needle)) { throw 'remote pairing route not found' }
+          $replacement = @'
+          	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+          	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
+          	s.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)
+          '@
+          $content = $content.Replace($needle, $replacement.TrimEnd())
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Make pairing and token lifecycle transactional
+        shell: pwsh
+        run: |
+          $path = 'src/remote_server.go'
+          $content = Get-Content -LiteralPath $path -Raw
+
+          $pairPattern = '(?ms)^func \(s \*AppState\) PairRemoteDevice\(code, deviceName string\) \(string, RemoteDevice, error\) \{.*?^func \(s \*AppState\) RemoteTokenValid'
+          $pairReplacement = @'
+          func (s *AppState) PairRemoteDevice(code, deviceName string) (string, RemoteDevice, error) {
+          	codeHash := remotePairingHash(strings.TrimSpace(code))
+          	now := time.Now()
+
+          	// Validate and consume the pairing window before minting a long-lived token.
+          	// A small failed-attempt budget prevents online brute force on the LAN.
+          	s.mu.Lock()
+          	pairing := s.RemotePairing
+          	if pairing == nil || now.After(pairing.ExpiresAt) {
+          		s.RemotePairing = nil
+          		s.mu.Unlock()
+          		return "", RemoteDevice{}, fmt.Errorf("invalid or expired pairing code")
+          	}
+          	if !secureCompareHex(pairing.CodeHash, codeHash) {
+          		pairing.FailedAttempts++
+          		if pairing.FailedAttempts >= remotePairingMaxAttempts {
+          			s.RemotePairing = nil
+          		}
+          		s.mu.Unlock()
+          		return "", RemoteDevice{}, fmt.Errorf("invalid or expired pairing code")
+          	}
+          	s.RemotePairing = nil
+          	s.mu.Unlock()
+
+          	token, err := randomRemoteToken()
+          	if err != nil {
+          		return "", RemoteDevice{}, err
+          	}
+          	device := RemoteDevice{ID: newID(), Name: remoteDeviceName(deviceName), TokenHash: remoteTokenHash(token), PairedAt: now, LastSeenAt: now}
+          	if _, err := s.mutateConfig(func(cfg *Config) error {
+          		cfg.RemoteDevices = append(cfg.RemoteDevices, device)
+          		return nil
+          	}); err != nil {
+          		return "", RemoteDevice{}, err
+          	}
+          	return token, device, nil
+          }
+
+          func (s *AppState) RemoteTokenValid
+          '@
+          $pairRegex = [regex]::new($pairPattern)
+          $updated = $pairRegex.Replace($content, $pairReplacement, 1)
+          if ($updated -eq $content) { throw 'PairRemoteDevice boundary not found' }
+          $content = $updated
+
+          $tokenPattern = '(?ms)^func \(s \*AppState\) RemoteTokenValid\(token string\) bool \{.*?^func \(s \*Server\) handleRemotePairing'
+          $tokenReplacement = @'
+          func (s *AppState) RemoteTokenValid(token string) bool {
+          	token = strings.TrimSpace(token)
+          	if token == "" {
+          		return false
+          	}
+          	hash := remoteTokenHash(token)
+          	now := time.Now()
+
+          	s.mu.RLock()
+          	var matched RemoteDevice
+          	found := false
+          	for _, device := range s.Config.RemoteDevices {
+          		if secureCompareHex(device.TokenHash, hash) {
+          			matched = device
+          			found = true
+          			break
+          		}
+          	}
+          	s.mu.RUnlock()
+          	if !found {
+          		return false
+          	}
+          	if remoteDeviceExpired(matched, now) {
+          		// Expired credentials are invalid immediately. Best-effort pruning
+          		// keeps config state bounded without making authentication depend on
+          		// a successful cleanup write.
+          		if _, err := s.mutateConfig(func(cfg *Config) error {
+          			out := cfg.RemoteDevices[:0]
+          			for _, device := range cfg.RemoteDevices {
+          				if strings.EqualFold(device.ID, matched.ID) && secureCompareHex(device.TokenHash, hash) && remoteDeviceExpired(device, now) {
+          					continue
+          				}
+          				out = append(out, device)
+          			}
+          			cfg.RemoteDevices = out
+          			return nil
+          		}); err != nil {
+          			log.Printf("pruning expired remote device failed: %v", err)
+          		}
+          		return false
+          	}
+
+          	if matched.LastSeenAt.IsZero() || now.Sub(matched.LastSeenAt) > time.Minute {
+          		if _, err := s.mutateConfig(func(cfg *Config) error {
+          			for i := range cfg.RemoteDevices {
+          				device := &cfg.RemoteDevices[i]
+          				if !strings.EqualFold(device.ID, matched.ID) || !secureCompareHex(device.TokenHash, hash) {
+          					continue
+          				}
+          				if remoteDeviceExpired(*device, now) {
+          					return fmt.Errorf("remote device expired")
+          				}
+          				device.LastSeenAt = now
+          				return nil
+          			}
+          			return fmt.Errorf("remote device not found")
+          		}); err != nil {
+          			return false
+          		}
+          	}
+          	return true
+          }
+
+          func (s *Server) handleRemotePairing
+          '@
+          $tokenRegex = [regex]::new($tokenPattern)
+          $updated = $tokenRegex.Replace($content, $tokenReplacement, 1)
+          if ($updated -eq $content) { throw 'RemoteTokenValid boundary not found' }
+          [IO.File]::WriteAllText((Resolve-Path $path), $updated, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Fix lifecycle test imports
+        shell: pwsh
+        run: |
+          $path = 'src/remote_device_lifecycle_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          if ($content -notmatch '"net/http/httptest"') {
+            $content = $content.Replace("`t`"net/http`"`r`n", "`t`"net/http`"`r`n`t`"net/http/httptest`"`r`n")
+            $content = $content.Replace("`t`"net/http`"`n", "`t`"net/http`"`n`t`"net/http/httptest`"`n")
+          }
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Verify remote lifecycle tests
+        shell: pwsh
+        working-directory: src
+        run: |
+          go test ./... -run 'TestRemote(Device|Token)|TestRemotePairing' -count=1 -timeout=10m
+          go test ./... -run '^$' -count=1
+
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-remote-lifecycle.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: enforce remote token expiry and revocation'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push remote lifecycle completion.'
