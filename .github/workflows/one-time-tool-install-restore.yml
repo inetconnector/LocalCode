@@ -25,7 +25,7 @@ jobs:
         with:
           go-version: '1.25.13'
           cache-dependency-path: src/go.mod
-      - name: Restore last good installer and apply minimal User-Agent fix
+      - name: Restore baseline installer and centralize User-Agent only
         shell: pwsh
         run: |
           $baseline = '9006004c6d5747cf0b005ac4b17825ef332bf92c'
@@ -35,36 +35,23 @@ jobs:
           $needle = '"LocalCode/6.4.3 tool-installer"'
           $replacement = 'localCodeUserAgent()+" tool-installer"'
           $count = ([regex]::Matches($content, [regex]::Escape($needle))).Count
-          if ($count -lt 1) { throw 'Expected stale tool installer User-Agent was not found in baseline' }
+          if ($count -lt 1) { throw 'Expected stale installer User-Agent was not found' }
           $content = $content.Replace($needle, $replacement)
-          if ($content.Contains('LocalCode/6.4.3 tool-installer')) { throw 'Stale installer User-Agent remains' }
           [IO.File]::WriteAllText((Join-Path $PWD 'src/tool_install.go'), $content, [Text.UTF8Encoding]::new($false))
-
-          $testPath = Join-Path $PWD 'src/coverage_behavior_windows_test.go'
-          $test = Get-Content -LiteralPath $testPath -Raw
-          $oldLine = "`t_ = gradle"
-          $newBlock = @'
-	if err := os.Rename(gradle, filepath.Join(project, "gradlew.bat")); err != nil {
-		t.Fatal(err)
-	}
-'@
-          if (-not $test.Contains($oldLine)) { throw 'Android gradle fixture marker was not found' }
-          $test = $test.Replace($oldLine, $newBlock.TrimEnd("`r", "`n"))
-          [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
-
           Push-Location src
           gofmt -w tool_install.go coverage_behavior_wave2_test.go coverage_behavior_windows_test.go
           Pop-Location
-      - name: Verify only intended installer delta from baseline
+      - name: Verify installer delta
         shell: pwsh
         run: |
           $baseline = '9006004c6d5747cf0b005ac4b17825ef332bf92c'
           $old = (& git show ($baseline + ':src/tool_install.go')) -join "`n"
           $new = Get-Content -LiteralPath 'src/tool_install.go' -Raw
+          if ($new.Contains('LocalCode/6.4.3 tool-installer')) { throw 'Stale installer User-Agent remains' }
           $normalized = $new.Replace('localCodeUserAgent()+" tool-installer"', '"LocalCode/6.4.3 tool-installer"')
           $normalize = { param($s) (($s -replace "`r`n", "`n").TrimEnd()) }
           if ((& $normalize $old) -ne (& $normalize $normalized)) {
-            throw 'tool_install.go contains changes beyond User-Agent replacement/gofmt'
+            throw 'tool_install.go contains changes beyond the intended User-Agent replacement'
           }
       - name: Vet
         working-directory: src
