@@ -55,7 +55,7 @@ jobs:
           }
           [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
 
-      - name: Isolate endpoint-matrix test from downloads and unclosable server
+      - name: Isolate endpoint-matrix test from downloads, daemons and unclosable server
         shell: pwsh
         run: |
           $path = 'src/coverage_expansion_test.go'
@@ -76,6 +76,10 @@ jobs:
             "`tcfg.ClaudeCodeAutoInstall = false`n" +
             "`tcfg.OpenCodeAutoInstall = false`n"
           $block = $block.Replace($needle, $insert)
+
+          $versionedTools = '"/api/tools?versions=1"'
+          if (-not $block.Contains($versionedTools)) { throw 'versioned tool inventory request not found' }
+          $block = $block.Replace($versionedTools, '"/api/tools"')
 
           $serverPattern = '(?ms)\n\turl, err := startHTTPServer\(state, 0\)\s*\n\tif err != nil \|\| !strings\.HasPrefix\(url, "http://127\.0\.0\.1:"\) \{\s*\n\t\tt\.Fatal\(url, err\)\s*\n\t\}'
           $serverReplacement = "`n`t// Real loopback startup is covered by TestFullStackLoopbackDesktopAndRemoteHTTP.`n" +
