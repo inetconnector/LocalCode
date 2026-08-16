@@ -53,6 +53,12 @@ jobs:
             if ($updated -eq $content) { throw "approval mode assignment not found in $name" }
             $content = $updated
           }
+
+          $testPattern = '(?ms)(^func TestAgentContinuesAfterUnrepairableInvalidAction\(t \*testing\.T\) \{.*?)(\t\t\tcase 5:\s*\n\t\t\t\tcontent = `\{\"action\":\"run_command\",\"message\":\"check\",\"command\":\"echo test passed\"\}`\s*\n\t\t\tcase 6:\s*\n\t\t\t\tcontent = `\{\"action\":\"finish\",\"message\":\"Fertig\.\"\}`)(.*?^\})'
+          $testReplacement = '$1' + "`t`t`tcase 5:`n`t`t`t`tcontent = ``{`"action`":`"finish`",`"message`":`"Fertig.`"}```n" + '$3'
+          $updated = [regex]::Replace($content, $testPattern, $testReplacement, 1)
+          if ($updated -eq $content) { throw 'invalid-action recovery fixture sequence not found' }
+          $content = $updated
           [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
 
       - name: Isolate endpoint-matrix test from downloads, daemons and unclosable server
