@@ -65,6 +65,9 @@ jobs:
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
+      - name: Full-stack loopback HTTP integration
+        run: go test ./... -run '^TestFullStackLoopbackDesktopAndRemoteHTTP$' -count=1 -timeout=5m
+
       - name: Tests
         run: go test ./... -count=1 -timeout=20m
 
