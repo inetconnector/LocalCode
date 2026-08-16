@@ -2217,18 +2217,46 @@ func commandLooksReadOnly(command string) bool {
 
 func toolActionLooksReadOnly(tool string, args []string) bool {
 	t := canonicalToolName(tool)
-	joined := strings.ToLower(strings.Join(args, " "))
-	switch t {
-	case "adb":
-		return strings.HasPrefix(joined, "devices") || strings.HasPrefix(joined, "version") || strings.HasPrefix(joined, "get-state")
-	case "git":
-		return strings.HasPrefix(joined, "status") || strings.HasPrefix(joined, "diff") || strings.HasPrefix(joined, "log") || strings.HasPrefix(joined, "show")
-	case "go":
-		return strings.HasPrefix(joined, "test") || strings.HasPrefix(joined, "vet") || strings.HasPrefix(joined, "list") || strings.HasPrefix(joined, "version")
-	case "java", "node", "npm", "npx", "python", "dotnet", "cargo", "cmake", "ninja", "gradle":
-		return strings.Contains(joined, "version") || strings.HasPrefix(joined, "--version") || strings.HasPrefix(joined, "-version")
+	clean := make([]string, len(args))
+	for i, arg := range args {
+		clean[i] = strings.ToLower(strings.TrimSpace(arg))
 	}
-	return false
+	switch t {
+	case "git":
+		return gitActionIsReadOnly(args)
+	case "adb":
+		return exactArgs(clean, "version") || exactArgs(clean, "get-state") ||
+			exactArgs(clean, "devices") || exactArgs(clean, "devices", "-l")
+	case "go":
+		// go test/vet/list can execute project code, analyzers, generators or
+		// configured helpers. Only the executable's own version query is
+		// automatically read-only.
+		return exactArgs(clean, "version")
+	case "java":
+		return exactArgs(clean, "-version") || exactArgs(clean, "--version")
+	case "node", "npm", "npx", "cargo", "cmake", "ninja":
+		return exactArgs(clean, "--version") || exactArgs(clean, "-v")
+	case "python":
+		return exactArgs(clean, "--version") || exactArgs(clean, "-v") || exactArgs(clean, "-V")
+	case "dotnet":
+		return exactArgs(clean, "--version") || exactArgs(clean, "--info")
+	case "gradle":
+		return exactArgs(clean, "--version") || exactArgs(clean, "-v")
+	default:
+		return false
+	}
+}
+
+func exactArgs(args []string, expected ...string) bool {
+	if len(args) != len(expected) {
+		return false
+	}
+	for i := range expected {
+		if !strings.EqualFold(strings.TrimSpace(args[i]), strings.TrimSpace(expected[i])) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *AppState) requestApprovalWithPreview(ctx context.Context, project string, a AgentAction, preview string) (bool, error) {
