@@ -1,0 +1,62 @@
+name: One-time shell policy migration
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-shell-policy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Replace unsafe free-form shell classifier
+        shell: pwsh
+        run: |
+          $path = 'src/agent.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $old = @'
+          func commandLooksReadOnly(command string) bool {
+          	c := strings.ToLower(strings.TrimSpace(command))
+          	for _, p := range []string{"git status", "git diff", "git log", "go test", "go vet", "go list", "npm test", "npm run lint", "pytest", "cargo test", "dotnet test", "dir", "type ", "findstr ", "where ", "echo "} {
+          		if strings.HasPrefix(c, p) {
+          			return true
+          		}
+          	}
+          	return false
+          }
+          '@
+          $new = @'
+          func commandLooksReadOnly(command string) bool {
+          	// Free-form shell strings are not a safe read-only capability boundary.
+          	// Redirection, chaining, shell expansion, project test hooks and tool
+          	// configuration can turn apparently harmless prefixes into mutations.
+          	// Use structured run_tool/git actions for auto-approved read-only work.
+          	return false
+          }
+          '@
+          if (-not $content.Contains($old)) {
+            throw 'Expected commandLooksReadOnly implementation not found; refusing non-deterministic patch.'
+          }
+          $content = $content.Replace($old, $new)
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $content, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+          if (Select-String -Path $path -Pattern 'git status.*go test.*npm test' -Quiet) {
+            throw 'Legacy shell prefix allowlist is still present.'
+          }
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-shell-policy.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: require approval for free-form shell commands'
+          git push origin HEAD:agent/security-quality-hardening
