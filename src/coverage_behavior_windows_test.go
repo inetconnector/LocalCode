@@ -143,7 +143,9 @@ func androidProjectFixture(t *testing.T, tools, adbBody string) (string, Config)
 if "%1"=="--version" (echo Gradle 9.0& exit /b 0)
 echo fixture-gradle %*
 exit /b 0`)
-	_ = gradle
+	if err := os.Rename(gradle, filepath.Join(project, "gradlew.bat")); err != nil {
+		t.Fatal(err)
+	}
 	manifest := filepath.Join(project, "app", "src", "main", "AndroidManifest.xml")
 	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
 		t.Fatal(err)
