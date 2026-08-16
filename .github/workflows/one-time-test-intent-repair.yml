@@ -60,31 +60,32 @@ jobs:
         run: |
           $path = 'src/coverage_expansion_test.go'
           $content = Get-Content -LiteralPath $path -Raw
-          $functionPattern = '(?ms)(^func TestCoverageServerEndpointMatrix\(t \*testing\.T\) \{.*?cfg := defaultConfig\(\)\s*\n)'
-          $inject = @'
-          ${1}	cfg.SetupDownloadsEnabled = false
-          	cfg.OllamaAutoInstall = false
-          	cfg.OllamaAutoPull = false
-          	cfg.OllamaDefaultModel = "test-model"
-          	cfg.AiderAutoInstall = false
-          	cfg.ClaudeCodeAutoInstall = false
-          	cfg.OpenCodeAutoInstall = false
-          '@
-          $updated = [regex]::Replace($content, $functionPattern, $inject, 1)
-          if ($updated -eq $content) { throw 'coverage endpoint matrix config boundary not found' }
-          $content = $updated
+          $functionPattern = '(?ms)^func TestCoverageServerEndpointMatrix\(t \*testing\.T\) \{.*?^\}'
+          $match = [regex]::Match($content, $functionPattern)
+          if (-not $match.Success) { throw 'coverage endpoint matrix function not found' }
+          $block = $match.Value.Replace("`r`n", "`n")
+
+          $needle = "`tcfg := defaultConfig()`n"
+          if (-not $block.Contains($needle)) { throw 'defaultConfig assignment not found in endpoint matrix' }
+          $insert = $needle +
+            "`tcfg.SetupDownloadsEnabled = false`n" +
+            "`tcfg.OllamaAutoInstall = false`n" +
+            "`tcfg.OllamaAutoPull = false`n" +
+            "`tcfg.OllamaDefaultModel = `"test-model`"`n" +
+            "`tcfg.AiderAutoInstall = false`n" +
+            "`tcfg.ClaudeCodeAutoInstall = false`n" +
+            "`tcfg.OpenCodeAutoInstall = false`n"
+          $block = $block.Replace($needle, $insert)
 
           $serverPattern = '(?ms)\n\turl, err := startHTTPServer\(state, 0\)\s*\n\tif err != nil \|\| !strings\.HasPrefix\(url, "http://127\.0\.0\.1:"\) \{\s*\n\t\tt\.Fatal\(url, err\)\s*\n\t\}'
-          $replacement = @'
+          $serverReplacement = "`n`t// Real loopback startup is covered by TestFullStackLoopbackDesktopAndRemoteHTTP.`n" +
+            "`t// This matrix intentionally stays handler-local so it cannot leave a listener`n" +
+            "`t// or subprocess holding the temporary project directory on Windows."
+          $newBlock = [regex]::Replace($block, $serverPattern, $serverReplacement, 1)
+          if ($newBlock -eq $block) { throw 'unclosable startHTTPServer coverage call not found' }
 
-          	// Real loopback startup is covered by TestFullStackLoopbackDesktopAndRemoteHTTP.
-          	// This matrix intentionally stays handler-local so it cannot leave a listener
-          	// or subprocess holding the temporary project directory on Windows.
-          '@
-          $updated = [regex]::Replace($content, $serverPattern, $replacement, 1)
-          if ($updated -eq $content) { throw 'unclosable startHTTPServer coverage call not found' }
-          [IO.File]::WriteAllText((Resolve-Path $path), $updated, [Text.UTF8Encoding]::new($false))
-
+          $content = $content.Substring(0, $match.Index) + $newBlock + $content.Substring($match.Index + $match.Length)
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
           gofmt -w src/aider_engine_test.go src/core_test.go src/coverage_expansion_test.go
 
       - name: Focused regressions
