@@ -1,0 +1,77 @@
+name: One-time MCP lazy initialization
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-mcp-lazy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-mcp-lazy-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Make external MCP summary lazy
+        shell: pwsh
+        run: |
+          $path = 'src/mcp.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $pattern = '(?ms)^func mcpServerInstructionsForSummary\(ctx context\.Context, cfg Config, project string, server MCPServerConfig\) string \{.*?^func expandMCPValue'
+          $replacement = @'
+          func mcpServerInstructionsForSummary(ctx context.Context, cfg Config, project string, server MCPServerConfig) string {
+          	// Building agent context must never start an external process or open a
+          	// network connection. External MCP servers initialize lazily only when a
+          	// tool call actually targets them. Builtins are static and side-effect free.
+          	if strings.EqualFold(strings.TrimSpace(server.Transport), "builtin") {
+          		return strings.TrimSpace(builtinMCPInstructions(server.Preset, cfg))
+          	}
+          	return ""
+          }
+
+          func expandMCPValue
+          '@
+          $regex = [regex]::new($pattern)
+          $updated = $regex.Replace($content, $replacement, 1)
+          if ($updated -eq $content) {
+            throw 'mcpServerInstructionsForSummary boundary not found; refusing non-deterministic patch.'
+          }
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+      - name: Verify MCP unit suite
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'MCP|Mcp' -count=1 -timeout=10m
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-mcp-lazy.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: initialize external MCP servers lazily'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push MCP lazy migration after three attempts.'
