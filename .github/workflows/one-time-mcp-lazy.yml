@@ -50,6 +50,57 @@ jobs:
           }
           [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
           gofmt -w $path
+      - name: Replace eager-summary regression with side-effect-free invariant
+        shell: pwsh
+        run: |
+          $path = 'src/mcp_suite_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $pattern = '(?ms)^func TestMCPServerInstructionsReachAgentSummary\(t \*testing\.T\) \{.*?^func TestMCPStdioSessionPersistsAcrossCalls'
+          $replacement = @'
+          func TestMCPServerSummaryDoesNotInitializeExternalServers(t *testing.T) {
+          	defaultMCPManager.Close()
+          	project := t.TempDir()
+          	t.Cleanup(defaultMCPManager.Close)
+          	cfg := defaultConfig()
+          	cfg.MCPServers = []MCPServerConfig{
+          		{Name: "filesystem", DisplayName: "Filesystem", Enabled: true, Transport: "builtin", Preset: "filesystem", ProjectScoped: true},
+          		{
+          			Name: "persistent", DisplayName: "Persistent", Enabled: true, Transport: "stdio", Command: os.Args[0],
+          			Args: []string{"-test.run=TestMCPPersistentHelperProcess"},
+          			Env: map[string]string{"GO_WANT_MCP_PERSISTENT_HELPER": "1"},
+          			TimeoutSec: 10, ProjectScoped: true,
+          		},
+          	}
+          	summary := mcpServersSummaryForAgent(context.Background(), project, cfg)
+          	for _, want := range []string{"Filesystem", "Persistent"} {
+          		if !strings.Contains(summary, want) {
+          			t.Fatalf("MCP summary missing %q in:\n%s", want, summary)
+          		}
+          	}
+          	if !strings.Contains(strings.ToLower(summary), "postconditions") {
+          		t.Fatalf("builtin instructions missing from summary:\n%s", summary)
+          	}
+          	if strings.Contains(summary, "Always call persistent_echo") {
+          		t.Fatalf("external MCP instructions must not be fetched while building agent context:\n%s", summary)
+          	}
+          	defaultMCPManager.mu.Lock()
+          	stdioSessions := len(defaultMCPManager.stdio)
+          	httpSessions := len(defaultMCPManager.http)
+          	defaultMCPManager.mu.Unlock()
+          	if stdioSessions != 0 || httpSessions != 0 {
+          		t.Fatalf("agent summary initialized external MCP sessions: stdio=%d http=%d", stdioSessions, httpSessions)
+          	}
+          }
+
+          func TestMCPStdioSessionPersistsAcrossCalls
+          '@
+          $regex = [regex]::new($pattern)
+          $updated = $regex.Replace($content, $replacement, 1)
+          if ($updated -eq $content) {
+            throw 'eager MCP summary regression test boundary not found'
+          }
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path
       - name: Verify MCP unit suite
         shell: pwsh
         working-directory: src
