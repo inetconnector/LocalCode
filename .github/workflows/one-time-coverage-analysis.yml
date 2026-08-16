@@ -24,7 +24,14 @@ jobs:
           cache-dependency-path: src/go.mod
       - name: Generate coverage profile
         shell: pwsh
-        run: go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out -timeout=20m
+        run: |
+          go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out -timeout=20m
+          $testExit = $LASTEXITCODE
+          if (-not (Test-Path -LiteralPath coverage.out -PathType Leaf)) {
+            throw "coverage.out missing after go test exit $testExit"
+          }
+          Write-Host "go test exit code: $testExit (profile will still be analyzed)"
+          exit 0
       - name: Show coverage gaps
         shell: pwsh
         run: |
@@ -43,8 +50,10 @@ jobs:
             }
           }
           Write-Host "`n=== LOWEST COVERAGE FUNCTIONS ==="
-          $items | Sort-Object Coverage, File, Line | Select-Object -First 120 | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
+          $items | Sort-Object Coverage, File, Line | Select-Object -First 160 | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           Write-Host "`n=== ZERO COVERAGE FUNCTIONS ==="
-          $items | Where-Object Coverage -eq 0 | Sort-Object File, Line | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
+          $items | Where-Object Coverage -eq 0 | Sort-Object File, Line | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
+          Write-Host "`n=== LOW COVERAGE BY FILE ==="
+          $items | Where-Object Coverage -lt 50 | Group-Object File | Sort-Object Count -Descending | Select-Object -First 40 Name,Count | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           $total = $lines | Where-Object { $_ -match '^total:' } | Select-Object -Last 1
           Write-Host "`n$total"
