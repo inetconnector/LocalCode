@@ -169,17 +169,13 @@ func mcpServersSummaryWithInstructions(ctx context.Context, project string, cfg 
 }
 
 func mcpServerInstructionsForSummary(ctx context.Context, cfg Config, project string, server MCPServerConfig) string {
-	timeout := time.Duration(server.TimeoutSec) * time.Second
-	if timeout <= 0 || timeout > 5*time.Second {
-		timeout = 5 * time.Second
+	// Building agent context must never start an external process or open a
+	// network connection. External MCP servers initialize lazily only when a
+	// tool call actually targets them. Builtins are static and side-effect free.
+	if strings.EqualFold(strings.TrimSpace(server.Transport), "builtin") {
+		return strings.TrimSpace(builtinMCPInstructions(server.Preset, cfg))
 	}
-	instructionCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	instructions, err := defaultMCPManager.serverInstructions(instructionCtx, cfg, project, server)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(instructions)
+	return ""
 }
 
 func expandMCPValue(value, project string) string {

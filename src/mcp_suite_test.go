@@ -154,7 +154,7 @@ func TestMCPPersistentHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func TestMCPServerInstructionsReachAgentSummary(t *testing.T) {
+func TestMCPServerSummaryDoesNotInitializeExternalServers(t *testing.T) {
 	defaultMCPManager.Close()
 	project := t.TempDir()
 	t.Cleanup(defaultMCPManager.Close)
@@ -169,10 +169,23 @@ func TestMCPServerInstructionsReachAgentSummary(t *testing.T) {
 		},
 	}
 	summary := mcpServersSummaryForAgent(context.Background(), project, cfg)
-	for _, want := range []string{"Filesystem", "Postconditions", "Persistent", "Always call persistent_echo"} {
+	for _, want := range []string{"Filesystem", "Persistent"} {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("MCP summary missing %q in:\n%s", want, summary)
 		}
+	}
+	if !strings.Contains(strings.ToLower(summary), "postconditions") {
+		t.Fatalf("builtin instructions missing from summary:\n%s", summary)
+	}
+	if strings.Contains(summary, "Always call persistent_echo") {
+		t.Fatalf("external MCP instructions must not be fetched while building agent context:\n%s", summary)
+	}
+	defaultMCPManager.mu.Lock()
+	stdioSessions := len(defaultMCPManager.stdio)
+	httpSessions := len(defaultMCPManager.http)
+	defaultMCPManager.mu.Unlock()
+	if stdioSessions != 0 || httpSessions != 0 {
+		t.Fatalf("agent summary initialized external MCP sessions: stdio=%d http=%d", stdioSessions, httpSessions)
 	}
 }
 
