@@ -1,0 +1,82 @@
+name: One-time security documentation sync
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-security-doc-sync.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-security-documentation-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Synchronize Remote security documentation
+        shell: pwsh
+        run: |
+          $path = 'docs/SECURITY.md'
+          $content = Get-Content -LiteralPath $path -Raw
+
+          $deOld = 'Der Desktop-Server bleibt an Loopback gebunden. Die Handy-Fernsteuerung läuft auf einem separaten Remote-Server, der nur die Remote-Web-App und eine kleine Remote-API bereitstellt. Der Pairing-Code kann nur über die loopback-geschützte Desktop-API erzeugt werden, ist sechs Ziffern lang und zehn Minuten gültig. Erst nach erfolgreichem Pairing erhält das Handy ein zufälliges 256-Bit-Token; LocalCode speichert davon ausschließlich einen SHA-256-Hash.'
+          $deNew = 'Der Desktop-Server bleibt an Loopback gebunden. Die Handy-Fernsteuerung läuft auf einem separaten Remote-Server, der nur die Remote-Web-App und eine kleine Remote-API bereitstellt. Remote ist standardmäßig deaktiviert und standardmäßig ebenfalls nur an Loopback gebunden; eine LAN-Bindung muss bewusst aktiviert werden. Der Pairing-Code kann nur über die loopback-geschützte Desktop-API erzeugt werden, besteht aus acht kryptografisch gleichverteilten Dezimalziffern, ist drei Minuten gültig und wird nach fünf Fehlversuchen gesperrt. Erst nach erfolgreichem Pairing erhält das Handy ein zufälliges 256-Bit-Token; LocalCode speichert davon ausschließlich einen SHA-256-Hash. Ein gekoppeltes Gerätetoken läuft nach 30 Tagen ab und kann über die Desktop-API gezielt widerrufen werden.'
+          if (-not $content.Contains($deOld)) { throw 'German Remote pairing paragraph not found' }
+          $content = $content.Replace($deOld, $deNew)
+
+          $deOld2 = 'Remote-Aufrufe für Status, Projekte, Aufgaben, Chat, Stop, Genehmigungen und SSE benötigen dieses Token per `X-LocalCode-Remote-Token`, Bearer-Header oder für EventSource per Query-Parameter. Die Remote-App erweitert keine Genehmigungen, Sandboxgrenzen, Werkzeugrechte oder Projektgrenzen. Sie ruft dieselben Backendfunktionen wie die Desktop-Oberfläche auf; Datei-Anhänge laufen durch dieselbe Größen- und Typvalidierung. Cross-Origin-POSTs werden über Origin- und Fetch-Site-Prüfung abgelehnt. Windows-Firewall- und Netzwerksegment-Regeln bleiben Betriebssystem-/Netzwerkaufgabe.'
+          $deNew2 = 'Remote-Aufrufe für Status, Projekte, Aufgaben, Chat, Stop und Genehmigungen benötigen das Gerätetoken ausschließlich per `X-LocalCode-Remote-Token` oder Bearer-Header. Für EventSource fordert die authentifizierte Remote-App zuerst ein kurzlebiges, einmal verwendbares Stream-Ticket mit 45 Sekunden TTL an; das langlebige Gerätetoken wird nicht in die SSE-URL geschrieben. Die Remote-App erweitert keine Genehmigungen, Sandboxgrenzen, Werkzeugrechte oder Projektgrenzen. Sie ruft dieselben Backendfunktionen wie die Desktop-Oberfläche auf; Datei-Anhänge laufen durch dieselbe Größen- und Typvalidierung. Cross-Origin-POSTs werden über Origin- und Fetch-Site-Prüfung abgelehnt. Bei bewusst aktivierter LAN-Bindung verwendet der Remote-Server derzeit HTTP; bis eine TLS-Transportgrenze vorhanden ist, sollte LAN-Remote deshalb nur in einem vertrauenswürdigen lokalen Netz verwendet werden. Windows-Firewall- und Netzwerksegment-Regeln bleiben zusätzliche Betriebssystem-/Netzwerkaufgaben.'
+          if (-not $content.Contains($deOld2)) { throw 'German Remote auth paragraph not found' }
+          $content = $content.Replace($deOld2, $deNew2)
+
+          $enOld = 'The desktop server remains bound to loopback. Phone remote control runs on a separate Remote server that serves only the Remote web app and a small Remote API. Pairing codes can be created only through the loopback-protected desktop API, are six digits long, and expire after ten minutes. After successful pairing the phone receives a random 256-bit token; LocalCode stores only its SHA-256 hash.'
+          $enNew = 'The desktop server remains bound to loopback. Phone remote control runs on a separate Remote server that serves only the Remote web app and a small Remote API. Remote is disabled by default and also binds to loopback by default; LAN binding must be enabled deliberately. Pairing codes can be created only through the loopback-protected desktop API, contain eight cryptographically uniform decimal digits, expire after three minutes, and lock after five failed attempts. After successful pairing the phone receives a random 256-bit token; LocalCode stores only its SHA-256 hash. A paired-device token expires after 30 days and can be revoked explicitly through the desktop API.'
+          if (-not $content.Contains($enOld)) { throw 'English Remote pairing paragraph not found' }
+          $content = $content.Replace($enOld, $enNew)
+
+          $enOld2 = 'Remote calls for status, projects, tasks, chat, stop, approvals, and SSE require that token through `X-LocalCode-Remote-Token`, a Bearer header, or, for EventSource, a query parameter. The Remote app does not extend approvals, sandbox boundaries, tool rights, or project boundaries. It calls the same backend functions as the desktop UI; file attachments pass through the same size and type validation. Cross-origin POSTs are rejected through Origin and Fetch-Site checks. Windows Firewall and network-segment rules remain operating-system and network responsibilities.'
+          $enNew2 = 'Remote calls for status, projects, tasks, chat, stop, and approvals require the device token only through `X-LocalCode-Remote-Token` or a Bearer header. For EventSource, the authenticated Remote app first requests a short-lived, single-use stream ticket with a 45-second TTL; the long-lived device token is not placed in the SSE URL. The Remote app does not extend approvals, sandbox boundaries, tool rights, or project boundaries. It calls the same backend functions as the desktop UI; file attachments pass through the same size and type validation. Cross-origin POSTs are rejected through Origin and Fetch-Site checks. When LAN binding is deliberately enabled, the Remote server currently uses HTTP; until a TLS transport boundary is available, LAN Remote should therefore be used only on a trusted local network. Windows Firewall and network-segment controls remain additional operating-system and network responsibilities.'
+          if (-not $content.Contains($enOld2)) { throw 'English Remote auth paragraph not found' }
+          $content = $content.Replace($enOld2, $enNew2)
+
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+
+      - name: Verify stale Remote claims are gone
+        shell: pwsh
+        run: |
+          $content = Get-Content -LiteralPath 'docs/SECURITY.md' -Raw
+          foreach ($stale in @('sechs Ziffern lang und zehn Minuten', 'six digits long, and expire after ten minutes', 'EventSource per Query-Parameter', 'for EventSource, a query parameter')) {
+            if ($content.Contains($stale)) { throw "stale security claim remains: $stale" }
+          }
+          foreach ($required in @('acht kryptografisch gleichverteilten Dezimalziffern', '45 Sekunden TTL', 'eight cryptographically uniform decimal digits', '45-second TTL', '30 Tagen', '30 days')) {
+            if (-not $content.Contains($required)) { throw "updated security claim missing: $required" }
+          }
+
+      - name: Commit sync and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-security-doc-sync.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'docs: synchronize remote security model'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push security documentation sync.'
