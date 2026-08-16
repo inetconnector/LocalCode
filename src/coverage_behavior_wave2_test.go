@@ -187,7 +187,7 @@ func TestAttachmentExtractionDispatchCoversStructuredFormats(t *testing.T) {
 	}
 
 	xlsx := officeZipFixture(t, map[string]string{
-		"xl/sharedStrings.xml": `<sst><si><t>Hello XLSX</t></si></sst>`,
+		"xl/sharedStrings.xml":     `<sst><si><t>Hello XLSX</t></si></sst>`,
 		"xl/worksheets/sheet1.xml": `<worksheet><c><v>42</v></c></worksheet>`,
 	})
 	text, kind = extractAttachmentText(ctx, "sample.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx, "")
