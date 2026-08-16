@@ -51,7 +51,8 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/chat", s.withAuth(s.handleChat))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
-	s.mux.HandleFunc("/remote/api/events", s.withAuth(s.handleEvents))
+	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
+	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
 }
 
 func (s *RemoteServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -235,12 +236,6 @@ func (s *RemoteServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 				token = strings.TrimSpace(auth[7:])
 			}
-		}
-		// EventSource cannot attach custom headers. Keep the legacy query-token
-		// path narrowly scoped to SSE until the remote client is migrated to
-		// short-lived stream tickets; all ordinary API calls require headers.
-		if token == "" && r.URL.Path == "/remote/api/events" {
-			token = strings.TrimSpace(r.URL.Query().Get("token"))
 		}
 		if !s.state.RemoteTokenValid(token) {
 			http.Error(w, "remote token required", http.StatusUnauthorized)
