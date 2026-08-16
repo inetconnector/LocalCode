@@ -1,0 +1,114 @@
+name: One-time remote device lifecycle hardening
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-remote-device-lifecycle.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-remote-device-lifecycle-hardening
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Wire desktop revoke/list endpoints and sanitized pairing response
+        shell: pwsh
+        run: |
+          $serverPath = 'src/server.go'
+          $server = Get-Content -LiteralPath $serverPath -Raw
+          $routeNeedle = "`ts.mux.HandleFunc(\"/api/remote/pairing\", s.handleRemotePairing)"
+          if (-not $server.Contains($routeNeedle)) { throw 'desktop remote pairing route not found' }
+          $routeReplacement = $routeNeedle + "`n`t" + 's.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)' + "`n`t" + 's.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)'
+          $server = $server.Replace($routeNeedle, $routeReplacement)
+          [System.IO.File]::WriteAllText((Resolve-Path $serverPath), $server, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $serverPath
+
+          $remotePath = 'src/remote_server.go'
+          $remote = Get-Content -LiteralPath $remotePath -Raw
+          $pairNeedle = '_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": device})'
+          if (-not $remote.Contains($pairNeedle)) { throw 'pairing response block not found' }
+          $remote = $remote.Replace($pairNeedle, '_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})')
+
+          $tokenPattern = '(?ms)^func \(s \*AppState\) RemoteTokenValid\(token string\) bool \{.*?^\}'
+          $tokenReplacement = @'
+          func (s *AppState) RemoteTokenValid(token string) bool {
+          	token = strings.TrimSpace(token)
+          	if token == "" {
+          		return false
+          	}
+          	hash := remoteTokenHash(token)
+          	now := time.Now()
+          	s.mu.Lock()
+          	defer s.mu.Unlock()
+          	for i := range s.Config.RemoteDevices {
+          		device := s.Config.RemoteDevices[i]
+          		if !secureCompareHex(device.TokenHash, hash) {
+          			continue
+          		}
+          		if remoteDeviceExpired(device, now) {
+          			s.Config.RemoteDevices = append(s.Config.RemoteDevices[:i], s.Config.RemoteDevices[i+1:]...)
+          			if err := saveConfig(s.Config); err != nil {
+          				log.Printf("removing expired remote device failed: %v", err)
+          			}
+          			return false
+          		}
+          		if now.Sub(device.LastSeenAt) > time.Minute {
+          			s.Config.RemoteDevices[i].LastSeenAt = now
+          			if err := saveConfig(s.Config); err != nil {
+          				log.Printf("saving remote-device last-seen failed: %v", err)
+          			}
+          		}
+          		return true
+          	}
+          	return false
+          }
+          '@
+          $updatedRemote = [regex]::Replace($remote, $tokenPattern, $tokenReplacement, 1)
+          if ($updatedRemote -eq $remote) { throw 'RemoteTokenValid boundary not found' }
+          [System.IO.File]::WriteAllText((Resolve-Path $remotePath), $updatedRemote, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $remotePath
+          gofmt -w src/remote_device_lifecycle.go src/remote_device_lifecycle_test.go
+      - name: Verify remote device lifecycle
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'TestRemoteDevice|TestRemoteTokenExpires|TestRemotePairingTokenAndStatus|TestRemoteStreamTicket' -count=1 -timeout=10m
+      - name: Verify pairing response does not serialize token hashes
+        shell: pwsh
+        run: |
+          $remote = Get-Content -LiteralPath 'src/remote_server.go' -Raw
+          if ($remote.Contains('"device": device')) { throw 'raw RemoteDevice still serialized in pairing response' }
+          if (-not $remote.Contains('"device": remoteDeviceView(device)')) { throw 'sanitized pairing view missing' }
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-remote-device-lifecycle.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: expire and revoke remote device tokens'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push remote device lifecycle hardening.'
