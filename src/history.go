@@ -44,15 +44,31 @@ func threadsPath() string {
 	return filepath.Join(appDataDir(), "threads.json")
 }
 
+func readThreadFile(path string) (threadFile, error) {
+	var file threadFile
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return file, err
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		return threadFile{}, fmt.Errorf("decode %s: %w", filepath.Base(path), err)
+	}
+	return file, nil
+}
+
 func loadThreads() map[string]*ChatThread {
 	out := map[string]*ChatThread{}
-	data, err := os.ReadFile(threadsPath())
+	path := threadsPath()
+	file, err := readThreadFile(path)
 	if err != nil {
-		return out
-	}
-	var file threadFile
-	if json.Unmarshal(data, &file) != nil {
-		return out
+		// A successful save keeps the previous complete file as .bak. If the
+		// primary file was truncated or corrupted, prefer that last-known-good
+		// snapshot instead of silently presenting an empty chat history.
+		backup, backupErr := readThreadFile(path + ".bak")
+		if backupErr != nil {
+			return out
+		}
+		file = backup
 	}
 	for i := range file.Threads {
 		t := file.Threads[i]
@@ -126,7 +142,8 @@ func saveThreads(threads map[string]*ChatThread) error {
 		_ = os.Rename(backup, path)
 		return err
 	}
-	_ = os.Remove(backup)
+	// Keep the previous complete snapshot as last-known-good recovery data.
+	// It is replaced on the next successful save, so disk use remains bounded.
 	return nil
 }
 
