@@ -2208,12 +2208,10 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 }
 
 func commandLooksReadOnly(command string) bool {
-	c := strings.ToLower(strings.TrimSpace(command))
-	for _, p := range []string{"git status", "git diff", "git log", "go test", "go vet", "go list", "npm test", "npm run lint", "pytest", "cargo test", "dotnet test", "dir", "type ", "findstr ", "where ", "echo "} {
-		if strings.HasPrefix(c, p) {
-			return true
-		}
-	}
+	// Free-form shell strings are not a safe read-only capability boundary.
+	// Redirection, chaining, shell expansion, project test hooks and tool
+	// configuration can turn apparently harmless prefixes into mutations.
+	// Use structured run_tool/git actions for auto-approved read-only work.
 	return false
 }
 
