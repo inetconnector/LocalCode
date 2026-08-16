@@ -119,6 +119,10 @@ localcode-sessions.json
 localcode-state.json
 *.localcode.json
 
+# Generated/ephemeral commit-message handoff. Never use a stale tracked file
+# as the default message for later automated commits.
+COMMIT_MESSAGE.txt
+
 # Generated diagnostics and runtime logs
 logs/
 diagnostics/
