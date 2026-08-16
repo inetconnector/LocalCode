@@ -551,16 +551,12 @@ func (s *AppState) PairRemoteDevice(code, deviceName string) (string, RemoteDevi
 		return "", RemoteDevice{}, err
 	}
 	device := RemoteDevice{ID: newID(), Name: remoteDeviceName(deviceName), TokenHash: remoteTokenHash(token), PairedAt: now, LastSeenAt: now}
-	s.mu.Lock()
-	cfg := s.Config
-	cfg.RemoteDevices = append(cfg.RemoteDevices, device)
-	cfg = normalizeConfig(cfg)
-	s.Config = cfg
-	if err := saveConfig(cfg); err != nil {
-		s.mu.Unlock()
+	if _, err := s.mutateConfig(func(cfg *Config) error {
+		cfg.RemoteDevices = append(cfg.RemoteDevices, device)
+		return nil
+	}); err != nil {
 		return "", RemoteDevice{}, err
 	}
-	s.mu.Unlock()
 	return token, device, nil
 }
 
@@ -571,25 +567,60 @@ func (s *AppState) RemoteTokenValid(token string) bool {
 	}
 	hash := remoteTokenHash(token)
 	now := time.Now()
-	s.mu.Lock()
-	for i := range s.Config.RemoteDevices {
-		if !secureCompareHex(s.Config.RemoteDevices[i].TokenHash, hash) {
-			continue
+
+	s.mu.RLock()
+	var matched RemoteDevice
+	found := false
+	for _, device := range s.Config.RemoteDevices {
+		if secureCompareHex(device.TokenHash, hash) {
+			matched = device
+			found = true
+			break
 		}
-		if now.Sub(s.Config.RemoteDevices[i].LastSeenAt) > time.Minute {
-			s.Config.RemoteDevices[i].LastSeenAt = now
-			// Persist synchronously while holding the state lock. This runs at most
-			// once per minute per active device and prevents a stale asynchronous
-			// whole-config snapshot from overwriting newer settings.
-			if err := saveConfig(s.Config); err != nil {
-				log.Printf("saving remote-device last-seen failed: %v", err)
-			}
-		}
-		s.mu.Unlock()
-		return true
 	}
-	s.mu.Unlock()
-	return false
+	s.mu.RUnlock()
+	if !found {
+		return false
+	}
+	if remoteDeviceExpired(matched, now) {
+		// Expired credentials are invalid immediately. Best-effort pruning
+		// keeps config state bounded without making authentication depend on
+		// a successful cleanup write.
+		if _, err := s.mutateConfig(func(cfg *Config) error {
+			out := cfg.RemoteDevices[:0]
+			for _, device := range cfg.RemoteDevices {
+				if strings.EqualFold(device.ID, matched.ID) && secureCompareHex(device.TokenHash, hash) && remoteDeviceExpired(device, now) {
+					continue
+				}
+				out = append(out, device)
+			}
+			cfg.RemoteDevices = out
+			return nil
+		}); err != nil {
+			log.Printf("pruning expired remote device failed: %v", err)
+		}
+		return false
+	}
+
+	if matched.LastSeenAt.IsZero() || now.Sub(matched.LastSeenAt) > time.Minute {
+		if _, err := s.mutateConfig(func(cfg *Config) error {
+			for i := range cfg.RemoteDevices {
+				device := &cfg.RemoteDevices[i]
+				if !strings.EqualFold(device.ID, matched.ID) || !secureCompareHex(device.TokenHash, hash) {
+					continue
+				}
+				if remoteDeviceExpired(*device, now) {
+					return fmt.Errorf("remote device expired")
+				}
+				device.LastSeenAt = now
+				return nil
+			}
+			return fmt.Errorf("remote device not found")
+		}); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) handleRemotePairing(w http.ResponseWriter, r *http.Request) {
