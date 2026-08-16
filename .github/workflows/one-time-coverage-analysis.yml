@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.25.x'
+          go-version: '1.25.13'
           cache-dependency-path: src/go.mod
       - name: Generate coverage profile
         shell: pwsh
@@ -56,11 +56,11 @@ jobs:
             }
           }
           Write-Host "`n=== LOWEST COVERAGE FUNCTIONS ==="
-          $items | Sort-Object Coverage, File, Line | Select-Object -First 160 | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
+          $items | Sort-Object Coverage, File, Line | Select-Object -First 180 | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           Write-Host "`n=== ZERO COVERAGE FUNCTIONS ==="
           $items | Where-Object Coverage -eq 0 | Sort-Object File, Line | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           Write-Host "`n=== LOW COVERAGE BY FILE ==="
-          $items | Where-Object Coverage -lt 50 | Group-Object File | Sort-Object Count -Descending | Select-Object -First 40 Name,Count | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
+          $items | Where-Object Coverage -lt 50 | Group-Object File | Sort-Object Count -Descending | Select-Object -First 50 Name,Count | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
           $total = $lines | Where-Object { $_ -match '^total:' } | Select-Object -Last 1
           if (-not $total) { throw 'coverage total missing' }
           Write-Host "`n$total"
