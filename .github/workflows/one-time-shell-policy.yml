@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: one-time-shell-policy-migration
+  cancel-in-progress: false
+
 jobs:
   migrate:
     runs-on: windows-latest
@@ -56,4 +60,16 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m 'security: require approval for free-form shell commands'
-          git push origin HEAD:agent/security-quality-hardening
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push shell policy migration after three attempts.'
