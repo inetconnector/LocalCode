@@ -39,6 +39,19 @@ jobs:
           $content = $content.Replace($needle, $replacement)
           if ($content.Contains('LocalCode/6.4.3 tool-installer')) { throw 'Stale installer User-Agent remains' }
           [IO.File]::WriteAllText((Join-Path $PWD 'src/tool_install.go'), $content, [Text.UTF8Encoding]::new($false))
+
+          $testPath = Join-Path $PWD 'src/coverage_behavior_windows_test.go'
+          $test = Get-Content -LiteralPath $testPath -Raw
+          $oldHelper = 'path := filepath.Join(dir, name+".cmd")'
+          $newHelper = "fileName := name`n`tif filepath.Ext(fileName) == \"\" {`n`t`tfileName += \".cmd\"`n`t}`n`tpath := filepath.Join(dir, fileName)"
+          if (-not $test.Contains($oldHelper)) { throw 'Windows command fixture helper was not found' }
+          $test = $test.Replace($oldHelper, $newHelper)
+          $oldGradle = 'gradle := writeWindowsCmdFixture(t, project, "gradlew", `'
+          $newGradle = 'gradle := writeWindowsCmdFixture(t, project, "gradlew.bat", `'
+          if (-not $test.Contains($oldGradle)) { throw 'Android gradle fixture call was not found' }
+          $test = $test.Replace($oldGradle, $newGradle)
+          [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
+
           Push-Location src
           gofmt -w tool_install.go coverage_behavior_wave2_test.go coverage_behavior_windows_test.go
           Pop-Location
