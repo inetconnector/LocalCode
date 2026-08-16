@@ -29,6 +29,15 @@ jobs:
       - name: Apply exact cleanup edits
         shell: pwsh
         run: |
+          $wavePath = 'src/coverage_behavior_wave5_test.go'
+          $wave = Get-Content -LiteralPath $wavePath -Raw
+          $oldAssertion = 'if err != nil || !strings.Contains(got, fakeGo) || !strings.Contains(got, "test ./...") || !strings.Contains(detail, "go") {'
+          $newAssertion = 'if err != nil || !strings.Contains(got, "test ./...") || !strings.Contains(detail, fakeGo) || !strings.Contains(detail, "go") {'
+          $assertionCount = ([regex]::Matches($wave, [regex]::Escape($oldAssertion))).Count
+          if ($assertionCount -ne 1) { throw "Expected exactly one WSL rewrite assertion marker, found $assertionCount" }
+          $wave = $wave.Replace($oldAssertion, $newAssertion)
+          [IO.File]::WriteAllText((Join-Path $PWD $wavePath), $wave, [Text.UTF8Encoding]::new($false))
+
           $corePath = 'src/core_test.go'
           $core = Get-Content -LiteralPath $corePath -Raw
           $oldTimeout = 'cfg.CommandTimeout = 5'
