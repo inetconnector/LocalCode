@@ -1,0 +1,151 @@
+name: One-time hardened-test alignment
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-test-alignment.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-hardened-test-alignment
+  cancel-in-progress: false
+
+jobs:
+  align:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+
+      - name: Remove stale tracked commit-message expectation
+        shell: pwsh
+        run: |
+          $path = 'src/aider_engine_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $old = '"README.md", "STATE.md", "COMMIT_MESSAGE.txt", "NOTICE-AIDER.md",'
+          $new = '"README.md", "STATE.md", "NOTICE-AIDER.md",'
+          if (-not $content.Contains($old)) { throw 'stale COMMIT_MESSAGE.txt Aider expectation not found' }
+          $content = $content.Replace($old, $new)
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Add exact shell approval helper for agent tests
+        shell: pwsh
+        run: |
+          @'
+          // SPDX-License-Identifier: Apache-2.0
+
+          package main
+
+          // allowExactShellForTest models an explicit, persisted user decision.
+          // It keeps tests deterministic without weakening production's rule that
+          // free-form shell strings are never inferred to be read-only.
+          func allowExactShellForTest(cfg *Config, command string) {
+          	cfg.ApprovalRules = append(cfg.ApprovalRules, ApprovalRule{
+          		Scope:    "global",
+          		Decision: "allow",
+          		Pattern:  []string{"shell", command},
+          	})
+          }
+          '@ | Set-Content -LiteralPath 'src/test_approval_helpers_test.go' -Encoding utf8NoBOM
+          gofmt -w src/test_approval_helpers_test.go
+
+      - name: Make agent tests explicitly approve their verification shell command
+        shell: pwsh
+        run: |
+          $path = 'src/core_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $cases = @(
+            @{ Name='TestAgentRetriesIncompleteWriteFileContent'; Command='echo test passed' },
+            @{ Name='TestAgentRecoversWrongFirstTool'; Command='echo lint passed' },
+            @{ Name='TestAgentCompletionGuardRepairsMissingRequestedUI'; Command='echo syntax ok' }
+          )
+          foreach ($case in $cases) {
+            $pattern = '(?ms)(func ' + [regex]::Escape($case.Name) + '\(t \*testing\.T\) \{.*?cfg\.ApprovalMode = "auto")'
+            $regex = [regex]::new($pattern)
+            $replacement = '$1' + "`n`tallowExactShellForTest(&cfg, `"" + $case.Command + "`")"
+            $updated = $regex.Replace($content, $replacement, 1)
+            if ($updated -eq $content) { throw "approval insertion point not found for $($case.Name)" }
+            $content = $updated
+          }
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Make terminal-command handler injectable for deterministic HTTP tests
+        shell: pwsh
+        run: |
+          $path = 'src/server.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $marker = 'var launchTaskWindow = openBrowser'
+          if (-not $content.Contains($marker)) { throw 'launchTaskWindow marker not found' }
+          if (-not $content.Contains('var terminalCommandRunner = runProjectCommand')) {
+            $content = $content.Replace($marker, $marker + "`nvar terminalCommandRunner = runProjectCommand")
+          }
+          $old = 'out, err := runProjectCommand(ctx, project, command, cfg)'
+          $new = 'out, err := terminalCommandRunner(ctx, project, command, cfg)'
+          if (-not $content.Contains($old)) { throw 'terminal command runner call not found' }
+          $content = $content.Replace($old, $new)
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Stub shell process only inside endpoint matrix
+        shell: pwsh
+        run: |
+          $path = 'src/coverage_expansion_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $needle = @'
+          	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "echo hi", "path": project})
+          '@
+          if (-not $content.Contains($needle.TrimEnd())) { throw 'terminal-command endpoint coverage call not found' }
+          $replacement = @'
+          	oldTerminalCommandRunner := terminalCommandRunner
+          	terminalCommandRunner = func(ctx context.Context, project, command string, cfg Config) (string, error) {
+          		return "mock terminal command", nil
+          	}
+          	defer func() { terminalCommandRunner = oldTerminalCommandRunner }()
+          	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/terminal-command", map[string]any{"command": "echo hi", "path": project})
+          '@
+          $content = $content.Replace($needle.TrimEnd(), $replacement.TrimEnd())
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+
+      - name: Verify previously failing tests
+        shell: pwsh
+        working-directory: src
+        run: |
+          go test ./... -run 'TestAiderDocumentationAndLicenseFilesArePresent|TestAgentRetriesIncompleteWriteFileContent|TestAgentRecoversWrongFirstTool|TestAgentCompletionGuardRepairsMissingRequestedUI|TestCoverageServerEndpointMatrix' -count=1 -timeout=12m
+
+      - name: Compile entire test package
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run '^$' -count=1
+
+      - name: Commit alignment and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-test-alignment.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'test: align suite with hardened shell approvals'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push test alignment.'
