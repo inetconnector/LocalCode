@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: src
@@ -28,8 +28,10 @@ jobs:
           go-version: '1.25.x'
           check-latest: true
           cache-dependency-path: src/go.mod
+
       - name: Go version
         run: go version
+
       - name: Format check
         shell: pwsh
         run: |
@@ -38,21 +40,63 @@ jobs:
             $bad = gofmt -l $files
             if ($bad) { Write-Error "gofmt required:`n$bad" }
           }
+
       - name: Vet
         run: go vet ./...
+
+      - name: Frontend JavaScript syntax
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          node --check src/static/i18n.js
+          if ($LASTEXITCODE -ne 0) { throw 'i18n.js syntax check failed' }
+          foreach ($htmlPath in @('src/static/index.html', 'src/static/remote.html')) {
+            $html = Get-Content -LiteralPath $htmlPath -Raw
+            $matches = [regex]::Matches($html, '(?is)<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>')
+            if ($matches.Count -eq 0) { throw "No inline script found in $htmlPath" }
+            for ($i = 0; $i -lt $matches.Count; $i++) {
+              $tmp = Join-Path $env:RUNNER_TEMP ((Split-Path $htmlPath -Leaf) + ".inline.$i.js")
+              [IO.File]::WriteAllText($tmp, $matches[$i].Groups[1].Value, [Text.UTF8Encoding]::new($false))
+              node --check $tmp
+              if ($LASTEXITCODE -ne 0) { throw "Inline JavaScript syntax failed: $htmlPath script $i" }
+            }
+          }
+
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
       - name: Tests
         run: go test ./... -count=1 -timeout=20m
+
       - name: Race detector
         run: go test ./... -race -count=1 -timeout=25m
+
       - name: Coverage
         shell: pwsh
         run: |
           go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out -timeout=20m
-          $line = go tool cover -func=coverage.out | Select-String '^total:'
+          $report = go tool cover -func=coverage.out
+          $report | Write-Host
+          $line = $report | Select-String '^total:'
           if (-not $line) { throw 'Coverage total missing' }
           $pct = [double](($line.ToString() -split '\s+')[-1].TrimEnd('%'))
           Write-Host "Statement coverage: $pct%"
           if ($pct -lt 80.0) { throw "Coverage $pct% is below 80.0% gate" }
+
+      - name: Native Windows builds
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath '../VERSION.txt' -Raw).Trim()
+          $gui = Join-Path $env:RUNNER_TEMP 'LocalCode.exe'
+          $debug = Join-Path $env:RUNNER_TEMP 'LocalCode-Debug.exe'
+          go build -trimpath -ldflags "-s -w -H=windowsgui -X main.version=$version" -o $gui .
+          if ($LASTEXITCODE -ne 0) { throw 'Windows GUI build failed' }
+          go build -trimpath -ldflags "-X main.version=$version-debug" -o $debug .
+          if ($LASTEXITCODE -ne 0) { throw 'Windows diagnostics build failed' }
+          if (-not (Test-Path -LiteralPath $gui -PathType Leaf) -or -not (Test-Path -LiteralPath $debug -PathType Leaf)) {
+            throw 'Expected Windows build artifact missing'
+          }
+
       - name: Git diff check
         shell: pwsh
         working-directory: ${{ github.workspace }}
