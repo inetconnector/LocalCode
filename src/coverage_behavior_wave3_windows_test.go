@@ -176,6 +176,7 @@ exit /b 0`)
 func TestDiagnosticsAndServerStartupWithLocalFixtures(t *testing.T) {
 	cfg := isolateWave3Config(t)
 	cfg.LastModel = defaultCodingModel
+	cfg.LastProject = ""
 	if err := saveConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -213,10 +214,8 @@ func TestDiagnosticsAndServerStartupWithLocalFixtures(t *testing.T) {
 	busyPort := occupied.Addr().(*net.TCPAddr).Port
 	baseURL, err := startHTTPServer(state, busyPort)
 	_ = occupied.Close()
-	if err != nil || strings.Contains(baseURL, ":"+strings.TrimSpace(strings.TrimPrefix(occupied.Addr().String(), "127.0.0.1:"))) {
-		if err != nil {
-			t.Fatalf("startHTTPServer err=%v", err)
-		}
+	if err != nil || strings.TrimSpace(baseURL) == "" {
+		t.Fatalf("startHTTPServer URL=%q err=%v", baseURL, err)
 	}
 	resp, err := http.Get(baseURL + "/api/ping")
 	if err != nil {
