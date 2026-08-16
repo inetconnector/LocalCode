@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+# Temporary diagnostic workflow. Delete it once the permanent Quality gate is green.
 jobs:
   analyze:
     runs-on: windows-latest
