@@ -219,15 +219,12 @@ func (s *AppState) addApprovalRule(project string, action AgentAction, scope str
 	if err != nil {
 		return ApprovalRule{}, err
 	}
-	s.mu.Lock()
-	cfg := s.Config
-	cfg.ApprovalRules = normalizeApprovalRules(append(cfg.ApprovalRules, rule))
-	s.mu.Unlock()
-	if err := saveConfig(cfg); err != nil {
+	_, err = s.mutateConfig(func(cfg *Config) error {
+		cfg.ApprovalRules = normalizeApprovalRules(append(cfg.ApprovalRules, rule))
+		return nil
+	})
+	if err != nil {
 		return ApprovalRule{}, err
 	}
-	s.mu.Lock()
-	s.Config = cfg
-	s.mu.Unlock()
 	return rule, nil
 }

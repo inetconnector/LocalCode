@@ -90,15 +90,15 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		return ProjectSummary{}, errors.New("project path is required")
 	}
 
-	s.mu.Lock()
-	if s.Running {
-		s.mu.Unlock()
+	s.mu.RLock()
+	running := s.Running
+	root := s.Config.RootProjectDir
+	s.mu.RUnlock()
+	if running {
 		return ProjectSummary{}, errors.New("Agent läuft gerade")
 	}
-	cfg := s.Config
-	s.mu.Unlock()
 
-	full, err := ensureWithinRoot(cfg.RootProjectDir, path)
+	full, err := ensureWithinRoot(root, path)
 	if err != nil {
 		return ProjectSummary{}, err
 	}
@@ -106,59 +106,64 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 	if err != nil || !info.IsDir() {
 		return ProjectSummary{}, errors.New("project directory not found")
 	}
-
-	switch action {
-	case "rename":
-		runes := []rune(value)
-		if len(runes) > 120 {
-			return ProjectSummary{}, errors.New("project name is too long")
-		}
-		if cfg.ProjectAliases == nil {
-			cfg.ProjectAliases = map[string]string{}
-		}
-		for key := range cfg.ProjectAliases {
-			if strings.EqualFold(filepath.Clean(key), filepath.Clean(full)) {
-				delete(cfg.ProjectAliases, key)
-			}
-		}
-		if value != "" && !strings.EqualFold(value, filepath.Base(full)) {
-			cfg.ProjectAliases[full] = value
-		}
-	case "pin":
-		cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
-		cfg.PinnedProjects = append(cfg.PinnedProjects, full)
-		cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
-	case "unpin":
-		cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
-	case "remove":
-		cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
-		if !projectListContains(cfg.HiddenProjects, full) {
-			cfg.HiddenProjects = append(cfg.HiddenProjects, full)
-		}
-	case "restore":
-		cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
-	default:
-		return ProjectSummary{}, errors.New("unsupported project action")
+	if action == "rename" && len([]rune(value)) > 120 {
+		return ProjectSummary{}, errors.New("project name is too long")
 	}
-	cfg = normalizeConfig(cfg)
-	if err := saveConfig(cfg); err != nil {
+
+	removeActive := false
+	cfg, err := s.mutateConfig(func(cfg *Config) error {
+		if s.Running {
+			return errors.New("Agent läuft gerade")
+		}
+		switch action {
+		case "rename":
+			if cfg.ProjectAliases == nil {
+				cfg.ProjectAliases = map[string]string{}
+			}
+			for key := range cfg.ProjectAliases {
+				if strings.EqualFold(filepath.Clean(key), filepath.Clean(full)) {
+					delete(cfg.ProjectAliases, key)
+				}
+			}
+			if value != "" && !strings.EqualFold(value, filepath.Base(full)) {
+				cfg.ProjectAliases[full] = value
+			}
+		case "pin":
+			cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
+			cfg.PinnedProjects = append(cfg.PinnedProjects, full)
+			cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
+		case "unpin":
+			cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
+		case "remove":
+			cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
+			if !projectListContains(cfg.HiddenProjects, full) {
+				cfg.HiddenProjects = append(cfg.HiddenProjects, full)
+			}
+			removeActive = strings.EqualFold(filepath.Clean(s.Project), filepath.Clean(full))
+			if removeActive {
+				cfg.LastProject = ""
+			}
+		case "restore":
+			cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
+		default:
+			return errors.New("unsupported project action")
+		}
+		return nil
+	})
+	if err != nil {
 		return ProjectSummary{}, err
 	}
 
-	s.mu.Lock()
-	s.Config = cfg
-	if action == "remove" && strings.EqualFold(filepath.Clean(s.Project), filepath.Clean(full)) {
-		s.Project = ""
-		s.CurrentThread = ""
-		s.Events = nil
-		s.Pending = nil
-		s.Continuation = nil
-		s.Config.LastProject = ""
-		cfg = s.Config
-	}
-	s.mu.Unlock()
-	if action == "remove" && cfg.LastProject == "" {
-		_ = saveConfig(cfg)
+	if removeActive {
+		s.mu.Lock()
+		if strings.EqualFold(filepath.Clean(s.Project), filepath.Clean(full)) {
+			s.Project = ""
+			s.CurrentThread = ""
+			s.Events = nil
+			s.Pending = nil
+			s.Continuation = nil
+		}
+		s.mu.Unlock()
 	}
 
 	return ProjectSummary{Path: full, Name: projectDisplayName(cfg, full), Pinned: projectListContains(cfg.PinnedProjects, full)}, nil
