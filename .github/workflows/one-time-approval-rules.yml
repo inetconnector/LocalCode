@@ -24,12 +24,11 @@ jobs:
         with:
           go-version: '1.25.x'
           cache-dependency-path: src/go.mod
-      - name: Make persistent Git approvals exact and config update atomic
+      - name: Make persistent Git approvals exact
         shell: pwsh
         run: |
           $path = 'src/approval_rules.go'
           $content = Get-Content -LiteralPath $path -Raw
-
           $gitPattern = '(?ms)\tcase "git":\s*\n\t\tif err := validateGitArgs\(action\.Args\); err != nil \{\s*\n\t\t\treturn nil, false\s*\n\t\t\}\s*\n\t\tif len\(tokens\) >= 2 \{.*?\n\t\t\}'
           $gitReplacement = @'
           	case "git":
@@ -43,43 +42,7 @@ jobs:
           '@
           $updated = [regex]::Replace($content, $gitPattern, $gitReplacement, 1)
           if ($updated -eq $content) { throw 'persistent Git approval block not found' }
-          $content = $updated
-
-          $addPattern = '(?ms)^func \(s \*AppState\) addApprovalRule\(project string, action AgentAction, scope string\) \(ApprovalRule, error\) \{.*?^\}'
-          $addReplacement = @'
-          func (s *AppState) addApprovalRule(project string, action AgentAction, scope string) (ApprovalRule, error) {
-          	pattern, ok := persistentApprovalPattern(action)
-          	if !ok {
-          		return ApprovalRule{}, errors.New("this action cannot be persistently allowed")
-          	}
-          	rule, err := normalizeApprovalRule(ApprovalRule{
-          		Scope:         scope,
-          		Project:       project,
-          		Decision:      "allow",
-          		Pattern:       pattern,
-          		Justification: "Approved by the user from the LocalCode approval prompt.",
-          	})
-          	if err != nil {
-          		return ApprovalRule{}, err
-          	}
-
-          	// Serialize the in-memory mutation and its durable snapshot under the
-          	// state lock. This prevents a stale approval-rule snapshot from being
-          	// written back over a concurrent settings change.
-          	s.mu.Lock()
-          	cfg := s.Config
-          	cfg.ApprovalRules = normalizeApprovalRules(append(cfg.ApprovalRules, rule))
-          	if err := saveConfig(cfg); err != nil {
-          		s.mu.Unlock()
-          		return ApprovalRule{}, err
-          	}
-          	s.Config = cfg
-          	s.mu.Unlock()
-          	return rule, nil
-          }
-          '@
-          $updated = [regex]::Replace($content, $addPattern, $addReplacement, 1)
-          if ($updated -eq $content) { throw 'addApprovalRule boundary not found' }
+          if (-not $updated.Contains('s.mutateConfig(')) { throw 'current serialized config mutation path unexpectedly missing' }
           [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
           gofmt -w $path
       - name: Add persistent approval regression tests
@@ -98,34 +61,30 @@ jobs:
           func TestPersistentGitApprovalPatternKeepsCompleteArguments(t *testing.T) {
           	action := AgentAction{Action: "git", Args: []string{"branch", "new-feature"}}
           	pattern, ok := persistentApprovalPattern(action)
-          	if !ok {
-          		t.Fatal("safe structured Git action should support persistent approval")
-          	}
+          	if !ok { t.Fatal("structured Git action should support persistent approval") }
           	want := []string{"git", "branch", "new-feature"}
           	if !reflect.DeepEqual(pattern, want) {
           		t.Fatalf("pattern = %#v, want exact %#v", pattern, want)
           	}
           	if rulePatternMatches(pattern, []string{"git", "branch", "different-feature"}) {
-          		t.Fatal("approval for one branch name must not match another branch mutation")
+          		t.Fatal("approval for one branch mutation must not authorize another")
           	}
           }
 
           func TestPersistentShellApprovalRemainsExactCommandToken(t *testing.T) {
           	action := AgentAction{Action: "run_command", Command: "go test ./... && echo done"}
           	pattern, ok := persistentApprovalPattern(action)
-          	if !ok || len(pattern) != 2 {
-          		t.Fatalf("unexpected exact shell pattern: %#v ok=%v", pattern, ok)
-          	}
+          	if !ok || len(pattern) != 2 { t.Fatalf("unexpected shell pattern: %#v ok=%v", pattern, ok) }
           	if rulePatternMatches(pattern, []string{"shell", "go test ./... && echo changed"}) {
-          		t.Fatal("persistent shell approval must not act as a command prefix wildcard")
+          		t.Fatal("persistent shell approval must not act as a wildcard")
           	}
           }
           '@ | Set-Content -LiteralPath 'src/approval_rule_security_test.go' -Encoding utf8NoBOM
           gofmt -w src/approval_rule_security_test.go
-      - name: Verify approval-rule tests
+      - name: Verify approval-rule and config-concurrency tests
         shell: pwsh
         working-directory: src
-        run: go test ./... -run 'TestPersistentGitApprovalPattern|TestPersistentShellApproval|TestToolReadOnlyClassifier|TestGitReadOnlyClassifier' -count=1 -timeout=10m
+        run: go test ./... -run 'TestPersistentGitApprovalPattern|TestPersistentShellApproval|TestConfigMutation|TestConcurrent.*Config|TestToolReadOnlyClassifier|TestGitReadOnlyClassifier' -count=1 -timeout=10m
       - name: Commit migration and remove one-time workflow
         shell: pwsh
         run: |
@@ -134,7 +93,7 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m 'security: make persistent approvals exact and serialized'
+          git commit -m 'security: make persistent git approvals exact'
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             git fetch origin agent/security-quality-hardening
             git rebase origin/agent/security-quality-hardening
