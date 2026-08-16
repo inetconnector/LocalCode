@@ -1,0 +1,192 @@
+name: One-time structured tool policy hardening
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-tool-policy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-tool-policy-hardening
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Replace permissive structured-tool classifier
+        shell: pwsh
+        run: |
+          $path = 'src/agent.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          $pattern = '(?ms)^func toolActionLooksReadOnly\(tool string, args \[\]string\) bool \{.*?^func \(s \*AppState\) requestApprovalWithPreview'
+          $replacement = @'
+          func toolActionLooksReadOnly(tool string, args []string) bool {
+          	t := canonicalToolName(tool)
+          	clean := make([]string, len(args))
+          	for i, arg := range args {
+          		clean[i] = strings.ToLower(strings.TrimSpace(arg))
+          	}
+          	switch t {
+          	case "git":
+          		return gitActionIsReadOnly(args)
+          	case "adb":
+          		return exactArgs(clean, "version") || exactArgs(clean, "get-state") ||
+          			exactArgs(clean, "devices") || exactArgs(clean, "devices", "-l")
+          	case "go":
+          		// go test/vet/list can execute project code, analyzers, generators or
+          		// configured helpers. Only the executable's own version query is
+          		// automatically read-only.
+          		return exactArgs(clean, "version")
+          	case "java":
+          		return exactArgs(clean, "-version") || exactArgs(clean, "--version")
+          	case "node", "npm", "npx", "cargo", "cmake", "ninja":
+          		return exactArgs(clean, "--version") || exactArgs(clean, "-v")
+          	case "python":
+          		return exactArgs(clean, "--version") || exactArgs(clean, "-v") || exactArgs(clean, "-V")
+          	case "dotnet":
+          		return exactArgs(clean, "--version") || exactArgs(clean, "--info")
+          	case "gradle":
+          		return exactArgs(clean, "--version") || exactArgs(clean, "-v")
+          	default:
+          		return false
+          	}
+          }
+
+          func exactArgs(args []string, expected ...string) bool {
+          	if len(args) != len(expected) {
+          		return false
+          	}
+          	for i := range expected {
+          		if !strings.EqualFold(strings.TrimSpace(args[i]), strings.TrimSpace(expected[i])) {
+          			return false
+          		}
+          	}
+          	return true
+          }
+
+          func (s *AppState) requestApprovalWithPreview
+          '@
+          $regex = [regex]::new($pattern)
+          $updated = $regex.Replace($content, $replacement, 1)
+          if ($updated -eq $content) { throw 'toolActionLooksReadOnly boundary not found' }
+          [System.IO.File]::WriteAllText((Resolve-Path $path), $updated, [System.Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+      - name: Add structured-tool security regression tests
+        shell: pwsh
+        run: |
+          @'
+          // SPDX-License-Identifier: Apache-2.0
+
+          package main
+
+          import "testing"
+
+          func TestToolReadOnlyClassifierRejectsExecutableProjectWork(t *testing.T) {
+          	unsafe := []struct {
+          		tool string
+          		args []string
+          	}{
+          		{"go", []string{"test", "./..."}},
+          		{"go", []string{"vet", "./..."}},
+          		{"go", []string{"list", "./..."}},
+          		{"npm", []string{"test"}},
+          		{"npm", []string{"run", "lint"}},
+          		{"npx", []string{"--yes", "some-package"}},
+          		{"python", []string{"-c", "print('x')"}},
+          		{"dotnet", []string{"test"}},
+          		{"cargo", []string{"test"}},
+          	}
+          	for _, tc := range unsafe {
+          		if toolActionLooksReadOnly(tc.tool, tc.args) {
+          			t.Errorf("executable project work classified read-only: %s %v", tc.tool, tc.args)
+          		}
+          	}
+          }
+
+          func TestToolReadOnlyClassifierAllowsExactInformationQueries(t *testing.T) {
+          	safe := []struct {
+          		tool string
+          		args []string
+          	}{
+          		{"go", []string{"version"}},
+          		{"node", []string{"--version"}},
+          		{"npm", []string{"--version"}},
+          		{"python", []string{"--version"}},
+          		{"dotnet", []string{"--info"}},
+          		{"cargo", []string{"--version"}},
+          		{"adb", []string{"devices", "-l"}},
+          		{"git", []string{"status", "--short"}},
+          	}
+          	for _, tc := range safe {
+          		if !toolActionLooksReadOnly(tc.tool, tc.args) {
+          			t.Errorf("exact information query requires unnecessary approval: %s %v", tc.tool, tc.args)
+          		}
+          	}
+          }
+
+          func TestToolReadOnlyClassifierRejectsGitMutationAndDiffEscape(t *testing.T) {
+          	for _, args := range [][]string{
+          		{"branch", "new-branch"},
+          		{"tag", "v1"},
+          		{"remote", "add", "other", "https://example.invalid/repo.git"},
+          		{"diff", "--no-index", "C:/outside-a", "C:/outside-b"},
+          	} {
+          		if toolActionLooksReadOnly("git", args) {
+          			t.Errorf("unsafe git run_tool classified read-only: %v", args)
+          		}
+          	}
+          }
+
+          func TestToolReadOnlyClassifierRejectsExtraArgsOnVersionQueries(t *testing.T) {
+          	for _, tc := range []struct {
+          		tool string
+          		args []string
+          	}{
+          		{"node", []string{"--version", "payload"}},
+          		{"npm", []string{"--version", "payload"}},
+          		{"dotnet", []string{"--info", "payload"}},
+          		{"adb", []string{"devices", "-l", "payload"}},
+          	} {
+          		if toolActionLooksReadOnly(tc.tool, tc.args) {
+          			t.Errorf("version/info query with extra args classified read-only: %s %v", tc.tool, tc.args)
+          		}
+          	}
+          }
+          '@ | Set-Content -LiteralPath 'src/tool_policy_security_test.go' -Encoding utf8NoBOM
+          gofmt -w src/tool_policy_security_test.go
+      - name: Verify approval-policy tests
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'TestToolReadOnlyClassifier|TestShellReadOnlyClassifier|TestGitReadOnlyClassifier' -count=1 -timeout=10m
+      - name: Commit migration and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-tool-policy.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: restrict automatic tool approvals to exact read-only queries'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push structured-tool policy hardening.'
