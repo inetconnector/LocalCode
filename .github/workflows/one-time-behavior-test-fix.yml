@@ -1,0 +1,69 @@
+name: One-time behavior coverage test repair
+
+on:
+  push:
+    branches: [agent/security-quality-hardening]
+    paths:
+      - .github/workflows/one-time-behavior-test-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-behavior-coverage-test-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: src/go.mod
+      - name: Repair behavior test compile issues
+        shell: pwsh
+        run: |
+          $path = 'src/coverage_behavior_regression_test.go'
+          $content = Get-Content -LiteralPath $path -Raw
+          if (-not $content.Contains('if state.pairingOpen() {')) { throw 'pairingOpen test call not found' }
+          $content = $content.Replace('if state.pairingOpen() {', 'if remote.pairingOpen() {')
+          $oldBmp = 'binary.LittleEndian.PutUint32(bmp[22:26], uint32(int32(-200)))'
+          $newBmp = "negHeight := int32(-200)`n`t" + 'binary.LittleEndian.PutUint32(bmp[22:26], uint32(negHeight))'
+          if (-not $content.Contains($oldBmp)) { throw 'BMP negative-height fixture not found' }
+          $content = $content.Replace($oldBmp, $newBmp)
+          [IO.File]::WriteAllText((Resolve-Path $path), $content, [Text.UTF8Encoding]::new($false))
+          gofmt -w $path
+      - name: Vet
+        shell: pwsh
+        working-directory: src
+        run: go vet ./...
+      - name: Behavioral coverage tests
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run '^(TestRemoteAuthenticatedWorkflowHandlers|TestRemoteAddressAndOriginHelpers|TestBinaryAssetParsersAndSafeWrites|TestSkillShellQuotingAndMutationPaths|TestProjectAPKDiscoveryAndMemoryDirectList|TestAiderFormattingAndSafeServerErrorBranches)$' -count=1 -timeout=10m
+      - name: Commit repair and remove one-time workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/one-time-behavior-test-fix.yml'
+          git config user.name 'LocalCode Hardening Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'test: fix behavioral coverage regressions'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            git fetch origin agent/security-quality-hardening
+            git rebase origin/agent/security-quality-hardening
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort 2>$null
+              throw 'Rebase failed; refusing to force-push the hardening branch.'
+            }
+            git push origin HEAD:agent/security-quality-hardening
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+          }
+          throw 'Could not fast-forward push behavior-test repair.'
