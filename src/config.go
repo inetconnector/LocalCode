@@ -761,33 +761,69 @@ func normalizeConfig(cfg Config) Config {
 	return cfg
 }
 
+func readConfigFile(path string) (Config, map[string]json.RawMessage, error) {
+	cfg := defaultConfig()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, nil, err
+	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return Config{}, nil, err
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, nil, err
+	}
+	return cfg, raw, nil
+}
+
+func applyMissingConfigDefaults(cfg Config, raw map[string]json.RawMessage) Config {
+	defaults := defaultConfig()
+	if _, ok := raw["network_enabled"]; !ok {
+		cfg.NetworkEnabled = defaults.NetworkEnabled
+	}
+	if _, ok := raw["git_enabled"]; !ok {
+		cfg.GitEnabled = defaults.GitEnabled
+	}
+	if _, ok := raw["auto_state_update"]; !ok {
+		cfg.AutoStateUpdate = defaults.AutoStateUpdate
+	}
+	if _, ok := raw["create_project_docs"]; !ok {
+		cfg.CreateProjectDocs = defaults.CreateProjectDocs
+	}
+	if _, ok := raw["show_bottom_bar"]; !ok {
+		cfg.ShowBottomBar = defaults.ShowBottomBar
+	}
+	return cfg
+}
+
 func loadConfig() Config {
 	migrateLegacyProductData()
-	cfg := defaultConfig()
-	if data, err := os.ReadFile(configPath()); err == nil {
-		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
-		var raw map[string]json.RawMessage
-		_ = json.Unmarshal(data, &raw)
-		_ = json.Unmarshal(data, &cfg)
-		defaults := defaultConfig()
-		if _, ok := raw["network_enabled"]; !ok {
-			cfg.NetworkEnabled = defaults.NetworkEnabled
-		}
-		if _, ok := raw["git_enabled"]; !ok {
-			cfg.GitEnabled = defaults.GitEnabled
-		}
-		if _, ok := raw["auto_state_update"]; !ok {
-			cfg.AutoStateUpdate = defaults.AutoStateUpdate
-		}
-		if _, ok := raw["create_project_docs"]; !ok {
-			cfg.CreateProjectDocs = defaults.CreateProjectDocs
-		}
-		if _, ok := raw["show_bottom_bar"]; !ok {
-			cfg.ShowBottomBar = defaults.ShowBottomBar
+	path := configPath()
+	cfg, raw, err := readConfigFile(path)
+	recovered := false
+	if err != nil {
+		if backupCfg, backupRaw, backupErr := readConfigFile(path + ".bak"); backupErr == nil {
+			cfg, raw = backupCfg, backupRaw
+			recovered = true
+			if !os.IsNotExist(err) {
+				corrupt := path + ".corrupt"
+				_ = os.Remove(corrupt)
+				if renameErr := os.Rename(path, corrupt); renameErr == nil {
+					if copyErr := copyFileIfMissing(path+".bak", path); copyErr != nil {
+						_ = os.Rename(corrupt, path)
+					}
+				}
+			}
+		} else {
+			cfg = defaultConfig()
+			raw = map[string]json.RawMessage{}
 		}
 	}
+	cfg = applyMissingConfigDefaults(cfg, raw)
 	normalized := normalizeConfig(cfg)
-	if !configsEqual(normalized, cfg) {
+	if !recovered && !configsEqual(normalized, cfg) {
 		_ = saveConfig(normalized)
 	}
 	return normalized
@@ -847,7 +883,7 @@ func saveConfig(cfg Config) error {
 		_ = os.Rename(backup, path)
 		return err
 	}
-	_ = os.Remove(backup)
+	// Keep the previous complete config as last-known-good recovery data.
 	return nil
 }
 
