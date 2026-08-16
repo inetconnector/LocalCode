@@ -249,14 +249,14 @@ type PendingAction struct {
 }
 
 type AgentContinuation struct {
-	Project          string
-	ThreadID         string
-	Model            string
-	Question         string
-	Messages         []OllamaMessage
+	Project         string
+	ThreadID        string
+	Model           string
+	Question        string
+	Messages        []OllamaMessage
 	SuggestedAction *AgentAction
-	OriginalTask     string
-	CompactionCount  int
+	OriginalTask    string
+	CompactionCount int
 }
 
 type AppState struct {
@@ -297,8 +297,9 @@ type AppState struct {
 }
 
 type RemotePairingState struct {
-	CodeHash  string
-	ExpiresAt time.Time
+	CodeHash       string
+	ExpiresAt      time.Time
+	FailedAttempts int
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
