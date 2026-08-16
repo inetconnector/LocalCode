@@ -62,7 +62,7 @@ jobs:
           $content = Get-Content -LiteralPath $path -Raw
           $functionPattern = '(?ms)(^func TestCoverageServerEndpointMatrix\(t \*testing\.T\) \{.*?cfg := defaultConfig\(\)\s*\n)'
           $inject = @'
-          $1	cfg.SetupDownloadsEnabled = false
+          ${1}	cfg.SetupDownloadsEnabled = false
           	cfg.OllamaAutoInstall = false
           	cfg.OllamaAutoPull = false
           	cfg.OllamaDefaultModel = "test-model"
