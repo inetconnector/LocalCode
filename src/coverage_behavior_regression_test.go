@@ -48,7 +48,7 @@ func TestRemoteAuthenticatedWorkflowHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.pairingOpen() {
+	if remote.pairingOpen() {
 		t.Fatal("pairing must close after successful device pairing")
 	}
 
@@ -207,7 +207,8 @@ func TestBinaryAssetParsersAndSafeWrites(t *testing.T) {
 	}
 	bmp := make([]byte, 26)
 	binary.LittleEndian.PutUint32(bmp[18:22], uint32(320))
-	binary.LittleEndian.PutUint32(bmp[22:26], uint32(int32(-200)))
+	negHeight := int32(-200)
+	binary.LittleEndian.PutUint32(bmp[22:26], uint32(negHeight))
 	w, h, err := bmpDimensions(bmp)
 	if err != nil || w != 320 || h != 200 {
 		t.Fatalf("BMP dimensions=%dx%d err=%v", w, h, err)
