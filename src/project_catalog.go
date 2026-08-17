@@ -4,10 +4,12 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 type ProjectSummary struct {
@@ -32,6 +34,20 @@ func projectListWithout(values []string, path string) []string {
 		if !strings.EqualFold(filepath.Clean(value), filepath.Clean(path)) {
 			out = append(out, value)
 		}
+	}
+	return out
+}
+
+func projectListReplace(values []string, oldPath, newPath string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.EqualFold(filepath.Clean(value), filepath.Clean(oldPath)) {
+			if !projectListContains(out, newPath) {
+				out = append(out, newPath)
+			}
+			continue
+		}
+		out = append(out, value)
 	}
 	return out
 }
@@ -82,6 +98,88 @@ func listProjects(cfg Config) ([]ProjectSummary, error) {
 	return projects, nil
 }
 
+func validProjectFolderName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("folder name is required")
+	}
+	if !utf8.ValidString(name) || len([]rune(name)) > 120 {
+		return errors.New("folder name is invalid or too long")
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, `<>:"/\\|?*`) {
+		return errors.New("folder name contains invalid characters")
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return errors.New("folder name may not end with a dot or space")
+	}
+	base := strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name)))
+	reserved := map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true}
+	for i := 1; i <= 9; i++ {
+		reserved[fmt.Sprintf("COM%d", i)] = true
+		reserved[fmt.Sprintf("LPT%d", i)] = true
+	}
+	if reserved[base] {
+		return errors.New("folder name is reserved by Windows")
+	}
+	return nil
+}
+
+func directProjectFolder(root, path string) (string, error) {
+	root = filepath.Clean(root)
+	full, err := ensureWithinRoot(root, path)
+	if err != nil {
+		return "", err
+	}
+	if strings.EqualFold(full, root) || !strings.EqualFold(filepath.Dir(full), root) {
+		return "", errors.New("folder operation is limited to direct project folders")
+	}
+	return full, nil
+}
+
+func cloneThreadSnapshotLocked(threads map[string]*ChatThread) map[string]*ChatThread {
+	snapshot := make(map[string]*ChatThread, len(threads))
+	for id, thread := range threads {
+		if thread == nil {
+			continue
+		}
+		copy := *thread
+		copy.Events = append([]UIEvent(nil), thread.Events...)
+		snapshot[id] = &copy
+	}
+	return snapshot
+}
+
+func (s *AppState) updateProjectRuntimePath(oldPath, newPath string, archive bool) {
+	s.mu.Lock()
+	if strings.EqualFold(filepath.Clean(s.Project), filepath.Clean(oldPath)) {
+		if archive {
+			s.Project = ""
+			s.CurrentThread = ""
+			s.Events = nil
+			s.Pending = nil
+			s.Continuation = nil
+		} else {
+			s.Project = newPath
+			if s.Continuation != nil && strings.EqualFold(filepath.Clean(s.Continuation.Project), filepath.Clean(oldPath)) {
+				s.Continuation.Project = newPath
+			}
+		}
+	}
+	for _, thread := range s.Threads {
+		if thread == nil || !strings.EqualFold(filepath.Clean(thread.Project), filepath.Clean(oldPath)) {
+			continue
+		}
+		if archive {
+			thread.Archived = true
+		} else {
+			thread.Project = newPath
+		}
+	}
+	snapshot := cloneThreadSnapshotLocked(s.Threads)
+	s.mu.Unlock()
+	s.queueThreadSave(snapshot)
+}
+
 func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, error) {
 	path = strings.TrimSpace(path)
 	action = strings.ToLower(strings.TrimSpace(action))
@@ -92,13 +190,35 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 
 	s.mu.RLock()
 	running := s.Running
-	root := s.Config.RootProjectDir
+	root := filepath.Clean(s.Config.RootProjectDir)
 	s.mu.RUnlock()
 	if running {
 		return ProjectSummary{}, errors.New("Agent läuft gerade")
 	}
 
-	full, err := ensureWithinRoot(root, path)
+	if action == "create_folder" {
+		if !strings.EqualFold(filepath.Clean(path), root) {
+			return ProjectSummary{}, errors.New("new project folders can only be created in the project root")
+		}
+		if err := validProjectFolderName(value); err != nil {
+			return ProjectSummary{}, err
+		}
+		created := filepath.Join(root, value)
+		if _, err := os.Stat(created); err == nil {
+			return ProjectSummary{}, errors.New("a folder with this name already exists")
+		} else if !os.IsNotExist(err) {
+			return ProjectSummary{}, err
+		}
+		if err := os.Mkdir(created, 0o755); err != nil {
+			return ProjectSummary{}, err
+		}
+		s.mu.RLock()
+		cfg := s.Config
+		s.mu.RUnlock()
+		return ProjectSummary{Path: created, Name: projectDisplayName(cfg, created), Pinned: false}, nil
+	}
+
+	full, err := directProjectFolder(root, path)
 	if err != nil {
 		return ProjectSummary{}, err
 	}
@@ -110,11 +230,93 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		return ProjectSummary{}, errors.New("project name is too long")
 	}
 
+	switch action {
+	case "rename_folder":
+		if err := validProjectFolderName(value); err != nil {
+			return ProjectSummary{}, err
+		}
+		newPath := filepath.Join(root, value)
+		if strings.EqualFold(newPath, full) {
+			return ProjectSummary{Path: full, Name: filepath.Base(full), Pinned: false}, nil
+		}
+		if _, err := os.Stat(newPath); err == nil {
+			return ProjectSummary{}, errors.New("a folder with this name already exists")
+		} else if !os.IsNotExist(err) {
+			return ProjectSummary{}, err
+		}
+		if err := os.Rename(full, newPath); err != nil {
+			return ProjectSummary{}, err
+		}
+		cfg, cfgErr := s.mutateConfig(func(cfg *Config) error {
+			if alias, ok := cfg.ProjectAliases[full]; ok {
+				delete(cfg.ProjectAliases, full)
+				cfg.ProjectAliases[newPath] = alias
+			}
+			cfg.PinnedProjects = projectListReplace(cfg.PinnedProjects, full, newPath)
+			cfg.HiddenProjects = projectListReplace(cfg.HiddenProjects, full, newPath)
+			if strings.EqualFold(filepath.Clean(cfg.LastProject), filepath.Clean(full)) {
+				cfg.LastProject = newPath
+			}
+			return nil
+		})
+		if cfgErr != nil {
+			_ = os.Rename(newPath, full)
+			return ProjectSummary{}, cfgErr
+		}
+		s.updateProjectRuntimePath(full, newPath, false)
+		return ProjectSummary{Path: newPath, Name: projectDisplayName(cfg, newPath), Pinned: projectListContains(cfg.PinnedProjects, newPath)}, nil
+
+	case "delete_empty":
+		entries, err := os.ReadDir(full)
+		if err != nil {
+			return ProjectSummary{}, err
+		}
+		if len(entries) != 0 {
+			return ProjectSummary{}, errors.New("folder is not empty; use recursive delete with confirmation")
+		}
+		if err := os.Remove(full); err != nil {
+			return ProjectSummary{}, err
+		}
+		_, cfgErr := s.mutateConfig(func(cfg *Config) error {
+			delete(cfg.ProjectAliases, full)
+			cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
+			cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
+			if strings.EqualFold(filepath.Clean(cfg.LastProject), filepath.Clean(full)) {
+				cfg.LastProject = ""
+			}
+			return nil
+		})
+		if cfgErr != nil {
+			return ProjectSummary{}, cfgErr
+		}
+		s.updateProjectRuntimePath(full, "", true)
+		return ProjectSummary{}, nil
+
+	case "delete_recursive":
+		if value == "" || !strings.EqualFold(value, filepath.Base(full)) {
+			return ProjectSummary{}, errors.New("recursive delete confirmation must match the folder name")
+		}
+		if err := os.RemoveAll(full); err != nil {
+			return ProjectSummary{}, err
+		}
+		_, cfgErr := s.mutateConfig(func(cfg *Config) error {
+			delete(cfg.ProjectAliases, full)
+			cfg.PinnedProjects = projectListWithout(cfg.PinnedProjects, full)
+			cfg.HiddenProjects = projectListWithout(cfg.HiddenProjects, full)
+			if strings.EqualFold(filepath.Clean(cfg.LastProject), filepath.Clean(full)) {
+				cfg.LastProject = ""
+			}
+			return nil
+		})
+		if cfgErr != nil {
+			return ProjectSummary{}, cfgErr
+		}
+		s.updateProjectRuntimePath(full, "", true)
+		return ProjectSummary{}, nil
+	}
+
 	removeActive := false
 	cfg, err := s.mutateConfig(func(cfg *Config) error {
-		if s.Running {
-			return errors.New("Agent läuft gerade")
-		}
 		switch action {
 		case "rename":
 			if cfg.ProjectAliases == nil {
