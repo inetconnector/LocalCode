@@ -29,6 +29,7 @@ func newRemoteTestState(t *testing.T) *AppState {
 	cfg.RemoteBindHost = "127.0.0.1"
 	cfg.RemotePort = 0
 	state := NewAppState(normalizeConfig(cfg), NewOllamaClient())
+	t.Cleanup(state.Close)
 	state.Project = project
 	state.Model = "test-model"
 	state.RemoteURLs = []string{"http://127.0.0.1:32146/remote"}
@@ -83,11 +84,16 @@ func TestRemotePairingTokenAndStatus(t *testing.T) {
 	if err := json.Unmarshal(pairing.Body.Bytes(), &pairingBody); err != nil {
 		t.Fatal(err)
 	}
-	if len(pairingBody.Code) != 6 || len(pairingBody.RemoteURLs) != 1 {
+	if len(pairingBody.Code) != 8 || len(pairingBody.RemoteURLs) != 1 {
 		t.Fatalf("unexpected pairing response: %#v", pairingBody)
 	}
+	for _, r := range pairingBody.Code {
+		if r < '0' || r > '9' {
+			t.Fatalf("pairing code must be numeric: %q", pairingBody.Code)
+		}
+	}
 
-	badPair := serveHTTP(remote, http.MethodPost, "/remote/api/pair", `{"code":"000000","device_name":"test"}`, "")
+	badPair := serveHTTP(remote, http.MethodPost, "/remote/api/pair", `{"code":"00000000","device_name":"test"}`, "")
 	if badPair.Code != http.StatusForbidden {
 		t.Fatalf("bad pair status = %d", badPair.Code)
 	}
@@ -119,6 +125,46 @@ func TestRemotePairingTokenAndStatus(t *testing.T) {
 	}
 	if !strings.Contains(status.Body.String(), `"LocalCode Remote"`) || !strings.Contains(status.Body.String(), `"test-model"`) {
 		t.Fatalf("status response missing remote facts: %s", status.Body.String())
+	}
+
+	queryToken := serveHTTP(remote, http.MethodGet, "/remote/api/status?token="+paired.Token, "", "")
+	if queryToken.Code != http.StatusUnauthorized {
+		t.Fatalf("ordinary API must reject query token, got %d", queryToken.Code)
+	}
+}
+
+func TestRemotePairingLocksAfterFailedAttempts(t *testing.T) {
+	state := newRemoteTestState(t)
+	remote := NewRemoteServer(state)
+	code, _, _, err := state.StartRemotePairing()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < remotePairingMaxAttempts; i++ {
+		rr := serveHTTP(remote, http.MethodPost, "/remote/api/pair", `{"code":"99999999","device_name":"attacker"}`, "")
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("failed pairing attempt %d = %d", i+1, rr.Code)
+		}
+	}
+	state.mu.RLock()
+	pairing := state.RemotePairing
+	state.mu.RUnlock()
+	if pairing != nil {
+		t.Fatal("pairing window must be invalidated after failed-attempt budget")
+	}
+	validAfterLockout := serveHTTP(remote, http.MethodPost, "/remote/api/pair", `{"code":"`+code+`","device_name":"phone"}`, "")
+	if validAfterLockout.Code != http.StatusForbidden {
+		t.Fatalf("consumed pairing session accepted valid code after lockout: %d", validAfterLockout.Code)
+	}
+}
+
+func TestRemotePairingBodyLimit(t *testing.T) {
+	state := newRemoteTestState(t)
+	remote := NewRemoteServer(state)
+	body := `{"code":"00000000","device_name":"` + strings.Repeat("x", remotePairingMaxBody) + `"}`
+	rr := serveHTTP(remote, http.MethodPost, "/remote/api/pair", body, "")
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("oversized pairing body = %d", rr.Code)
 	}
 }
 

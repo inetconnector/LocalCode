@@ -38,6 +38,14 @@ var ollamaWebSearchEndpoint = "https://ollama.com/api/web_search"
 var duckDuckGoSearchEndpoint = "https://html.duckduckgo.com/html/"
 var bingRSSSearchEndpoint = "https://www.bing.com/search"
 
+func localCodeUserAgent() string {
+	buildVersion := strings.TrimSpace(version)
+	if buildVersion == "" {
+		buildVersion = "dev"
+	}
+	return "Mozilla/5.0 LocalCode/" + buildVersion
+}
+
 func cleanHTMLText(s string) string {
 	s = tagRE.ReplaceAllString(s, " ")
 	s = html.UnescapeString(s)
@@ -112,7 +120,7 @@ func ollamaWebSearch(ctx context.Context, cfg Config, query string, maxResults i
 func duckDuckGoSearch(ctx context.Context, query string, maxResults int) ([]WebResult, error) {
 	endpoint := duckDuckGoSearchEndpoint + "?q=" + url.QueryEscape(query)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.4.3")
+	req.Header.Set("User-Agent", localCodeUserAgent())
 	resp, err := webHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err
@@ -239,7 +247,7 @@ func webFetch(ctx context.Context, cfg Config, rawURL string) (string, error) {
 	}
 	client := webHTTPClient(45*time.Second, 8)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.4.3")
+	req.Header.Set("User-Agent", localCodeUserAgent())
 	req.Header.Set("Accept", "text/html,application/json,text/plain;q=0.9,*/*;q=0.5")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -293,7 +301,7 @@ func bingRSSSearch(ctx context.Context, query string, maxResults int) ([]WebResu
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 LocalCode/6.4.3")
+	req.Header.Set("User-Agent", localCodeUserAgent())
 	resp, err := webHTTPClient(35*time.Second, 8).Do(req)
 	if err != nil {
 		return nil, err

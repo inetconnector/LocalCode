@@ -297,8 +297,9 @@ type AppState struct {
 }
 
 type RemotePairingState struct {
-	CodeHash  string
-	ExpiresAt time.Time
+	CodeHash       string
+	ExpiresAt      time.Time
+	FailedAttempts int
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
@@ -493,8 +494,15 @@ func (s *AppState) Subscribe() chan UIEvent {
 }
 
 func (s *AppState) Unsubscribe(ch chan UIEvent) {
+	if ch == nil {
+		return
+	}
+	// Do not close the data channel here. AddEvent intentionally snapshots
+	// subscribers and sends after releasing s.mu; closing here could therefore
+	// race with an already-snapshotted send and panic. Removing the channel from
+	// the registry prevents future snapshots. At most one in-flight event can
+	// still arrive, which is safe and bounded by the channel buffer.
 	s.mu.Lock()
 	delete(s.subscribers, ch)
-	close(ch)
 	s.mu.Unlock()
 }

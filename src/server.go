@@ -64,6 +64,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
+	s.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)
 	s.mux.HandleFunc("/api/mcp/test", s.handleMCPTest)
 	s.mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
 	s.mux.HandleFunc("/api/mcp/setup", s.handleMCPSetup)
@@ -271,19 +273,19 @@ func (s *Server) handleSelectProject(w http.ResponseWriter, r *http.Request) {
 	s.state.mu.RLock()
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
-	cfg.LastProject = full
 	if err := ensureProjectDocs(full, cfg); err != nil {
 		http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := saveConfig(cfg); err != nil {
+	cfg, err = s.state.mutateConfig(func(next *Config) error {
+		next.LastProject = full
+		return nil
+	})
+	if err != nil {
 		http.Error(w, localizeConfigText(cfg, "Projektauswahl konnte nicht gespeichert werden: ", "Project selection could not be saved: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.state.selectProjectThread(full)
-	s.state.mu.Lock()
-	s.state.Config = cfg
-	s.state.mu.Unlock()
 	s.state.UpdateProjectState(localizeConfigText(cfg, "Projekt ausgewählt", "Project selected"))
 	w.Header().Set("Content-Type", "application/json")
 	if err := writeJSON(w, map[string]any{"ok": true, "project": full}); err != nil {
@@ -760,45 +762,52 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg := s.state.Config
 		s.state.mu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSON(w, cfg)
+		_ = writeJSON(w, publicSettingsConfig(cfg))
 	case http.MethodPost:
 		var patch map[string]json.RawMessage
 		if err := readJSONPermissive(r.Body, &patch); err != nil {
 			http.Error(w, "Ungültige Einstellungsdaten: "+err.Error(), 400)
 			return
 		}
-		s.state.mu.Lock()
-		current := s.state.Config
-		baseData, _ := json.Marshal(current)
-		var merged map[string]json.RawMessage
-		_ = json.Unmarshal(baseData, &merged)
-		for key, value := range patch {
-			merged[key] = value
-		}
-		mergedData, err := json.Marshal(merged)
+		var previous Config
+		cfg, err := s.state.mutateConfig(func(current *Config) error {
+			previous = *current
+			baseData, err := json.Marshal(*current)
+			if err != nil {
+				return fmt.Errorf("Einstellungen konnten nicht serialisiert werden: %w", err)
+			}
+			var merged map[string]json.RawMessage
+			if err := json.Unmarshal(baseData, &merged); err != nil {
+				return fmt.Errorf("Einstellungen konnten nicht zusammengeführt werden: %w", err)
+			}
+			for key, value := range patch {
+				merged[key] = value
+			}
+			mergedData, err := json.Marshal(merged)
+			if err != nil {
+				return fmt.Errorf("Einstellungen konnten nicht zusammengeführt werden: %w", err)
+			}
+			var incoming Config
+			if err := json.Unmarshal(mergedData, &incoming); err != nil {
+				return fmt.Errorf("Einstellungen enthalten ungültige Werte: %w", err)
+			}
+			incoming.RootProjectDir = current.RootProjectDir
+			incoming.LastProject = current.LastProject
+			incoming.LastModel = current.LastModel
+			incoming.Port = current.Port
+			incoming.RemoteDevices = append([]RemoteDevice(nil), current.RemoteDevices...)
+			*current = incoming
+			return nil
+		})
 		if err != nil {
-			s.state.mu.Unlock()
-			http.Error(w, "Einstellungen konnten nicht zusammengeführt werden: "+err.Error(), 400)
-			return
-		}
-		var incoming Config
-		if err := json.Unmarshal(mergedData, &incoming); err != nil {
-			s.state.mu.Unlock()
-			http.Error(w, "Einstellungen enthalten ungültige Werte: "+err.Error(), 400)
-			return
-		}
-		incoming.RootProjectDir = current.RootProjectDir
-		incoming.LastProject = current.LastProject
-		incoming.LastModel = current.LastModel
-		incoming.Port = current.Port
-		cfg := normalizeConfig(incoming)
-		s.state.mu.Unlock()
-		if err := saveConfig(cfg); err != nil {
-			http.Error(w, localizeConfigText(current, "Einstellungen konnten nicht gespeichert werden: ", "Settings could not be saved: ")+err.Error(), http.StatusInternalServerError)
+			if isConfigMutationError(err) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			} else {
+				http.Error(w, localizeConfigText(previous, "Einstellungen konnten nicht gespeichert werden: ", "Settings could not be saved: ")+err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		s.state.mu.Lock()
-		s.state.Config = cfg
 		if cfg.OllamaURL != "" {
 			s.state.Ollama.BaseURL = cfg.OllamaURL
 		} else {

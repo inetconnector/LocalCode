@@ -9,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const productDirName = "LocalCode"
 const legacyProductDirName = "Local" + "Codex"
+
+var configFileMu sync.Mutex
 
 func userProfileDir() string {
 	if override := strings.TrimSpace(os.Getenv("LOCALCODE_USER_HOME")); override != "" {
@@ -70,7 +73,7 @@ func defaultMCPServers() []MCPServerConfig {
 		},
 		{
 			Name: "fetch", DisplayName: "Fetch", Description: "Offizieller MCP-Referenzserver zum Abrufen und Umwandeln von Webseiten.",
-			Enabled: true, Transport: "stdio", Preset: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"},
+			Enabled: false, Transport: "stdio", Preset: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch==2026.7.10"},
 			Env: map[string]string{"PYTHONIOENCODING": "utf-8"}, AutoInstall: true, TimeoutSec: 120,
 		},
 		{
@@ -80,7 +83,7 @@ func defaultMCPServers() []MCPServerConfig {
 		},
 		{
 			Name: "playwright", DisplayName: "Playwright Browser", Description: "Offizieller Microsoft Playwright MCP Server für Browserautomation; ersetzt den archivierten Puppeteer-Server.",
-			Enabled: true, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@latest", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
+			Enabled: false, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@0.0.78", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
 			AutoInstall: true, ProjectScoped: true, TimeoutSec: 180,
 		},
 	}
@@ -112,13 +115,13 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 
 func defaultConfig() Config {
 	return Config{
-		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: true, RemoteBindHost: "0.0.0.0", RemotePort: 32146, ProjectAliases: map[string]string{},
+		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: false, RemoteBindHost: "127.0.0.1", RemotePort: 32146, ProjectAliases: map[string]string{},
 		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
 		EditingEngine: "aider", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
 		ClaudeCodeEnabled: true, ClaudeCodeAutoInstall: true, ClaudeCodeChannel: "stable", ClaudeCodeModel: "sonnet", ClaudeCodePermissionMode: "acceptEdits", ClaudeCodeMaxTurns: 24,
-		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "latest", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
+		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "1.18.16", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
@@ -758,33 +761,69 @@ func normalizeConfig(cfg Config) Config {
 	return cfg
 }
 
+func readConfigFile(path string) (Config, map[string]json.RawMessage, error) {
+	cfg := defaultConfig()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, nil, err
+	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return Config{}, nil, err
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, nil, err
+	}
+	return cfg, raw, nil
+}
+
+func applyMissingConfigDefaults(cfg Config, raw map[string]json.RawMessage) Config {
+	defaults := defaultConfig()
+	if _, ok := raw["network_enabled"]; !ok {
+		cfg.NetworkEnabled = defaults.NetworkEnabled
+	}
+	if _, ok := raw["git_enabled"]; !ok {
+		cfg.GitEnabled = defaults.GitEnabled
+	}
+	if _, ok := raw["auto_state_update"]; !ok {
+		cfg.AutoStateUpdate = defaults.AutoStateUpdate
+	}
+	if _, ok := raw["create_project_docs"]; !ok {
+		cfg.CreateProjectDocs = defaults.CreateProjectDocs
+	}
+	if _, ok := raw["show_bottom_bar"]; !ok {
+		cfg.ShowBottomBar = defaults.ShowBottomBar
+	}
+	return cfg
+}
+
 func loadConfig() Config {
 	migrateLegacyProductData()
-	cfg := defaultConfig()
-	if data, err := os.ReadFile(configPath()); err == nil {
-		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
-		var raw map[string]json.RawMessage
-		_ = json.Unmarshal(data, &raw)
-		_ = json.Unmarshal(data, &cfg)
-		defaults := defaultConfig()
-		if _, ok := raw["network_enabled"]; !ok {
-			cfg.NetworkEnabled = defaults.NetworkEnabled
-		}
-		if _, ok := raw["git_enabled"]; !ok {
-			cfg.GitEnabled = defaults.GitEnabled
-		}
-		if _, ok := raw["auto_state_update"]; !ok {
-			cfg.AutoStateUpdate = defaults.AutoStateUpdate
-		}
-		if _, ok := raw["create_project_docs"]; !ok {
-			cfg.CreateProjectDocs = defaults.CreateProjectDocs
-		}
-		if _, ok := raw["show_bottom_bar"]; !ok {
-			cfg.ShowBottomBar = defaults.ShowBottomBar
+	path := configPath()
+	cfg, raw, err := readConfigFile(path)
+	recovered := false
+	if err != nil {
+		if backupCfg, backupRaw, backupErr := readConfigFile(path + ".bak"); backupErr == nil {
+			cfg, raw = backupCfg, backupRaw
+			recovered = true
+			if !os.IsNotExist(err) {
+				corrupt := path + ".corrupt"
+				_ = os.Remove(corrupt)
+				if renameErr := os.Rename(path, corrupt); renameErr == nil {
+					if copyErr := copyFileIfMissing(path+".bak", path); copyErr != nil {
+						_ = os.Rename(corrupt, path)
+					}
+				}
+			}
+		} else {
+			cfg = defaultConfig()
+			raw = map[string]json.RawMessage{}
 		}
 	}
+	cfg = applyMissingConfigDefaults(cfg, raw)
 	normalized := normalizeConfig(cfg)
-	if !configsEqual(normalized, cfg) {
+	if !recovered && !configsEqual(normalized, cfg) {
 		_ = saveConfig(normalized)
 	}
 	return normalized
@@ -797,6 +836,9 @@ func configsEqual(a, b Config) bool {
 }
 
 func saveConfig(cfg Config) error {
+	configFileMu.Lock()
+	defer configFileMu.Unlock()
+
 	cfg = normalizeConfig(cfg)
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -841,7 +883,7 @@ func saveConfig(cfg Config) error {
 		_ = os.Rename(backup, path)
 		return err
 	}
-	_ = os.Remove(backup)
+	// Keep the previous complete config as last-known-good recovery data.
 	return nil
 }
 

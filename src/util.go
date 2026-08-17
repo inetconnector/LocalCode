@@ -43,23 +43,30 @@ func ensureWithinRoot(root, target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(target) == "" {
-		return absRoot, nil
+	absRoot = filepath.Clean(absRoot)
+
+	absTarget := absRoot
+	if strings.TrimSpace(target) != "" {
+		if filepath.IsAbs(target) {
+			absTarget, err = filepath.Abs(target)
+		} else {
+			absTarget, err = filepath.Abs(filepath.Join(absRoot, target))
+		}
+		if err != nil {
+			return "", err
+		}
+		absTarget = filepath.Clean(absTarget)
 	}
-	var absTarget string
-	if filepath.IsAbs(target) {
-		absTarget, err = filepath.Abs(target)
-	} else {
-		absTarget, err = filepath.Abs(filepath.Join(absRoot, target))
-	}
+
+	canonicalRoot, err := canonicalSandboxPath(absRoot)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve project root: %w", err)
 	}
-	rel, err := filepath.Rel(absRoot, absTarget)
+	canonicalTarget, err := canonicalSandboxPath(absTarget)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve project path: %w", err)
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !pathWithin(canonicalRoot, canonicalTarget) {
 		return "", fmt.Errorf("path escapes project root: %s", target)
 	}
 	return absTarget, nil

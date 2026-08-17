@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: src/go.mod
+
+      - name: Verify tag matches VERSION.txt
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION.txt' -Raw).Trim()
+          $expected = 'v' + $version
+          if ('${{ github.ref_name }}' -ne $expected) {
+            throw "Release tag ${{ github.ref_name }} does not match VERSION.txt ($expected)."
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') {
+            throw "VERSION.txt is not a valid release version: $version"
+          }
+
+      - name: Build and test native Windows artifacts
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Verify release artifacts and write standard checksums
+        shell: pwsh
+        run: |
+          $files = @('dist/LocalCode.exe', 'dist/LocalCode-Debug.exe')
+          foreach ($file in $files) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing release artifact: $file"
+            }
+          }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($file))"
+          }
+          Set-Content -LiteralPath 'dist/SHA256SUMS.txt' -Value $lines -Encoding Ascii
+          Get-Content -LiteralPath 'dist/SHA256SUMS.txt'
+
+      - name: Record Go build metadata
+        shell: pwsh
+        run: |
+          @(
+            '# LocalCode build metadata'
+            ('tag: ${{ github.ref_name }}')
+            ('commit: ${{ github.sha }}')
+            ('runner: ' + $env:RUNNER_OS + '/' + $env:RUNNER_ARCH)
+            ''
+            '## LocalCode.exe'
+            (& go version -m dist/LocalCode.exe | Out-String).TrimEnd()
+            ''
+            '## LocalCode-Debug.exe'
+            (& go version -m dist/LocalCode-Debug.exe | Out-String).TrimEnd()
+          ) | Set-Content -LiteralPath 'dist/BUILD-METADATA.txt' -Encoding utf8NoBOM
+
+      - name: Attest release executables
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: 'dist/LocalCode*.exe'
+
+      - name: Create release payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content -LiteralPath 'VERSION.txt' -Raw).Trim()
+          $notesPath = Join-Path $PWD ("RELEASE-NOTES-$version.md")
+          $args = @(
+            'release', 'create', '${{ github.ref_name }}',
+            'dist/LocalCode.exe',
+            'dist/LocalCode-Debug.exe',
+            'dist/SHA256SUMS.txt',
+            'dist/BUILD-METADATA.txt',
+            '--title', 'LocalCode ${{ github.ref_name }}',
+            '--verify-tag'
+          )
+          if (Test-Path -LiteralPath $notesPath -PathType Leaf) {
+            $args += @('--notes-file', $notesPath)
+          } else {
+            $args += '--generate-notes'
+          }
+          & gh @args
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release create failed with exit code $LASTEXITCODE"
+          }

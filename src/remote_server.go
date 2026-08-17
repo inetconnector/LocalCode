@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,7 +19,11 @@ import (
 	"time"
 )
 
-const remotePairingTTL = 10 * time.Minute
+const (
+	remotePairingTTL         = 3 * time.Minute
+	remotePairingMaxAttempts = 5
+	remotePairingMaxBody     = 8 << 10
+)
 
 type RemoteServer struct {
 	state *AppState
@@ -46,7 +51,8 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/chat", s.withAuth(s.handleChat))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
-	s.mux.HandleFunc("/remote/api/events", s.withAuth(s.handleEvents))
+	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
+	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
 }
 
 func (s *RemoteServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +60,7 @@ func (s *RemoteServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	w.Header().Set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
@@ -175,14 +182,14 @@ func randomRemoteToken() (string, error) {
 }
 
 func randomPairingCode() (string, error) {
-	data := make([]byte, 6)
-	if _, err := rand.Read(data); err != nil {
+	// rand.Int avoids the modulo bias of byte%10 while keeping a human-entered
+	// numeric code. Eight digits plus a five-attempt cap makes online guessing
+	// impractical during the short pairing window.
+	n, err := rand.Int(rand.Reader, big.NewInt(100000000))
+	if err != nil {
 		return "", err
 	}
-	for i := range data {
-		data[i] = '0' + data[i]%10
-	}
-	return string(data), nil
+	return fmt.Sprintf("%08d", n.Int64()), nil
 }
 
 func remoteDeviceName(name string) string {
@@ -201,21 +208,24 @@ func (s *RemoteServer) handlePair(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, remotePairingMaxBody)
 	var req struct {
 		Code       string `json:"code"`
 		DeviceName string `json:"device_name"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid pairing request", http.StatusBadRequest)
 		return
 	}
 	token, device, err := s.state.PairRemoteDevice(req.Code, req.DeviceName)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		// Keep failures deliberately indistinguishable to avoid turning the pair
+		// endpoint into an oracle for code state.
+		http.Error(w, "invalid or expired pairing code", http.StatusForbidden)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": device})
+	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
 }
 
 func (s *RemoteServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -226,9 +236,6 @@ func (s *RemoteServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 				token = strings.TrimSpace(auth[7:])
 			}
-		}
-		if token == "" {
-			token = strings.TrimSpace(r.URL.Query().Get("token"))
 		}
 		if !s.state.RemoteTokenValid(token) {
 			http.Error(w, "remote token required", http.StatusUnauthorized)
@@ -517,24 +524,37 @@ func (s *AppState) StartRemotePairing() (string, time.Time, []string, error) {
 
 func (s *AppState) PairRemoteDevice(code, deviceName string) (string, RemoteDevice, error) {
 	codeHash := remotePairingHash(strings.TrimSpace(code))
+	now := time.Now()
+
+	// Validate and consume the pairing window before minting a long-lived token.
+	// A small failed-attempt budget prevents online brute force on the LAN.
+	s.mu.Lock()
+	pairing := s.RemotePairing
+	if pairing == nil || now.After(pairing.ExpiresAt) {
+		s.RemotePairing = nil
+		s.mu.Unlock()
+		return "", RemoteDevice{}, fmt.Errorf("invalid or expired pairing code")
+	}
+	if !secureCompareHex(pairing.CodeHash, codeHash) {
+		pairing.FailedAttempts++
+		if pairing.FailedAttempts >= remotePairingMaxAttempts {
+			s.RemotePairing = nil
+		}
+		s.mu.Unlock()
+		return "", RemoteDevice{}, fmt.Errorf("invalid or expired pairing code")
+	}
+	s.RemotePairing = nil
+	s.mu.Unlock()
+
 	token, err := randomRemoteToken()
 	if err != nil {
 		return "", RemoteDevice{}, err
 	}
-	now := time.Now()
 	device := RemoteDevice{ID: newID(), Name: remoteDeviceName(deviceName), TokenHash: remoteTokenHash(token), PairedAt: now, LastSeenAt: now}
-	s.mu.Lock()
-	if s.RemotePairing == nil || time.Now().After(s.RemotePairing.ExpiresAt) || !secureCompareHex(s.RemotePairing.CodeHash, codeHash) {
-		s.mu.Unlock()
-		return "", RemoteDevice{}, fmt.Errorf("invalid or expired pairing code")
-	}
-	cfg := s.Config
-	cfg.RemoteDevices = append(cfg.RemoteDevices, device)
-	cfg = normalizeConfig(cfg)
-	s.Config = cfg
-	s.RemotePairing = nil
-	s.mu.Unlock()
-	if err := saveConfig(cfg); err != nil {
+	if _, err := s.mutateConfig(func(cfg *Config) error {
+		cfg.RemoteDevices = append(cfg.RemoteDevices, device)
+		return nil
+	}); err != nil {
 		return "", RemoteDevice{}, err
 	}
 	return token, device, nil
@@ -547,27 +567,60 @@ func (s *AppState) RemoteTokenValid(token string) bool {
 	}
 	hash := remoteTokenHash(token)
 	now := time.Now()
-	changed := false
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i := range s.Config.RemoteDevices {
-		if secureCompareHex(s.Config.RemoteDevices[i].TokenHash, hash) {
-			if now.Sub(s.Config.RemoteDevices[i].LastSeenAt) > time.Minute {
-				s.Config.RemoteDevices[i].LastSeenAt = now
-				changed = true
-			}
-			if changed {
-				cfg := s.Config
-				go func() {
-					if err := saveConfig(cfg); err != nil {
-						log.Printf("saving remote-device last-seen failed: %v", err)
-					}
-				}()
-			}
-			return true
+
+	s.mu.RLock()
+	var matched RemoteDevice
+	found := false
+	for _, device := range s.Config.RemoteDevices {
+		if secureCompareHex(device.TokenHash, hash) {
+			matched = device
+			found = true
+			break
 		}
 	}
-	return false
+	s.mu.RUnlock()
+	if !found {
+		return false
+	}
+	if remoteDeviceExpired(matched, now) {
+		// Expired credentials are invalid immediately. Best-effort pruning
+		// keeps config state bounded without making authentication depend on
+		// a successful cleanup write.
+		if _, err := s.mutateConfig(func(cfg *Config) error {
+			out := cfg.RemoteDevices[:0]
+			for _, device := range cfg.RemoteDevices {
+				if strings.EqualFold(device.ID, matched.ID) && secureCompareHex(device.TokenHash, hash) && remoteDeviceExpired(device, now) {
+					continue
+				}
+				out = append(out, device)
+			}
+			cfg.RemoteDevices = out
+			return nil
+		}); err != nil {
+			log.Printf("pruning expired remote device failed: %v", err)
+		}
+		return false
+	}
+
+	if matched.LastSeenAt.IsZero() || now.Sub(matched.LastSeenAt) > time.Minute {
+		if _, err := s.mutateConfig(func(cfg *Config) error {
+			for i := range cfg.RemoteDevices {
+				device := &cfg.RemoteDevices[i]
+				if !strings.EqualFold(device.ID, matched.ID) || !secureCompareHex(device.TokenHash, hash) {
+					continue
+				}
+				if remoteDeviceExpired(*device, now) {
+					return fmt.Errorf("remote device expired")
+				}
+				device.LastSeenAt = now
+				return nil
+			}
+			return fmt.Errorf("remote device not found")
+		}); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) handleRemotePairing(w http.ResponseWriter, r *http.Request) {
@@ -664,7 +717,7 @@ func startRemoteHTTPServer(state *AppState, cfg Config) ([]string, error) {
 	}
 	bindHost := strings.TrimSpace(cfg.RemoteBindHost)
 	if bindHost == "" {
-		bindHost = "0.0.0.0"
+		bindHost = "127.0.0.1"
 	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(bindHost, fmt.Sprintf("%d", port)))
 	if err != nil && port != 0 {
@@ -682,6 +735,7 @@ func startRemoteHTTPServer(state *AppState, cfg Config) ([]string, error) {
 		Handler:           NewRemoteServer(state),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          log.New(os.Stderr, "remote http: ", log.LstdFlags),
 	}
 	go func() {

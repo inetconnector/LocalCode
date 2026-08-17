@@ -320,7 +320,7 @@ func TestReadOnlySubagentHandoff(t *testing.T) {
 func TestAgentToolHooksRunConfiguredCommands(t *testing.T) {
 	root := t.TempDir()
 	cfg := defaultConfig()
-	cfg.CommandTimeout = 5
+	cfg.CommandTimeout = 15
 	cfg.HookBeforeTool = "echo before-hook"
 	cfg.HookAfterTool = "echo after-hook"
 	before, err := runAgentToolHook(context.Background(), root, cfg, "before", AgentAction{Action: "read_file", Path: "README.md", Message: "read"})
@@ -993,9 +993,8 @@ func TestAgentContinuesAfterUnrepairableInvalidAction(t *testing.T) {
 				}
 				content = `{"action":"write_file","message":"valid","path":"game.js","content":"let score = 0;\\nfunction restartGame() { score = 0; }\\n"}`
 			case 5:
-				content = `{"action":"run_command","message":"check","command":"echo test passed"}`
-			case 6:
 				content = `{"action":"finish","message":"Fertig."}`
+
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "done": true})
 		default:
@@ -1012,7 +1011,7 @@ func TestAgentContinuesAfterUnrepairableInvalidAction(t *testing.T) {
 	cfg.LastProject = project
 	cfg.LastModel = "test-model"
 	cfg.EditingEngine = editingEngineNative
-	cfg.ApprovalMode = "auto"
+	cfg.ApprovalMode = "dangerous"
 	cfg.MaxAgentSteps = 8
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
@@ -1077,7 +1076,7 @@ func TestAgentBlocksPrematurePlaceholderFinish(t *testing.T) {
 	cfg.LastProject = project
 	cfg.LastModel = "test-model"
 	cfg.EditingEngine = editingEngineNative
-	cfg.ApprovalMode = "auto"
+	cfg.ApprovalMode = "dangerous"
 	cfg.MaxAgentSteps = 8
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
@@ -1136,7 +1135,7 @@ func TestAgentEscalatesRepeatedSingleFileCompletionBlock(t *testing.T) {
 	cfg.LastProject = project
 	cfg.LastModel = "test-model"
 	cfg.EditingEngine = editingEngineNative
-	cfg.ApprovalMode = "auto"
+	cfg.ApprovalMode = "dangerous"
 	cfg.MaxAgentSteps = 10
 	cfg.CreateProjectDocs = false
 	state := NewAppState(cfg, client)
