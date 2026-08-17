@@ -53,11 +53,13 @@ func TestRemoteSecureCoverageEdges(t *testing.T) {
 
 	cfg := defaultConfig()
 	cfg.RemoteEnabled = true
-	cfg.RemoteBindHost = "256.256.256.256"
+	// TEST-NET-1 is syntactically valid but is not assigned to the runner,
+	// so bind fails immediately without an external DNS lookup.
+	cfg.RemoteBindHost = "192.0.2.1"
 	cfg.RemotePort = 32146
 	state := newRemoteTestState(t)
 	if urls, err := startProductionRemoteServer(state, cfg); err == nil || urls != nil {
-		t.Fatalf("invalid LAN bind should fail before firewall/TLS, urls=%v err=%v", urls, err)
+		t.Fatalf("unassigned LAN bind should fail before firewall/TLS, urls=%v err=%v", urls, err)
 	}
 }
 
