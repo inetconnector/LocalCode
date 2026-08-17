@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: src
@@ -60,6 +60,11 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Inline JavaScript syntax failed: $htmlPath script $i" }
             }
           }
+
+      - name: Native Android Remote APK
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: ./scripts/build-android.ps1
 
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

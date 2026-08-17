@@ -16,6 +16,8 @@ A commit is release-ready only when all of these checks pass on Windows:
 - `go vet ./...` passes.
 - Frontend JavaScript syntax checks pass for `i18n.js` and inline scripts in the
   desktop and Remote HTML applications.
+- The native Android Remote shell builds into a signed, `apksigner`-verified debug APK
+  from the checked-in manifest/source using the runner Android SDK/JDK.
 - `govulncheck` reports no reachable known Go vulnerability that fails the gate.
 - The real loopback HTTP integration test passes through Desktop HTTP, Settings,
   Remote pairing, authenticated Remote status, one-time SSE stream-ticket issuance,
@@ -29,7 +31,7 @@ A commit is release-ready only when all of these checks pass on Windows:
 Security regression expectations
 --------------------------------
 The test suite includes behavior assertions for the hardened boundaries added in the
-production-quality hardening branch, including:
+production-quality hardening work, including:
 - canonical project sandbox containment across symlinks and NTFS junctions;
 - conservative approval handling for free-form shell commands and structured tools;
 - Git read-only classification and exact persistent Git approval patterns;
@@ -37,6 +39,15 @@ production-quality hardening branch, including:
   device-token expiry/revocation, sanitized device responses, and one-time SSE tickets;
 - Remote credentials isolated from the generic Settings API;
 - subscriber/event concurrency safety;
+- explicit LAN Remote transport upgrading to TLS 1.2+ instead of cleartext HTTP;
+- persistent locally generated LAN TLS certificates with IP SAN coverage and
+  SHA-256 certificate-fingerprint handoff;
+- DNS-SD/mDNS discovery metadata carrying HTTPS path, TLS state, fingerprint and
+  `localcode://pair` deep-link data;
+- the native Android shell rejecting cleartext transport and pinning the discovered
+  or QR/deep-link-provided LocalCode certificate fingerprint;
+- Windows LAN firewall setup scoped to the LocalCode executable, exact TCP port,
+  Private network profile and LocalSubnet only;
 - serialized configuration mutation and corruption recovery;
 - chat-history last-known-good recovery;
 - external MCP servers disabled by default, version-pinned, and lazily initialized;
@@ -46,7 +57,9 @@ Test naming
 -----------
 `scripts/ui-e2e-test.py` is a mocked browser/UI smoke test. It is not the source of
 truth for backend integration. Real Desktop/Remote network integration is covered by
-the Go loopback HTTP integration test in the Quality workflow.
+the Go loopback HTTP integration test in the Quality workflow. Native Android source
+is independently compiled, DEXed, packaged, aligned, signed and signature-verified by
+`scripts/build-android.ps1` in the Quality workflow.
 
 Release verification
 --------------------
@@ -61,6 +74,6 @@ The tag-driven `Release` workflow must additionally:
 Remaining operational controls
 ------------------------------
 - `master` should be protected in GitHub and require the `Quality` check before merge.
-- Phone Remote is disabled and loopback-bound by default. If LAN binding is explicitly
-  enabled, the current transport is HTTP; use it only on a trusted local network until
-  a TLS transport boundary is implemented.
+  This is a GitHub repository administration control rather than an application-code
+  control; the connected integration must have repository-rules administration access
+  before it can be changed programmatically.
