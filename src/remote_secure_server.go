@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,9 +56,8 @@ func remoteTLSCertificatePaths() (string, string) {
 }
 
 func desiredRemoteTLSIPs(bindHost string) []net.IP {
-	seen := map[string]bool{}
+	seen := map[string]bool{"127.0.0.1": true}
 	out := []net.IP{net.ParseIP("127.0.0.1")}
-	seen["127.0.0.1"] = true
 	add := func(value string) {
 		ip := net.ParseIP(strings.Trim(strings.TrimSpace(value), "[]"))
 		if ip == nil {
@@ -155,14 +155,14 @@ func ensureRemoteTLSCertificate(bindHost string) (tls.Certificate, string, error
 	}
 	now := time.Now()
 	tmpl := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "LocalCode Remote"},
-		NotBefore:    now.Add(-5 * time.Minute),
-		NotAfter:     now.AddDate(2, 0, 0),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost", "localcode.local"},
-		IPAddresses:  wantedIPs,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "LocalCode Remote"},
+		NotBefore:             now.Add(-5 * time.Minute),
+		NotAfter:              now.AddDate(2, 0, 0),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:              []string{"localhost", "localcode.local"},
+		IPAddresses:           wantedIPs,
 		BasicConstraintsValid: true,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
@@ -198,8 +198,8 @@ func secureRemoteURLsForListener(addr net.Addr, bindHost string) []string {
 	if port == "" {
 		port = "32146"
 	}
-	hosts := []string{}
 	bindHost = strings.TrimSpace(bindHost)
+	var hosts []string
 	if bindHost == "" || bindHost == "0.0.0.0" || bindHost == "::" || bindHost == "[::]" {
 		hosts = activeLANIPv4Addresses()
 	} else {
@@ -231,20 +231,22 @@ func startProductionRemoteServer(state *AppState, cfg Config) ([]string, error) 
 	if port <= 0 {
 		port = 32146
 	}
-	ln, err := net.Listen("tcp", net.JoinHostPort(bindHost, fmt.Sprintf("%d", port)))
+	ln, err := net.Listen("tcp", net.JoinHostPort(bindHost, strconv.Itoa(port)))
 	if err != nil && port != 0 {
 		ln, err = net.Listen("tcp", net.JoinHostPort(bindHost, "0"))
 	}
 	if err != nil {
 		return nil, err
 	}
-	_, actualPortText, _ := net.SplitHostPort(ln.Addr().String())
-	actualPort := port
-	if parsed, parseErr := net.LookupPort("tcp", actualPortText); parseErr == nil {
-		actualPort = parsed
-	} else if _, scanErr := fmt.Sscanf(actualPortText, "%d", &actualPort); scanErr != nil {
+	_, actualPortText, splitErr := net.SplitHostPort(ln.Addr().String())
+	if splitErr != nil {
 		_ = ln.Close()
-		return nil, fmt.Errorf("invalid remote listen port %q", actualPortText)
+		return nil, splitErr
+	}
+	actualPort, err := strconv.Atoi(actualPortText)
+	if err != nil {
+		_ = ln.Close()
+		return nil, fmt.Errorf("invalid remote listen port %q: %w", actualPortText, err)
 	}
 	if err := ensureRemoteFirewallRule(actualPort); err != nil {
 		_ = ln.Close()
@@ -321,29 +323,29 @@ func startRemoteMDNS(port int, bindHost, fingerprint string, urls []string) erro
 		return fmt.Errorf("could not construct mDNS response")
 	}
 	_, _ = conn.WriteToUDP(packet, group)
-	go func() {
-		defer conn.Close()
-		buf := make([]byte, 9000)
-		announce := time.NewTicker(60 * time.Second)
-		defer announce.Stop()
-		for {
-			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-			n, peer, readErr := conn.ReadFromUDP(buf)
-			if readErr == nil && n > 0 && remoteMDNSQueryMatches(buf[:n]) {
-				_, _ = conn.WriteToUDP(packet, peer)
-			}
-			select {
-			case <-announce.C:
-				_, _ = conn.WriteToUDP(packet, group)
-			default:
-			}
-		}
-	}()
+	go serveRemoteMDNS(conn, group, packet)
 	return nil
 }
 
+func serveRemoteMDNS(conn *net.UDPConn, group *net.UDPAddr, packet []byte) {
+	defer conn.Close()
+	buf := make([]byte, 9000)
+	lastAnnouncement := time.Now()
+	for {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		n, peer, readErr := conn.ReadFromUDP(buf)
+		if readErr == nil && n > 0 && remoteMDNSQueryMatches(buf[:n]) {
+			_, _ = conn.WriteToUDP(packet, peer)
+		}
+		if time.Since(lastAnnouncement) >= time.Minute {
+			_, _ = conn.WriteToUDP(packet, group)
+			lastAnnouncement = time.Now()
+		}
+	}
+}
+
 func desiredRemoteMDNSIPs(bindHost string) []net.IP {
-	values := []string{}
+	var values []string
 	if bindHost == "" || bindHost == "0.0.0.0" || bindHost == "::" || bindHost == "[::]" {
 		values = activeLANIPv4Addresses()
 	} else {
@@ -417,17 +419,26 @@ func buildRemoteMDNSResponse(port int, ips []net.IP, fingerprint string, urls []
 	packet := make([]byte, 12)
 	binary.BigEndian.PutUint16(packet[2:4], 0x8400)
 	binary.BigEndian.PutUint16(packet[6:8], uint16(answerCount))
+
 	ptr := dnsAppendName(nil, remoteMDNSInstance)
 	packet = dnsAppendRecord(packet, remoteMDNSServiceType, 12, 1, 120, ptr)
+
 	srv := make([]byte, 6)
 	binary.BigEndian.PutUint16(srv[4:6], uint16(port))
 	srv = append(srv, dnsAppendName(nil, remoteMDNSHost)...)
 	packet = dnsAppendRecord(packet, remoteMDNSInstance, 33, 0x8001, 120, srv)
+
 	primaryURL := ""
 	if len(urls) > 0 {
 		primaryURL = urls[0]
 	}
-	txt := dnsTXT("path=/remote", "tls=1", "version="+version, "fp="+fingerprint, "uri="+remotePairingURI(primaryURL, fingerprint))
+	txt := dnsTXT(
+		"path=/remote",
+		"tls=1",
+		"version="+version,
+		"fp="+fingerprint,
+		"uri="+remotePairingURI(primaryURL, fingerprint),
+	)
 	packet = dnsAppendRecord(packet, remoteMDNSInstance, 16, 0x8001, 120, txt)
 	for _, ip := range validIPs {
 		packet = dnsAppendRecord(packet, remoteMDNSHost, 1, 0x8001, 120, []byte(ip.To4()))
@@ -455,6 +466,9 @@ func dnsReadName(packet []byte, offset int) (string, int, bool) {
 				return "", 0, false
 			}
 			ptr := int(packet[offset]&0x3f)<<8 | int(packet[offset+1])
+			if ptr >= len(packet) {
+				return "", 0, false
+			}
 			if !jumped {
 				start = offset + 2
 				jumped = true
