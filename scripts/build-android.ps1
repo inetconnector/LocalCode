@@ -40,15 +40,18 @@ foreach ($tool in @($aapt2, $aapt, $d8, $zipalign, $apksigner)) {
     if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Android build tool missing: $tool" }
 }
 
-$javac = (Get-Command javac.exe -ErrorAction SilentlyContinue).Source
-$keytool = (Get-Command keytool.exe -ErrorAction SilentlyContinue).Source
-if (-not $javac) { throw 'javac.exe not found in PATH' }
-if (-not $keytool) { throw 'keytool.exe not found in PATH' }
+$javacCommand = Get-Command javac.exe -ErrorAction SilentlyContinue
+$keytoolCommand = Get-Command keytool.exe -ErrorAction SilentlyContinue
+if (-not $javacCommand) { throw 'javac.exe not found in PATH' }
+if (-not $keytoolCommand) { throw 'keytool.exe not found in PATH' }
+$javac = $javacCommand.Source
+$keytool = $keytoolCommand.Source
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $env:RUNNER_TEMP 'localcode-android'
     if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
         $OutputDirectory = Join-Path ([IO.Path]::GetTempPath()) 'localcode-android'
+    } else {
+        $OutputDirectory = Join-Path $env:RUNNER_TEMP 'localcode-android'
     }
 }
 Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
@@ -67,8 +70,10 @@ if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed with exit code $LASTEXITCODE
 
 & $javac -encoding UTF-8 -source 17 -target 17 -classpath $androidJar -d $classes $javaSource
 if ($LASTEXITCODE -ne 0) { throw "javac failed with exit code $LASTEXITCODE" }
+$classFiles = @(Get-ChildItem -LiteralPath $classes -Recurse -Filter *.class -File | ForEach-Object FullName)
+if ($classFiles.Count -eq 0) { throw 'javac did not produce any .class files' }
 
-& $d8 --lib $androidJar --min-api 26 --output $dex $classes
+& $d8 --lib $androidJar --min-api 26 --output $dex @classFiles
 if ($LASTEXITCODE -ne 0) { throw "d8 failed with exit code $LASTEXITCODE" }
 $classesDex = Join-Path $dex 'classes.dex'
 if (-not (Test-Path -LiteralPath $classesDex -PathType Leaf)) { throw 'd8 did not produce classes.dex' }
