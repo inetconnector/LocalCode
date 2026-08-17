@@ -141,7 +141,7 @@ bootstrapLoop:
 	} else {
 		log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
 	}
-	if remoteURLs, remoteErr := startRemoteHTTPServer(state, cfg); remoteErr != nil {
+	if remoteURLs, remoteErr := startProductionRemoteServer(state, cfg); remoteErr != nil {
 		log.Printf("LocalCode Remote server could not be started: %v", remoteErr)
 	} else if len(remoteURLs) > 0 {
 		log.Printf("LocalCode Remote started: %s", strings.Join(remoteURLs, ", "))
