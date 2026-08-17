@@ -128,11 +128,17 @@ func TestEmbeddedUIContainsPersistentApprovalAndRootControls(t *testing.T) {
 	}
 }
 
-func TestTranslationCatalogsHaveIdenticalKeys(t *testing.T) {
-	data, err := fs.ReadFile(staticFS, "static/i18n.js")
+func translationCatalogData(t *testing.T) []byte {
+	t.Helper()
+	data, err := fs.ReadFile(staticFS, "static/i18n_base.js")
 	if err != nil {
 		t.Fatal(err)
 	}
+	return data
+}
+
+func TestTranslationCatalogsHaveIdenticalKeys(t *testing.T) {
+	data := translationCatalogData(t)
 	text := string(data)
 	prefix := "const dictionaries = "
 	start := strings.Index(text, prefix)
@@ -182,10 +188,7 @@ func TestGeneratedProjectDocsAreBilingual(t *testing.T) {
 }
 
 func TestLiteralUIEventMessagesHaveEnglishTranslations(t *testing.T) {
-	data, err := fs.ReadFile(staticFS, "static/i18n.js")
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := translationCatalogData(t)
 	text := string(data)
 	prefix := "const dictionaries = "
 	start := strings.Index(text, prefix)

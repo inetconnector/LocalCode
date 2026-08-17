@@ -47,8 +47,11 @@ jobs:
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: |
-          node --check src/static/i18n.js
-          if ($LASTEXITCODE -ne 0) { throw 'i18n.js syntax check failed' }
+          $javascriptFiles = Get-ChildItem -LiteralPath src/static -Filter *.js -File | ForEach-Object FullName
+          foreach ($javascriptPath in $javascriptFiles) {
+            node --check $javascriptPath
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $javascriptPath" }
+          }
           foreach ($htmlPath in @('src/static/index.html', 'src/static/remote.html')) {
             $html = Get-Content -LiteralPath $htmlPath -Raw
             $matches = [regex]::Matches($html, '(?is)<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>')
