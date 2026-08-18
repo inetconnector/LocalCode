@@ -1,0 +1,39 @@
+name: Apply Model Subagent Integration Patch
+
+on:
+  push:
+    branches: [agent/read-only-model-subagents]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-model-subagent-integration-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic integration patch
+        shell: pwsh
+        run: |
+          python scripts/apply-model-subagent-patch.py
+          gofmt -w src/agent.go src/agent_supervisor.go src/subagent_model.go src/subagent_model_test.go
+          git diff --check
+      - name: Commit integrated subagent
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- src/agent.go src/agent_supervisor.go src/subagent_model.go src/subagent_model_test.go)) {
+            Write-Host 'model subagent integration already applied'
+            exit 0
+          }
+          git config user.name 'localcode-ci'
+          git config user.email 'localcode-ci@users.noreply.github.com'
+          git add -- src/agent.go src/agent_supervisor.go src/subagent_model.go src/subagent_model_test.go
+          git commit -m 'feat: integrate bounded read-only model subagents'
+          git push origin HEAD:agent/read-only-model-subagents
