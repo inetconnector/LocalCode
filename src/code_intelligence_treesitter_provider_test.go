@@ -7,13 +7,13 @@ import "testing"
 
 func TestTreeSitterProviderSelectionCoversPrimaryPolyglotLanguages(t *testing.T) {
 	cases := map[string]string{
-		"app.js": "javascript",
+		"app.js":  "javascript",
 		"app.jsx": "javascript",
-		"app.ts": "typescript",
+		"app.ts":  "typescript",
 		"app.tsx": "tsx",
-		"app.py": "python",
-		"app.rs": "rust",
-		"app.c": "c",
+		"app.py":  "python",
+		"app.rs":  "rust",
+		"app.c":   "c",
 		"app.cpp": "cpp",
 		"app.hpp": "cpp",
 	}
