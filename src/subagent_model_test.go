@@ -31,6 +31,54 @@ func TestModelSubagentCapabilitySetRejectsMutations(t *testing.T) {
 	}
 }
 
+func TestModelSubagentValidationRequiresInputs(t *testing.T) {
+	cases := []AgentAction{
+		{Action: "read_file"},
+		{Action: "search_text"},
+		{Action: "finish"},
+	}
+	for _, action := range cases {
+		if err := validateModelSubagentAction(action); err == nil {
+			t.Fatalf("missing input unexpectedly accepted: %#v", action)
+		}
+	}
+	for _, action := range []AgentAction{
+		{Action: "list_files"},
+		{Action: "search_text", Query: "Important"},
+		{Action: "finish", Message: "handoff"},
+	} {
+		if err := validateModelSubagentAction(action); err != nil {
+			t.Fatalf("valid read-only action rejected: %#v: %v", action, err)
+		}
+	}
+}
+
+func TestExecuteModelSubagentReadOnlyActions(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package demo\n\nfunc Important() int { return 42 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
+
+	listed, err := state.executeModelSubagentAction(context.Background(), root, cfg, AgentAction{Action: "list_files", MaxDepth: 2})
+	if err != nil || !strings.Contains(listed, "main.go") {
+		t.Fatalf("list_files failed: %v\n%s", err, listed)
+	}
+	read, err := state.executeModelSubagentAction(context.Background(), root, cfg, AgentAction{Action: "read_file", Path: "main.go"})
+	if err != nil || !strings.Contains(read, "Important") {
+		t.Fatalf("read_file failed: %v\n%s", err, read)
+	}
+	searched, err := state.executeModelSubagentAction(context.Background(), root, cfg, AgentAction{Action: "search_text", Query: "Important"})
+	if err != nil || !strings.Contains(searched, "main.go") {
+		t.Fatalf("search_text failed: %v\n%s", err, searched)
+	}
+	if _, err := state.executeModelSubagentAction(context.Background(), root, cfg, AgentAction{Action: "write_file"}); err == nil {
+		t.Fatal("unsupported action unexpectedly executed")
+	}
+}
+
 func TestMandatoryReliabilityPreflightDoesNotConsumeModelTurns(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package demo\n\nfunc Important() int { return 42 }\n"), 0o644); err != nil {
