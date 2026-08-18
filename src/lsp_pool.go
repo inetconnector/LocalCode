@@ -10,6 +10,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -97,10 +98,15 @@ func startPersistentLSPClient(ctx context.Context, project string, cfg Config, s
 
 func lspPoolKey(project string, spec lspServerSpec) string {
 	project = filepath.Clean(project)
+	executable := filepath.Clean(spec.Executable)
+	if runtime.GOOS == "windows" {
+		project = strings.ToLower(project)
+		executable = strings.ToLower(executable)
+	}
 	return strings.Join([]string{
-		strings.ToLower(project),
-		strings.ToLower(filepath.Clean(spec.Executable)),
-		spec.Tool,
+		project,
+		executable,
+		strings.ToLower(spec.Tool),
 		strings.Join(spec.Args, "\x1f"),
 	}, "\x00")
 }
