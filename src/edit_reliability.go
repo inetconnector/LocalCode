@@ -51,7 +51,7 @@ func forcedEditReliabilityAction(intent taskIntent, completed map[string]bool, c
 		return &AgentAction{
 			Action:  "subagent_analyze",
 			Message: "Unabhängigen Read-only-Preflight mit Repository-Intelligence durchführen",
-			Task: "Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,
+			Task:    "Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,
 		}
 	}
 
