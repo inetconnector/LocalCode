@@ -125,9 +125,6 @@ bootstrapLoop:
 		if splash != nil {
 			localizedErr := fmt.Errorf(localizeConfigText(cfg, "Lokaler Server konnte nicht gestartet werden: %w", "The local server could not be started: %w"), err)
 			splash.Fail(localizedErr)
-			// The main server cannot run, so there is no useful limited-mode
-			// continuation. Show a native fallback before shutting down the
-			// temporary splash server.
 			time.Sleep(250 * time.Millisecond)
 			showFatal("LocalCode", localizedErr.Error()+"\n\nLog: "+logPath())
 			splash.Close()
@@ -141,7 +138,7 @@ bootstrapLoop:
 	} else {
 		log.Printf("LocalCode %s started at %s using Ollama %s", version, url, ollama.BaseURL)
 	}
-	if remoteURLs, remoteErr := startProductionRemoteServer(state, cfg); remoteErr != nil {
+	if remoteURLs, remoteErr := startMobileSafeProductionRemoteServer(state, cfg); remoteErr != nil {
 		log.Printf("LocalCode Remote server could not be started: %v", remoteErr)
 	} else if len(remoteURLs) > 0 {
 		log.Printf("LocalCode Remote started: %s", strings.Join(remoteURLs, ", "))
