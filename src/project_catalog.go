@@ -18,6 +18,18 @@ type ProjectSummary struct {
 	Pinned bool   `json:"pinned"`
 }
 
+type ProjectDeletePreview struct {
+	Path                 string `json:"path"`
+	Name                 string `json:"name"`
+	Empty                bool   `json:"empty"`
+	Files                int    `json:"files"`
+	Directories          int    `json:"directories"`
+	Symlinks             int    `json:"symlinks"`
+	Bytes                 int64  `json:"bytes"`
+	ConfirmationRequired bool   `json:"confirmation_required"`
+	Confirmation         string `json:"confirmation"`
+}
+
 func projectListContains(values []string, path string) bool {
 	path = filepath.Clean(path)
 	for _, value := range values {
@@ -136,6 +148,60 @@ func directProjectFolder(root, path string) (string, error) {
 	return full, nil
 }
 
+func inspectProjectDelete(root, path string) (ProjectDeletePreview, error) {
+	full, err := directProjectFolder(root, path)
+	if err != nil {
+		return ProjectDeletePreview{}, err
+	}
+	info, err := os.Stat(full)
+	if err != nil || !info.IsDir() {
+		return ProjectDeletePreview{}, errors.New("project directory not found")
+	}
+	entries, err := os.ReadDir(full)
+	if err != nil {
+		return ProjectDeletePreview{}, err
+	}
+	preview := ProjectDeletePreview{
+		Path:                 full,
+		Name:                 filepath.Base(full),
+		Empty:                len(entries) == 0,
+		ConfirmationRequired: len(entries) != 0,
+		Confirmation:         filepath.Base(full),
+	}
+	if preview.Empty {
+		return preview, nil
+	}
+	err = filepath.WalkDir(full, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.EqualFold(filepath.Clean(current), filepath.Clean(full)) {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			preview.Symlinks++
+			return nil
+		}
+		if entry.IsDir() {
+			preview.Directories++
+			return nil
+		}
+		preview.Files++
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if entryInfo.Mode().IsRegular() {
+			preview.Bytes += entryInfo.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return ProjectDeletePreview{}, err
+	}
+	return preview, nil
+}
+
 func cloneThreadSnapshotLocked(threads map[string]*ChatThread) map[string]*ChatThread {
 	snapshot := make(map[string]*ChatThread, len(threads))
 	for id, thread := range threads {
@@ -196,7 +262,7 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		return ProjectSummary{}, errors.New("Agent läuft gerade")
 	}
 
-	if action == "create_folder" {
+	if action == "create_folder" || action == "create_project" {
 		if !strings.EqualFold(filepath.Clean(path), root) {
 			return ProjectSummary{}, errors.New("new project folders can only be created in the project root")
 		}
@@ -215,6 +281,17 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		s.mu.RLock()
 		cfg := s.Config
 		s.mu.RUnlock()
+		if action == "create_project" && cfg.CreateProjectDocs {
+			if err := ensureProjectDocs(created, cfg); err != nil {
+				_ = os.RemoveAll(created)
+				return ProjectSummary{}, err
+			}
+			note := localizeConfigText(cfg, "Projekt sicher angelegt; README.md, AGENTS.md und STATE.md sind für die Übergabe vorbereitet.", "Project created safely; README.md, AGENTS.md and STATE.md are prepared for handoff.")
+			if err := updateStateDocument(created, cfg, false, "", "", "", nil, note); err != nil {
+				_ = os.RemoveAll(created)
+				return ProjectSummary{}, err
+			}
+		}
 		return ProjectSummary{Path: created, Name: projectDisplayName(cfg, created), Pinned: false}, nil
 	}
 
@@ -267,11 +344,11 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		return ProjectSummary{Path: newPath, Name: projectDisplayName(cfg, newPath), Pinned: projectListContains(cfg.PinnedProjects, newPath)}, nil
 
 	case "delete_empty":
-		entries, err := os.ReadDir(full)
+		preview, err := inspectProjectDelete(root, full)
 		if err != nil {
 			return ProjectSummary{}, err
 		}
-		if len(entries) != 0 {
+		if !preview.Empty {
 			return ProjectSummary{}, errors.New("folder is not empty; use recursive delete with confirmation")
 		}
 		if err := os.Remove(full); err != nil {
@@ -293,7 +370,14 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		return ProjectSummary{}, nil
 
 	case "delete_recursive":
-		if value == "" || !strings.EqualFold(value, filepath.Base(full)) {
+		preview, err := inspectProjectDelete(root, full)
+		if err != nil {
+			return ProjectSummary{}, err
+		}
+		if preview.Empty {
+			return ProjectSummary{}, errors.New("folder is empty; use delete_empty")
+		}
+		if value == "" || !strings.EqualFold(value, preview.Confirmation) {
 			return ProjectSummary{}, errors.New("recursive delete confirmation must match the folder name")
 		}
 		if err := os.RemoveAll(full); err != nil {
