@@ -113,3 +113,22 @@ func TestAgentLoopGuardDifferentWritePayloadIsNotSameAction(t *testing.T) {
 		t.Fatalf("different edit payload must not inherit a prior action loop: %s", reason)
 	}
 }
+
+func TestAgentLoopGuardIgnoresControlActions(t *testing.T) {
+	guard := newAgentLoopGuard()
+	finish := AgentAction{Action: "finish", Message: "done"}
+	question := AgentAction{Action: "ask_user", Message: "continue?"}
+	for i := 0; i < 4; i++ {
+		guard.Observe(finish, "done", false, "task")
+		guard.Observe(question, "continue?", false, "task")
+	}
+	if reason := guard.ShouldBlock(finish); reason != "" {
+		t.Fatalf("finish must never be blocked by the loop guard: %s", reason)
+	}
+	if reason := guard.ShouldBlock(question); reason != "" {
+		t.Fatalf("ask_user must never be blocked by the loop guard: %s", reason)
+	}
+	if len(guard.history) != 0 {
+		t.Fatalf("control actions must not pollute loop history: %+v", guard.history)
+	}
+}
