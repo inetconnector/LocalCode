@@ -58,6 +58,46 @@ function Find-ReleaseArtifacts {
     return @($artifacts | Sort-Object FullName -Unique)
 }
 
+function Get-CommandPath {
+    param([Parameter(Mandatory=$true)][string[]]$Names)
+    foreach ($name in $Names) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $command) {
+            if ($command.Source) { return $command.Source }
+            if ($command.Path) { return $command.Path }
+        }
+    }
+    return ''
+}
+
+function Test-AabSignature {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $jarsigner = Get-CommandPath -Names @('jarsigner.exe', 'jarsigner')
+    if (-not $jarsigner) {
+        throw 'jarsigner was not found. The release AAB cannot be signature-verified, so this Play Store build is not accepted as complete.'
+    }
+    $output = & $jarsigner '-J-Duser.language=en' '-J-Duser.country=US' -verify -verbose -certs $Path 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ($output | Out-String)
+    if ($exitCode -ne 0 -or $text -notmatch '(?i)jar verified') {
+        throw "Release AAB signature verification failed: $Path"
+    }
+    return 'verified:jarsigner'
+}
+
+function Test-ApkSignatureIfAvailable {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $apksigner = Get-CommandPath -Names @('apksigner.bat', 'apksigner.exe', 'apksigner')
+    if (-not $apksigner) {
+        return 'not-checked:apksigner-not-found'
+    }
+    & $apksigner verify --verbose $Path | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release APK signature verification failed: $Path"
+    }
+    return 'verified:apksigner'
+}
+
 $taskNames = Get-GradleTaskNames
 $planned = [System.Collections.Generic.List[string]]::new()
 if (-not $SkipTests) {
@@ -92,11 +132,17 @@ if ($aabs.Count -eq 0) {
 
 $result = foreach ($artifact in $artifacts) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact.FullName).Hash.ToLowerInvariant()
+    $signature = if ($artifact.Extension -ieq '.aab') {
+        Test-AabSignature -Path $artifact.FullName
+    } else {
+        Test-ApkSignatureIfAvailable -Path $artifact.FullName
+    }
     [pscustomobject]@{
-        type   = $artifact.Extension.TrimStart('.').ToLowerInvariant()
-        path   = $artifact.FullName
-        bytes  = $artifact.Length
-        sha256 = $hash
+        type             = $artifact.Extension.TrimStart('.').ToLowerInvariant()
+        path             = $artifact.FullName
+        bytes            = $artifact.Length
+        sha256           = $hash
+        signature_status = $signature
     }
 }
 
