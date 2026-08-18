@@ -20,17 +20,19 @@ const (
 )
 
 type codeGraphFile struct {
-	Path        string
-	Language    string
-	Content     string
-	Symbols     []string
-	Identifiers map[string]bool
-	Imports     []string
-	BaseScore   float64
-	TaskScore   float64
-	Rank        float64
-	Inbound     int
-	Outbound    int
+	Path            string
+	Language        string
+	Content         string
+	Symbols         []string
+	Identifiers     map[string]bool
+	Imports         []string
+	DefinitionLines map[string]int
+	SemanticSource  string
+	BaseScore       float64
+	TaskScore       float64
+	Rank            float64
+	Inbound         int
+	Outbound        int
 }
 
 var codeGraphIdentifierPattern = regexp.MustCompile(`[A-Za-z_$][A-Za-z0-9_$]{2,}`)
@@ -45,7 +47,12 @@ func repositoryReferenceGraph(project, task string) (string, error) {
 	}
 	adjacency, reverse := buildCodeGraphEdges(files)
 	applyCodeGraphRanks(files, adjacency, reverse)
-	return formatCodeGraph(files, adjacency, reverse, task), nil
+	context := formatCodeGraphContext(files, task, codeGraphContextTokenBudget)
+	graph := formatCodeGraph(files, adjacency, reverse, task)
+	if context == "" {
+		return graph, nil
+	}
+	return context + "\n" + graph, nil
 }
 
 func buildCodeGraphFiles(project, task string) ([]codeGraphFile, error) {
@@ -86,13 +93,17 @@ func buildCodeGraphFiles(project, task string) ([]codeGraphFile, error) {
 		if readErr != nil {
 			return nil
 		}
+		relPath := filepath.ToSlash(rel)
+		facts := codeGraphExtractSemanticFacts(relPath, language, content)
 		item := codeGraphFile{
-			Path:        filepath.ToSlash(rel),
-			Language:    language,
-			Content:     content,
-			Symbols:     repoIntelExtractSymbols(content),
-			Identifiers: codeGraphIdentifiers(content),
-			Imports:     codeGraphExtractImportSpecs(content),
+			Path:            relPath,
+			Language:        language,
+			Content:         content,
+			Symbols:         facts.Symbols,
+			Identifiers:     facts.Identifiers,
+			Imports:         facts.Imports,
+			DefinitionLines: facts.DefinitionLines,
+			SemanticSource:  facts.Source,
 		}
 		item.BaseScore = codeGraphTaskScore(item, terms)
 		item.TaskScore = item.BaseScore
