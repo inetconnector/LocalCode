@@ -6,11 +6,13 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -96,7 +98,23 @@ func startPersistentLSPClient(ctx context.Context, project string, cfg Config, s
 	return client, nil
 }
 
-func lspPoolKey(project string, spec lspServerSpec) string {
+func lspPoolConfigFingerprint(cfg Config) string {
+	keys := make([]string, 0, len(cfg.EnvironmentVars))
+	for key := range cfg.EnvironmentVars {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	hash := sha256.New()
+	for _, key := range keys {
+		_, _ = io.WriteString(hash, key)
+		_, _ = io.WriteString(hash, "\x00")
+		_, _ = io.WriteString(hash, cfg.EnvironmentVars[key])
+		_, _ = io.WriteString(hash, "\x00")
+	}
+	return hex.EncodeToString(hash.Sum(nil)[:12])
+}
+
+func lspPoolKey(project string, cfg Config, spec lspServerSpec) string {
 	project = filepath.Clean(project)
 	executable := filepath.Clean(spec.Executable)
 	if runtime.GOOS == "windows" {
@@ -108,11 +126,12 @@ func lspPoolKey(project string, spec lspServerSpec) string {
 		executable,
 		strings.ToLower(spec.Tool),
 		strings.Join(spec.Args, "\x1f"),
+		lspPoolConfigFingerprint(cfg),
 	}, "\x00")
 }
 
-func (p *lspClientPool) entry(project string, spec lspServerSpec) *lspPoolEntry {
-	key := lspPoolKey(project, spec)
+func (p *lspClientPool) entry(project string, cfg Config, spec lspServerSpec) *lspPoolEntry {
+	key := lspPoolKey(project, cfg, spec)
 	p.mu.Lock()
 	if entry := p.entries[key]; entry != nil {
 		entry.lastUsed = time.Now()
@@ -170,7 +189,7 @@ func (p *lspClientPool) withDocumentClient(ctx context.Context, project string, 
 	if p == nil || fn == nil {
 		return "", errors.New("LSP pool is not initialized")
 	}
-	entry := p.entry(project, spec)
+	entry := p.entry(project, cfg, spec)
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 
@@ -185,9 +204,7 @@ func (p *lspClientPool) withDocumentClient(ctx context.Context, project string, 
 		}
 		entry.client.diagnostics = nil
 		if err := entry.syncDocument(path, text); err != nil {
-			entry.client.close()
-			entry.client = nil
-			entry.documents = make(map[string]lspDocumentState)
+			entry.invalidate()
 			if attempt == 0 && ctx.Err() == nil {
 				continue
 			}
@@ -198,17 +215,24 @@ func (p *lspClientPool) withDocumentClient(ctx context.Context, project string, 
 			p.touch(entry)
 			return result, nil
 		}
-		if !lspShouldRestart(err, ctx) {
+		if !lspShouldInvalidate(err) {
 			return "", err
 		}
-		entry.client.close()
-		entry.client = nil
-		entry.documents = make(map[string]lspDocumentState)
-		if attempt == 1 {
-			return "", err
+		entry.invalidate()
+		if attempt == 0 && ctx.Err() == nil {
+			continue
 		}
+		return "", err
 	}
 	return "", errors.New("LSP request failed after restart")
+}
+
+func (entry *lspPoolEntry) invalidate() {
+	if entry.client != nil {
+		entry.client.close()
+		entry.client = nil
+	}
+	entry.documents = make(map[string]lspDocumentState)
 }
 
 func (entry *lspPoolEntry) syncDocument(path, text string) error {
@@ -249,8 +273,8 @@ func (p *lspClientPool) touch(entry *lspPoolEntry) {
 	p.mu.Unlock()
 }
 
-func lspShouldRestart(err error, ctx context.Context) bool {
-	if err == nil || ctx == nil || ctx.Err() != nil {
+func lspShouldInvalidate(err error) bool {
+	if err == nil {
 		return false
 	}
 	text := strings.ToLower(strings.TrimSpace(err.Error()))
@@ -258,7 +282,8 @@ func lspShouldRestart(err error, ctx context.Context) bool {
 		return false
 	}
 	// JSON-RPC method/parameter errors are valid responses from a live server;
-	// restarting cannot repair them. Transport/process failures are retried once.
+	// restarting cannot repair them. Transport, EOF and timeout errors invalidate
+	// the client so stale responses cannot bleed into a later request.
 	if strings.HasPrefix(text, "lsp ") && strings.Contains(text, " error ") {
 		return false
 	}
@@ -281,11 +306,7 @@ func (p *lspClientPool) Close() {
 
 	for _, entry := range entries {
 		entry.mu.Lock()
-		if entry.client != nil {
-			entry.client.close()
-			entry.client = nil
-		}
-		entry.documents = make(map[string]lspDocumentState)
+		entry.invalidate()
 		entry.mu.Unlock()
 	}
 }
