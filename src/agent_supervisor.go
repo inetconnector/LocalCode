@@ -158,9 +158,8 @@ func forcedActionForIntent(intent taskIntent, completed map[string]bool, cfg Con
 			return &AgentAction{Action: "git", Message: "Git-Repository initialisieren", Args: []string{"init"}}
 		}
 	case "edit":
-		engine := normalizeEditingEngine(cfg.EditingEngine)
-		if engine != editingEngineNative && codingEngineEnabled(cfg, engine) && !completed["engine_edit"] && !completed["aider_edit"] {
-			return &AgentAction{Action: "engine_edit", Message: "Codeänderungen mit " + codingEngineDisplayName(engine) + " umsetzen", Task: intent.OriginalTask}
+		if action := forcedEditReliabilityAction(intent, completed, cfg); action != nil {
+			return action
 		}
 	}
 	return nil
@@ -187,6 +186,9 @@ func toolFailureRecoveryDirective(action AgentAction, result string, err error, 
 	}
 	if strings.Contains(text, "not recognized") || strings.Contains(text, "command not found") || strings.Contains(text, "wurde nicht gefunden") {
 		directives = append(directives, "Nutze discover_tool mit dem Programmnamen. Prüfe PATH, Projekt-Wrapper, Visual-Studio-, Android-SDK- und Standardpfade. Wenn eine unterstützte Installation fehlt, löst LocalCode die Installationsgenehmigung aus.")
+	}
+	if strings.Contains(text, "no observable project changes") || strings.Contains(text, "keine projektänderungen") || strings.Contains(text, "geänderte dateien: keine erkannt") {
+		directives = append(directives, "Die Editing Engine hat keinen beobachtbaren Zielzustand erzeugt. Lies die relevanten Dateien erneut, prüfe Schreibrechte und Task-Scope und führe einen geänderten, konkreteren Editierplan aus. Ein erfolgreicher Exitcode ohne Änderung zählt nicht als Erfolg.")
 	}
 	if len(directives) == 0 {
 		directives = append(directives, "Werte Exitcode, STDOUT und STDERR aus, ändere die Diagnose und wiederhole nicht unverändert denselben fehlgeschlagenen Aufruf.")
