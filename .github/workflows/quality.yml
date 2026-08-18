@@ -31,18 +31,6 @@ jobs:
       - name: Go version
         run: go version
 
-      - name: Resolve Go module metadata
-        shell: pwsh
-        run: |
-          go mod tidy
-          if ($LASTEXITCODE -ne 0) { throw 'go mod tidy failed' }
-          Write-Host '--- BEGIN GENERATED GO.MOD ---'
-          Get-Content -LiteralPath go.mod
-          Write-Host '--- END GENERATED GO.MOD ---'
-          Write-Host '--- BEGIN GENERATED GO.SUM ---'
-          Get-Content -LiteralPath go.sum
-          Write-Host '--- END GENERATED GO.SUM ---'
-
       - name: Format check
         shell: pwsh
         run: |
