@@ -104,6 +104,44 @@ func TestManifestRejectsUnsafePathsAndUnknownChecks(t *testing.T) {
 	}
 }
 
+func TestLoadManifestResolvesRelativeRepositoryAndValidates(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "fixture")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "benchmark.json")
+	data := `{"version":1,"name":"load","repository":"fixture","base_ref":"HEAD","task":"task","engine":"native","model":"model","engine_command":["engine"],"checks":[]}`
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := LoadManifest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Repository != filepath.Clean(repo) {
+		t.Fatalf("repository=%q want %q", manifest.Repository, filepath.Clean(repo))
+	}
+}
+
+func TestManifestValidationRequiredFields(t *testing.T) {
+	valid := Manifest{Version: ManifestVersion, Name: "x", Repository: t.TempDir(), BaseRef: "HEAD", Task: "task", Engine: "native", Model: "model", EngineCommand: []string{"engine"}}
+	cases := []Manifest{
+		{Version: 99, Name: "x", Repository: valid.Repository, BaseRef: "HEAD", Task: "task", Engine: "native", Model: "model", EngineCommand: []string{"engine"}},
+		{Version: ManifestVersion, Repository: valid.Repository, BaseRef: "HEAD", Task: "task", Engine: "native", Model: "model", EngineCommand: []string{"engine"}},
+		{Version: ManifestVersion, Name: "x", Repository: valid.Repository, BaseRef: "HEAD", Task: "task", Engine: "native", Model: "model"},
+	}
+	for i, candidate := range cases {
+		if err := candidate.Validate(); err == nil {
+			t.Fatalf("case %d unexpectedly valid", i)
+		}
+	}
+	valid.MetricsFile = "../metrics.json"
+	if err := valid.Validate(); err == nil {
+		t.Fatal("unsafe metrics file accepted")
+	}
+}
+
 func TestReadAdapterMetrics(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "metrics.json")
 	if err := os.WriteFile(path, []byte(`{"agent_turns":4,"tool_calls":9,"input_tokens":1200,"output_tokens":300,"failed_patches":1,"retries":2,"compactions":1,"human_intervention":0}`), 0o644); err != nil {
@@ -115,6 +153,34 @@ func TestReadAdapterMetrics(t *testing.T) {
 	}
 	if metrics.AgentTurns != 4 || metrics.ToolCalls != 9 || metrics.Retries != 2 || metrics.InputTokens != 1200 {
 		t.Fatalf("unexpected metrics: %#v", metrics)
+	}
+}
+
+func TestBenchmarkHelpersCoverFilteringAndTextMetrics(t *testing.T) {
+	changes := []FileChange{{Path: "result.json", Added: 3}, {Path: "src/main.go", Added: 2, Deleted: 1}}
+	filtered := excludeBenchmarkChange(changes, "result.json")
+	if len(filtered) != 1 || filtered[0].Path != "src/main.go" {
+		t.Fatalf("unexpected filtered changes: %#v", filtered)
+	}
+	if !pathAllowed("src/main.go", []string{"src"}) || pathAllowed("docs/readme.md", []string{"src"}) {
+		t.Fatal("path allowlist behavior incorrect")
+	}
+	path := filepath.Join(t.TempDir(), "lines.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := countTextLines(path); got != 2 {
+		t.Fatalf("countTextLines=%d want 2", got)
+	}
+	if got := truncate("abcdef", 3); !strings.Contains(got, "abc") || !strings.Contains(got, "truncated") {
+		t.Fatalf("truncate=%q", got)
+	}
+}
+
+func TestRunCommandRejectsEmptyCommand(t *testing.T) {
+	result := runCommand(context.Background(), t.TempDir(), "empty", "engine", true, nil, 1, os.Environ(), nil, 1)
+	if result.Successful || result.ExitCode != -1 || result.Output != "empty command" {
+		t.Fatalf("unexpected empty command result: %#v", result)
 	}
 }
 
