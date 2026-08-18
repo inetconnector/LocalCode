@@ -20,21 +20,24 @@ type codeGraphSemanticFacts struct {
 	Source          string
 }
 
-// codeGraphExtractSemanticFacts prefers a real parser when LocalCode can do so
-// without adding a runtime dependency. Go repositories therefore get compiler-
-// grade AST facts even when gopls/tree-sitter are unavailable. Other languages
-// retain the deterministic lexical/import fallback and can be enriched later by
-// optional Tree-sitter/LSP providers without changing the graph/ranking layer.
+// codeGraphExtractSemanticFacts uses the strongest deterministic parser LocalCode
+// has for each file. Go keeps the standard-library compiler parser; supported
+// polyglot files use embedded Tree-sitter grammars when CGO is available. The
+// import-aware lexical extractor remains the zero-dependency fallback for other
+// languages and for builds where CGO has deliberately been disabled.
 func codeGraphExtractSemanticFacts(path, language, content string) codeGraphSemanticFacts {
 	fallback := codeGraphLexicalSemanticFacts(content)
-	if language != "Go" {
+	if language == "Go" {
+		facts, ok := codeGraphGoASTFacts(path, content)
+		if ok {
+			return facts
+		}
 		return fallback
 	}
-	facts, ok := codeGraphGoASTFacts(path, content)
-	if !ok {
-		return fallback
+	if facts, ok := codeGraphTreeSitterFacts(path, content); ok {
+		return facts
 	}
-	return facts
+	return fallback
 }
 
 func codeGraphLexicalSemanticFacts(content string) codeGraphSemanticFacts {
