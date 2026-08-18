@@ -400,68 +400,62 @@ func runLSPAction(ctx context.Context, project string, cfg Config, action AgentA
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	client, err := startLSPClient(queryCtx, project, cfg, spec)
-	if err != nil {
-		return "", err
-	}
-	defer client.close()
-	if err := client.openDocument(full, spec.LanguageID, string(text)); err != nil {
-		return "", err
-	}
 
-	operation := normalizeLSPOperation(action.Name)
-	var method string
-	var params any
-	switch operation {
-	case "definition", "gotodefinition":
-		method = "textDocument/definition"
-		params = lspPositionParams(full, action.Line, action.Character)
-	case "references", "findreferences":
-		method = "textDocument/references"
-		params = lspPositionParams(full, action.Line, action.Character)
-		params.(map[string]any)["context"] = map[string]any{"includeDeclaration": true}
-	case "hover":
-		method = "textDocument/hover"
-		params = lspPositionParams(full, action.Line, action.Character)
-	case "documentsymbol", "symbols":
-		method = "textDocument/documentSymbol"
-		params = map[string]any{"textDocument": map[string]any{"uri": lspFileURI(full)}}
-	case "workspacesymbol":
-		method = "workspace/symbol"
-		params = map[string]any{"query": strings.TrimSpace(action.Query)}
-	case "implementation", "gotoimplementation":
-		method = "textDocument/implementation"
-		params = lspPositionParams(full, action.Line, action.Character)
-	case "preparecallhierarchy":
-		method = "textDocument/prepareCallHierarchy"
-		params = lspPositionParams(full, action.Line, action.Character)
-	case "incomingcalls", "outgoingcalls":
-		prepared, prepareErr := client.request(queryCtx, "textDocument/prepareCallHierarchy", lspPositionParams(full, action.Line, action.Character))
-		if prepareErr != nil {
-			return "", prepareErr
+	return defaultLSPPool.withDocumentClient(queryCtx, project, cfg, spec, full, string(text), func(client *lspClient) (string, error) {
+		operation := normalizeLSPOperation(action.Name)
+		var method string
+		var params any
+		switch operation {
+		case "definition", "gotodefinition":
+			method = "textDocument/definition"
+			params = lspPositionParams(full, action.Line, action.Character)
+		case "references", "findreferences":
+			method = "textDocument/references"
+			params = lspPositionParams(full, action.Line, action.Character)
+			params.(map[string]any)["context"] = map[string]any{"includeDeclaration": true}
+		case "hover":
+			method = "textDocument/hover"
+			params = lspPositionParams(full, action.Line, action.Character)
+		case "documentsymbol", "symbols":
+			method = "textDocument/documentSymbol"
+			params = map[string]any{"textDocument": map[string]any{"uri": lspFileURI(full)}}
+		case "workspacesymbol":
+			method = "workspace/symbol"
+			params = map[string]any{"query": strings.TrimSpace(action.Query)}
+		case "implementation", "gotoimplementation":
+			method = "textDocument/implementation"
+			params = lspPositionParams(full, action.Line, action.Character)
+		case "preparecallhierarchy":
+			method = "textDocument/prepareCallHierarchy"
+			params = lspPositionParams(full, action.Line, action.Character)
+		case "incomingcalls", "outgoingcalls":
+			prepared, prepareErr := client.request(queryCtx, "textDocument/prepareCallHierarchy", lspPositionParams(full, action.Line, action.Character))
+			if prepareErr != nil {
+				return "", prepareErr
+			}
+			var items []json.RawMessage
+			if err := json.Unmarshal(prepared, &items); err != nil || len(items) == 0 {
+				return formatLSPResult(spec, "textDocument/prepareCallHierarchy", prepared, client.diagnostics), err
+			}
+			if operation == "incomingcalls" {
+				method = "callHierarchy/incomingCalls"
+			} else {
+				method = "callHierarchy/outgoingCalls"
+			}
+			var item any
+			if err := json.Unmarshal(items[0], &item); err != nil {
+				return "", err
+			}
+			params = map[string]any{"item": item}
+		default:
+			return "", fmt.Errorf("unsupported LSP operation %q", action.Name)
 		}
-		var items []json.RawMessage
-		if err := json.Unmarshal(prepared, &items); err != nil || len(items) == 0 {
-			return formatLSPResult(spec, "textDocument/prepareCallHierarchy", prepared, client.diagnostics), err
-		}
-		if operation == "incomingcalls" {
-			method = "callHierarchy/incomingCalls"
-		} else {
-			method = "callHierarchy/outgoingCalls"
-		}
-		var item any
-		if err := json.Unmarshal(items[0], &item); err != nil {
+		result, err := client.request(queryCtx, method, params)
+		if err != nil {
 			return "", err
 		}
-		params = map[string]any{"item": item}
-	default:
-		return "", fmt.Errorf("unsupported LSP operation %q", action.Name)
-	}
-	result, err := client.request(queryCtx, method, params)
-	if err != nil {
-		return "", err
-	}
-	return formatLSPResult(spec, method, result, client.diagnostics), nil
+		return formatLSPResult(spec, method, result, client.diagnostics), nil
+	})
 }
 
 func formatLSPResult(spec lspServerSpec, method string, result json.RawMessage, diagnostics []json.RawMessage) string {
