@@ -131,79 +131,12 @@ func codeGraphNormalizeImportSpec(spec string) string {
 	return strings.TrimSpace(spec)
 }
 
+// buildCodeGraphEdges remains the compatibility view used by existing callers
+// and tests. The authoritative graph is now typed; this collapses every proven
+// relation to the legacy boolean adjacency/reverse representation.
 func buildCodeGraphEdges(files []codeGraphFile) ([]map[int]bool, []map[int]bool) {
-	definitions := make(map[string][]int)
-	declares := make([]map[string]bool, len(files))
-	for i := range files {
-		declares[i] = make(map[string]bool)
-		for _, symbol := range files[i].Symbols {
-			if len(symbol) < 3 || codeGraphNoiseIdentifier(symbol) {
-				continue
-			}
-			definitions[symbol] = append(definitions[symbol], i)
-			declares[i][symbol] = true
-		}
-	}
-	adjacency := make([]map[int]bool, len(files))
-	reverse := make([]map[int]bool, len(files))
-	for i := range files {
-		adjacency[i] = make(map[int]bool)
-		reverse[i] = make(map[int]bool)
-	}
-
-	addEdge := func(source, target int) {
-		if source == target || adjacency[source][target] {
-			return
-		}
-		adjacency[source][target] = true
-		reverse[target][source] = true
-	}
-
-	// First establish explicit dependency edges from imports. This provides
-	// package/module evidence even when a language construct is not covered by
-	// the lightweight symbol extractor.
-	for source := range files {
-		for target := range files {
-			if source == target {
-				continue
-			}
-			if codeGraphImportMatchesTarget(files[source], files[target]) {
-				addEdge(source, target)
-			}
-		}
-	}
-
-	// Then add symbol-reference edges. Unique definitions are safe to connect
-	// repo-wide. Ambiguous names are connected only when import evidence (or a
-	// same-directory/package relationship) disambiguates the target.
-	for source := range files {
-		for identifier := range files[source].Identifiers {
-			targets := definitions[identifier]
-			if len(targets) == 0 {
-				continue
-			}
-			sourceDeclares := declares[source][identifier]
-			for _, target := range targets {
-				if source == target {
-					continue
-				}
-				if len(targets) == 1 {
-					if !sourceDeclares {
-						addEdge(source, target)
-					}
-					continue
-				}
-				if adjacency[source][target] || codeGraphSamePackageArea(files[source], files[target]) {
-					addEdge(source, target)
-				}
-			}
-		}
-	}
-	for i := range files {
-		files[i].Outbound = len(adjacency[i])
-		files[i].Inbound = len(reverse[i])
-	}
-	return adjacency, reverse
+	relations := buildCodeGraphRelations(files)
+	return codeGraphRelationAdjacency(files, relations)
 }
 
 func codeGraphImportMatchesTarget(source, target codeGraphFile) bool {

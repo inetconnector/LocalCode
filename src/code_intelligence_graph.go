@@ -33,6 +33,8 @@ type codeGraphFile struct {
 	Rank            float64
 	Inbound         int
 	Outbound        int
+	InboundWeight   float64
+	OutboundWeight  float64
 }
 
 var codeGraphIdentifierPattern = regexp.MustCompile(`[A-Za-z_$][A-Za-z0-9_$]{2,}`)
@@ -45,10 +47,11 @@ func repositoryReferenceGraph(project, task string) (string, error) {
 	if len(files) == 0 {
 		return "CODE INTELLIGENCE GRAPH\nNo supported source files were found.\n", nil
 	}
-	adjacency, reverse := buildCodeGraphEdges(files)
-	applyCodeGraphRanks(files, adjacency, reverse)
+	relations := buildCodeGraphRelations(files)
+	adjacency, reverse := codeGraphRelationAdjacency(files, relations)
+	applyCodeGraphRelationRanks(files, relations, adjacency, reverse)
 	context := formatCodeGraphContext(files, task, codeGraphContextTokenBudget)
-	graph := formatCodeGraph(files, adjacency, reverse, task)
+	graph := formatCodeGraphWithRelations(files, relations, adjacency, reverse, task)
 	if context == "" {
 		return graph, nil
 	}
