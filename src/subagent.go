@@ -12,7 +12,7 @@ import (
 const (
 	subagentMaxMentionedFiles = 8
 	subagentMaxSearchTerms    = 10
-	subagentMaxReportBytes    = 90000
+	subagentMaxReportBytes    = 125000
 )
 
 func runReadOnlySubagent(project string, cfg Config, task string) (string, error) {
@@ -50,6 +50,17 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 		b.WriteString("\n\n")
 	} else {
 		b.WriteString(truncateText(intel, 42000))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("REFERENCE GRAPH / STATIC CODE NAVIGATION\n")
+	graph, graphErr := repositoryReferenceGraph(project, task)
+	if graphErr != nil {
+		b.WriteString("Reference graph could not be built: ")
+		b.WriteString(graphErr.Error())
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString(truncateText(graph, 46000))
 		b.WriteString("\n")
 	}
 
@@ -105,7 +116,8 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 
 	b.WriteString("\nHANDOFF\n")
 	b.WriteString("- Use this as an independent preflight, not as permission to mutate files.\n")
-	b.WriteString("- Form a concrete plan from architecture anchors, task-relevant files, invariants, and likely tests before editing.\n")
+	b.WriteString("- Form a concrete plan from architecture anchors, task-relevant files, graph neighbors, shared symbols, invariants, and likely tests before editing.\n")
+	b.WriteString("- Inspect callers/references before changing a high-centrality or shared symbol.\n")
 	b.WriteString("- Treat paths and line hits as leads; read the actual implementation before changing it.\n")
 	b.WriteString("- Preserve unrelated behavior and public interfaces unless the user explicitly requests a breaking change.\n")
 	b.WriteString("- After any later write, compare the observed diff to the intended outcome; a zero exit code alone is not proof of correctness.\n")
