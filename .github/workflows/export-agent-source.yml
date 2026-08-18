@@ -17,7 +17,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/upload-artifact@v4
         with:
-          name: localcode-agent-source
-          path: src/agent.go
+          name: localcode-source-snapshot
+          path: |
+            src/**
+            VERSION.txt
           if-no-files-found: error
           retention-days: 1
