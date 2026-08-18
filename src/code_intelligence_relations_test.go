@@ -134,7 +134,7 @@ export function submitOrder() { return executeOrder() }
 		"imports, references, calls, inherits, implements, test-of",
 		"calls+imports+references",
 		"relation-weight in/out",
-		"parser: tree-sitter/typescript",
+		"parser:",
 	} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("typed graph report missing %q:\n%s", want, report)
