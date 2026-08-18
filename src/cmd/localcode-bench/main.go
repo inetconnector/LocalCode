@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"localcode/benchharness"
 )
@@ -32,7 +31,7 @@ func main() {
 	if *keep {
 		manifest.KeepWorktree = true
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	result, err := (benchharness.Runner{}).Run(ctx, manifest)
 	if err != nil {
