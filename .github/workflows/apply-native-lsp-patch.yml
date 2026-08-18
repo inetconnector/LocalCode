@@ -3,6 +3,8 @@ name: Apply Native LSP Integration Patch
 on:
   push:
     branches: [agent/native-lsp-navigation]
+  pull_request:
+    branches: [master]
 
 permissions:
   contents: write
@@ -25,7 +27,8 @@ jobs:
           python scripts/apply-native-lsp-agent-patch.py
           gofmt -w src/agent.go src/agent_supervisor.go src/approval_rules.go src/lsp_client.go src/lsp_client_test.go
           git diff --check
-      - name: Commit integrated LSP tool
+      - name: Commit patched branch
+        if: github.event_name == 'push'
         shell: pwsh
         run: |
           if (-not (git status --porcelain -- src/agent.go src/agent_supervisor.go src/approval_rules.go src/lsp_client.go src/lsp_client_test.go)) {
