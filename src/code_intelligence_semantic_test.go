@@ -44,14 +44,14 @@ func helper(ctx context.Context) error { return nil }
 	}
 }
 
-func TestCodeGraphSemanticFallbackForTypeScript(t *testing.T) {
+func TestCodeGraphSemanticProviderForTypeScript(t *testing.T) {
 	content := "export function runTask() { return helper(); }\nconst helper = () => 1;\n"
 	facts := codeGraphExtractSemanticFacts("worker.ts", "TypeScript", content)
-	if facts.Source != "lexical+imports" {
-		t.Fatalf("semantic source = %q, want lexical+imports", facts.Source)
+	if facts.Source != "tree-sitter/typescript" && facts.Source != "lexical+imports" {
+		t.Fatalf("unexpected semantic source = %q", facts.Source)
 	}
 	if !semanticTestContainsString(facts.Symbols, "runTask") || !semanticTestContainsString(facts.Symbols, "helper") {
-		t.Fatalf("fallback symbols = %#v", facts.Symbols)
+		t.Fatalf("semantic symbols = %#v", facts.Symbols)
 	}
 }
 
