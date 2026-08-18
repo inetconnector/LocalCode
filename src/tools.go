@@ -245,10 +245,14 @@ func replaceText(projectRoot, path, oldText, newText string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	release := acquireEditPathLock(full)
+	defer release()
+
 	data, err := os.ReadFile(full)
 	if err != nil {
 		return "", err
 	}
+	expected := versionForBytes(data)
 	original := string(data)
 	count := strings.Count(original, oldText)
 	if count != 1 {
@@ -263,7 +267,7 @@ func replaceText(projectRoot, path, oldText, newText string) (string, error) {
 	if info != nil {
 		mode = info.Mode().Perm()
 	}
-	if err := os.WriteFile(full, []byte(updated), mode); err != nil {
+	if err := atomicWriteFileIfVersion(full, []byte(updated), mode, expected); err != nil {
 		return "", err
 	}
 	return simpleDiff(original, updated), nil
@@ -274,13 +278,18 @@ func writeProjectFile(projectRoot, path, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	release := acquireEditPathLock(full)
+	defer release()
+
 	old := ""
 	mode := os.FileMode(0o644)
+	expected := fileVersion{}
 	if data, err := os.ReadFile(full); err == nil {
 		if !isProbablyText(data) {
 			return "", fmt.Errorf("refusing to overwrite binary or non-UTF-8 file: %s", path)
 		}
 		old = string(data)
+		expected = versionForBytes(data)
 		if info, err := os.Stat(full); err == nil {
 			mode = info.Mode().Perm()
 		}
@@ -290,10 +299,7 @@ func writeProjectFile(projectRoot, path, content string) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(full, []byte(content), mode); err != nil {
+	if err := atomicWriteFileIfVersion(full, []byte(content), mode, expected); err != nil {
 		return "", err
 	}
 	return simpleDiff(old, content) + "\n\nPOSTCONDITION:\n" + describePathState("target", full), nil
@@ -304,6 +310,9 @@ func deleteProjectFile(projectRoot, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	release := acquireEditPathLock(full)
+	defer release()
+
 	info, err := os.Stat(full)
 	if err != nil {
 		return "", err
@@ -311,8 +320,15 @@ func deleteProjectFile(projectRoot, path string) (string, error) {
 	if info.IsDir() {
 		return "", errors.New("directory deletion is not allowed")
 	}
-	old, _ := os.ReadFile(full)
+	old, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	expected := versionForBytes(old)
 	if err := backupFile(projectRoot, full); err != nil {
+		return "", err
+	}
+	if err := verifyFileVersion(full, expected); err != nil {
 		return "", err
 	}
 	if err := os.Remove(full); err != nil {
