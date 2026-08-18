@@ -5,9 +5,9 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -25,6 +25,15 @@ func pairedMobileHandler(t *testing.T, state *AppState) (http.Handler, string) {
 	return mobileSafeRemoteHTTPHandler(remote), token
 }
 
+func mobileProjectActionBody(t *testing.T, path, action, value string) string {
+	t.Helper()
+	data, err := json.Marshal(map[string]string{"path": path, "action": action, "value": value})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestMobileProjectActionsRequireAuthAndExactDeleteConfirmation(t *testing.T) {
 	state := newRemoteTestState(t)
 	handler, token := pairedMobileHandler(t, state)
@@ -32,12 +41,13 @@ func TestMobileProjectActionsRequireAuthAndExactDeleteConfirmation(t *testing.T)
 	root := state.Config.RootProjectDir
 	state.mu.RUnlock()
 
-	unauth := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", `{"path":"`+root+`","action":"create_project","value":"PhoneProject"}`, "")
+	body := mobileProjectActionBody(t, root, "create_project", "PhoneProject")
+	unauth := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", body, "")
 	if unauth.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated project action = %d", unauth.Code)
 	}
 
-	create := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", `{"path":"`+root+`","action":"create_project","value":"PhoneProject"}`, token)
+	create := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", body, token)
 	if create.Code != http.StatusOK {
 		t.Fatalf("create project = %d body=%s", create.Code, create.Body.String())
 	}
@@ -51,7 +61,7 @@ func TestMobileProjectActionsRequireAuthAndExactDeleteConfirmation(t *testing.T)
 		t.Fatal(err)
 	}
 
-	preview := serveHTTP(handler, http.MethodGet, "/remote/api/project-delete-preview?path="+urlQueryEscape(project), "", token)
+	preview := serveHTTP(handler, http.MethodGet, "/remote/api/project-delete-preview?path="+url.QueryEscape(project), "", token)
 	if preview.Code != http.StatusOK {
 		t.Fatalf("delete preview = %d body=%s", preview.Code, preview.Body.String())
 	}
@@ -63,7 +73,7 @@ func TestMobileProjectActionsRequireAuthAndExactDeleteConfirmation(t *testing.T)
 		t.Fatalf("unexpected delete preview: %#v", p)
 	}
 
-	wrong := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", `{"path":"`+project+`","action":"delete_recursive","value":"wrong"}`, token)
+	wrong := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", mobileProjectActionBody(t, project, "delete_recursive", "wrong"), token)
 	if wrong.Code != http.StatusConflict {
 		t.Fatalf("wrong recursive delete = %d body=%s", wrong.Code, wrong.Body.String())
 	}
@@ -71,7 +81,7 @@ func TestMobileProjectActionsRequireAuthAndExactDeleteConfirmation(t *testing.T)
 		t.Fatalf("project changed after wrong confirmation: %v", err)
 	}
 
-	remove := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", `{"path":"`+project+`","action":"delete_recursive","value":"PhoneProject"}`, token)
+	remove := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", mobileProjectActionBody(t, project, "delete_recursive", "PhoneProject"), token)
 	if remove.Code != http.StatusOK {
 		t.Fatalf("confirmed recursive delete = %d body=%s", remove.Code, remove.Body.String())
 	}
@@ -86,7 +96,7 @@ func TestMobileProjectActionAllowlistRejectsRename(t *testing.T) {
 	state.mu.RLock()
 	project := state.Project
 	state.mu.RUnlock()
-	rr := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", `{"path":"`+project+`","action":"rename_folder","value":"renamed"}`, token)
+	rr := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", mobileProjectActionBody(t, project, "rename_folder", "renamed"), token)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("mobile rename should be outside narrow action allowlist, got %d", rr.Code)
 	}
@@ -116,9 +126,4 @@ func TestMobileRemoteRejectsGlobalApprovalPersistence(t *testing.T) {
 		t.Fatalf("blocked global approval reached pending action: %#v", decision)
 	default:
 	}
-}
-
-func urlQueryEscape(value string) string {
-	value = strings.ReplaceAll(value, "%", "%25")
-	return strings.ReplaceAll(value, " ", "%20")
 }
