@@ -44,10 +44,10 @@ type CommandResult struct {
 }
 
 type FileChange struct {
-	Path     string `json:"path"`
-	Added    int    `json:"added"`
-	Deleted  int    `json:"deleted"`
-	Untracked bool  `json:"untracked,omitempty"`
+	Path      string `json:"path"`
+	Added     int    `json:"added"`
+	Deleted   int    `json:"deleted"`
+	Untracked bool   `json:"untracked,omitempty"`
 }
 
 type Result struct {
@@ -150,6 +150,9 @@ func (r Runner) Run(ctx context.Context, manifest Manifest) (result Result, runE
 	}
 
 	changes, diffErr := collectChanges(ctx, worktree)
+	if manifest.MetricsFile != "" {
+		changes = excludeBenchmarkChange(changes, manifest.MetricsFile)
+	}
 	if diffErr != nil {
 		result.Error = "collect git diff: " + diffErr.Error()
 	} else {
@@ -212,19 +215,36 @@ func runCommand(parent context.Context, dir, name, kind string, required bool, c
 	}
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, res.Command[0], res.Command[1:]...)
+
+	cmd := exec.Command(res.Command[0], res.Command[1:]...)
 	cmd.Dir = dir
 	cmd.Env = env
+	prepareBenchmarkCommand(cmd)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	started := time.Now()
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err = <-done:
+		case <-ctx.Done():
+			_ = killBenchmarkCommandTree(cmd)
+			err = <-done
+		}
+	}
 	res.Duration = time.Since(started)
 	res.Output = truncate(output.String(), outputLimit)
 	if ctx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
 		res.ExitCode = -1
+		return res
+	}
+	if ctx.Err() != nil {
+		res.ExitCode = -1
+		res.Output = truncate(strings.TrimSpace(res.Output+"\n"+ctx.Err().Error()), outputLimit)
 		return res
 	}
 	if err == nil {
@@ -318,6 +338,21 @@ func pathAllowed(path string, allowed []string) bool {
 		}
 	}
 	return false
+}
+
+func excludeBenchmarkChange(changes []FileChange, ignored string) []FileChange {
+	ignored = filepath.ToSlash(filepath.Clean(strings.TrimSpace(ignored)))
+	if ignored == "" || ignored == "." {
+		return changes
+	}
+	out := changes[:0]
+	for _, change := range changes {
+		if filepath.ToSlash(filepath.Clean(change.Path)) == ignored {
+			continue
+		}
+		out = append(out, change)
+	}
+	return out
 }
 
 func readAdapterMetrics(path string) (AdapterMetrics, error) {
