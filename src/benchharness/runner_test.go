@@ -85,6 +85,9 @@ func TestBenchmarkHelperProcess(t *testing.T) {
 			os.Exit(6)
 		}
 		os.Exit(0)
+	case "sleep":
+		time.Sleep(10 * time.Second)
+		os.Exit(0)
 	default:
 		os.Exit(7)
 	}
@@ -181,6 +184,28 @@ func TestRunCommandRejectsEmptyCommand(t *testing.T) {
 	result := runCommand(context.Background(), t.TempDir(), "empty", "engine", true, nil, 1, os.Environ(), nil, 1)
 	if result.Successful || result.ExitCode != -1 || result.Output != "empty command" {
 		t.Fatalf("unexpected empty command result: %#v", result)
+	}
+}
+
+func TestRunCommandTimeoutKillsProcessTree(t *testing.T) {
+	if os.Getenv("LOCALCODE_BENCH_HELPER") == "1" {
+		return
+	}
+	env := append(os.Environ(), "LOCALCODE_BENCH_HELPER=1")
+	result := runCommand(
+		context.Background(),
+		t.TempDir(),
+		"timeout",
+		"engine",
+		true,
+		[]string{os.Args[0], "-test.run=TestBenchmarkHelperProcess", "--", "sleep"},
+		1,
+		env,
+		nil,
+		1,
+	)
+	if !result.TimedOut || result.Successful || result.ExitCode != -1 {
+		t.Fatalf("expected timed-out command, got %#v", result)
 	}
 }
 
