@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -65,10 +66,15 @@ func TestWriteProjectFileUsesAtomicReplacementAndPreservesMode(t *testing.T) {
 	if string(data) != "after\n" {
 		t.Fatalf("unexpected content: %q", data)
 	}
-	if info, err := os.Stat(path); err != nil {
-		t.Fatal(err)
-	} else if info.Mode().Perm() != 0o640 {
-		t.Fatalf("mode changed: got %o want 640", info.Mode().Perm())
+	// Windows does not expose POSIX permission bits faithfully: files commonly
+	// report 0666 regardless of the creation mode. Keep the strict mode-preserve
+	// assertion on platforms where those bits are meaningful.
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		} else if info.Mode().Perm() != 0o640 {
+			t.Fatalf("mode changed: got %o want 640", info.Mode().Perm())
+		}
 	}
 	matches, err := filepath.Glob(filepath.Join(root, ".localcode-write-*"))
 	if err != nil {
