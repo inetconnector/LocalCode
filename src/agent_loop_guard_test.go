@@ -103,6 +103,24 @@ func TestAgentLoopGuardDetectsThreeStepCycle(t *testing.T) {
 	}
 }
 
+func TestAgentLoopGuardDetectsFourStepCycle(t *testing.T) {
+	guard := newAgentLoopGuard()
+	a := AgentAction{Action: "read_file", Path: "a.go"}
+	b := AgentAction{Action: "read_file", Path: "b.go"}
+	c := AgentAction{Action: "search_text", Query: "Thing"}
+	d := AgentAction{Action: "project_tree", Path: "src", MaxDepth: 2}
+	for i := 0; i < 2; i++ {
+		guard.Observe(a, "A", false, "analyze")
+		guard.Observe(b, "B", false, "analyze")
+		guard.Observe(c, "C", false, "analyze")
+		guard.Observe(d, "D", false, "analyze")
+	}
+
+	if reason := guard.ShouldBlock(a); !strings.Contains(reason, "Werkzeugzyklus") {
+		t.Fatalf("expected four-step cycle block, got %q", reason)
+	}
+}
+
 func TestAgentLoopGuardDifferentWritePayloadIsNotSameAction(t *testing.T) {
 	guard := newAgentLoopGuard()
 	first := AgentAction{Action: "write_file", Path: "main.go", Content: "one\n"}
