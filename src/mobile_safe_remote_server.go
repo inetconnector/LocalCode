@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -14,11 +17,41 @@ import (
 	"time"
 )
 
+const mobileRemoteApprovalMaxBody = 16 << 10
+
+type mobileSafeRemoteHandler struct {
+	remote *RemoteServer
+}
+
+func (h mobileSafeRemoteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost && r.URL.Path == "/remote/api/approve" {
+		limited := http.MaxBytesReader(w, r.Body, mobileRemoteApprovalMaxBody)
+		body, err := io.ReadAll(limited)
+		if err != nil {
+			http.Error(w, "invalid approval request", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Decision string `json:"decision"`
+		}
+		if json.Unmarshal(body, &req) == nil && strings.EqualFold(strings.TrimSpace(req.Decision), "global") {
+			http.Error(w, "global approval persistence is not available from the mobile remote", http.StatusForbidden)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	h.remote.ServeHTTP(w, r)
+}
+
 func newMobileSafeRemoteServer(state *AppState) *RemoteServer {
 	remote := NewRemoteServer(state)
 	remote.mux.HandleFunc("/remote/api/project-action", remote.withAuth(remote.handleRemoteProjectAction))
 	remote.mux.HandleFunc("/remote/api/project-delete-preview", remote.withAuth(remote.handleRemoteProjectDeletePreview))
 	return remote
+}
+
+func mobileSafeRemoteHTTPHandler(remote *RemoteServer) http.Handler {
+	return mobileSafeRemoteHandler{remote: remote}
 }
 
 func startMobileSafeRemoteHTTPServer(state *AppState, cfg Config) ([]string, error) {
@@ -45,8 +78,9 @@ func startMobileSafeRemoteHTTPServer(state *AppState, cfg Config) ([]string, err
 	state.RemoteListenAddr = ln.Addr().String()
 	state.RemoteURLs = append([]string(nil), urls...)
 	state.mu.Unlock()
+	remote := newMobileSafeRemoteServer(state)
 	server := &http.Server{
-		Handler:           newMobileSafeRemoteServer(state),
+		Handler:           mobileSafeRemoteHTTPHandler(remote),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    16 << 10,
@@ -111,7 +145,7 @@ func startMobileSafeProductionRemoteServer(state *AppState, cfg Config) ([]strin
 	remote := newMobileSafeRemoteServer(state)
 	registerRemoteDiscoveryRoute(remote, fingerprint, urls)
 	server := &http.Server{
-		Handler:           remote,
+		Handler:           mobileSafeRemoteHTTPHandler(remote),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    16 << 10,
