@@ -297,7 +297,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.ActionLog = nil
 	}
 	cfg := s.Config
-	threadID := s.CurrentThread
+	threadID = s.CurrentThread
 	s.mu.Unlock()
 
 	agentMessage := userMessage
