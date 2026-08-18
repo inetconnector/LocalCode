@@ -1,0 +1,39 @@
+name: Apply Native LSP Integration Patch
+
+on:
+  push:
+    branches: [agent/native-lsp-navigation]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-native-lsp-integration-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic integration patch
+        shell: pwsh
+        run: |
+          python scripts/apply-native-lsp-agent-patch.py
+          gofmt -w src/agent.go src/agent_supervisor.go src/approval_rules.go src/lsp_client.go src/lsp_client_test.go
+          git diff --check
+      - name: Commit integrated LSP tool
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- src/agent.go src/agent_supervisor.go src/approval_rules.go src/lsp_client.go src/lsp_client_test.go)) {
+            Write-Host 'LSP integration already applied'
+            exit 0
+          }
+          git config user.name 'localcode-ci'
+          git config user.email 'localcode-ci@users.noreply.github.com'
+          git add -- src/agent.go src/agent_supervisor.go src/approval_rules.go src/lsp_client.go src/lsp_client_test.go
+          git commit -m 'feat: integrate read-only native LSP navigation'
+          git push origin HEAD:agent/native-lsp-navigation
