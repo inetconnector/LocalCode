@@ -255,6 +255,9 @@ func replaceText(projectRoot, path, oldText, newText string) (string, error) {
 		return "", fmt.Errorf("old_text must occur exactly once; found %d occurrences", count)
 	}
 	updated := strings.Replace(original, oldText, newText, 1)
+	if updated == original {
+		return "", errors.New("no observable project changes: replacement leaves file unchanged")
+	}
 	if err := backupFile(projectRoot, full); err != nil {
 		return "", err
 	}
@@ -276,19 +279,26 @@ func writeProjectFile(projectRoot, path, content string) (string, error) {
 	}
 	old := ""
 	mode := os.FileMode(0o644)
+	existed := false
 	if data, err := os.ReadFile(full); err == nil {
 		if !isProbablyText(data) {
 			return "", fmt.Errorf("refusing to overwrite binary or non-UTF-8 file: %s", path)
 		}
+		existed = true
 		old = string(data)
+		if old == content {
+			return "", errors.New("no observable project changes: file already has the requested content")
+		}
 		if info, err := os.Stat(full); err == nil {
 			mode = info.Mode().Perm()
 		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if existed {
 		if err := backupFile(projectRoot, full); err != nil {
 			return "", err
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return "", err
