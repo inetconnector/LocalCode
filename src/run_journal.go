@@ -17,7 +17,7 @@ import (
 const runJournalSchemaVersion = 1
 
 var (
-	runJournalFileMu         sync.Mutex
+	runJournalFileMu          sync.Mutex
 	runJournalSecretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(authorization\s*[:=]\s*bearer\s+)[^\s]+`),
 		regexp.MustCompile(`(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret)\s*[:=]\s*)[^\s,;]+`),
@@ -172,8 +172,13 @@ func (s *AppState) journalRunPhase(runID, phase string) {
 }
 
 func shouldJournalRunEvent(ev UIEvent) bool {
+	// Keep only recovery-relevant checkpoints durable. The original task is
+	// already stored separately, action_running/action_done capture tool
+	// progress, and raw tool results are deliberately excluded from the journal.
+	// Persisting user, agent_step and tool_result events therefore added atomic
+	// disk writes and more free text without improving crash reconciliation.
 	switch ev.Type {
-	case "user", "agent_step", "approval_required", "approval", "approval_rule", "action_running", "action_done", "tool_result", "tool_error", "error", "warning", "final", "question", "context_compacted", "verification", "recovery":
+	case "approval_required", "approval", "approval_rule", "action_running", "action_done", "tool_error", "error", "warning", "final", "question", "context_compacted", "verification", "recovery":
 		return true
 	default:
 		return false
