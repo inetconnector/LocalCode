@@ -11,8 +11,8 @@ import (
 
 const (
 	subagentMaxMentionedFiles = 8
-	subagentMaxSearchTerms    = 8
-	subagentMaxReportBytes    = 60000
+	subagentMaxSearchTerms    = 10
+	subagentMaxReportBytes    = 90000
 )
 
 func runReadOnlySubagent(project string, cfg Config, task string) (string, error) {
@@ -39,6 +39,17 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 	} else {
 		b.WriteString("PROJECT TREE\n")
 		b.WriteString(truncateText(tree, 12000))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("REPOSITORY INTELLIGENCE\n")
+	intel, intelErr := repositoryIntelligence(project, task)
+	if intelErr != nil {
+		b.WriteString("Repository intelligence could not be built: ")
+		b.WriteString(intelErr.Error())
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString(truncateText(intel, 42000))
 		b.WriteString("\n")
 	}
 
@@ -93,9 +104,12 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 	}
 
 	b.WriteString("\nHANDOFF\n")
-	b.WriteString("- Use the evidence above as an independent read-only exploration pass.\n")
-	b.WriteString("- Treat paths and line hits as leads, not proof of correctness.\n")
-	b.WriteString("- After any later write, run the smallest relevant verification command and re-check changed files.\n")
+	b.WriteString("- Use this as an independent preflight, not as permission to mutate files.\n")
+	b.WriteString("- Form a concrete plan from architecture anchors, task-relevant files, invariants, and likely tests before editing.\n")
+	b.WriteString("- Treat paths and line hits as leads; read the actual implementation before changing it.\n")
+	b.WriteString("- Preserve unrelated behavior and public interfaces unless the user explicitly requests a breaking change.\n")
+	b.WriteString("- After any later write, compare the observed diff to the intended outcome; a zero exit code alone is not proof of correctness.\n")
+	b.WriteString("- Run the smallest relevant verification first, then the broader project-supported lint/test/build checks.\n")
 	return truncateText(b.String(), subagentMaxReportBytes), nil
 }
 
