@@ -1,0 +1,21 @@
+name: Export Agent Source Snapshot
+
+on:
+  push:
+    branches: [agent/approval-bound-edits]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: localcode-agent-source
+          path: src/agent.go
+          if-no-files-found: error
+          retention-days: 1
