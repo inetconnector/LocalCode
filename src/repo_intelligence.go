@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	repoIntelMaxFiles       = 3200
-	repoIntelMaxReadable    = 1400
-	repoIntelMaxFileBytes   = 512 * 1024
-	repoIntelMaxSymbols     = 28
-	repoIntelMaxImports     = 10
-	repoIntelRelevantFiles  = 24
-	repoIntelArchitecture   = 14
-	repoIntelVerification   = 10
+	repoIntelMaxFiles      = 3200
+	repoIntelMaxReadable   = 1400
+	repoIntelMaxFileBytes  = 512 * 1024
+	repoIntelMaxSymbols    = 28
+	repoIntelMaxImports    = 10
+	repoIntelRelevantFiles = 24
+	repoIntelArchitecture  = 14
+	repoIntelVerification  = 10
 )
 
 type repoIntelFile struct {
