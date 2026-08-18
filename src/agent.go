@@ -613,6 +613,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	supervisorBlocks := 0
 	invalidActionBlocks := 0
 	blockedFinishCounts := map[string]int{}
+	loopGuard := newAgentLoopGuard()
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -708,6 +709,16 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + hint + " Fahre jetzt mit einer konkreten Werkzeugaktion fort."})
 				continue
 			}
+		}
+		if reason := loopGuard.ShouldBlock(action); reason != "" {
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Stagnierende Werkzeugschleife blockiert", "Stagnating tool loop blocked"), Detail: reason, Action: action.Action})
+			hint := "SYSTEMHINWEIS: LocalCode hat eine sessionweite Werkzeugschleife erkannt. Wiederhole weder dieselbe Werkzeugaktion noch denselben Aktionszyklus unverändert. Nutze neue Information: lies eine andere relevante Datei, verwende Repository-Intelligence oder subagent_analyze, ändere die Diagnose oder repariere die konkrete Ursache."
+			if repeatBlocks >= 2 {
+				hint += " Nach wiederholter Schleifenerkennung: führe einen unabhängigen Read-only-Preflight mit subagent_analyze aus oder beende mit einer präzisen, belegten Fehlerursache statt weiter zu kreisen."
+			}
+			messages = append(messages, OllamaMessage{Role: "user", Content: hint})
+			continue
 		}
 		signature := actionSignature(action)
 		if signature == lastSignature && action.Action != "finish" {
@@ -807,6 +818,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if actionVerifiesProject(action, originalTask) && !toolFailed {
 			changedSinceVerification = false
 		}
+		loopGuard.Observe(action, result, toolFailed, originalTask)
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, contextToolResultLimit(cfg))
 		if toolFailed {
 			failedActions[actionSignature(action)]++
