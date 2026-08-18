@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -175,7 +174,7 @@ func TestLocalCodeLSPPoolHelperProcess(t *testing.T) {
 		switch envelope.Method {
 		case "initialize":
 			writeLSPTestResponse(envelope.ID, map[string]any{"capabilities": map[string]any{
-				"textDocumentSync": 1,
+				"textDocumentSync":       1,
 				"documentSymbolProvider": true,
 			}})
 		case "initialized":
@@ -235,8 +234,5 @@ func TestLSPPoolKeyIncludesProjectExecutableAndArguments(t *testing.T) {
 	changedArgs.Args = []string{"serve", "-rpc.trace"}
 	if key == lspPoolKey(`C:\\repo-a`, changedArgs) {
 		t.Fatal("arguments must participate in LSP pool key")
-	}
-	if _, err := strconv.Atoi("1"); err != nil {
-		t.Fatal(err)
 	}
 }
