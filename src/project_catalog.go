@@ -25,7 +25,7 @@ type ProjectDeletePreview struct {
 	Files                int    `json:"files"`
 	Directories          int    `json:"directories"`
 	Symlinks             int    `json:"symlinks"`
-	Bytes                 int64  `json:"bytes"`
+	Bytes                int64  `json:"bytes"`
 	ConfirmationRequired bool   `json:"confirmation_required"`
 	Confirmation         string `json:"confirmation"`
 }
