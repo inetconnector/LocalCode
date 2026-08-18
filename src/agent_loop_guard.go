@@ -59,21 +59,9 @@ func (g *agentLoopGuard) ShouldBlock(action AgentAction) string {
 		return ""
 	}
 
-	matches := make([]agentLoopObservation, 0, 3)
-	for i := len(g.history) - 1; i >= 0 && len(matches) < 3; i-- {
-		if g.history[i].Fingerprint == fingerprint {
-			matches = append(matches, g.history[i])
-		}
-	}
-	if len(matches) >= 2 {
-		if matches[0].Failed && matches[1].Failed {
-			return "Die gleiche strukturierte Werkzeugaktion ist in dieser Agentensitzung bereits zweimal fehlgeschlagen. Eine dritte unveränderte Ausführung wird blockiert."
-		}
-		if matches[0].Outcome != "" && matches[0].Outcome == matches[1].Outcome {
-			return "Die gleiche strukturierte Werkzeugaktion hat in dieser Agentensitzung bereits zweimal dasselbe Ergebnis geliefert. Eine dritte unveränderte Ausführung ohne neuen Zustand wird blockiert."
-		}
-	}
-
+	// Prefer explicit periodic-loop classification when the complete recent
+	// action/outcome sequence has repeated. This catches A<->B and longer cycles
+	// before the more general same-action detector below.
 	for period := 2; period <= 4; period++ {
 		if len(g.history) < period*2 {
 			continue
@@ -90,6 +78,21 @@ func (g *agentLoopGuard) ShouldBlock(action AgentAction) string {
 		}
 		if equal && cycleA[0].Fingerprint == fingerprint {
 			return "Eine wiederholte Werkzeugzyklus-Schleife wurde erkannt. Derselbe Aktions-/Ergebniszyklus wurde bereits zweimal ohne beobachtbaren Fortschritt durchlaufen."
+		}
+	}
+
+	matches := make([]agentLoopObservation, 0, 3)
+	for i := len(g.history) - 1; i >= 0 && len(matches) < 3; i-- {
+		if g.history[i].Fingerprint == fingerprint {
+			matches = append(matches, g.history[i])
+		}
+	}
+	if len(matches) >= 2 {
+		if matches[0].Failed && matches[1].Failed {
+			return "Die gleiche strukturierte Werkzeugaktion ist in dieser Agentensitzung bereits zweimal fehlgeschlagen. Eine dritte unveränderte Ausführung wird blockiert."
+		}
+		if matches[0].Outcome != "" && matches[0].Outcome == matches[1].Outcome {
+			return "Die gleiche strukturierte Werkzeugaktion hat in dieser Agentensitzung bereits zweimal dasselbe Ergebnis geliefert. Eine dritte unveränderte Ausführung ohne neuen Zustand wird blockiert."
 		}
 	}
 	return ""
