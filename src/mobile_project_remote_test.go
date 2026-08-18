@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -118,9 +119,6 @@ func TestMobileRemoteRejectsGlobalApprovalPersistence(t *testing.T) {
 }
 
 func urlQueryEscape(value string) string {
-	// The project paths used by these tests contain no reserved query data other
-	// than Windows drive separators/backslashes, which URL query parsing keeps.
-	// Escaping percent and spaces is sufficient for the deterministic temp paths.
 	value = strings.ReplaceAll(value, "%", "%25")
 	return strings.ReplaceAll(value, " ", "%20")
 }
