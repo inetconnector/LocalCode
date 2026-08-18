@@ -343,7 +343,7 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 				state.Model = thread.Model
 			}
 		}
-		state.AddEvent(recoveryStartupEvent(recovery))
+		state.AddEvent(recoveryStartupEvent(cfg, recovery))
 	}
 	return state
 }

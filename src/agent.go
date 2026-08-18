@@ -556,7 +556,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		effectiveTask = recoveredTask
 		s.journalRunTask(runID, effectiveTask)
 		instructions += "\n\n" + recoveryContext
-		s.AddEvent(UIEvent{Type: "recovery", Message: "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", Detail: "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft."})
+		s.AddEvent(UIEvent{Type: "recovery", Message: localizeConfigText(cfg, "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", "Interrupted task is resuming from the last confirmed state"), Detail: localizeConfigText(cfg, "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft.", "Current files and Git state are re-checked before any mutating action.")})
 	}
 	engine := normalizeEditingEngine(cfg.EditingEngine)
 	engineHint := "ENGINE-HINWEIS: Für mehrdateilige Codeänderungen ist engine_edit verfügbar."

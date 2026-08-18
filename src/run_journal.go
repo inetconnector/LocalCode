@@ -100,6 +100,10 @@ func loadRecoverableRun() *RunRecoveryState {
 func writeRunJournal(state RunRecoveryState) error {
 	runJournalFileMu.Lock()
 	defer runJournalFileMu.Unlock()
+	return writeRunJournalUnlocked(state)
+}
+
+func writeRunJournalUnlocked(state RunRecoveryState) error {
 	state.SchemaVersion = runJournalSchemaVersion
 	state.UpdatedAt = time.Now()
 	if len(state.Events) > 64 {
@@ -142,12 +146,14 @@ func (s *AppState) updateRunJournal(runID string, mutate func(*RunRecoveryState)
 	if strings.TrimSpace(runID) == "" {
 		return
 	}
+	runJournalFileMu.Lock()
+	defer runJournalFileMu.Unlock()
 	state, err := loadRunJournal()
 	if err != nil || state == nil || state.RunID != runID || state.Terminal {
 		return
 	}
 	mutate(state)
-	_ = writeRunJournal(*state)
+	_ = writeRunJournalUnlocked(*state)
 }
 
 func (s *AppState) journalRunTask(runID, task string) {
@@ -200,6 +206,8 @@ func (s *AppState) finishRunJournal(runID, outcome string) {
 	if strings.TrimSpace(runID) == "" {
 		return
 	}
+	runJournalFileMu.Lock()
+	defer runJournalFileMu.Unlock()
 	state, err := loadRunJournal()
 	if err != nil || state == nil || state.RunID != runID {
 		return
@@ -208,7 +216,7 @@ func (s *AppState) finishRunJournal(runID, outcome string) {
 	state.Phase = "idle"
 	state.Outcome = sanitizeRunJournalText(outcome, 200)
 	state.Events = append(state.Events, RunJournalEvent{At: time.Now(), Type: "run_end", Message: state.Outcome})
-	_ = writeRunJournal(*state)
+	_ = writeRunJournalUnlocked(*state)
 }
 
 func recoveryResumeRequest(value string) bool {
@@ -271,15 +279,17 @@ func (s *AppState) consumeRecoveryContextForTask(project, currentTask string) (s
 	return contextText, originalTask
 }
 
-func recoveryStartupEvent(recovery *RunRecoveryState) UIEvent {
+func recoveryStartupEvent(cfg Config, recovery *RunRecoveryState) UIEvent {
 	if recovery == nil {
 		return UIEvent{}
 	}
 	return UIEvent{
-		ID:        newID(),
-		Type:      "recovery_available",
-		Message:   "Unterbrochenen Agentenlauf erkannt",
-		Detail:    fmt.Sprintf("Phase: %s · Aufgabe: %s\nMit „Weiter“ kann LocalCode den letzten bestätigten Zustand sicher erneut prüfen. Mutierende Aktionen werden nicht blind wiederholt.", recovery.Phase, sanitizeRunJournalText(recovery.Task, 800)),
+		ID:      newID(),
+		Type:    "recovery_available",
+		Message: localizeConfigText(cfg, "Unterbrochenen Agentenlauf erkannt", "Interrupted agent run detected"),
+		Detail: fmt.Sprintf(localizeConfigText(cfg,
+			"Phase: %s · Aufgabe: %s\nMit „Weiter“ kann LocalCode den letzten bestätigten Zustand sicher erneut prüfen. Mutierende Aktionen werden nicht blind wiederholt.",
+			"Phase: %s · Task: %s\nUse ‘Continue’ to safely re-check the last confirmed state. Mutating actions are never replayed blindly."), recovery.Phase, sanitizeRunJournalText(recovery.Task, 800)),
 		Timestamp: time.Now(),
 	}
 }
