@@ -29,7 +29,7 @@ func helper(ctx context.Context) error { return nil }
 		t.Fatalf("semantic source = %q, want go/ast", facts.Source)
 	}
 	for _, symbol := range []string{"Service", "NewService", "Start", "helper"} {
-		if !containsString(facts.Symbols, symbol) {
+		if !semanticTestContainsString(facts.Symbols, symbol) {
 			t.Fatalf("missing symbol %q in %#v", symbol, facts.Symbols)
 		}
 		if facts.DefinitionLines[symbol] <= 0 {
@@ -39,7 +39,7 @@ func helper(ctx context.Context) error { return nil }
 	if !facts.Identifiers["helper"] || !facts.Identifiers["Service"] {
 		t.Fatalf("AST identifiers missing expected references: %#v", facts.Identifiers)
 	}
-	if !containsString(facts.Imports, "context") {
+	if !semanticTestContainsString(facts.Imports, "context") {
 		t.Fatalf("imports = %#v, want context", facts.Imports)
 	}
 }
@@ -50,7 +50,7 @@ func TestCodeGraphSemanticFallbackForTypeScript(t *testing.T) {
 	if facts.Source != "lexical+imports" {
 		t.Fatalf("semantic source = %q, want lexical+imports", facts.Source)
 	}
-	if !containsString(facts.Symbols, "runTask") || !containsString(facts.Symbols, "helper") {
+	if !semanticTestContainsString(facts.Symbols, "runTask") || !semanticTestContainsString(facts.Symbols, "helper") {
 		t.Fatalf("fallback symbols = %#v", facts.Symbols)
 	}
 }
@@ -97,7 +97,7 @@ func Unrelated() {}
 
 func TestRepositoryReferenceGraphIncludesGoASTContext(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "worker.go"), `package demo
+	semanticTestWriteFile(t, filepath.Join(root, "worker.go"), `package demo
 
 func StartWorker() error {
 	return helper()
@@ -105,7 +105,7 @@ func StartWorker() error {
 
 func helper() error { return nil }
 `)
-	writeTestFile(t, filepath.Join(root, "worker_test.go"), `package demo
+	semanticTestWriteFile(t, filepath.Join(root, "worker_test.go"), `package demo
 
 func TestStartWorker() {
 	_ = StartWorker()
@@ -123,7 +123,7 @@ func TestStartWorker() {
 	}
 }
 
-func containsString(values []string, want string) bool {
+func semanticTestContainsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
 			return true
@@ -132,7 +132,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-func writeTestFile(t *testing.T, path, content string) {
+func semanticTestWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
