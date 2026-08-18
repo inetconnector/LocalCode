@@ -106,7 +106,7 @@ func (s *AppState) runReadOnlyModelSubagent(ctx context.Context, project string,
 			return "MODEL READ-ONLY SUBAGENT HANDOFF\nModel: " + model + fmt.Sprintf("\nSteps: %d\n\n", step) + strings.TrimSpace(action.Message) + modelSubagentTrace(trace.String()), nil
 		}
 
-		s.AddEvent(UIEvent{Type: "agent_step", Message: "Subagent: " + action.Message, Action: "subagent:" + action.Action, Path: action.Path})
+		s.AddEvent(UIEvent{Type: "agent_step", Message: localizeConfigText(cfg, "Subagent: ", "Subagent: ") + action.Message, Action: "subagent:" + action.Action, Path: action.Path})
 		result, toolErr := s.executeModelSubagentAction(ctx, project, cfg, action)
 		if toolErr != nil {
 			result = "ERROR: " + toolErr.Error()
