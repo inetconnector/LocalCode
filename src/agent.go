@@ -18,36 +18,37 @@ import (
 )
 
 type AgentAction struct {
-	Action        string         `json:"action"`
-	Message       string         `json:"message"`
-	Path          string         `json:"path,omitempty"`
-	Query         string         `json:"query,omitempty"`
-	Content       string         `json:"content,omitempty"`
-	OldText       string         `json:"old_text,omitempty"`
-	NewText       string         `json:"new_text,omitempty"`
-	Command       string         `json:"command,omitempty"`
-	MaxDepth      int            `json:"max_depth,omitempty"`
-	Width         int            `json:"width,omitempty"`
-	Height        int            `json:"height,omitempty"`
-	URL           string         `json:"url,omitempty"`
-	MaxResults    int            `json:"max_results,omitempty"`
-	Server        string         `json:"server,omitempty"`
-	Tool          string         `json:"tool,omitempty"`
-	URI           string         `json:"uri,omitempty"`
-	PromptName    string         `json:"prompt_name,omitempty"`
-	Arguments     map[string]any `json:"arguments,omitempty"`
-	Args          []string       `json:"args,omitempty"`
-	Source        string         `json:"source,omitempty"`
-	Destination   string         `json:"destination,omitempty"`
-	CommitMessage string         `json:"commit_message,omitempty"`
-	StageAll      bool           `json:"stage_all,omitempty"`
-	Task          string         `json:"task,omitempty"`
-	Name          string         `json:"name,omitempty"`
-	MemoryID      string         `json:"memory_id,omitempty"`
-	Scope         string         `json:"scope,omitempty"`
-	Skill         string         `json:"skill,omitempty"`
-	Resource      string         `json:"resource,omitempty"`
-	Script        string         `json:"script,omitempty"`
+	Action              string         `json:"action"`
+	Message             string         `json:"message"`
+	Path                string         `json:"path,omitempty"`
+	Query               string         `json:"query,omitempty"`
+	Content             string         `json:"content,omitempty"`
+	OldText             string         `json:"old_text,omitempty"`
+	NewText             string         `json:"new_text,omitempty"`
+	Command             string         `json:"command,omitempty"`
+	MaxDepth            int            `json:"max_depth,omitempty"`
+	Width               int            `json:"width,omitempty"`
+	Height              int            `json:"height,omitempty"`
+	URL                 string         `json:"url,omitempty"`
+	MaxResults          int            `json:"max_results,omitempty"`
+	Server              string         `json:"server,omitempty"`
+	Tool                string         `json:"tool,omitempty"`
+	URI                 string         `json:"uri,omitempty"`
+	PromptName          string         `json:"prompt_name,omitempty"`
+	Arguments           map[string]any `json:"arguments,omitempty"`
+	Args                []string       `json:"args,omitempty"`
+	Source              string         `json:"source,omitempty"`
+	Destination         string         `json:"destination,omitempty"`
+	CommitMessage       string         `json:"commit_message,omitempty"`
+	StageAll            bool           `json:"stage_all,omitempty"`
+	Task                string         `json:"task,omitempty"`
+	Name                string         `json:"name,omitempty"`
+	MemoryID            string         `json:"memory_id,omitempty"`
+	Scope               string         `json:"scope,omitempty"`
+	Skill               string         `json:"skill,omitempty"`
+	Resource            string         `json:"resource,omitempty"`
+	Script              string         `json:"script,omitempty"`
+	expectedFileVersion *fileVersion
 }
 
 var actionSchema = map[string]any{
@@ -2133,9 +2134,18 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 		}
 		cfg = newCfg
 	}
+	precondition, err := captureApprovedFilePrecondition(project, a)
+	if err != nil {
+		return "ERROR: " + err.Error(), false
+	}
 	preview, err := previewAction(project, cfg, a)
 	if err != nil {
 		return "ERROR: " + err.Error(), false
+	}
+	if precondition != nil {
+		if err := verifyApprovedFilePrecondition(*precondition); err != nil {
+			return "ERROR: " + err.Error(), false
+		}
 	}
 	approved := true
 	if actionNeedsApproval(cfg, project, a) {
@@ -2146,6 +2156,15 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	}
 	if !approved {
 		return "REJECTED BY USER", false
+	}
+	if precondition != nil {
+		if err := verifyApprovedFilePrecondition(*precondition); err != nil {
+			detail := "ERROR: " + err.Error()
+			s.AddEvent(UIEvent{Type: "tool_error", Message: a.Message, Detail: detail, Preview: preview, Action: a.Action, Path: a.Path, Command: a.Command})
+			return detail, false
+		}
+		version := precondition.Version
+		a.expectedFileVersion = &version
 	}
 	s.AddEvent(UIEvent{Type: "action_running", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
 	result, err := s.executeActionWithToolRepair(ctx, project, cfg, a)
@@ -2643,10 +2662,16 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 				return "", err
 			}
 		}
+		if a.expectedFileVersion != nil {
+			return replaceTextAtVersion(project, a.Path, a.OldText, a.NewText, *a.expectedFileVersion)
+		}
 		return replaceText(project, a.Path, a.OldText, a.NewText)
 	case "write_file":
 		if err := validateManagedStateWrite(project, cfg, a.Path, a.Content); err != nil {
 			return "", err
+		}
+		if a.expectedFileVersion != nil {
+			return writeProjectFileAtVersion(project, a.Path, a.Content, *a.expectedFileVersion)
 		}
 		return writeProjectFile(project, a.Path, a.Content)
 	case "create_svg_asset":
@@ -2670,6 +2695,9 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		header := fmt.Sprintf("SKILL SCRIPT EXECUTED\nSkill: %s\nDeclared: %s\nSource: %s\nCommand: %s\n\n", skill.Name, a.Script, source, command)
 		return header + result, err
 	case "delete_file":
+		if a.expectedFileVersion != nil {
+			return deleteProjectFileAtVersion(project, a.Path, *a.expectedFileVersion)
+		}
 		return deleteProjectFile(project, a.Path)
 	case "build_project":
 		timeout := time.Duration(cfg.CommandTimeout) * time.Second
