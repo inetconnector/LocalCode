@@ -21,6 +21,10 @@ func TestPlayStoreBuildHelperUsesProjectWrapperAndNeverPublishes(t *testing.T) {
 		"bundleRelease",
 		"assembleRelease",
 		"Get-FileHash -Algorithm SHA256",
+		"Test-AabSignature",
+		"jarsigner",
+		"jar verified",
+		"signature_status",
 		"PLAY_STORE_BUILD_RESULT_JSON",
 		"never creates/replaces keystores",
 	} {
