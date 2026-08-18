@@ -8,6 +8,12 @@ const (
 	editReliabilityFast     = "fast"
 	editReliabilityBalanced = "balanced"
 	editReliabilityThorough = "thorough"
+
+	// The mandatory pre-edit reliability pass is intentionally deterministic.
+	// Model-driven subagents remain available when the parent agent explicitly
+	// chooses subagent_analyze, but the supervisor's safety preflight must not
+	// consume parent-model turns or depend on another inference succeeding.
+	deterministicSubagentTaskPrefix = "LOCALCODE_DETERMINISTIC_PREFLIGHT\n"
 )
 
 func editReliabilityMode(cfg Config) string {
@@ -51,7 +57,8 @@ func forcedEditReliabilityAction(intent taskIntent, completed map[string]bool, c
 		return &AgentAction{
 			Action:  "subagent_analyze",
 			Message: "Unabhängigen Read-only-Preflight mit Repository-Intelligence durchführen",
-			Task:    "Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,
+			Task: deterministicSubagentTaskPrefix +
+				"Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,
 		}
 	}
 
