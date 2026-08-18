@@ -89,6 +89,7 @@ func TestLocalCodeLSPHelperProcess(t *testing.T) {
 		return
 	}
 	reader := bufio.NewReader(os.Stdin)
+	var pendingDefinitionID json.RawMessage
 	for {
 		envelope, err := readLSPEnvelope(reader)
 		if err != nil {
@@ -98,8 +99,25 @@ func TestLocalCodeLSPHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		if envelope.Method == "" {
-			// Response to a server-originated request such as workspace/configuration.
-			// Do not respond to responses.
+			switch string(envelope.ID) {
+			case "91":
+				// After configuration, also prove that a server-originated edit is
+				// rejected by LocalCode's read-only LSP boundary.
+				_ = writeLSPTestMessage(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      92,
+					"method":  "workspace/applyEdit",
+					"params":  map[string]any{"edit": map[string]any{"changes": map[string]any{}}},
+				})
+			case "92":
+				if !bytes.Contains(envelope.Result, []byte(`"applied":false`)) {
+					os.Exit(3)
+				}
+				if len(pendingDefinitionID) > 0 {
+					writeLSPTestDefinitionResult(pendingDefinitionID)
+					pendingDefinitionID = nil
+				}
+			}
 			continue
 		}
 		switch envelope.Method {
@@ -116,24 +134,7 @@ func TestLocalCodeLSPHelperProcess(t *testing.T) {
 		case "initialized", "textDocument/didOpen":
 			// Notifications do not receive responses.
 		case "textDocument/definition":
-			_ = writeLSPTestMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"method":  "textDocument/publishDiagnostics",
-				"params": map[string]any{
-					"uri": "file:///sample.go",
-					"diagnostics": []any{map[string]any{
-						"message":  "synthetic diagnostic",
-						"severity": 2,
-					}},
-				},
-			})
-			writeLSPTestResponse(envelope.ID, []any{map[string]any{
-				"uri": "file:///target.go",
-				"range": map[string]any{
-					"start": map[string]any{"line": 2, "character": 1},
-					"end":   map[string]any{"line": 2, "character": 8},
-				},
-			}})
+			pendingDefinitionID = append(json.RawMessage(nil), envelope.ID...)
 		case "shutdown":
 			writeLSPTestResponse(envelope.ID, nil)
 		case "exit":
@@ -144,6 +145,27 @@ func TestLocalCodeLSPHelperProcess(t *testing.T) {
 			}
 		}
 	}
+}
+
+func writeLSPTestDefinitionResult(id json.RawMessage) {
+	_ = writeLSPTestMessage(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "textDocument/publishDiagnostics",
+		"params": map[string]any{
+			"uri": "file:///sample.go",
+			"diagnostics": []any{map[string]any{
+				"message":  "synthetic diagnostic",
+				"severity": 2,
+			}},
+		},
+	})
+	writeLSPTestResponse(id, []any{map[string]any{
+		"uri": "file:///target.go",
+		"range": map[string]any{
+			"start": map[string]any{"line": 2, "character": 1},
+			"end":   map[string]any{"line": 2, "character": 8},
+		},
+	}})
 }
 
 func writeLSPTestResponse(id json.RawMessage, result any) {
