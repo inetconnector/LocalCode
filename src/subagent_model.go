@@ -50,6 +50,10 @@ func (s *AppState) runReadOnlyModelSubagent(ctx context.Context, project string,
 	if task == "" {
 		return "", errors.New("subagent task is empty")
 	}
+	if strings.HasPrefix(task, deterministicSubagentTaskPrefix) {
+		deterministicTask := strings.TrimSpace(strings.TrimPrefix(task, deterministicSubagentTaskPrefix))
+		return runReadOnlySubagent(project, cfg, deterministicTask)
+	}
 	s.mu.RLock()
 	model := strings.TrimSpace(s.Model)
 	s.mu.RUnlock()
