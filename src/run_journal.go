@@ -135,14 +135,7 @@ func (s *AppState) beginRunJournal(runID, project, model, task, threadID string,
 			Message: "Agent run started",
 		}},
 	}
-	if err := writeRunJournal(state); err != nil {
-		return
-	}
-	s.mu.Lock()
-	if s.RunID == runID {
-		s.Recovery = nil
-	}
-	s.mu.Unlock()
+	_ = writeRunJournal(state)
 }
 
 func (s *AppState) updateRunJournal(runID string, mutate func(*RunRecoveryState)) {
@@ -157,6 +150,13 @@ func (s *AppState) updateRunJournal(runID string, mutate func(*RunRecoveryState)
 	_ = writeRunJournal(*state)
 }
 
+func (s *AppState) journalRunTask(runID, task string) {
+	task = sanitizeRunJournalText(task, 6000)
+	s.updateRunJournal(runID, func(state *RunRecoveryState) {
+		state.Task = task
+	})
+}
+
 func (s *AppState) journalRunPhase(runID, phase string) {
 	phase = sanitizeRunJournalText(phase, 100)
 	s.updateRunJournal(runID, func(state *RunRecoveryState) {
@@ -165,8 +165,17 @@ func (s *AppState) journalRunPhase(runID, phase string) {
 	})
 }
 
+func shouldJournalRunEvent(ev UIEvent) bool {
+	switch ev.Type {
+	case "user", "agent_step", "approval_required", "approval", "approval_rule", "action_running", "action_done", "tool_result", "tool_error", "error", "warning", "final", "question", "context_compacted", "verification", "recovery":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *AppState) journalRunEvent(runID string, ev UIEvent) {
-	if strings.TrimSpace(runID) == "" {
+	if strings.TrimSpace(runID) == "" || !shouldJournalRunEvent(ev) {
 		return
 	}
 	// Store only operational metadata. Tool outputs, commands, attachments and
@@ -247,6 +256,19 @@ func (s *AppState) recoveryContextForTask(project, currentTask string) (string, 
 		}
 	}
 	return b.String(), recovery.Task
+}
+
+func (s *AppState) consumeRecoveryContextForTask(project, currentTask string) (string, string) {
+	contextText, originalTask := s.recoveryContextForTask(project, currentTask)
+	if contextText == "" {
+		return "", ""
+	}
+	s.mu.Lock()
+	if s.Recovery != nil && strings.EqualFold(filepath.Clean(s.Recovery.Project), filepath.Clean(project)) {
+		s.Recovery = nil
+	}
+	s.mu.Unlock()
+	return contextText, originalTask
 }
 
 func recoveryStartupEvent(recovery *RunRecoveryState) UIEvent {
