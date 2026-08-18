@@ -3,9 +3,12 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestRemoteProjectDeletePreviewRejectsInvalidRequests(t *testing.T) {
@@ -114,5 +117,64 @@ func TestMobileSafeRemoteStartDisabledIsNoOp(t *testing.T) {
 	urls, err = startMobileSafeProductionRemoteServer(state, cfg)
 	if err != nil || urls != nil {
 		t.Fatalf("disabled production remote = urls=%#v err=%v", urls, err)
+	}
+}
+
+func TestMobileSafeProductionRemoteStartsLiveLoopbackServer(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, portText, err := net.SplitHostPort(probe.Addr().String())
+	if err != nil {
+		_ = probe.Close()
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		_ = probe.Close()
+		t.Fatal(err)
+	}
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	state := newRemoteTestState(t)
+	state.mu.Lock()
+	state.Config.RemoteEnabled = true
+	state.Config.RemoteBindHost = "127.0.0.1"
+	state.Config.RemotePort = port
+	cfg := state.Config
+	state.mu.Unlock()
+
+	urls, err := startMobileSafeProductionRemoteServer(state, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) == 0 {
+		t.Fatal("live mobile remote returned no URL")
+	}
+	state.mu.RLock()
+	listenAddr := state.RemoteListenAddr
+	state.mu.RUnlock()
+	if listenAddr == "" {
+		t.Fatal("live mobile remote did not record its listen address")
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp, requestErr := client.Get("http://" + listenAddr + "/remote/api/ping")
+		if requestErr == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("mobile remote ping status = %d", resp.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("mobile remote did not become reachable: %v", requestErr)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
