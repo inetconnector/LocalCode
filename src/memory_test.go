@@ -105,6 +105,7 @@ func TestDirectMemoryPromptStoresGlobalWithoutModel(t *testing.T) {
 	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
 	project := t.TempDir()
 	state := NewAppState(defaultConfig(), nil)
+	t.Cleanup(state.Close)
 	state.Project = project
 	state.Model = "local-model"
 
@@ -135,6 +136,7 @@ func TestDirectMemoryPromptListsAndDeletesByQuery(t *testing.T) {
 	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
 	project := t.TempDir()
 	state := NewAppState(defaultConfig(), nil)
+	t.Cleanup(state.Close)
 	state.Project = project
 	state.Model = "local-model"
 	if _, err := state.executeMemoryAction(project, AgentAction{Action: "memory_remember", Content: "Kurze Antworten bevorzugen.", Scope: "global"}); err != nil {

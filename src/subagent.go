@@ -7,13 +7,58 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const (
 	subagentMaxMentionedFiles = 8
 	subagentMaxSearchTerms    = 10
 	subagentMaxReportBytes    = 125000
+	subagentMaxParallelReads  = 4
 )
+
+type subagentReadJob struct {
+	name string
+	run  func() (string, error)
+}
+
+type subagentReadResult struct {
+	name   string
+	output string
+	err    error
+}
+
+// runSubagentReadJobs executes independent read-only repository probes with a
+// strict concurrency bound, but always returns results in the same order as the
+// input jobs. This gives local models faster repository exploration without
+// introducing nondeterministic prompt ordering or parallel mutation hazards.
+func runSubagentReadJobs(jobs []subagentReadJob, maxParallel int) []subagentReadResult {
+	results := make([]subagentReadResult, len(jobs))
+	if len(jobs) == 0 {
+		return results
+	}
+	if maxParallel <= 0 {
+		maxParallel = 1
+	}
+	if maxParallel > len(jobs) {
+		maxParallel = len(jobs)
+	}
+	sem := make(chan struct{}, maxParallel)
+	var wg sync.WaitGroup
+	for i := range jobs {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			output, err := jobs[i].run()
+			results[i] = subagentReadResult{name: jobs[i].name, output: output, err: err}
+		}()
+	}
+	wg.Wait()
+	return results
+}
 
 func runReadOnlySubagent(project string, cfg Config, task string) (string, error) {
 	task = strings.TrimSpace(task)
@@ -21,94 +66,133 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 		return "", fmt.Errorf("subagent task is empty")
 	}
 
-	var b strings.Builder
-	b.WriteString("READ-ONLY SUBAGENT HANDOFF\n")
-	b.WriteString("Scope: ")
-	b.WriteString(task)
-	b.WriteString("\nMode: read-only; no file writes, shell commands, network calls, MCP calls, or approvals.\n\n")
-
-	b.WriteString("PROJECT INFO\n")
-	b.WriteString(truncateText(projectInfo(project, cfg), 8000))
-	b.WriteString("\n")
-
-	tree, err := projectTree(project, "", 4, 800)
-	if err != nil {
-		b.WriteString("PROJECT TREE ERROR\n")
-		b.WriteString(err.Error())
-		b.WriteString("\n\n")
-	} else {
-		b.WriteString("PROJECT TREE\n")
-		b.WriteString(truncateText(tree, 12000))
-		b.WriteString("\n")
-	}
-
-	b.WriteString("REPOSITORY INTELLIGENCE\n")
-	intel, intelErr := repositoryIntelligence(project, task)
-	if intelErr != nil {
-		b.WriteString("Repository intelligence could not be built: ")
-		b.WriteString(intelErr.Error())
-		b.WriteString("\n\n")
-	} else {
-		b.WriteString(truncateText(intel, 42000))
-		b.WriteString("\n")
-	}
-
-	b.WriteString("REFERENCE GRAPH / STATIC CODE NAVIGATION\n")
-	graph, graphErr := repositoryReferenceGraph(project, task)
-	if graphErr != nil {
-		b.WriteString("Reference graph could not be built: ")
-		b.WriteString(graphErr.Error())
-		b.WriteString("\n\n")
-	} else {
-		b.WriteString(truncateText(graph, 46000))
-		b.WriteString("\n")
-	}
-
 	mentioned := mentionedProjectFiles(task)
 	if len(mentioned) > subagentMaxMentionedFiles {
 		mentioned = mentioned[:subagentMaxMentionedFiles]
 	}
+	terms := subagentSearchTerms(task, mentioned)
+
+	coreJobs := []subagentReadJob{
+		{
+			name: "PROJECT INFO",
+			run: func() (string, error) {
+				return projectInfo(project, cfg), nil
+			},
+		},
+		{
+			name: "PROJECT TREE",
+			run: func() (string, error) {
+				return projectTree(project, "", 4, 800)
+			},
+		},
+		{
+			name: "REPOSITORY INTELLIGENCE",
+			run: func() (string, error) {
+				return repositoryIntelligence(project, task)
+			},
+		},
+		{
+			name: "REFERENCE GRAPH / STATIC CODE NAVIGATION",
+			run: func() (string, error) {
+				return repositoryReferenceGraph(project, task)
+			},
+		},
+	}
+	core := runSubagentReadJobs(coreJobs, subagentMaxParallelReads)
+
+	searchJobs := make([]subagentReadJob, 0, len(terms))
+	for _, term := range terms {
+		term := term
+		searchJobs = append(searchJobs, subagentReadJob{
+			name: term,
+			run: func() (string, error) {
+				return searchProject(project, term, "", 40)
+			},
+		})
+	}
+	searchResults := runSubagentReadJobs(searchJobs, subagentMaxParallelReads)
+
+	var b strings.Builder
+	b.WriteString("READ-ONLY SUBAGENT HANDOFF\n")
+	b.WriteString("Scope: ")
+	b.WriteString(task)
+	b.WriteString("\nMode: read-only; bounded parallel repository exploration; no file writes, shell commands, network calls, MCP calls, or approvals.\n")
+	b.WriteString(fmt.Sprintf("Parallel read limit: %d; result order: deterministic.\n\n", subagentMaxParallelReads))
+
+	for i, result := range core {
+		b.WriteString(result.name)
+		b.WriteString("\n")
+		if result.err != nil {
+			switch i {
+			case 1:
+				b.WriteString("Project tree could not be built: ")
+			case 2:
+				b.WriteString("Repository intelligence could not be built: ")
+			case 3:
+				b.WriteString("Reference graph could not be built: ")
+			default:
+				b.WriteString("Read-only probe failed: ")
+			}
+			b.WriteString(result.err.Error())
+			b.WriteString("\n\n")
+			continue
+		}
+		limits := []int{8000, 12000, 42000, 46000}
+		b.WriteString(truncateText(result.output, limits[i]))
+		if !strings.HasSuffix(result.output, "\n") {
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
 	b.WriteString("MENTIONED FILES\n")
 	if len(mentioned) == 0 {
 		b.WriteString("No concrete project files were mentioned.\n\n")
 	} else {
+		fileJobs := make([]subagentReadJob, 0, len(mentioned))
 		for _, path := range mentioned {
+			path := path
+			fileJobs = append(fileJobs, subagentReadJob{
+				name: path,
+				run: func() (string, error) {
+					return readProjectFile(project, path)
+				},
+			})
+		}
+		for _, result := range runSubagentReadJobs(fileJobs, subagentMaxParallelReads) {
 			b.WriteString("--- ")
-			b.WriteString(path)
+			b.WriteString(result.name)
 			b.WriteString(" ---\n")
-			content, readErr := readProjectFile(project, path)
-			if readErr != nil {
+			if result.err != nil {
 				b.WriteString("ERROR: ")
-				b.WriteString(readErr.Error())
+				b.WriteString(result.err.Error())
 				b.WriteString("\n")
 				continue
 			}
-			b.WriteString(truncateText(content, 9000))
-			if !strings.HasSuffix(content, "\n") {
+			b.WriteString(truncateText(result.output, 9000))
+			if !strings.HasSuffix(result.output, "\n") {
 				b.WriteString("\n")
 			}
 		}
 		b.WriteString("\n")
 	}
 
-	terms := subagentSearchTerms(task, mentioned)
 	b.WriteString("SEARCH EVIDENCE\n")
-	if len(terms) == 0 {
+	if len(searchResults) == 0 {
 		b.WriteString("No useful search terms extracted.\n")
 	} else {
-		for _, term := range terms {
+		for _, result := range searchResults {
 			b.WriteString("--- query: ")
-			b.WriteString(term)
+			b.WriteString(result.name)
 			b.WriteString(" ---\n")
-			hits, searchErr := searchProject(project, term, "", 40)
-			if searchErr != nil {
+			if result.err != nil {
 				b.WriteString("ERROR: ")
-				b.WriteString(searchErr.Error())
+				b.WriteString(result.err.Error())
 				b.WriteString("\n")
 				continue
 			}
-			b.WriteString(truncateText(hits, 7000))
-			if !strings.HasSuffix(hits, "\n") {
+			b.WriteString(truncateText(result.output, 7000))
+			if !strings.HasSuffix(result.output, "\n") {
 				b.WriteString("\n")
 			}
 		}
@@ -116,6 +200,7 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 
 	b.WriteString("\nHANDOFF\n")
 	b.WriteString("- Use this as an independent preflight, not as permission to mutate files.\n")
+	b.WriteString("- Parallelism is deliberately restricted to independent reads; all mutation, approvals and verification remain serialized through the normal agent controls.\n")
 	b.WriteString("- Form a concrete plan from architecture anchors, task-relevant files, graph neighbors, shared symbols, invariants, and likely tests before editing.\n")
 	b.WriteString("- Inspect callers/references before changing a high-centrality or shared symbol.\n")
 	b.WriteString("- Treat paths and line hits as leads; read the actual implementation before changing it.\n")
