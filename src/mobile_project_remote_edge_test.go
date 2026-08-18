@@ -94,7 +94,7 @@ func TestMobileRemoteAllowsOneTimeApprovalThroughNormalHandler(t *testing.T) {
 	}
 	select {
 	case decision := <-pending.Result:
-		if !decision.Approve || decision.Scope != "once" {
+		if !decision.Approved || decision.Persist || decision.Scope != "once" {
 			t.Fatalf("unexpected one-time mobile approval: %#v", decision)
 		}
 	default:
