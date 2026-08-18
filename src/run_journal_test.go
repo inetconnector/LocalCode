@@ -70,7 +70,7 @@ func TestRecoveryContextRequiresSameTaskOrExplicitResume(t *testing.T) {
 		Task:      "refactor parser",
 		Phase:     "verifying",
 		StartedAt: time.Now().Add(-time.Minute),
-		Events: []RunJournalEvent{{Type: "tool_result", Action: "read_file", Path: "parser.go", Message: "Parser read"}},
+		Events:    []RunJournalEvent{{Type: "tool_result", Action: "read_file", Path: "parser.go", Message: "Parser read"}},
 	}}
 	if context, task := state.recoveryContextForTask(project, "unrelated new task"); context != "" || task != "" {
 		t.Fatalf("unrelated task inherited recovery context: %q %q", context, task)
