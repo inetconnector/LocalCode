@@ -20,7 +20,7 @@ var (
 	runJournalFileMu         sync.Mutex
 	runJournalSecretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(authorization\s*[:=]\s*bearer\s+)[^\s]+`),
-		regexp.MustCompile(`(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|secret)\s*[:=]\s*)[^\s,;]+`),
+		regexp.MustCompile(`(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret)\s*[:=]\s*)[^\s,;]+`),
 		regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+\-/=]{8,}`),
 	}
 )
