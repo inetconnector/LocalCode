@@ -110,6 +110,8 @@ func approvalActionTokens(a AgentAction) []string {
 		return []string{"shell", command}
 	case "write_file", "replace_text", "delete_file", "create_svg_asset", "create_image_asset":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Path))}
+	case "lsp":
+		return []string{"lsp", normalizeLSPOperation(a.Name), filepath.ToSlash(filepath.Clean(a.Path))}
 	case "convert_image_asset", "render_asset":
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Destination))}
 	case "skill_copy_resource":

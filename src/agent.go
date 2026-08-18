@@ -29,6 +29,8 @@ type AgentAction struct {
 	MaxDepth            int            `json:"max_depth,omitempty"`
 	Width               int            `json:"width,omitempty"`
 	Height              int            `json:"height,omitempty"`
+	Line                int            `json:"line,omitempty"`
+	Character           int            `json:"character,omitempty"`
 	URL                 string         `json:"url,omitempty"`
 	MaxResults          int            `json:"max_results,omitempty"`
 	Server              string         `json:"server,omitempty"`
@@ -55,7 +57,7 @@ var actionSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
-			"list_files", "read_file", "search_text", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
+			"list_files", "read_file", "search_text", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
@@ -67,6 +69,7 @@ var actionSchema = map[string]any{
 		"old_text": map[string]any{"type": "string", "minLength": 1}, "new_text": map[string]any{"type": "string"},
 		"command": map[string]any{"type": "string"}, "max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
 		"width": map[string]any{"type": "integer", "minimum": 1, "maximum": 4096}, "height": map[string]any{"type": "integer", "minimum": 1, "maximum": 4096},
+		"line": map[string]any{"type": "integer", "minimum": 1}, "character": map[string]any{"type": "integer", "minimum": 1},
 		"url": map[string]any{"type": "string"}, "max_results": map[string]any{"type": "integer", "minimum": 1, "maximum": 10},
 		"server": map[string]any{"type": "string"}, "tool": map[string]any{"type": "string"}, "uri": map[string]any{"type": "string"},
 		"prompt_name": map[string]any{"type": "string"}, "arguments": map[string]any{"type": "object"},
@@ -86,6 +89,7 @@ var actionSchema = map[string]any{
 		conditionalRequired("read_file", "path"),
 		conditionalRequired("delete_file", "path"),
 		conditionalRequired("search_text", "query"),
+		conditionalRequired("lsp", "path", "name"),
 		conditionalRequired("replace_text", "path", "old_text"),
 		conditionalRequired("write_file", "path", "content"),
 		conditionalRequired("create_svg_asset", "path", "content"),
@@ -137,6 +141,7 @@ Du arbeitest in einer kontrollierten Werkzeugschleife. Jede Antwort MUSS genau e
 Arbeitsweise:
 - Globale/Projekt-Anweisungen, README.md, STATE.md, relevante Cursor-Regeln, lokale Skill-Hinweise, Projektstruktur und der relevante Git-Zustand werden zu Beginn bereits in den Kontext eingebettet. Lies Dateien nur erneut, wenn du einen konkreten Abschnitt brauchst oder der eingebettete Inhalt als gekürzt markiert ist.
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
+- Nutze lsp(name,path,line,character,query) für semantische Navigation, wenn ein passender lokaler Language Server verfügbar ist. Unterstützt werden definition, references, hover, documentSymbol, workspaceSymbol, implementation, prepareCallHierarchy, incomingCalls und outgoingCalls. LSP ist unverändernd; wenn kein Server verfügbar ist, falle auf Repository-Intelligence, search_text und read_file zurück.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
 - Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
@@ -168,6 +173,7 @@ Arbeitsweise:
 
 Werkzeuge:
 - list_files, read_file, search_text
+- lsp(name,path,line,character,query) für read-only Definitionen/Referenzen/Symbole/Hover/Implementierungen/Call-Hierarchy
 - replace_text, write_file, delete_file
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
@@ -1117,6 +1123,24 @@ func validateAgentAction(a AgentAction) error {
 		return require("path", a.Path)
 	case "search_text":
 		return require("query", a.Query)
+	case "lsp":
+		if err := require("path", a.Path); err != nil {
+			return err
+		}
+		if err := require("name", a.Name); err != nil {
+			return err
+		}
+		switch normalizeLSPOperation(a.Name) {
+		case "documentsymbol", "symbols", "workspacesymbol":
+			return nil
+		case "definition", "gotodefinition", "references", "findreferences", "hover", "implementation", "gotoimplementation", "preparecallhierarchy", "incomingcalls", "outgoingcalls":
+			if a.Line < 1 || a.Character < 1 {
+				return errors.New("lsp position operation requires positive line and character")
+			}
+			return nil
+		default:
+			return fmt.Errorf("unsupported LSP operation %q", a.Name)
+		}
 	case "replace_text":
 		if err := require("path", a.Path); err != nil {
 			return err
@@ -2071,7 +2095,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "mcp_call_tool", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -2197,6 +2221,10 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "command_list", "command_read", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		return false
 	case "web_search", "web_fetch":
+		return cfg.ApprovalMode == "strict"
+	case "lsp":
+		// A language server is an external project-aware process. The protocol
+		// path is read-only, but strict mode still surfaces the process start.
 		return cfg.ApprovalMode == "strict"
 	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "engine_edit", "aider_edit":
 		return cfg.ApprovalMode != "auto"
@@ -2470,6 +2498,20 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return simpleDiff(old, ""), nil
+	case "lsp":
+		full, err := ensureWithinRoot(project, a.Path)
+		if err != nil {
+			return "", err
+		}
+		spec, err := resolveLSPServer(project, cfg, full)
+		if err != nil {
+			return "", err
+		}
+		position := ""
+		if a.Line > 0 && a.Character > 0 {
+			position = fmt.Sprintf("\nPosition: %d:%d", a.Line, a.Character)
+		}
+		return fmt.Sprintf("Read-only LSP query\nServer: %s\nOperation: %s\nPath: %s%s\nServer-originated workspace/applyEdit requests are refused; query has a bounded timeout and process-tree cancellation.", spec.Tool, a.Name, a.Path, position), nil
 	case "run_tool":
 		if strings.TrimSpace(a.Tool) == "" {
 			return "", errors.New("tool is empty")
@@ -2699,6 +2741,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 			return deleteProjectFileAtVersion(project, a.Path, *a.expectedFileVersion)
 		}
 		return deleteProjectFile(project, a.Path)
+	case "lsp":
+		return runLSPAction(ctx, project, cfg, a)
 	case "build_project":
 		timeout := time.Duration(cfg.CommandTimeout) * time.Second
 		if timeout < 10*time.Minute {
