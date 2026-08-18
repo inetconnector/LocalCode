@@ -3,6 +3,8 @@ name: Export Agent Source Snapshot
 on:
   push:
     branches: [agent/approval-bound-edits]
+  pull_request:
+    branches: [master]
 
 permissions:
   contents: read
