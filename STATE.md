@@ -1,313 +1,650 @@
-# LocalCode project state / Projektstatus
+# LocalCode – canonical project state / kanonische KI-Übergabe
 
-**Version:** 6.4.4
-**Status:** Local phone Remote added; progress splash, selectable coding engines, native-agent completion guards, and local image generation
+**Stand:** 2026-08-19 00:xx Europe/Berlin  
+**Repository:** `inetconnector/LocalCode`  
+**Default branch:** `master`  
+**Master at start of the current mobile/project work:** `16c429bd911fa520b504c11f052f887cd6043569`  
+**Active feature branch:** `agent/mobile-safe-project-playstore`  
+**Active PR:** #24 `feat: safe mobile project management and Play Store builds` (Draft until complete Quality is green)  
+**State policy:** This file is the authoritative current handoff. Historical detail remains in Git history. Do not reconstruct project status from old chat logs if this file and current Git state are available.
 
-## Deutsch
+---
 
-### Start und automatische Einrichtung
+## 0. What the next AI must do first
 
-- Ein kompaktes, token-geschütztes Loopback-Startfenster zeigt Ollama-Prüfung, Installation, Modelldownload und Engine-Einrichtung.
-- Setup-Downloads sind vom Agenten-/Web-Netzwerkzugriff getrennt; Schema 9 wird sicher auf Schema 10 migriert.
-- Bei Fehlern sind Wiederholen, Log-Ordner, eingeschränkter Start und Beenden verfügbar.
-- Nur Modelle der aktiven Engine werden automatisch geladen.
+1. Read this entire file before changing code.
+2. Check `git status`, current branch, current `master`, open PRs and required CI.
+3. Read `AGENTS.md`, `README.md` and any more specific project instructions for files being changed.
+4. Never assume an old PR branch is current. Compare it to `master` first.
+5. Never weaken Quality, approval, path, secret, atomic-write or remote-security gates merely to make a PR green.
+6. Do not claim LocalCode is better than Aider/OpenCode in a matrix row unless the implementation exists and the comparison is defensible. The long-term goal is to beat both honestly, not by changing scoring rules.
+7. For code changes, keep DE/EN user-facing text consistent.
+8. Before merge, require the complete Windows Quality workflow to pass.
 
-### Handy-Remote
+---
 
-- LocalCode besitzt jetzt einen getrennten Remote-HTTP-/SSE-Server für Handys im lokalen Netzwerk. Die Desktop-API bleibt an `127.0.0.1` gebunden; die Remote-App läuft auf dem konfigurierten Remote-Port, standardmäßig `32146`.
-- Im Desktop-Menü **Hilfe → Remote koppeln** erzeugt `/api/remote/pairing` einen sechsstelligen Code mit zehn Minuten Ablaufzeit und gibt die erkannten LAN-URLs zurück. Der Code kann nur über die loopback-geschützte Desktop-API erzeugt werden.
-- `/remote` liefert eine eigenständige mobile Web-App im dunklen AHSMA-nahen Layout. Sie speichert das Geräte-Token im Browser-LocalStorage und steuert dieselbe App-Instanz: Projekt-/Task-Auswahl, neue Aufgaben, Chat-Snapshot, Live-SSE, Stop, Genehmigungen und Datei-/Kamera-Anhänge über den Browser-Dateidialog.
-- `remote_server.go` speichert gekoppelte Geräte in der normalen Konfiguration, aber nur mit SHA-256-Token-Hash, Geräte-ID, Anzeigename, Pairing-Zeit und optionalem Last-Seen-Zeitpunkt. Remote-Aktionen brauchen `X-LocalCode-Remote-Token`, Bearer-Token oder für EventSource einen Token-Query-Parameter.
-- Bekannte Grenze: Es ist noch keine native Android-App-Hülle mit mDNS/QR-Autodiscovery. Die jetzige Handy-App ist eine lokale PWA/Web-App, die vom LocalCode-Remote-Server ausgeliefert wird. Firewall-Freigaben werden nicht automatisch gesetzt.
+## 1. Product goal
 
-### Coding-Agent-Engines
+LocalCode is a Windows-first local coding-agent/development platform. It should provide a native agent that is at least as capable as Aider/OpenCode while being more deterministic, transparent, recoverable and safe for local repositories.
 
-- Einstellungen können zwischen **Aider**, **Claude Code** und **OpenCode** umschalten; LocalCode nativ bleibt als interne Werkzeugschleife verfügbar.
-- Installation/Reparatur, Status, Version, Anmeldung, Testlauf, Abbruch, Ausgabe, Backup und Undo sind über eine gemeinsame Engine-Schnittstelle angebunden.
-- Aider verwendet weiterhin die reproduzierbare `uv`-/Python-3.12-Installation und `ollama_chat/<modell>`.
-- Claude Code verwendet unter Windows den offiziellen nativen Installer und wird über `claude -p` mit begrenzter Schrittzahl und normalisiertem Berechtigungsmodus ausgeführt.
-- OpenCode wird benutzerlokal über verwaltetes Node.js/npm installiert und unterstützt `provider/modell` sowie lokales Ollama über prozessbezogene Konfiguration.
-- Alte `aider_*`-Agentenaktionen bleiben kompatible Aliase der neuen generischen `engine_*`-Aktionen.
+Target flow:
 
-### Native-Agent-Reparatur
+`User -> LocalCode UI/Android Remote -> agent supervisor -> local/provider model -> repository intelligence -> tools/files/Git/shell/LSP/MCP -> approval/precondition -> atomic mutation -> verification -> reviewer/success gate -> result`
 
-- Nutzerentscheidung für diese Wartung: keine Symptombehandlung; Ursachen müssen behoben und nachweisbar getestet werden.
-- Ursache des Pac-Man-/HTML-Fehlers: Die native Werkzeugschleife ließ `write_file` ohne `content` zu, konnte Tool-Call-artige `arguments` nicht vollständig normalisieren, leitete bei aktivem LocalCode-nativ-Modus zu schwach von `engine_edit` weg und akzeptierte `finish`, obwohl Dateien leer, Platzhalter oder ungeprüft waren.
-- Reparatur: `write_file` verlangt jetzt Pfad und vollständigen nicht-leeren Inhalt im Schema und in der Go-Validierung. Fehlende Felder aus `arguments` werden übernommen. Wiederholt unvollständige Schreibaktionen lösen eine fokussierte Inhaltserzeugung aus, statt leere Dateien zu schreiben.
-- Reparatur: Der Supervisor-Hinweis unterscheidet externe Engines von **LocalCode nativ**. Native Läufe werden zu direkten Dateiwerkzeugen geführt; `engine_edit`-Fehler erhalten eine konkrete Wiederherstellungsanweisung.
-- Reparatur: Editieraufgaben bekommen vor `finish` eine Abschlussprüfung. Sie blockiert fehlende oder leere erwähnte Dateien, offensichtliche Platzhalter, nicht erkennbare angeforderte Funktionsmarker und fehlende echte Prüfung nach der letzten Änderung, wenn die Aufgabe Tests, Syntax, Build, Lint oder Funktionsprüfung verlangt.
-- Codex-/OpenCode-Paritätsschritt: Ein zusätzlicher deterministischer Abschluss-Review läuft vor `finish`. Implementierungsaufgaben dürfen nicht mehr durch reine Dokumentationsänderungen abgeschlossen werden; Code-/App-/Tool-Änderungen brauchen nach der letzten Änderung eine passende Prüfung. Dokumentationsaufgaben, reine Dateioperationen und visuelle Artefaktaufgaben bleiben getrennt klassifiziert, damit der Review nicht wahllos blockiert.
-- Reparatur: `STATE.md` mit LocalCode-Markern darf über `write_file`/`replace_text` nicht mehr so überschrieben werden, dass der verwaltete Handoff-Abschnitt verloren geht.
-- Reparatur nach dem echten Pac-Man-Lauf: Die Werkzeugerkennung fand vorhandenes WinGet-Node.js nicht, weil für `node` Standardpfade ohne `.exe` erzeugt wurden und WinGet-Paketpfade unter `LOCALAPPDATA\Microsoft\WinGet\Packages` fehlten. `node`, `npm` und `npx` werden jetzt auch aus benutzerlokalen Node.js-Installationen und OpenJS-WinGet-Paketen erkannt.
-- Reparatur nach dem echten Pac-Man-Lauf: Der Abschlusswächter interpretierte `Node.js` aus „Syntaxprüfung mit Node.js“ fälschlich als verlangte Projektdatei. Bekannte Technologietokens wie `Node.js`, `Three.js`, `D3.js` und ähnliche werden nicht mehr als Projektdateien aufgenommen.
-- Allgemeine Reparatur nach Nutzerfeedback: Die Lösung darf kein besserer Einmal-Prompt für Pac-Man sein. LocalCode erzeugt jetzt bei jeder Herstellungs-/Änderungsaufgabe interne, sprach- und domänenneutrale Qualitätsanforderungen: echte Code-/Artefaktlogik statt README-Behauptungen, verdrahtete UI-Kontrollen, konsistente Zustände, verifizierte Dateioperationen, konkrete darstellbare Bild-/Diagrammassets und passende Prüfungen je Sprache/Projekt. `copy`/`move`/`rename` sowie Bild-/Zeichenaufträge werden als umsetzende Aufgaben klassifiziert.
-- Allgemeine Abschlussprüfung: `node -c` ist nur noch ein Spezialfall unter vielen. Erkannte Verifikationen umfassen unter anderem Go, Python, Rust/Cargo, Java/Javac, Maven, Gradle, .NET, TypeScript, PHP, Ruby, Shell, C/C++ und CMake/Make. Slash-getrennte Dateiaufzählungen wie `index.html/styles.css/README.md` werden als einzelne Dateien behandelt, echte Pfade wie `src/agent.go` bleiben erhalten.
-- Allgemeine Werkzeugdisziplin: Globale Installer wie `npm install -g`, `pip install --user`, `cargo install`, `go install`, `winget install`, `choco install` und `scoop install` werden bei normalen Aufgaben als unpassende Aktionen blockiert, wenn die Nutzeraufgabe keine globale Installation verlangt. Nach fehlgeschlagenen Prüfungen soll der Agent vorhandene, projektlokale, verwaltete oder nicht-invasive Prüfungen wählen.
-- Robustheit der Werkzeugschleife: Wenn das Modell nach einer Abschlussblockade erneut eine ungültige Aktion liefert, z. B. `write_file` ohne Inhalt, bricht LocalCode den Lauf nicht sofort ab. Bis zu drei Mal wird eine kompakte Reparaturanweisung in den Kontext gegeben; erst wiederholte ungültige Aktionen beenden den Lauf.
-- Abschlussreparatur: Guard-Fehler werden jetzt mit einer allgemeinen Priorisierung zurückgespielt. Fehlende Laufzeitlogik muss zuerst in Quellcode-/Konfigurations-/Asset-Dateien behoben werden; UI-Kontrollen müssen sichtbares Element, Event-Handler und Zustandsänderung erhalten; Dokumentation und kosmetische Änderungen zählen nicht als Reparatur fehlender Funktion.
-- Abschlussreparatur nach echtem Local-Ollama-Pac-Man-Test: Wiederholte identische Abschlussblockaden werden gezählt. Bei Einzeldatei-Aufgaben erzeugt LocalCode nach wiederholtem Ignorieren derselben Guard-Befunde eine fokussierte content-only Reparatur für die explizit verlangte Datei und führt diese als normale `write_file`-Aktion mit Vorschau, Backup und Postcondition aus. Einzeldatei-Aufträge blockieren außerdem unangeforderte zusätzliche Runtime-Dateien und lokale externe `script`-/`link`-Verweise, bis Inhalt und Struktur in der Zieldatei zusammengeführt sind.
-- Kontext-Performance nach echtem Local-Ollama-Pac-Man-Test: Große `write_file`-/`replace_text`-Payloads werden nach Ausführung in der Modellhistorie durch kompakte Platzhalter ersetzt. Die vollständige Ausgabe bleibt im UI-/Toolresult sichtbar, und das Modell muss bei Bedarf per `read_file` den exakten aktuellen Dateiinhalt nachladen. Dadurch läuft die lokale 14B-Schleife deutlich stabiler, statt sich nach großen HTML-/Canvas-Dateien in langen Timeouts zu verlieren.
-- Prüfer-Präzisierung nach echtem Local-Ollama-Pac-Man-Test: Explizite Datei-/Inhaltsprüfungen wie „prüfe, dass index.html existiert und Spiellogik enthält“ können durch passende `read_file`-/`search_text`-Verifikation erfüllt werden; generische „teste ob es funktioniert“-Aufträge verlangen weiterhin echte Syntax-, Build-, Test- oder Smoke-Prüfungen. Der Pac-Man-Domänenprüfer akzeptiert jetzt äquivalente String-Maze-Namen, numerische Grid-Mazes, feste `ghosts`-/`enemy`-Startdaten, `resetButton`-Varianten, `pacman`-/`player`-Startobjekte und übliche Bounds-Checks, ohne auf konkrete Bezeichner wie `MAZE`, `ghostStarts` oder `restartButton` fixiert zu sein.
-- Startrobustheit: Ein stale `last_model` wie `test-model` darf den Serverstart nicht mehr vor der UI blockieren. Wenn bereits Modelle vorhanden sind, wird beim Bootstrap das konfigurierte Standardmodell sichergestellt und ein fehlendes altes LastModel nicht automatisch gepullt; explizit konfigurierte Engine-Modelle bleiben weiterhin Pflichtmodelle.
-- Kontext-Performance für lokale Modelle: Toolresultate werden im sichtbaren Ausgabenbereich weiterhin ausführlich gehalten, aber für den nächsten Modellaufruf anhand der Kontextgröße gekürzt. Nach Kontextkomprimierung wird die Zahl unveränderter Recent-Messages adaptiv reduziert; sehr große neue Nachrichten werden gekürzt und notfalls werden nur wenige jüngste Schritte plus faktischer Arbeitszustand behalten. Das verhindert, dass lokale Modelle nach großen Ausgaben oder mehreren Reparaturrunden ihr Kontextfenster überfüllen.
-- Dateioperationen als Faktenquelle: `write_file`, `delete_file`, `copy_path` und `move_path` liefern jetzt nach erfolgreicher Ausführung eine `POSTCONDITION` mit Existenz, Typ, Größe und Datei-SHA-256 zurück. Verschieben und Löschen melden zusätzlich `exists=false` für entfernte Quellen/Ziele. Dadurch kann das lokale Modell Folgeentscheidungen auf tatsächlichen Dateisystemzustand statt auf reine Erfolgstexte stützen.
-- Visuelle Artefakte: Bild-/Zeichen-/Diagramm-/Asset-Aufgaben dürfen nicht mehr nur durch README-Text oder eingebettete Beispielmarker abgeschlossen werden. Die Abschlussprüfung verlangt eine konkrete Artefaktdatei wie SVG, HTML/Canvas, CSS oder Bilddatei; genannte Pfade mit `.svg`, `.png`, `.jpg`, `.webp`, `.gif`, `.bmp` oder `.ico` werden als Projektdateien erkannt.
-- SVG-/Icon-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `create_svg_asset` für lokale SVG-/Icon-/Vektorressourcen. Das Werkzeug verlangt `.svg`, vollständigen Inhalt, gültiges XML mit `<svg>`-Wurzel und Größenangabe, blockiert Skripte/Event-Handler/`javascript:`-URLs und schreibt danach mit Datei-Postcondition.
-- Raster-/Icon-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `create_image_asset` für lokale PNG/JPG/JPEG/GIF/WebP/ICO/BMP-Ressourcen. Das Werkzeug akzeptiert Data-URL oder Base64, dekodiert maximal 16 MiB, prüft Dateiendung, Format-Signatur und Dimensionen und schreibt Binärdaten danach mit Backup und Datei-Postcondition.
-- Render-/Konvertierungs-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `render_asset` für lokales Rendering von `.svg`, `.html` und `.htm` nach `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. LocalCode nutzt ein vorhandenes Edge/Chrome im Headless-Modus, blockiert externe HTML-HTTP(S)-Referenzen vor dem Start, setzt einen toten lokalen Proxy, prüft das gerenderte PNG auf Dekodierbarkeit und erwartete Dimensionen, encodiert JPEG/ICO aus dem validierten Renderbild und schreibt Zielbilder mit Datei-Postcondition. WebP wird direkt als Headless-Browser-Screenshot erzeugt und per RIFF/WebP-Signatur sowie Dimensionen validiert.
-- Raster-Konvertierungs-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `convert_image_asset` für lokale PNG/JPG/JPEG/GIF- und PNG-basierte ICO-Quellen nach `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. Explizite Zielgrößen werden deterministisch skaliert; transparente Quellen werden bei JPEG auf Weiß geflattet. PNG/JPEG/ICO werden lokal encodiert; WebP wird aus einer temporären lokalen HTML/PNG-Zwischenquelle über den blockierten Headless-Browser-Renderer erzeugt. Jede Zieldatei wird nach dem Encoding erneut per Signatur und Dimension geprüft.
-- Lokaler Bildgenerator-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `generate_image_asset` für neue PNG/JPG/JPEG/WebP/ICO-Dateien über einen lokal konfigurierten AUTOMATIC1111-/Forge-kompatiblen `/sdapi/v1/txt2img`-Endpunkt. Provider-URLs müssen auf Loopback zeigen, Prompt und Zielgröße sind begrenzt, die Base64-Antwort wird dekodiert, über die bestehende Encoderstrecke ins Zielformat gebracht und vor dem Schreiben erneut per Signatur und Dimension geprüft. Ein konkreter Bildmodell-Installer bleibt offen.
-- Regel-/Skill-Kontext-Paritätsschritt: Der native Agent baut jetzt eine begrenzte Instruktionskette aus globalen LocalCode-/Codex-Anweisungen, projektbezogenen `AGENTS.override.md`/`AGENTS.md`, kompatiblen Projektanweisungen wie `CLAUDE.md`, `GEMINI.md`, `QWEN.md`, `.agents.md`, `TEAM_GUIDE.md` und `.github/copilot-instructions.md`, `README.md`, `STATE.md`, legacy `.cursorrules`, verschachtelten `.cursor/rules` und Skills aus Projekt- und globalen Verzeichnissen (`.codex/skills`, `.cursor/skills`, `.opencode/skills`, `skills`, LocalCode-Konfiguration, `CODEX_HOME`, Benutzer-`.cursor/skills`, Benutzer-`.opencode/skills`). Regeln und Skills berücksichtigen `alwaysApply`, `description` und einfache `globs`; `skill_list` und `skill_read` ermöglichen progressives read-only Nachladen.
-- Skill-Metadaten-Paritätsschritt: Frontmatter unterstützt jetzt einfache mehrzeilige YAML-Listen. Skill-Felder wie `permissions`, `allowed-tools`, `tools`, `scripts` und `commands` werden im Skill-Index sichtbar. Nicht-read-only Berechtigungen oder deklarierte Skripte markieren Skills als `approval-required`; solche Skills werden nicht automatisch in den Startkontext eingebettet und ändern keine Werkzeugfreigaben.
-- Skill-Permission-Paritätsschritt: Die read-only Skill-Allowlist erkennt jetzt kompatible Aliase wie `Read`, `Glob`, `Grep`, `skill_read`, `command_read` und MCP-List/Read-Aktionen. Schreib-, Editier-, Shell-, Netzwerk-, Build-, Installations-, Memory- und MCP-Tool-Call-Rechte sowie deklarierte Skripte bleiben `approval-required` und verhindern automatische Skill-Einbettung.
-- Frontmatter-Paritätsschritt: Listenfelder wie `globs`, `permissions`, `tools`, `scripts` und `commands` unterstützen neben YAML-Listen auch Inline-Arrays und kommaseparierte Werte mit zitierten Kommas, ohne normale Textfelder wie `description` als Liste zu behandeln.
-- Skill-/Rule-Aktivierungs-Paritätsschritt: Regeln und Skills berücksichtigen jetzt zusätzliche Aktivierungsfelder `activation`, `activations`, `trigger`, `triggers`, `keywords`, `when`, `appliesTo` und `applies_to`; `exclude_globs`/`exclude`/`excludes`/`excludeGlobs` verhindern das Laden bei passenden erwähnten Pfaden. Gleichnamige Skills werden deterministisch aufgelöst: Projekt-Skills vor globalen Skills, dann höhere `priority`, dann Relevanz, Root-Reihenfolge und Pfad.
-- MCP-Instructions-Parität: LocalCode speichert `instructions` aus MCP-`initialize`-Antworten für stdio- und Streamable-HTTP-Sitzungen und schreibt sie in den Agentenkontext. Die eingebauten Filesystem-, PowerShell- und Git-MCP-Server liefern ebenfalls kurze serverweite Nutzungsregeln, damit das lokale Modell Werkzeuggrenzen, Postconditions und sichere Git-Regeln vor Toolaufrufen kennt.
-- Memory-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `memory_remember`, `memory_list` und `memory_forget`. Erinnerungen werden lokal in der Konfiguration gespeichert, standardmäßig projektbezogen gefiltert, globale Erinnerungen werden projektübergreifend eingebettet, Löschungen verlangen eine konkrete `memory_id` oder einen eindeutigen Inhaltstreffer, und geheimnisähnliche Inhalte wie Passwörter, Tokens, private Schlüssel oder API-Keys werden abgelehnt.
-- Memory-Direktbedienung: Neue Agentenläufe erkennen natürliche Formulierungen wie „mache immer …, merke dir das“, „zeige gemerkt Liste“ und „entferne aus der gemerkt Liste …“ vor dem Modellaufruf. „Immer“, „global“ und „für alle Projekte“ speichern global; explizit projektbezogene Formulierungen speichern im Projekt-Scope. Direkte Memory-Läufe schreiben normale Chat-Ereignisse, starten aber keinen Ollama-Lauf.
-- Testrobustheit: `TestADBNoDevicePerformsSingleRecoveryAndRetry` nutzt jetzt einen Parent-Timeout, der zu den internen ADB-Recovery-Timeouts passt. Unter `-race` war der frühere 5-Sekunden-Parent-Timeout zu knapp und konnte den korrekt laufenden Recovery-Pfad abbrechen.
-- Skill-Unterressourcen-Paritätsschritt: `skill_list_resources` und `skill_read_resource` lesen zusätzliche Textressourcen aus Projekt- und globalen Skill-Verzeichnissen read-only nach. `skill_copy_resource` kopiert binäre oder anderweitig projektbenötigte Skill-Ressourcen nach Genehmigung in Projektdateien. `skill_run_script` startet exakt deklarierte Skill-`scripts`-/`commands`-Einträge nach eigener Genehmigung über die normale Befehlsgrenze. Ressourcenpfade müssen relativ zum Skill-Verzeichnis bleiben; Pfad-Traversal, Symlink-/Junction-Ausbrüche und `SKILL.md` über den Ressourcenpfad sind blockiert; Kopierziele laufen durch die normale Projektpfadgrenze mit Backup und Postcondition.
-- Read-only-Subagent-Paritätsschritt: Die native Werkzeugschleife besitzt jetzt `subagent_analyze(task)`. Die Aktion erstellt einen strukturierten Handoff aus Projektinfo, Projektbaum, ausdrücklich erwähnten Dateien und begrenzten Suchtreffern. Sie ist read-only, benötigt keine Genehmigung und ruft keine Shell-, Netzwerk-, MCP- oder Schreibwerkzeuge auf. Damit ist die erste getrennte Analyse-/Testlog-Sicht umgesetzt; modellgetriebene Review-Subagenten und koordinierte Schreibphasen bleiben offen.
-- Hook-/Automation-Paritätsschritt: Die vorhandenen `hook_before_task`/`hook_after_task` werden durch echte `hook_before_tool`/`hook_after_tool`-Ausführung ergänzt. Tool-Hooks laufen als nicht-interaktive Projektbefehle mit normalem Timeout, Umgebungsvariablen und Prozessabbruch. Before-Tool-Fehler stoppen die Werkzeugaktion; After-Tool-Fehler werden separat gewarnt. Die Einstellungsseite speichert und lädt die neuen Felder, und Hook-Befehle erhalten Aktionsmetadaten über `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH` und `LOCALCODE_ACTION_COMMAND`.
-- Slash-/Projektcommand-Paritätsschritt: LocalCode lädt wiederverwendbare `.md`-/`.txt`-Text-Templates aus `.localcode/commands`, kompatibel aus `.codex/commands`, `.opencode/commands`, `.cursor/commands` und global aus dem LocalCode-Konfigurationsordner. Neue Agentenläufe expandieren `/name args` vor dem Modellaufruf mit `{{args}}`, `{{project}}` und `{{cwd}}`; die Originaleingabe bleibt im UI-Verlauf. Die read-only Aktionen `command_list` und `command_read(name)` geben verfügbare Commands während eines Laufs an das Modell weiter. Projekt-Commands überschreiben gleichnamige globale oder kompatible Commands deterministisch und führen selbst keine Shell-Befehle aus.
-- Ökosystem-Regelparitätsschritt: Projektanweisungen sind nicht mehr auf einen einzigen Fallback begrenzt; mehrere kompatible Dateien werden in stabiler Reihenfolge geladen. Cursor-Regeln werden rekursiv aus `.cursor/rules` gelesen, und legacy `.cursorrules` wird als lokale Regel eingebettet.
-- Domänenprüfer: Interaktive Aufgaben blockieren jetzt fehlende Button-, Tastatur-, Canvas-, Status-, Zähler-, Lebens-/Health- und Reset-Verdrahtung. Visuelle Aufgaben blockieren fehlende konkrete Artefakte wie SVG/Canvas/Bilddateien. Pac-Man bleibt nur ein zusätzlicher Beispiel-Domänenprüfer mit Maze-, Pellet-, Gegner-, Zustands- und Restart-Regeln.
-- Grenze: Diese Schutzschicht verbessert die Verlässlichkeit lokaler Ollama-Modelle, ersetzt aber keine nachgewiesene Codex-Parität und garantiert keine perfekte semantische Vollständigkeit jeder Aufgabe.
-- Verifikation am 2026-08-13 für den globalen Skill-/Glob-/Skill-Read-Schritt: `..\.tools\go\bin\go.exe fmt ./...`; fokussierte Tests `go test -count=1 . -run "TestProjectInstructionContext|TestInstructionContextMatchesGlobs|TestSkillListAndRead|TestFrontmatterValueAndRelevance|TestParseAgentAction"` erfolgreich; `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check src\static\i18n.js` und `vm.Script`-Kompilierung des Inline-Skripts aus `src\static\index.html` erfolgreich.
-- Verifikation am 2026-08-13 für Skill-Unterressourcen: `..\.tools\go\bin\go.exe fmt ./...`; fokussierte Tests `go test -count=1 . -run "TestSkillResourcesListAndRead|TestSkillListAndRead|TestParseAgentAction"` erfolgreich; `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds.
-- UI-Smoke-Verifikation am 2026-08-13: Nach Nutzerfreigabe wurde Python-Playwright 1.62.0 per `python -m pip install --user playwright` installiert und Playwright Chromium 151.0.7922.34 per `python -m playwright install chromium` eingerichtet. `scripts\ui-e2e-test.py` wurde plattformneutral gemacht: Playwrights eigener Chromium wird standardmäßig verwendet, optional überschreibbar mit `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, und HTML/JS-Fixtures werden explizit als UTF-8 gelesen. `python scripts\ui-e2e-test.py` erfolgreich: `FULL UI E2E OK 37 requests`.
-- Engine-Pfad-Reparatur am 2026-08-13: Explizit konfigurierte Claude-Code- und OpenCode-Programmpfade sind jetzt maßgeblich. Wenn ein solcher Pfad fehlt oder nicht ausführbar ist, meldet LocalCode den Konfigurationsfehler und fällt nicht mehr still auf eine globale Installation zurück. Dadurch ist das Verhalten bei verstellten Engine-Pfaden klarer und die unisolierte Testsuite wird nicht mehr durch ein echtes, aber nicht angemeldetes `claude.exe` in der Benutzerumgebung verfälscht.
-- Verifikation am 2026-08-13 für Engine-Pfad-Reparatur: `..\.tools\go\bin\go.exe fmt ./...`; fokussierte Tests `go test -count=1 . -run "TestConfiguredEngineExecutableIsAuthoritative|TestCodingEngineActionsInstallDecisionsAndUndo|TestCodingEngineServerValidationAndConflicts|TestCodingEngineInstallDispatchAndRepairWrapper|TestClaudeAndOpenCodeStatusAndExecution"` erfolgreich; unisoliertes `go test -count=1 ./...` erfolgreich; `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`.
-- Race-Detector-Reparatur am 2026-08-13: MSYS2 war bereits unter `C:\msys64` installiert und enthielt `C:\msys64\ucrt64\bin\gcc.exe` (`gcc.exe (Rev14, Built by MSYS2 project) 15.2.0`), aber dieser Pfad fehlte im Benutzer-`PATH`. Der offizielle MSYS2-Installer `msys2-x86_64-20260611.exe` wurde von GitHub geladen, gegen die offizielle `.sha256` geprüft (`3150d7d9aa5dedd900a7f52300d4d918271e3a8fc47de94848818fd5a430e6b0`) und nicht erneut über die bestehende Installation geschrieben. `C:\msys64\ucrt64\bin` wurde dauerhaft an den Benutzer-`PATH` angehängt.
-- Verifikation am 2026-08-13 für Race-Detector-Reparatur: Mit temporär aktualisiertem Prozess-`PATH` und `CGO_ENABLED=1` findet `where.exe gcc` `C:\msys64\ucrt64\bin\gcc.exe`; `gcc --version` meldet GCC 15.2.0; `go test -race -count=1 ./...` erfolgreich (`ok localcode 77.606s`). Neue Terminals übernehmen den dauerhaft aktualisierten Benutzer-`PATH`.
-- Verifikation am 2026-08-13 für Render-/Konvertierungs-Parität: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestRenderAsset|TestParseAgentActionRenderAsset|TestCreateImageAsset|TestCreateSVGAsset"` erfolgreich (`ok localcode 1.414s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.161s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; echter Browser-Render-Smoke mit `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` erfolgreich (`ok localcode 3.625s`); `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check src\static\i18n.js` und `new Function` für das Inline-Skript aus `src\static\index.html` erfolgreich; `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 65.106s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**.
-- Verifikation am 2026-08-13 für Raster-Konvertierung und Skill-Metadaten-Sicherheit: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestConvertImageAsset|TestRenderAsset|TestParseAgentActionConvertImageAsset|TestParseAgentActionRenderAsset"` erfolgreich (`ok localcode 1.364s`); fokussierte Skill-Tests `go test -count=1 . -run "TestFrontmatterValueAndRelevance|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestProjectInstructionContext|TestInstructionContextMatchesGlobs|TestSkillListAndRead"` nach dem read-only-Allowlist-Feinschliff erfolgreich (`ok localcode 1.803s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.445s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; echter Browser-Render-Smoke mit `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` erfolgreich (`ok localcode 3.649s`); `scripts\build.ps1` nach der letzten Codeänderung erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check src\static\i18n.js` und `new Function` für das Inline-Skript aus `src\static\index.html` erfolgreich; `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 66.621s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**.
-- Verifikation am 2026-08-13 für WebP-Rendering: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestRenderAsset|TestParseAgentActionRenderAsset|TestCreateImageAsset|TestCreateSVGAsset"` erfolgreich (`ok localcode 1.341s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.509s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; echter Browser-Render-Smoke inklusive WebP mit `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` erfolgreich (`ok localcode 3.272s`); `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 50.420s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 45.246s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und `vm.Script` für das Inline-Skript aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 63.653s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `3927B18F4D496D1D005D052F0AA32A100DE4EB03D0A19A73946916DF44D41D19`, `LocalCode-Debug.exe` `26F2775CE386C433319FD9ADD2A2BFCB905318785E6ADDE65F9B015F837B406B`.
-- Verifikation am 2026-08-13 für WebP-Rasterkonvertierung: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestConvertImageAsset|TestParseAgentActionConvertImageAsset|TestRenderAsset|TestParseAgentActionRenderAsset"` erfolgreich (`ok localcode 1.792s`); echter Browser-Smoke inklusive WebP-Konvertierung mit `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` erfolgreich (`ok localcode 4.341s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 57.192s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 50.945s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 45.713s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und `vm.Script` für das Inline-Skript aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 65.536s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `B2BA6E003F10D02C0B8BCE71825E4A3C3E8671412D915E26FBFC5DE063DF6A11`, `LocalCode-Debug.exe` `BEDC29F18AF51AE83181F6277B9A7B37C4099FE9DA6A29AF1E4DBE70A8785FB4`.
-- Verifikation am 2026-08-13 für binäre Skill-Assets: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestParseAgentAction|TestSkillResourcesListAndRead|TestCopySkillResourceCopiesBinaryAsset|TestCoverageApprovalRulesAndTokens|TestCoverageAgentActionsAndApprovals"` erfolgreich (`ok localcode 2.442s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 46.982s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 49.343s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 45.770s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 59.119s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `BFFEF775E28A2276A6B06624C3FB7FA9A3B2E63F3A64C82C002EE0C002C57619`, `LocalCode-Debug.exe` `4015A8F653AB78801E2B1940E4B4BE4DD5B391A0BFCF04657109AD15CFFEFD34`.
-- Verifikation am 2026-08-13 für Skill-Skripte mit separater Genehmigung: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestParseAgentAction|TestSkillRunScriptExecutesDeclaredCommand|TestSkillResourcesListAndRead|TestCopySkillResourceCopiesBinaryAsset|TestCoverageApprovalRulesAndTokens|TestCoverageAgentActionsAndApprovals"` erfolgreich (`ok localcode 2.565s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.035s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 49.493s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 46.098s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 59.293s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `38B8A543AA0DD753C14E8AF496B7FB50A6BA0B63F817A50E7263EE2A36D1FED8`, `LocalCode-Debug.exe` `354A904C953F2AF3BE2F69292B4F0F880B0BDF0D4A5CD02F090D37A8F6324970`.
-- Verifikation am 2026-08-13 für robustere Frontmatter-Listen: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestFrontmatterValueAndRelevance|TestInstructionContextMatchesGlobs|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestSkillRunScriptExecutesDeclaredCommand"` nach Parserkorrektur erfolgreich (`ok localcode 1.462s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 46.934s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; erster `scripts\build.ps1`-Lauf hatte einen Windows-Tempdir-Lock in `TestCoverageServerEndpointMatrix` ohne Testassertion, der direkte Wiederholungslauf war erfolgreich mit isolierten Tests (`ok localcode 49.682s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 46.082s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 59.634s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `26BD95B599436F271A972731DD498DE60DD629A7FB8B6974FA665F190A74E6EF`, `LocalCode-Debug.exe` `D0DFD8A026BC26028A6177E432FFA9AF49D3FF8759AD7B899751A3C35325A7E3`.
-- Verifikation am 2026-08-13 für Skill-/Rule-Aktivierung und Konfliktauflösung: `..\.tools\go\bin\go.exe fmt ./...` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills|TestInstructionContextMatchesGlobs|TestSkillActivationExcludesAndConflictResolution|TestSkillListAndRead|TestFrontmatterValueAndRelevance"` erfolgreich (`ok localcode 1.209s`); `git diff --check` erfolgreich; vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.046s`); `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 49.405s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 46.181s`) und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 60.900s`). `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `91C2D649E7A489F06BE50B51DC2A39976DEC3201C1D3413E504C5126F8999FE0`, `LocalCode-Debug.exe` `5E09E97AA03BA1624E49AFBEB999F71B527B130F89E36556FF46B2C40CD0502D`.
-- Go-PATH-Reparatur am 2026-08-14: `go.exe` wurde in `PATH`, `C:\Program Files\Go\bin`, `C:\Program Files (x86)\Go\bin`, `C:\Users\frede\go\bin`, `C:\Users\frede\AppData\Local\Programs\Go\bin`, Scoop- und Chocolatey-Standardpfaden nicht gefunden. Danach wurde die offizielle Windows-amd64-ZIP `go1.26.6.windows-amd64.zip` von `go.dev` geladen, gegen den veröffentlichten SHA-256-Wert `5b6c5b556525810463b5c897b50dc7a82d6a3dc0bfaf55d990a7e9f31d6b2318` geprüft, nach `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6` entpackt und `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin` sowie `C:\Users\frede\go\bin` dauerhaft in den Benutzer-`PATH` eingetragen. `go version` meldet `go1.26.6 windows/amd64`.
-- Verifikation am 2026-08-14 für read-only Subagent-Handoffs: Im Go-Modul `src` `go fmt ./...` erfolgreich; vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 54.388s`); `go vet ./...` erfolgreich; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 62.266s`); `git diff --check` erfolgreich; JavaScript-Syntaxprüfung mit Node `--check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 51.308s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 47.864s`) und Windows-GUI-/Debug-Builds. `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `102F41D41E28E590B461DC6C59A4CEE4DF42E37193B1A0056B5A821745EE7916`, `LocalCode-Debug.exe` `612C09F397E8F2A8DD873B225B8EC71D125C689889F82FF068CAFFA4CC8631EC`.
-- Verifikation am 2026-08-14 für Pre-/Post-Tool-Hooks: `go fmt ./...` im Modul `src` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestTranslationCatalogsHaveIdenticalKeys|TestLiteralUIEventMessagesHaveEnglishTranslations|TestAgentToolHooksRunConfiguredCommands"` erfolgreich (`ok localcode 1.621s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 47.489s`); `go vet ./...` erfolgreich; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 61.036s`); JavaScript-Syntaxprüfung mit Node `--check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 48.934s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 45.423s`) und Windows-GUI-/Debug-Builds. Neue SHA-256-Werte: `LocalCode.exe` `16B914664B029072B3B70D20E49904411C2F8D81847033B3008F4BC814471C83`, `LocalCode-Debug.exe` `9F903BB0B5ABCC8EE090FFD0AF5DA27BD3680C5B42DFC4E074F0D093D42D45AA`.
-- Verifikation am 2026-08-14 für Slash-/Projekt-Commands: `go fmt ./...` im Modul `src` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestParseAgentAction|TestProjectCommandsListReadAndExpand|TestProjectCommandReadTool"` erfolgreich (`ok localcode 1.413s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 48.203s`); `go vet ./...` erfolgreich; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 60.488s`); JavaScript-Syntaxprüfung mit Node `--check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 50.064s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 46.601s`) und Windows-GUI-/Debug-Builds. Neue SHA-256-Werte: `LocalCode.exe` `B885F0D074CD552F98CD853BFF63B2FB30EEE481A066319F3F94CE3920258640`, `LocalCode-Debug.exe` `D2F649CCE16F7500C51B9F5589D957D4ABF6E70FD57222850747D660D70D81C4`.
-- Verifikation am 2026-08-14 für direkte Memory-Bedienung: `go fmt ./...` im Modul `src` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestMemory|TestDirectMemoryPrompt|TestDetectDirectMemoryRequestScopes|TestParseAgentActionMemoryArguments"` erfolgreich (`ok localcode 1.867s`); fokussierter ADB-/Memory-Lauf nach Timeout-Korrektur `go test -count=1 . -run "TestADBNoDevicePerformsSingleRecoveryAndRetry|TestDirectMemoryPrompt|TestDetectDirectMemoryRequestScopes"` erfolgreich (`ok localcode 2.532s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 68.305s`); `go vet ./...` erfolgreich; erster Race-Lauf zeigte den nun behobenen ADB-Test-Parent-Timeout, danach mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 66.737s`); JavaScript-Syntaxprüfung mit Node `--check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 52.979s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 46.072s`) und Windows-GUI-/Debug-Builds. Neue SHA-256-Werte: `LocalCode.exe` `42907651CA8033D279F61A9DA4D8504E7BBE332D291C3B38F4DE253EE374796F`, `LocalCode-Debug.exe` `9920FE148998D42D19AA361058362ACE9687D81E0BB5D37279DD529BDEBD2B90`.
-- Verifikation am 2026-08-14 für lokale Bildgenerator-Anbindung: Der aktuelle Codex-Prozess hatte den dauerhaft gesetzten Go-Benutzerpfad noch nicht im Prozess-`PATH`; `go` schlug deshalb einmal mit "The term 'go' is not recognized" fehl. Die installierte Go-Binary `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin\go.exe` wurde direkt verwendet. Erfolgreich gelaufen: `go fmt ./...` im Modul `src`; fokussierte Tests `go test -count=1 . -run "TestGenerateImageAsset|TestParseAgentActionGenerateImageAsset"` (`ok localcode 1.757s`); Konfigurations-Fokustests `go test -count=1 . -run "TestNormalizeConfig|TestLegacyConfig|TestConfig|TestStartupConfig"` (`ok localcode 1.762s`); vollständiges `go test -count=1 ./...` (`ok localcode 48.852s`); `go vet ./...`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` (`ok localcode 60.194s`); `git diff --check`; JavaScript-Syntaxprüfung mit explizitem WinGet-Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` und Inline-Skript-Kompilierung aus `src\static\index.html` (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` (`FULL UI E2E OK 37 requests`); `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 50.847s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 38.743s`) und Windows-GUI-/Debug-Builds. `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `EAF53236AAF5B99DD074921AAC443C228287AD2DE02ACB5C935F8AFCFD1DC119`, `LocalCode-Debug.exe` `2E58E2F41A61D1AD8339C68BB11F5A8AE6FE8383862913DB3EF4A9E81FB0F76E`.
-- Verifikation am 2026-08-14 für kompatible Projektanweisungen und verschachtelte Cursor-Regeln: `go fmt ./...` im Modul `src` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestProjectInstructionContext|TestInstructionContext|TestFrontmatterValueAndRelevance|TestSkillActivationExcludesAndConflictResolution"` erfolgreich (`ok localcode 1.499s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 48.678s`); `go vet ./...` erfolgreich; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 58.291s`); `git diff --check` erfolgreich; JavaScript-Syntaxprüfung mit explizitem WinGet-Node und Inline-Skript-Kompilierung erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 51.815s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 47.297s`) und Windows-GUI-/Debug-Builds. `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `32D642AF219946846B3A450F481EA19155AB61EB4E30AD86F6BF0B7413FAE55B`, `LocalCode-Debug.exe` `50EAEA12BDE28C75DB15C2CEE14E436D46ECC18B54984A007F60BD43A9185257`.
-- Verifikation am 2026-08-14 für präzisere Skill-Permissions: `go fmt ./...` im Modul `src` erfolgreich; fokussierte Tests `go test -count=1 . -run "TestSkillPermission|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestProjectInstructionContext"` erfolgreich (`ok localcode 1.312s`); vollständiges `go test -count=1 ./...` erfolgreich (`ok localcode 48.930s`); `go vet ./...` erfolgreich; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 60.247s`); JavaScript-Syntaxprüfung mit explizitem WinGet-Node und Inline-Skript-Kompilierung erfolgreich (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; `scripts\build.ps1` erfolgreich mit isolierten Tests (`ok localcode 51.411s`), `go vet`, zufälliger Testreihenfolge (`ok localcode 47.066s`) und Windows-GUI-/Debug-Builds. `reports/COVERAGE-SUMMARY.txt` meldet weiterhin **6570/8206 = 80.063368%**. Neue SHA-256-Werte: `LocalCode.exe` `19ACF498A3EF17A3069ED639D2427547A386B1381D025E3962A4E45924E9FFE3`, `LocalCode-Debug.exe` `0D212492C3E3F0E9C78E83720AE3D3D31712DA750394A43C805D33D870C6B7E2`.
-- Verifikation am 2026-08-13 für Raster-/Icon-Parität: `..\.tools\go\bin\go.exe fmt ./...`; fokussierte Tests `go test -count=1 . -run "TestCreateImageAsset|TestCreateSVGAsset|TestParseAgentActionCreateImageAsset|TestParseAgentActionCreateSVGAsset|TestCoverageAgentActionsAndApprovals|TestCoverageParsingAndErrorBranches"` erfolgreich; vollständiges `go test -count=1 ./...` erfolgreich; `..\.tools\go\bin\go.exe vet ./...` erfolgreich; `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check src\static\i18n.js` und `new Function` für das Inline-Skript aus `src\static\index.html` erfolgreich; `python scripts\ui-e2e-test.py` erfolgreich mit `FULL UI E2E OK 37 requests`; mit temporärem `C:\msys64\ucrt64\bin` im Prozess-`PATH` und `CGO_ENABLED=1` `go test -race -count=1 ./...` erfolgreich (`ok localcode 60.058s`).
-- Verifikation am 2026-08-13 für den vorherigen Regel-/Skill-Kontext: `..\.tools\go\bin\go.exe fmt ./...`; fokussierte Tests `go test -count=1 . -run "TestProjectInstructionContext|TestFrontmatterValueAndRelevance|TestMemory|TestCreateSVGAsset"` erfolgreich; `TestCoverageServerEndpointMatrix` separat erfolgreich nach einem transienten Windows-Tempdir-Cleanup-Lock im ersten Vollbuild; wiederholtes vollständiges `scripts\build.ps1` erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check` für `src/static/i18n.js` und das Inline-Skript aus `src/static/index.html` erfolgreich.
-- Historischer Stand vor der Race-Detector-Reparatur am 2026-08-13: `go test -race -count=1 .` war lokal blockiert, zuerst durch deaktiviertes CGO und mit `CGO_ENABLED=1` durch fehlendes `gcc` im `PATH`.
-- Verifikation am 2026-08-12 für den Memory- und SVG/Icon-Paritätsschritt: `..\.tools\go\bin\go.exe fmt ./...` im Go-Modul `src` ohne Änderungen nach der Formatierung; fokussierte Tests `go test -count=1 . -run "TestMemory|TestParseAgentActionMemoryArguments|TestCoverageAgentActionsAndApprovals|TestParseAgentAction"` und `go test -count=1 . -run "TestCreateSVGAsset|TestParseAgentActionCreateSVGAsset|TestMemory|TestParseAgentActionMemoryArguments|TestCompletionGuardRequiresConcreteVisualArtifactFile"` erfolgreich; vollständiges `scripts\build.ps1` nach beiden Codeänderungsrunden erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge sowie Windows-GUI-/Debug-Builds; JavaScript-Syntaxprüfung mit WinGet-Node `node.exe --check` für `src/static/i18n.js` und das Inline-Skript aus `src/static/index.html` erfolgreich.
-- Nicht abgeschlossen am 2026-08-12: `go test -race -count=1 .` bleibt lokal blockiert, zuerst durch deaktiviertes CGO und mit `CGO_ENABLED=1` durch fehlendes `gcc` im `PATH`. Das Playwright-UI-Skript `python scripts\ui-e2e-test.py` ist blockiert, weil das Python-Modul `playwright` nicht installiert ist. Ein ersatzweiser API/HTML-Smoke gegen `dist\LocalCode-Debug.exe` erreichte `/api/ping` in diesem Lauf nicht zuverlässig vor Timeout; der gestartete Testprozess wurde beendet.
-- Verifikation am 2026-08-11: `.tools\go\bin\go.exe fmt ./...`; fokussierte Go-Tests für Aktionsvalidierung, Schreibreparatur, Abschluss-Review gegen reine Dokumentations-"Implementierungen", Pflichtprüfung nach Codeänderungen, MCP-Server-Instructions im Agentenkontext, Dateioperations-Postconditions, konkrete visuelle Artefaktdateien, allgemeine und Pac-Man-spezifische Abschlusswächter, Kontextkomprimierungs-Budgetierung, Toolresultat-Kürzung, sprachübergreifende Verifikationserkennung, Datei-/Bild-Aufgabenklassifikation, Slash-Dateiaufzählungen, `STATE.md`-Markersicherheit, Übersetzungsmeldungen, WinGet-Node-Erkennung und `Node.js`-Technologietoken; `scripts\build.ps1` vollständig erfolgreich mit isolierten Tests, `go vet`, zufälliger Testreihenfolge und Windows-amd64-GUI-/Debug-Builds; JavaScript-Syntaxprüfung für `src/static/i18n.js` und beide Inline-Skripte in `src/static/index.html`; isolierter UI-Smoke gegen `LocalCode-Debug.exe` auf `http://127.0.0.1:32145` mit `/api/ping`, `/api/status`, HTML-Menümarkern und Browser-Assertion.
-- Nicht abgeschlossen am 2026-08-11: `go test -race -count=1 ./...` ist auf diesem Windows-System blockiert, weil Go für `-race` CGO verlangt und `gcc` nicht im `PATH` verfügbar ist. Ergebnis: erst `go: -race requires cgo`, danach mit `CGO_ENABLED=1` `cgo: C compiler "gcc" not found`.
-- Lokale Benutzerumgebung am 2026-08-11: `C:\Users\frede\AppData\Roaming\LocalCode\config.json` enthielt `last_model: "test-model"` und blockierte den normalen Start durch einen fehlgeschlagenen Pull. Vor der Korrektur wurde `config.json.bak-20260811-212424` angelegt; `last_model` ist jetzt `qwen2.5-coder:14b`. Die dauerhafte Benutzer-Variable `OLLAMA_HOST` steht bereits auf `127.0.0.1:11434`; nur die laufende Codex-Prozessumgebung hatte noch `172.31.112.1:11434` geerbt. Die geprüften Desktop-Starter `local-codex.bat` und `open-llama-lan-8080.ps1` setzen keinen falschen Ollama-Host. Normaler Start-Smoke mit echter Benutzerconfig gelang danach am 2026-08-11: LocalCode `6.4.3-debug` startete auf `http://127.0.0.1:32145` mit Ollama `http://127.0.0.1:11434`.
+Supported editing engines are intended to include:
 
-### Sicherheit und Wiederherstellung
+- LocalCode Native
+- Aider
+- Claude Code
+- OpenCode
 
-- Vor bearbeitenden externen Läufen wird ein Projektbackup erstellt.
-- Geänderte Dateien werden durch Fingerprints ermittelt; Undo schützt spätere manuelle Änderungen durch Hash-Prüfung.
-- Claude `bypassPermissions` wird nicht angeboten; OpenCode `--auto` ist abschaltbar.
-- Zugangsdaten bleiben bei der jeweiligen Engine und werden nicht von LocalCode gespeichert.
-- Externe CLIs laufen mit ihren eigenen Berechtigungen; LocalCodes Projektgrenze ersetzt keine Betriebssystem-Sandbox.
+Primary local-model path is Ollama on Windows. The system must remain useful when the model is imperfect: safety, file integrity, verification and recovery are application responsibilities, not prompt-only responsibilities.
 
-### Verifikation
+### Long-term competitive acceptance criterion
 
-- Exakte finale Statement-Coverage: **72.3 %**.
-- Normale Tests, `go vet`, Race Detector, zufällige Testreihenfolgen, UI/API-Simulation, Übersetzungsparität und Windows-amd64-Cross-Build gehören zur Release-Prüfung.
-- Der endgültige Messwert und die exakten Testzahlen stehen in `TEST-REPORT.txt` und `reports/COVERAGE-SUMMARY.txt`.
+Every meaningful technical comparison row should eventually be objectively LocalCode-leading, especially:
 
-### Paritäts-TODO
+- repository intelligence/context selection
+- AST/semantic navigation
+- LSP/session reuse
+- patch/edit reliability
+- stale/concurrent edit protection
+- approvals/security
+- planning/execution/review separation
+- subagents/parallel exploration
+- verification
+- recovery
+- local-model efficiency
+- Git workflow
+- tool/MCP breadth
+- UI/remote transparency
+- reproducible coding benchmarks
 
-- [x] Dauerhafte, löschbare Erinnerungen: lokale Speicherung wichtiger Nutzer-/Projektfakten, projektbezogener Standard-Scope, globaler Scope für „immer“/projektübergreifend, direkte natürliche Speicher-/Listen-/Löschbefehle, Kontext-Einbettung für Agentenläufe und Schutz vor Geheimnissen.
-- [x] Lokale SVG-/Icon-/Vektorressourcen: konkrete Artefakt-Erzeugung mit `create_svg_asset`, strukturierte XML-/Sicherheitsvalidierung und Datei-Postcondition.
-- [x] Lokale/globale Regelkette und relevante Skills: `AGENTS.override.md`/`AGENTS.md`, Codex-kompatible globale Anweisungen, Cursor-Regeln, README/STATE/Fallback-Dateien, Projekt- und globale Skill-Verzeichnisse, einfache `alwaysApply`-/`globs`-Relevanz, `skill_list`/`skill_read` und read-only Skill-Textressourcen.
-- [x] Skill-Metadaten-Sicherheit: mehrzeilige Frontmatter-Listen sowie `permissions`-/`tools`-/`scripts`-/`commands`-Metadaten werden erkannt; Skills mit nicht-read-only Berechtigungen oder deklarierten Skripten werden als `approval-required` markiert und nicht automatisch eingebettet.
-- [x] Validierte lokale Raster-/Icon-Ressourcen: konkrete PNG/JPG/JPEG/GIF/WebP/ICO/BMP-Dateien über `create_image_asset` aus Data-URL/Base64 erzeugen, Signaturen und Dimensionen prüfen, Backup und Datei-Postcondition liefern.
-- [x] Lokales SVG/HTML/Canvas-Rendering nach PNG/JPEG/WebP/ICO: `render_asset` nutzt vorhandenes Edge/Chrome, rendert mit expliziter Größe, prüft PNG-Dimensionen, erzeugt JPEG/ICO aus dem validierten Renderbild und erzeugt WebP direkt per Headless-Browser-Screenshot mit Signatur-/Dimensionsprüfung.
-- [x] Lokale Raster-Konvertierung nach PNG/JPEG/WebP/ICO: `convert_image_asset` decodiert lokale PNG/JPG/JPEG/GIF- und PNG-basierte ICO-Quellen, skaliert optional, encodiert neu und validiert die Zieldatei.
-- [x] Rasterbild- und Mediengeneratoren: `generate_image_asset` erzeugt neue PNG/JPG/JPEG/WebP/ICO-Dateien über einen lokalen AUTOMATIC1111-/Forge-kompatiblen Loopback-Provider und validiert die erzeugte Datei vor dem Schreiben.
-- [x] Binäre Skill-Assets: `skill_copy_resource` übernimmt Skill-Ressourcen kontrolliert als Projektdateien, ohne Binärdaten in den Modellkontext zu laden.
-- [x] Skill-Skripte mit separater Genehmigung: `skill_run_script` akzeptiert nur exakt deklarierte Skill-`scripts`-/`commands`-Einträge, prüft Argumente und Command-Blocklisten und läuft mit normalen Timeouts/Prozessabbrüchen.
-- [x] Robustere Frontmatter-Listen: YAML-Listen, Inline-Arrays und kommaseparierte Werte mit zitierten Kommas werden für Skill-/Rule-Listenfelder unterstützt.
-- [x] Skill-/Rule-Aktivierung und Konfliktauflösung: zusätzliche Activation-/Trigger-/Keyword-/When-Felder, Ausschluss-Globs und deterministische gleichnamige Skill-Overrides mit Projekt-vor-global- und Priority-Regeln.
-- [ ] Vollständige Skills-/Regel-Parität: Skill- und Rule-Permissions weiter präzisieren und weitere Ökosystemvarianten ergänzen. Quellen: Codex-`AGENTS.md`/Memories/Skills/MCP/Subagents, Cursor Rules/Skills, OpenCode Skills/Agents/Permissions.
-- [x] Read-only Subagent-Handoffs: `subagent_analyze(task)` erstellt getrennte Exploration/Testlog-Analyse aus Projektinfo, Baum, erwähnten Dateien und Suchtreffern ohne Schreib-, Shell-, Netzwerk- oder MCP-Zugriff.
-- [ ] Weitere Subagent-/Plan-/Review-Parität: modellgetriebene Review-Subagenten, getrennte Analyse-/Umsetzungsläufe, Ergebnis-Merge und koordinierte Schreibphasen ohne Dateikonflikte.
-- [x] Pre-/Post-Tool-Hooks: `hook_before_tool` und `hook_after_tool` laufen um einzelne Werkzeugaktionen herum, nutzen normale Befehlsgrenzen und sind in der Einstellungsseite pflegbar.
-- [x] Wiederverwendbare Slash-/Projektkommandos: `.localcode/.codex/.opencode/.cursor/commands` und globale Commands werden read-only gelesen, `/name args` wird vor neuen Läufen expandiert, `command_list`/`command_read` stehen dem Agenten zur Verfügung.
-- [ ] Weitere Hooks-/Automation-Parität: Session-Hooks, geplante Checks und reproduzierbare Record/Replay-Flows mit Audit-Log.
-- [ ] Sprach- und Projekt-Parität: bestehende allgemeine Prüfer weiter ausbauen, insbesondere für nicht-JavaScript-Projekte, Dokumente, Assets, Buildsysteme, Framework-spezifische Tests und Paketmanager.
-- [ ] Kontext-Performance: Kompression weiter verbessern, Fakten-/Arbeitszustand getrennt von voluminösen Toolausgaben halten, Skill-/Regelkontext progressiv laden und lokale Modelle vor Kontextüberlauf schützen.
-- [ ] Browser-/UI-Parität: sichtbare Web-/App-Aufgaben mit Playwright/Browser-Smoke, Screenshot-/DOM-Prüfungen, Canvas-Pixelchecks und responsiven Desktop/Mobil-Prüfungen validieren, wenn die Werkzeuge verfügbar sind.
-- [ ] LSP-/Symbolwerkzeuge: Dateien nicht nur textuell durchsuchen, sondern Symbole, Referenzen, Definitionen, Diagnostics, Call-Hierarchien und projektsprachliche Refactor-Hilfen nutzen.
-- [ ] Integrations-Parität: GitHub-, GitLab-, Azure-DevOps-/Bitbucket-, Mail-, Kalender-, Slack-/Teams-, Linear-/Jira-/Notion- und Hosting-Workflows als optionale, explizit konfigurierte MCP/App-Integrationen dokumentieren und anbinden; keine falschen Offline-Paritätsbehauptungen.
-- [ ] Cloud-/Background-Agent-Parität: Remote- oder Hintergrundläufe, Review-Bots, PR-Routing und Benachrichtigungen nur als optionale Integrationen; lokaler Offline-Modus bleibt davon sauber getrennt.
-- [ ] Medien-/Dokumenten-Parität: DOCX/PPTX/XLSX/PDF-Erstellung und Bearbeitung mit strukturierten Parsern, Renderprüfung und Formatvalidierung statt reiner Textmanipulation.
-- [ ] Sicherheits-/Approval-Parität: destruktive Aktionen, Systemzugriff, Netzwerk, Geheimnisse, Memory-Löschung, Skill-Laden, MCP, externe CLIs und Integrationen mit klaren Policies, Logs und Grenzen absichern.
-- [ ] Evaluations-Parität: feste Regressionstests, Benchmark-Aufgaben, Prompt-/Tool-Evals und Abschlussmetriken, die nicht nur “Build grün”, sondern Ergebnisqualität prüfen.
+Do not fake this criterion. If Aider/OpenCode is better in a row, record the gap and implement it.
 
-## English
+---
 
-### Startup and automatic setup
+## 2. Current architecture and capabilities already on `master`
 
-- A compact, token-protected loopback startup window shows Ollama checks, installation, model downloads, and engine setup.
-- Setup downloads are separate from agent/web network access; schema 9 migrates safely to schema 10.
-- Failure actions include retry, log-folder access, limited mode, and exit.
-- Only models required by the active engine are pulled automatically.
+### Native agent / supervisor
 
-### Coding-agent engines
+- Structured agent action schema with validation/normalization.
+- Intent classification and supervisor-forced reliability actions.
+- Completion guards block empty/placeholder/incomplete implementations and missing post-edit verification where required.
+- Bounded repair of invalid model actions.
+- Large mutation payloads are compacted in model history; exact current file content can be re-read.
+- Tool outputs remain visible to the user while model context is bounded.
+- Native path supports project/file tools, shell/tool discovery, Git, MCP, web tools, project automation, assets and image operations.
 
-- Settings can switch between **Aider**, **Claude Code**, and **OpenCode**; LocalCode native remains available as the internal tool loop.
-- Installation/repair, status, version, authentication, test execution, cancellation, output, backup, and undo share one engine interface.
-- Aider retains the reproducible `uv`/Python 3.12 setup and `ollama_chat/<model>`.
-- Claude Code uses the official native Windows installer and runs through `claude -p` with bounded turns and a normalized permission mode.
-- OpenCode is installed per user through managed Node.js/npm and supports `provider/model` plus local Ollama through process-scoped configuration.
-- Legacy `aider_*` agent actions remain compatible aliases for the generic `engine_*` actions.
+### File mutation reliability
 
-### Native-agent repair
+LocalCode treats mutations as transactions rather than trusting a model success string.
 
-- User decision for this maintenance pass: no symptom treatment; root causes must be fixed and verified with tests.
-- Root cause of the Pac-Man/HTML failure: the native tool loop allowed `write_file` without `content`, did not fully normalize tool-call-like `arguments`, did not steer strongly enough away from `engine_edit` in LocalCode-native mode, and accepted `finish` even when files were empty, placeholders, or unverified.
-- Fix: `write_file` now requires a path and complete non-empty content in both the schema and Go validation. Missing fields are recovered from `arguments`. Repeated incomplete write actions trigger focused content generation instead of writing empty files.
-- Fix: the supervisor hint distinguishes external engines from **LocalCode native**. Native runs are directed to direct file tools; `engine_edit` failures receive a concrete recovery directive.
-- Fix: editing tasks pass through a completion guard before `finish`. It blocks missing or empty mentioned files, obvious placeholders, missing requested feature markers, and a missing real check after the last change when the task asks for tests, syntax, build, lint, or functional verification.
-- Codex/OpenCode parity step: an additional deterministic completion review runs before `finish`. Implementation tasks can no longer be completed by documentation-only changes; code/app/tool changes require a suitable check after the last change. Documentation tasks, pure file operations, and visual artifact tasks remain separately classified so the review does not block indiscriminately.
-- Fix: `STATE.md` files with LocalCode markers can no longer be overwritten through `write_file`/`replace_text` in a way that loses the managed handoff section.
-- Fix after the real Pac-Man run: tool discovery did not find existing WinGet Node.js because `node` standard paths were generated without `.exe` and WinGet package paths under `LOCALAPPDATA\Microsoft\WinGet\Packages` were missing. `node`, `npm`, and `npx` are now discovered from per-user Node.js installations and OpenJS WinGet packages.
-- Fix after the real Pac-Man run: the completion guard treated `Node.js` from “syntax check with Node.js” as a requested project file. Known technology tokens such as `Node.js`, `Three.js`, `D3.js`, and similar names are no longer added as project files.
-- General fix after user feedback: the solution must not be a better one-off Pac-Man prompt. For every creation/modification task, LocalCode now injects internal, language- and domain-neutral quality requirements: real code/artifact logic instead of README claims, wired UI controls, consistent states, verified file operations, concrete renderable image/diagram assets, and checks appropriate to the language/project. `copy`/`move`/`rename` and image/drawing requests are classified as implementation tasks.
-- General completion checking: `node -c` is now only one special case among many. Recognized verification commands include Go, Python, Rust/Cargo, Java/Javac, Maven, Gradle, .NET, TypeScript, PHP, Ruby, shell, C/C++, and CMake/Make. Slash-separated file lists such as `index.html/styles.css/README.md` are split into individual files while real paths such as `src/agent.go` are preserved.
-- General tool discipline: global installers such as `npm install -g`, `pip install --user`, `cargo install`, `go install`, `winget install`, `choco install`, and `scoop install` are blocked as unsuitable actions during ordinary tasks unless the user explicitly requested a global install. After failed checks, the agent should choose existing, project-local, managed, or non-invasive verification paths.
-- Tool-loop robustness: if the model returns another invalid action after a completion block, for example `write_file` without content, LocalCode no longer aborts immediately. It injects a compact repair hint up to three times; only repeated invalid actions end the run.
-- Completion repair: guard failures are now fed back with general prioritization. Missing runtime logic must be fixed first in source/config/asset files; UI controls must include visible elements, event handlers, and state changes; documentation and cosmetic edits do not count as fixing missing functionality.
-- Startup robustness: a stale `last_model` such as `test-model` can no longer block server startup before the UI is reachable. When models already exist, bootstrap ensures the configured default model and does not automatically pull a missing stale LastModel; explicitly configured engine models remain required.
-- Context performance for local models: tool results remain detailed in the visible output panel, but are shortened for the next model call according to the configured context size. After context compaction, unchanged recent messages are reduced adaptively; very large newer messages are truncated and, if needed, only a few latest steps plus the factual working state are kept. This prevents local models from overfilling their context window after large outputs or repeated repair rounds.
-- File operations as a fact source: `write_file`, `delete_file`, `copy_path`, and `move_path` now return a `POSTCONDITION` after successful execution with existence, type, size, and file SHA-256. Moves and deletes additionally report `exists=false` for removed sources/targets. This lets the local model base follow-up decisions on real filesystem state instead of plain success text.
-- Visual artifacts: image/drawing/diagram/asset tasks can no longer be completed only through README text or embedded example markers. The completion guard requires a concrete artifact file such as SVG, HTML/canvas, CSS, or an image file; mentioned paths ending in `.svg`, `.png`, `.jpg`, `.webp`, `.gif`, `.bmp`, or `.ico` are recognized as project files.
-- SVG/icon parity step: the native tool loop now has `create_svg_asset` for local SVG/icon/vector resources. The tool requires `.svg`, complete content, valid XML with an `<svg>` root and size metadata, blocks scripts/event handlers/`javascript:` URLs, and then writes with a file postcondition.
-- Raster/icon parity step: the native tool loop now has `create_image_asset` for local PNG/JPG/JPEG/GIF/WebP/ICO/BMP resources. The tool accepts data URLs or Base64, decodes at most 16 MiB, checks the extension, format signature, and dimensions, and then writes binary data with backup and file postcondition.
-- Render/conversion parity step: the native tool loop now has `render_asset` for local rendering from `.svg`, `.html`, and `.htm` into `.png`, `.jpg`, `.jpeg`, `.webp`, or `.ico`. LocalCode uses an installed Edge/Chrome browser in headless mode, rejects external HTML HTTP(S) references before launch, sets a dead local proxy, checks the rendered PNG for decodability and expected dimensions, encodes JPEG/ICO from the validated render image, and writes target images with file postcondition. WebP is produced directly as a headless-browser screenshot and validated through RIFF/WebP signature and dimensions.
-- Raster conversion parity step: the native tool loop now has `convert_image_asset` for local PNG/JPG/JPEG/GIF and PNG-backed ICO sources into `.png`, `.jpg`, `.jpeg`, `.webp`, or `.ico`. Explicit target dimensions are scaled deterministically; transparent sources are flattened onto white for JPEG. PNG/JPEG/ICO are encoded locally; WebP is produced from a temporary local HTML/PNG intermediate through the blocked headless-browser renderer. Every target file is revalidated by signature and dimensions after encoding.
-- Local image-generator parity step: the native tool loop now has `generate_image_asset` for new PNG/JPG/JPEG/WebP/ICO files through a locally configured AUTOMATIC1111/Forge-compatible `/sdapi/v1/txt2img` endpoint. Provider URLs must point to loopback, prompt and target dimensions are capped, the Base64 response is decoded, routed through the existing encoder path into the target format, and revalidated by signature and dimensions before writing. A concrete image-model installer remains open.
-- Rules/skills context parity step: the native agent now builds a bounded instruction chain from global LocalCode/Codex instructions, project `AGENTS.override.md`/`AGENTS.md`, compatible project instructions such as `CLAUDE.md`, `GEMINI.md`, `QWEN.md`, `.agents.md`, `TEAM_GUIDE.md`, and `.github/copilot-instructions.md`, `README.md`, `STATE.md`, legacy `.cursorrules`, nested `.cursor/rules`, and skills from project and global directories (`.codex/skills`, `.cursor/skills`, `.opencode/skills`, `skills`, LocalCode config, `CODEX_HOME`, user `.cursor/skills`, user `.opencode/skills`). Rules and skills consider `alwaysApply`, `description`, and simple `globs`; `skill_list` and `skill_read` provide progressive read-only loading.
-- Skill metadata parity step: frontmatter now supports simple multiline YAML lists. Skill fields such as `permissions`, `allowed-tools`, `tools`, `scripts`, and `commands` are visible in the skill index. Non-read-only permissions or declared scripts mark skills as `approval-required`; those skills are not embedded automatically into startup context and do not change tool approvals.
-- Skill permission parity step: the read-only skill allowlist now recognizes compatible aliases such as `Read`, `Glob`, `Grep`, `skill_read`, `command_read`, and MCP list/read actions. Write, edit, shell, network, build, install, memory, and MCP tool-call permissions plus declared scripts remain `approval-required` and prevent automatic skill embedding.
-- Frontmatter parity step: list fields such as `globs`, `permissions`, `tools`, `scripts`, and `commands` support YAML lists, inline arrays, and comma-separated values with quoted commas without treating normal text fields such as `description` as lists.
-- Skill/rule activation parity step: rules and skills now consider additional activation fields `activation`, `activations`, `trigger`, `triggers`, `keywords`, `when`, `appliesTo`, and `applies_to`; `exclude_globs`/`exclude`/`excludes`/`excludeGlobs` suppress loading for matching mentioned paths. Duplicate skill names are resolved deterministically: project skills before global skills, then higher `priority`, then relevance, root order, and path.
-- MCP instructions parity: LocalCode stores `instructions` from MCP `initialize` responses for stdio and Streamable HTTP sessions and writes them into the agent context. The built-in Filesystem, PowerShell, and Git MCP servers also provide short server-wide usage rules so the local model sees tool boundaries, postconditions, and safe Git rules before tool calls.
-- Memory parity step: the native tool loop now has `memory_remember`, `memory_list`, and `memory_forget`. Memories are stored locally in the configuration, project memories are filtered by default, global memories are injected across projects, deletion requires a concrete `memory_id` or a unique content match, and secret-like content such as passwords, tokens, private keys, or API keys is rejected.
-- Direct memory handling: new agent runs detect natural phrasings such as "always ..., remember that", "show memory list", and "remove ... from memories" before the model call. "Always", "global", and "all projects" store globally; explicit project phrasings store in project scope. Direct memory runs write normal chat events, but they do not start an Ollama run.
-- Test robustness: `TestADBNoDevicePerformsSingleRecoveryAndRetry` now uses a parent timeout that matches the internal ADB recovery timeouts. Under `-race`, the previous 5-second parent timeout was too short and could cancel the otherwise working recovery path.
-- Skill subresource parity step: `skill_list_resources` and `skill_read_resource` read additional text resources from project and global skill directories read-only. `skill_copy_resource` copies binary or otherwise project-needed skill resources into project files after approval. `skill_run_script` starts exactly declared skill `scripts`/`commands` entries after its own approval through the normal command boundary. Resource paths must remain relative to the skill directory; path traversal, symlink/junction escapes, and `SKILL.md` through the resource path are blocked; copy destinations pass through the normal project path boundary with backup and postcondition.
-- Read-only subagent parity step: the native tool loop now has `subagent_analyze(task)`. The action creates a structured handoff from project info, the project tree, explicitly mentioned files, and bounded search hits. It is read-only, needs no approval, and calls no shell, network, MCP, or write tools. This implements the first separated analysis/test-log view; model-driven review subagents and coordinated write phases remain open.
-- Hook/automation parity step: the existing `hook_before_task`/`hook_after_task` hooks are now complemented by real `hook_before_tool`/`hook_after_tool` execution. Tool hooks run as non-interactive project commands with normal timeouts, environment variables, and process cancellation. Before-tool failures stop the tool action; after-tool failures are logged as separate warnings. The Settings page saves and loads the new fields, and hook commands receive action metadata through `LOCALCODE_HOOK_PHASE`, `LOCALCODE_ACTION`, `LOCALCODE_ACTION_MESSAGE`, `LOCALCODE_ACTION_PATH`, and `LOCALCODE_ACTION_COMMAND`.
-- Slash/project command parity step: LocalCode loads reusable `.md`/`.txt` text templates from `.localcode/commands`, compatibly from `.codex/commands`, `.opencode/commands`, `.cursor/commands`, and globally from the LocalCode configuration directory. New agent runs expand `/name args` before the model call with `{{args}}`, `{{project}}`, and `{{cwd}}`; the original prompt remains in the UI history. The read-only `command_list` and `command_read(name)` actions expose available commands to the model during a run. Project commands deterministically override global or compatible commands with the same name and do not execute shell commands by themselves.
-- Ecosystem rule parity step: project instructions are no longer limited to one fallback; multiple compatible files are loaded in stable order. Cursor rules are read recursively from `.cursor/rules`, and legacy `.cursorrules` is embedded as a local rule.
-- Domain checkers: interactive tasks now block missing button, keyboard, canvas, status, counter, lives/health, and reset wiring. Visual tasks block missing concrete artifacts such as SVG/canvas/image files. Pac-Man remains only an additional example-domain checker with maze, pellet, enemy, state, and restart rules.
-- Boundary: this guardrail improves reliability for local Ollama models, but it is not proof of Codex parity and does not guarantee perfect semantic completeness for every task.
-- Verification on 2026-08-13 for the global skill/glob/skill-read step: `..\.tools\go\bin\go.exe fmt ./...`; focused tests `go test -count=1 . -run "TestProjectInstructionContext|TestInstructionContextMatchesGlobs|TestSkillListAndRead|TestFrontmatterValueAndRelevance|TestParseAgentAction"` passed; `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check src\static\i18n.js` and `vm.Script` compilation of the inline script from `src\static\index.html` passed.
-- Verification on 2026-08-13 for skill subresources: `..\.tools\go\bin\go.exe fmt ./...`; focused tests `go test -count=1 . -run "TestSkillResourcesListAndRead|TestSkillListAndRead|TestParseAgentAction"` passed; `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds.
-- UI smoke verification on 2026-08-13: After user approval, Python Playwright 1.62.0 was installed with `python -m pip install --user playwright` and Playwright Chromium 151.0.7922.34 with `python -m playwright install chromium`. `scripts\ui-e2e-test.py` was made platform-neutral: Playwright's own Chromium is used by default, optionally overridden with `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, and HTML/JS fixtures are read explicitly as UTF-8. `python scripts\ui-e2e-test.py` passed: `FULL UI E2E OK 37 requests`.
-- Engine path repair on 2026-08-13: explicitly configured Claude Code and OpenCode executable paths are now authoritative. If such a path is missing or not executable, LocalCode reports the configuration error and no longer silently falls back to a global installation. This makes misconfigured engine paths clearer and keeps the unisolated test suite from being skewed by a real but unauthenticated `claude.exe` in the user environment.
-- Verification on 2026-08-13 for engine path repair: `..\.tools\go\bin\go.exe fmt ./...`; focused tests `go test -count=1 . -run "TestConfiguredEngineExecutableIsAuthoritative|TestCodingEngineActionsInstallDecisionsAndUndo|TestCodingEngineServerValidationAndConflicts|TestCodingEngineInstallDispatchAndRepairWrapper|TestClaudeAndOpenCodeStatusAndExecution"` passed; unisolated `go test -count=1 ./...` passed; `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`.
-- Race-detector repair on 2026-08-13: MSYS2 was already installed under `C:\msys64` and contained `C:\msys64\ucrt64\bin\gcc.exe` (`gcc.exe (Rev14, Built by MSYS2 project) 15.2.0`), but that path was missing from the user `PATH`. The official MSYS2 installer `msys2-x86_64-20260611.exe` was downloaded from GitHub, checked against the official `.sha256` (`3150d7d9aa5dedd900a7f52300d4d918271e3a8fc47de94848818fd5a430e6b0`), and was not written over the existing installation. `C:\msys64\ucrt64\bin` was permanently appended to the user `PATH`.
-- Verification on 2026-08-13 for race-detector repair: with a temporarily updated process `PATH` and `CGO_ENABLED=1`, `where.exe gcc` finds `C:\msys64\ucrt64\bin\gcc.exe`; `gcc --version` reports GCC 15.2.0; `go test -race -count=1 ./...` passed (`ok localcode 77.606s`). New terminals inherit the permanently updated user `PATH`.
-- Verification on 2026-08-13 for render/conversion parity: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestRenderAsset|TestParseAgentActionRenderAsset|TestCreateImageAsset|TestCreateSVGAsset"` passed (`ok localcode 1.414s`); full `go test -count=1 ./...` passed (`ok localcode 47.161s`); `..\.tools\go\bin\go.exe vet ./...` passed; real browser-render smoke with `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` passed (`ok localcode 3.625s`); `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check src\static\i18n.js` and `new Function` for the inline script from `src\static\index.html` passed; `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 65.106s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**.
-- Verification on 2026-08-13 for raster conversion and skill metadata safety: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestConvertImageAsset|TestRenderAsset|TestParseAgentActionConvertImageAsset|TestParseAgentActionRenderAsset"` passed (`ok localcode 1.364s`); focused skill tests `go test -count=1 . -run "TestFrontmatterValueAndRelevance|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestProjectInstructionContext|TestInstructionContextMatchesGlobs|TestSkillListAndRead"` passed after the read-only allowlist refinement (`ok localcode 1.803s`); full `go test -count=1 ./...` passed (`ok localcode 47.445s`); `..\.tools\go\bin\go.exe vet ./...` passed; real browser-render smoke with `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` passed (`ok localcode 3.649s`); `scripts\build.ps1` passed after the last code change with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check src\static\i18n.js` and `new Function` for the inline script from `src\static\index.html` passed; `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 66.621s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**.
-- Verification on 2026-08-13 for WebP rendering: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestRenderAsset|TestParseAgentActionRenderAsset|TestCreateImageAsset|TestCreateSVGAsset"` passed (`ok localcode 1.341s`); full `go test -count=1 ./...` passed (`ok localcode 47.509s`); `..\.tools\go\bin\go.exe vet ./...` passed; real browser-render smoke including WebP with `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` passed (`ok localcode 3.272s`); `scripts\build.ps1` passed with isolated tests (`ok localcode 50.420s`), `go vet`, randomized test order (`ok localcode 45.246s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and `vm.Script` for the inline script from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 63.653s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `3927B18F4D496D1D005D052F0AA32A100DE4EB03D0A19A73946916DF44D41D19`, `LocalCode-Debug.exe` `26F2775CE386C433319FD9ADD2A2BFCB905318785E6ADDE65F9B015F837B406B`.
-- Verification on 2026-08-13 for WebP raster conversion: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestConvertImageAsset|TestParseAgentActionConvertImageAsset|TestRenderAsset|TestParseAgentActionRenderAsset"` passed (`ok localcode 1.792s`); real browser smoke including WebP conversion with `LOCALCODE_RUN_BROWSER_RENDER_TEST=1` passed (`ok localcode 4.341s`); full `go test -count=1 ./...` passed (`ok localcode 57.192s`); `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests (`ok localcode 50.945s`), `go vet`, randomized test order (`ok localcode 45.713s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and `vm.Script` for the inline script from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 65.536s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `B2BA6E003F10D02C0B8BCE71825E4A3C3E8671412D915E26FBFC5DE063DF6A11`, `LocalCode-Debug.exe` `BEDC29F18AF51AE83181F6277B9A7B37C4099FE9DA6A29AF1E4DBE70A8785FB4`.
-- Verification on 2026-08-13 for binary skill assets: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestParseAgentAction|TestSkillResourcesListAndRead|TestCopySkillResourceCopiesBinaryAsset|TestCoverageApprovalRulesAndTokens|TestCoverageAgentActionsAndApprovals"` passed (`ok localcode 2.442s`); full `go test -count=1 ./...` passed (`ok localcode 46.982s`); `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests (`ok localcode 49.343s`), `go vet`, randomized test order (`ok localcode 45.770s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 59.119s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `BFFEF775E28A2276A6B06624C3FB7FA9A3B2E63F3A64C82C002EE0C002C57619`, `LocalCode-Debug.exe` `4015A8F653AB78801E2B1940E4B4BE4DD5B391A0BFCF04657109AD15CFFEFD34`.
-- Verification on 2026-08-13 for skill scripts with separate approval: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestParseAgentAction|TestSkillRunScriptExecutesDeclaredCommand|TestSkillResourcesListAndRead|TestCopySkillResourceCopiesBinaryAsset|TestCoverageApprovalRulesAndTokens|TestCoverageAgentActionsAndApprovals"` passed (`ok localcode 2.565s`); full `go test -count=1 ./...` passed (`ok localcode 47.035s`); `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests (`ok localcode 49.493s`), `go vet`, randomized test order (`ok localcode 46.098s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 59.293s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `38B8A543AA0DD753C14E8AF496B7FB50A6BA0B63F817A50E7263EE2A36D1FED8`, `LocalCode-Debug.exe` `354A904C953F2AF3BE2F69292B4F0F880B0BDF0D4A5CD02F090D37A8F6324970`.
-- Verification on 2026-08-13 for more robust frontmatter lists: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestFrontmatterValueAndRelevance|TestInstructionContextMatchesGlobs|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestSkillRunScriptExecutesDeclaredCommand"` passed after parser correction (`ok localcode 1.462s`); full `go test -count=1 ./...` passed (`ok localcode 46.934s`); `..\.tools\go\bin\go.exe vet ./...` passed; the first `scripts\build.ps1` run hit a Windows tempdir lock in `TestCoverageServerEndpointMatrix` without a test assertion failure, and the immediate rerun passed with isolated tests (`ok localcode 49.682s`), `go vet`, randomized test order (`ok localcode 46.082s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 59.634s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `26BD95B599436F271A972731DD498DE60DD629A7FB8B6974FA665F190A74E6EF`, `LocalCode-Debug.exe` `D0DFD8A026BC26028A6177E432FFA9AF49D3FF8759AD7B899751A3C35325A7E3`.
-- Verification on 2026-08-13 for skill/rule activation and conflict resolution: `..\.tools\go\bin\go.exe fmt ./...` passed; focused tests `go test -count=1 . -run "TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills|TestInstructionContextMatchesGlobs|TestSkillActivationExcludesAndConflictResolution|TestSkillListAndRead|TestFrontmatterValueAndRelevance"` passed (`ok localcode 1.209s`); `git diff --check` passed; full `go test -count=1 ./...` passed (`ok localcode 47.046s`); `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests (`ok localcode 49.405s`), `go vet`, randomized test order (`ok localcode 46.181s`), and Windows GUI/debug builds; JavaScript syntax checking with WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 60.900s`). `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `91C2D649E7A489F06BE50B51DC2A39976DEC3201C1D3413E504C5126F8999FE0`, `LocalCode-Debug.exe` `5E09E97AA03BA1624E49AFBEB999F71B527B130F89E36556FF46B2C40CD0502D`.
-- Go PATH repair on 2026-08-14: `go.exe` was not found in `PATH`, `C:\Program Files\Go\bin`, `C:\Program Files (x86)\Go\bin`, `C:\Users\frede\go\bin`, `C:\Users\frede\AppData\Local\Programs\Go\bin`, Scoop, or Chocolatey default paths. The official Windows-amd64 ZIP `go1.26.6.windows-amd64.zip` was then downloaded from `go.dev`, verified against the published SHA-256 value `5b6c5b556525810463b5c897b50dc7a82d6a3dc0bfaf55d990a7e9f31d6b2318`, extracted to `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6`, and `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin` plus `C:\Users\frede\go\bin` were permanently added to the user `PATH`. `go version` reports `go1.26.6 windows/amd64`.
-- Verification on 2026-08-14 for read-only subagent handoffs: in the Go module `src`, `go fmt ./...` passed; full `go test -count=1 ./...` passed (`ok localcode 54.388s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 62.266s`); `git diff --check` passed; JavaScript syntax checking with Node `--check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 51.308s`), `go vet`, randomized test order (`ok localcode 47.864s`), and Windows GUI/debug builds. `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `102F41D41E28E590B461DC6C59A4CEE4DF42E37193B1A0056B5A821745EE7916`, `LocalCode-Debug.exe` `612C09F397E8F2A8DD873B225B8EC71D125C689889F82FF068CAFFA4CC8631EC`.
-- Verification on 2026-08-14 for pre/post tool hooks: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestTranslationCatalogsHaveIdenticalKeys|TestLiteralUIEventMessagesHaveEnglishTranslations|TestAgentToolHooksRunConfiguredCommands"` passed (`ok localcode 1.621s`); full `go test -count=1 ./...` passed (`ok localcode 47.489s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 61.036s`); JavaScript syntax checking with Node `--check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 48.934s`), `go vet`, randomized test order (`ok localcode 45.423s`), and Windows GUI/debug builds. New SHA-256 values: `LocalCode.exe` `16B914664B029072B3B70D20E49904411C2F8D81847033B3008F4BC814471C83`, `LocalCode-Debug.exe` `9F903BB0B5ABCC8EE090FFD0AF5DA27BD3680C5B42DFC4E074F0D093D42D45AA`.
-- Verification on 2026-08-14 for slash/project commands: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestParseAgentAction|TestProjectCommandsListReadAndExpand|TestProjectCommandReadTool"` passed (`ok localcode 1.413s`); full `go test -count=1 ./...` passed (`ok localcode 48.203s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 60.488s`); JavaScript syntax checking with Node `--check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 50.064s`), `go vet`, randomized test order (`ok localcode 46.601s`), and Windows GUI/debug builds. New SHA-256 values: `LocalCode.exe` `B885F0D074CD552F98CD853BFF63B2FB30EEE481A066319F3F94CE3920258640`, `LocalCode-Debug.exe` `D2F649CCE16F7500C51B9F5589D957D4ABF6E70FD57222850747D660D70D81C4`.
-- Verification on 2026-08-14 for direct memory handling: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestMemory|TestDirectMemoryPrompt|TestDetectDirectMemoryRequestScopes|TestParseAgentActionMemoryArguments"` passed (`ok localcode 1.867s`); focused ADB/memory run after timeout correction `go test -count=1 . -run "TestADBNoDevicePerformsSingleRecoveryAndRetry|TestDirectMemoryPrompt|TestDetectDirectMemoryRequestScopes"` passed (`ok localcode 2.532s`); full `go test -count=1 ./...` passed (`ok localcode 68.305s`); `go vet ./...` passed; the first race run showed the now-fixed ADB test parent timeout, then with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 66.737s`); JavaScript syntax checking with Node `--check src\static\i18n.js` and inline-script compilation from `src\static\index.html` passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 52.979s`), `go vet`, randomized test order (`ok localcode 46.072s`), and Windows GUI/debug builds. New SHA-256 values: `LocalCode.exe` `42907651CA8033D279F61A9DA4D8504E7BBE332D291C3B38F4DE253EE374796F`, `LocalCode-Debug.exe` `9920FE148998D42D19AA361058362ACE9687D81E0BB5D37279DD529BDEBD2B90`.
-- Verification on 2026-08-14 for local image-generator integration: the current Codex process had not reloaded the persistent Go user PATH yet, so one plain `go` invocation failed with "The term 'go' is not recognized". The installed Go binary `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin\go.exe` was used directly. Passed: `go fmt ./...` in the `src` module; focused tests `go test -count=1 . -run "TestGenerateImageAsset|TestParseAgentActionGenerateImageAsset"` (`ok localcode 1.757s`); focused config tests `go test -count=1 . -run "TestNormalizeConfig|TestLegacyConfig|TestConfig|TestStartupConfig"` (`ok localcode 1.762s`); full `go test -count=1 ./...` (`ok localcode 48.852s`); `go vet ./...`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` (`ok localcode 60.194s`); `git diff --check`; JavaScript syntax checking with explicit WinGet Node `node-v24.15.0-win-x64\node.exe --check src\static\i18n.js` and inline-script compilation from `src\static\index.html` (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` (`FULL UI E2E OK 37 requests`); `scripts\build.ps1` passed with isolated tests (`ok localcode 50.847s`), `go vet`, randomized test order (`ok localcode 38.743s`), and Windows GUI/debug builds. `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `EAF53236AAF5B99DD074921AAC443C228287AD2DE02ACB5C935F8AFCFD1DC119`, `LocalCode-Debug.exe` `2E58E2F41A61D1AD8339C68BB11F5A8AE6FE8383862913DB3EF4A9E81FB0F76E`.
-- Verification on 2026-08-14 for compatible project instructions and nested Cursor rules: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestProjectInstructionContext|TestInstructionContext|TestFrontmatterValueAndRelevance|TestSkillActivationExcludesAndConflictResolution"` passed (`ok localcode 1.499s`); full `go test -count=1 ./...` passed (`ok localcode 48.678s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 58.291s`); `git diff --check` passed; JavaScript syntax checking with explicit WinGet Node and inline-script compilation passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 51.815s`), `go vet`, randomized test order (`ok localcode 47.297s`), and Windows GUI/debug builds. `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `32D642AF219946846B3A450F481EA19155AB61EB4E30AD86F6BF0B7413FAE55B`, `LocalCode-Debug.exe` `50EAEA12BDE28C75DB15C2CEE14E436D46ECC18B54984A007F60BD43A9185257`.
-- Verification on 2026-08-14 for more precise skill permissions: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestSkillPermission|TestSkillPermissionsRequireApprovalAndAvoidAutoEmbedding|TestProjectInstructionContext"` passed (`ok localcode 1.312s`); full `go test -count=1 ./...` passed (`ok localcode 48.930s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 60.247s`); JavaScript syntax checking with explicit WinGet Node and inline-script compilation passed (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 51.411s`), `go vet`, randomized test order (`ok localcode 47.066s`), and Windows GUI/debug builds. `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `19ACF498A3EF17A3069ED639D2427547A386B1381D025E3962A4E45924E9FFE3`, `LocalCode-Debug.exe` `0D212492C3E3F0E9C78E83720AE3D3D31712DA750394A43C805D33D870C6B7E2`.
-- Verification on 2026-08-14 for local Ollama Pac-Man smoke and guard repair: `go fmt ./...` in the `src` module passed; focused tests `go test -count=1 . -run "TestReadFileVerificationRequiresExplicitFileCheckTask|TestAgentEscalatesRepeatedSingleFileCompletionBlock|TestCompletionGuardEnforcesSingleOutputFile|TestPacManGuardAcceptsEquivalentMazeArrayNames|TestPacManGuardAcceptsNumericMazeGrid|TestPacManGuardAcceptsCommonAlternateStateNames|TestCompletionGuardBlocksIncompletePacManImplementation"` passed (`ok localcode 2.274s`); optional default Pac-Man smoke without activation skipped as intended (`TestLocalOllamaPacmanCloneSmoke`); real local model smoke with `LOCALCODE_RUN_LOCAL_MODEL_PACMAN_TEST=1`, `LOCALCODE_PACMAN_MODEL=qwen2.5-coder:14b`, Ollama `http://127.0.0.1:11434`, native engine and isolated temp config passed (`ok localcode 257.296s`). Earlier failed Pac-Man attempts exposed the now-fixed root causes: over-strict identifier-specific Pac-Man checks, large write payloads retained in model history, missing single-file escalation after repeated finish loops, and read-only file/content verification not being recognized for explicit file-check tasks. Final verification after documentation updates and the test snapshot cleanup passed: full `go test -count=1 ./...` (`ok localcode 47.189s`); `go vet ./...`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` (`ok localcode 57.803s`); `git diff --check`; JavaScript syntax checking with explicit WinGet Node and inline-script compilation (`inline scripts ok 1`); `python scripts\ui-e2e-test.py` (`FULL UI E2E OK 37 requests`); `scripts\build.ps1` passed with isolated tests (`ok localcode 50.872s`), `go vet`, randomized test order (`ok localcode 47.673s`), and Windows GUI/debug builds. `reports/COVERAGE-SUMMARY.txt` still reports **6570/8206 = 80.063368%**. New SHA-256 values: `LocalCode.exe` `518CC73730F9D7B828D5DAE75CF50FDEEEC9840C5CEFFC1723CD1F206C270FE9`, `LocalCode-Debug.exe` `99A1C687EEC3288937549D36CFF44049CCAB6339FC86448C99FF9AE20E5F2D11`.
-- Verification on 2026-08-14 for the phone Remote foundation: focused schema/Remote/batch tests passed (`ok localcode 1.231s`); `go fmt ./...` in `src` passed; full `go test -count=1 ./...` passed (`ok localcode 49.093s`); `go vet ./...` passed; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 57.600s`); JavaScript syntax checking with explicit WinGet Node passed for `src/static/i18n.js` and inline scripts from `src/static/index.html` plus `src/static/remote.html`; `git diff --check` passed after removing one Markdown trailing whitespace hardbreak; `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; `scripts\build.ps1` passed with isolated tests (`ok localcode 51.965s`), `go vet`, randomized tests (`ok localcode 48.479s`), and Windows GUI/debug builds. Coverage was regenerated after one bad external-coverprofile command failed at Go package selection; the successful in-module coverage run passed (`ok localcode 48.474s`) and reports **72.3%** statement coverage by `go tool cover -func`. New SHA-256 values: `LocalCode.exe` `21DED98D284CF353BDDADEF1546C0F0EAD9BEC45A422B25C67207963D017F0B4`, `LocalCode-Debug.exe` `D86FB6413C51C9CD056CD1A549DDAAE30D2C44D76980FFE54F74A34C2D461FE1`.
-- Verification on 2026-08-13 for raster/icon parity: `..\.tools\go\bin\go.exe fmt ./...`; focused tests `go test -count=1 . -run "TestCreateImageAsset|TestCreateSVGAsset|TestParseAgentActionCreateImageAsset|TestParseAgentActionCreateSVGAsset|TestCoverageAgentActionsAndApprovals|TestCoverageParsingAndErrorBranches"` passed; full `go test -count=1 ./...` passed; `..\.tools\go\bin\go.exe vet ./...` passed; `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check src\static\i18n.js` and `new Function` for the inline script from `src\static\index.html` passed; `python scripts\ui-e2e-test.py` passed with `FULL UI E2E OK 37 requests`; with temporary `C:\msys64\ucrt64\bin` in the process `PATH` and `CGO_ENABLED=1`, `go test -race -count=1 ./...` passed (`ok localcode 60.058s`).
-- Verification on 2026-08-13 for the previous rules/skills context: `..\.tools\go\bin\go.exe fmt ./...`; focused tests `go test -count=1 . -run "TestProjectInstructionContext|TestFrontmatterValueAndRelevance|TestMemory|TestCreateSVGAsset"` passed; `TestCoverageServerEndpointMatrix` passed separately after a transient Windows tempdir-cleanup lock in the first full build; repeated full `scripts\build.ps1` passed with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check` passed for `src/static/i18n.js` and the inline script from `src/static/index.html`.
-- Historical state before the race-detector repair on 2026-08-13: `go test -race -count=1 .` was locally blocked, first by disabled CGO and with `CGO_ENABLED=1` by missing `gcc` in `PATH`.
-- Verification on 2026-08-12 for the memory and SVG/icon parity steps: `..\.tools\go\bin\go.exe fmt ./...` in the Go module `src` with no changes after formatting; focused tests `go test -count=1 . -run "TestMemory|TestParseAgentActionMemoryArguments|TestCoverageAgentActionsAndApprovals|TestParseAgentAction"` and `go test -count=1 . -run "TestCreateSVGAsset|TestParseAgentActionCreateSVGAsset|TestMemory|TestParseAgentActionMemoryArguments|TestCompletionGuardRequiresConcreteVisualArtifactFile"` passed; full `scripts\build.ps1` passed after both code-change rounds with isolated tests, `go vet`, randomized test order, and Windows GUI/debug builds; JavaScript syntax checking with the WinGet Node `node.exe --check` passed for `src/static/i18n.js` and the inline script from `src/static/index.html`.
-- Not completed on 2026-08-12: `go test -race -count=1 .` remains locally blocked, first by disabled CGO and with `CGO_ENABLED=1` by missing `gcc` in `PATH`. The Playwright UI script `python scripts\ui-e2e-test.py` is blocked because the Python `playwright` module is not installed. A substitute API/HTML smoke against `dist\LocalCode-Debug.exe` did not reliably reach `/api/ping` before timeout in this run; the started test process was stopped.
-- Verification on 2026-08-11: `.tools\go\bin\go.exe fmt ./...`; focused Go tests for action validation, write repair, completion review against documentation-only "implementations", required post-code-change checks, MCP server instructions in agent context, file-operation postconditions, concrete visual artifact files, general and Pac-Man-specific completion guards, context-compaction budgeting, tool-result truncation, language-agnostic verification detection, file/image task classification, slash-separated file lists, `STATE.md` marker safety, translated UI messages, WinGet Node discovery, and `Node.js` technology-token handling; full `scripts\build.ps1` succeeded with isolated tests, `go vet`, randomized test order, and Windows-amd64 GUI/debug builds; JavaScript syntax checks for `src/static/i18n.js` and both inline scripts in `src/static/index.html`; isolated UI smoke against `LocalCode-Debug.exe` at `http://127.0.0.1:32145` with `/api/ping`, `/api/status`, HTML menu markers, and browser assertion.
-- Not completed on 2026-08-11: `go test -race -count=1 ./...` is blocked on this Windows system because Go requires CGO for `-race` and `gcc` is not available in `PATH`. Result: first `go: -race requires cgo`, then with `CGO_ENABLED=1` `cgo: C compiler "gcc" not found`.
-- Local user environment on 2026-08-11: `C:\Users\frede\AppData\Roaming\LocalCode\config.json` contained `last_model: "test-model"` and blocked normal startup through a failed pull. Backup `config.json.bak-20260811-212424` was created before correction; `last_model` is now `qwen2.5-coder:14b`. The persistent user-level `OLLAMA_HOST` already points to `127.0.0.1:11434`; only the current Codex process environment had inherited stale `172.31.112.1:11434`. Checked desktop starters `local-codex.bat` and `open-llama-lan-8080.ps1` do not set a wrong Ollama host. Normal startup smoke with the real user config then passed on 2026-08-11: LocalCode `6.4.3-debug` started at `http://127.0.0.1:32145` with Ollama `http://127.0.0.1:11434`.
+Current invariants include:
 
-### Security and recovery
+- SHA-256 file versions.
+- approval-bound file preconditions.
+- per-path edit locking.
+- same-directory temporary writes.
+- revalidation immediately before commit.
+- atomic replace primitives, including Windows-native replacement behavior.
+- conflict errors instead of silently overwriting an externally changed file.
+- postconditions reporting existence/type/size/SHA where applicable.
+- backups/recovery paths for managed edits and Aider integration.
 
-- A project backup is created before external editing runs.
-- Changed files are detected through fingerprints; undo protects later manual edits with hash checks.
-- Claude `bypassPermissions` is not exposed; OpenCode `--auto` can be disabled.
-- Credentials remain managed by the selected engine and are not stored by LocalCode.
-- External CLIs run with their own permissions; LocalCode's project boundary is not an operating-system sandbox.
+Never regress these to plain `os.WriteFile` after an approval for an existing file.
 
-### Verification
+### Repository intelligence
 
-- Exact final statement coverage: **72.3%**.
-- Normal tests, `go vet`, the race detector, randomized test orders, UI/API simulation, translation parity, and Windows-amd64 cross-builds are part of release verification.
-- The exact results are recorded in `TEST-REPORT.txt` and `reports/COVERAGE-SUMMARY.txt`.
+Current stack combines multiple evidence sources rather than one regex repo map:
 
-### Parity TODO
+- import-aware file graph.
+- task/identifier/path relevance.
+- definitions/references and relation weighting.
+- PageRank-like propagation/ranking.
+- task navigation and focused snippets.
+- build/test pairing and verification-command inference.
+- Go compiler AST for Go.
+- Tree-sitter under CGO for JavaScript/JSX/MJS/CJS, TypeScript, TSX, Python, Rust, C and C/C++ headers/sources.
+- lexical/import-aware fallback where the stronger provider is unavailable.
+- deterministic no-CGO fallback is retained so Windows deployment is not made dependent on one parser runtime.
 
-- [x] Durable, deletable memories: local storage for important user/project facts, project scope by default, global scope for always/cross-project rules, direct natural remember/list/forget prompts, agent-context injection, and secret protection.
-- [x] Local SVG/icon/vector resources: concrete artifact generation through `create_svg_asset`, structured XML/safety validation, and file postconditions.
-- [x] Local/global rule chain and relevant skills: `AGENTS.override.md`/`AGENTS.md`, Codex-compatible global instructions, Cursor rules, README/STATE/fallback files, project and global skill directories, simple `alwaysApply`/`globs` relevance, `skill_list`/`skill_read`, and read-only skill text resources.
-- [x] Skill metadata safety: multiline frontmatter lists plus `permissions`/`tools`/`scripts`/`commands` metadata are detected; skills with non-read-only permissions or declared scripts are marked `approval-required` and not auto-embedded.
-- [x] Validated local raster/icon resources: create concrete PNG/JPG/JPEG/GIF/WebP/ICO/BMP files through `create_image_asset` from data URLs/Base64, check signatures and dimensions, and return backup-backed file postconditions.
-- [x] Local SVG/HTML/canvas rendering into PNG/JPEG/WebP/ICO: `render_asset` uses installed Edge/Chrome, renders with explicit dimensions, checks PNG dimensions, creates JPEG/ICO from the validated render image, and produces WebP directly through headless-browser screenshots with signature/dimension validation.
-- [x] Local raster conversion into PNG/JPEG/WebP/ICO: `convert_image_asset` decodes local PNG/JPG/JPEG/GIF and PNG-backed ICO sources, optionally scales, re-encodes, and validates the target file.
-- [x] Raster-image and media generators: `generate_image_asset` creates new PNG/JPG/JPEG/WebP/ICO files through a local AUTOMATIC1111/Forge-compatible loopback provider and validates the generated file before writing.
-- [x] Binary skill assets: `skill_copy_resource` imports skill resources as controlled project files without loading binary data into the model context.
-- [x] Skill scripts with separate approval: `skill_run_script` accepts only exactly declared skill `scripts`/`commands` entries, validates arguments and command blocklists, and runs with normal timeouts/process cancellation.
-- [x] More robust frontmatter lists: YAML lists, inline arrays, and comma-separated values with quoted commas are supported for skill/rule list fields.
-- [x] Skill/rule activation and conflict resolution: additional activation/trigger/keyword/when fields, exclusion globs, and deterministic duplicate-skill overrides with project-before-global and priority rules.
-- [ ] Full skills/rules parity: keep refining skill and rule permissions and add more ecosystem variants. Sources: Codex `AGENTS.md`/memories/skills/MCP/subagents, Cursor rules/skills, OpenCode skills/agents/permissions.
-- [x] Read-only subagent handoffs: `subagent_analyze(task)` creates separate exploration/test-log analysis from project info, tree, mentioned files, and search hits without write, shell, network, or MCP access.
-- [ ] Further subagent/plan/review parity: model-driven review subagents, separate analysis/implementation runs, result merging, and coordinated write phases without file conflicts.
-- [x] Pre/post tool hooks: `hook_before_tool` and `hook_after_tool` run around individual tool actions, use normal command boundaries, and are editable in Settings.
-- [x] Reusable slash/project commands: `.localcode/.codex/.opencode/.cursor/commands` and global commands are read read-only, `/name args` expands before new runs, and `command_list`/`command_read` are available to the agent.
-- [ ] Further hooks/automation parity: session hooks, scheduled checks, and reproducible record/replay flows with audit logs.
-- [ ] Language and project parity: keep expanding the general checkers, especially for non-JavaScript projects, documents, assets, build systems, framework-specific tests, and package managers.
-- [ ] Context performance: keep improving compression, separate factual working state from bulky tool output, progressively load skill/rule context, and protect local models from context overflow.
-- [ ] Browser/UI parity: validate visible web/app tasks with Playwright/browser smoke checks, screenshot/DOM checks, canvas-pixel checks, and responsive desktop/mobile checks when tools are available.
-- [ ] LSP/symbol tools: inspect projects through symbols, references, definitions, diagnostics, call hierarchies, and language-aware refactor support instead of only text search.
-- [ ] Integration parity: document and add GitHub, GitLab, Azure DevOps/Bitbucket, mail, calendar, Slack/Teams, Linear/Jira/Notion, and hosting workflows as optional explicitly configured MCP/app integrations; do not claim false offline parity.
-- [ ] Cloud/background-agent parity: remote or background runs, review bots, PR routing, and notifications only as optional integrations; keep local offline mode separate.
-- [x] Local phone Remote foundation: token-protected LAN Remote web app, loopback-only pairing code, hashed device tokens, project/task selection, live snapshots/SSE, stop, approvals, and file/camera attachments through the phone browser.
-- [ ] Native phone app and discovery parity: package the Remote UI in an Android shell, add QR/mDNS or equivalent local discovery, device management UI, notification flow, and firewall/onboarding diagnostics.
-- [ ] Media/document parity: DOCX/PPTX/XLSX/PDF creation and editing with structured parsers, render checks, and format validation instead of plain text manipulation.
-- [ ] Security/approval parity: protect destructive actions, system access, network, secrets, memory deletion, skill loading, MCP, external CLIs, and integrations with clear policies, logs, and boundaries.
-- [ ] Evaluation parity: fixed regression tasks, benchmark tasks, prompt/tool evals, and completion metrics that validate output quality, not only a green build.
+Important source files:
 
-## Verification boundary
+- `src/code_intelligence_*.go`
+- `src/repo_intelligence.go`
 
-The release environment can execute the complete source suite and race detector on Linux and can cross-compile Windows test and application binaries. It cannot execute `.bat` or PE files natively. `dist\REBUILD-NATIVE.txt` therefore forces a complete native Windows build before normal launch.
+### LSP
 
-<!-- LOCALCODE:STATE:BEGIN -->
-Managed runtime state is written here when this repository itself is selected in LocalCode.
-Verwalteter Laufzeitstatus wird hier geschrieben, wenn dieses Repository selbst in LocalCode ausgewählt ist.
-<!-- LOCALCODE:STATE:END -->
+LocalCode has native read-only LSP navigation and a persistent pool. Supported server candidates include Go, JS/TS, Python, Rust, C/C++, C#, Java and Kotlin when their language servers are available.
 
+Operations include:
 
-## Version 6.4.2 Windows-Testfixes
+- definition
+- references
+- hover
+- document/workspace symbols
+- implementation
+- call hierarchy preparation
+- incoming/outgoing calls
 
-- Native Buildtests are fully isolated without shadowing test-local path overrides.
-- Canonical and tolerant Windows file-URI handling for MCP resources.
-- Engine probes work before the LocalCode app-data directory exists.
-- 191 tests; statement coverage 80.038996 %.
+Persistent LSP sessions are keyed/reused with health/invalidation behavior rather than starting one process per every query.
 
-## Version 6.4.3 Windows-Testisolation / Windows test isolation
+### Parallel exploration
 
-- Engine-Setup-Tests deaktivieren den dedizierten Setup-Download-Schalter und können dadurch niemals eine reale Claude-Code-Installation auslösen.
-- Der Ordnerauswahldialog ist pro Serverinstanz injizierbar; HTTP-Tests öffnen unter Windows keine echte GUI mehr und prüfen Fehler-, Abbruch- und Erfolgsfall deterministisch.
-- Shell-Befehle in plattformübergreifenden Tests verwenden `echo` statt des unter PowerShell nicht vorhandenen `printf`.
-- 191 Testfunktionen; exakte Statement-Coverage: 6569/8206 = 80.051182 %.
+Independent repository reads can fan out with bounded parallelism while results are merged in stable input order. This path is read-only; it does not grant mutation/shell/network/MCP rights merely because work is parallelized.
+
+A true model-backed child-agent implementation was validated in old PR #14 but the old branch became too stale to merge safely. See Issue #23 below.
+
+### Verification / CI
+
+The permanent Quality workflow is `.github/workflows/quality.yml`.
+
+Required stages currently include:
+
+- Go version/setup
+- gofmt
+- `go vet ./...`
+- frontend JavaScript syntax, including inline scripts
+- native Android Remote APK build
+- `govulncheck`
+- full-stack loopback HTTP integration
+- complete Go tests
+- race detector
+- statement coverage gate >= 80.0%
+- native Windows builds
+- `git diff --check`
+
+Do not lower the 80% gate to make a feature pass. Add useful tests or reduce unnecessary untested complexity.
+
+The obsolete temporary coverage diagnostic workflow was removed in PR #21 and must not be restored.
+
+---
+
+## 3. Security invariants
+
+These are product requirements, not optional style preferences.
+
+### Repository/file boundary
+
+- Resolve paths canonically and require them to remain inside the allowed project/root boundary.
+- Destructive project-folder operations are limited to direct children of the configured project root.
+- Nested/outside paths must be rejected.
+- Symlinks must not be used to escape a root or to make a preview recursively inspect an external target.
+- A non-empty project folder must never be recursively deleted on a single ambiguous click.
+
+### Approvals
+
+- Mutating/destructive/external actions use approval rules.
+- File mutation approval should remain bound to the file version shown/approved.
+- Mobile Remote is intentionally narrower than Desktop.
+- Mobile Remote must not create a globally persistent approval rule. Mobile may approve once or persist for the current project only.
+- Publishing, external login, release-track changes and secret-bearing operations require explicit separate approval.
+
+### Secrets
+
+- Do not log or persist raw API keys, bearer tokens, passwords, keystore passwords, upload keys or other credentials.
+- Run-journal redaction must cover authorization/bearer, API-key variants, password/secret variants and generic `token=...` forms.
+- Mobile paired-device tokens are stored hashed, not in plaintext configuration.
+- Play Store automation must not manufacture/replace/rotate a keystore/upload key as a convenience shortcut.
+
+### Process control
+
+- Timeouts/cancel should terminate the owned process tree, not merely the immediate parent process.
+- External processes must not survive a cancelled run accidentally.
+
+### Remote network
+
+Existing design:
+
+- Desktop API remains loopback-only.
+- LAN Remote uses a separate server.
+- Non-loopback production Remote requires TLS.
+- Pairing is short-lived, numeric and attempt-limited.
+- Long-lived paired-device tokens are random and stored as SHA-256 hashes.
+- Mutation requests are protected against cross-origin/fetch-site abuse.
+- CSP/no-store/nosniff/X-Frame/referrer/permissions headers are set by Remote.
+- SSE uses a separately issued short-lived stream ticket rather than ordinary API query-token authentication.
+
+Current PR #24 further tightens Android/phone behavior; see Section 6.
+
+No engineer or AI should describe any non-trivial networked software as mathematically “100% safe”. The project objective is defense in depth with explicit, testable invariants and least privilege.
+
+---
+
+## 4. Project management – current behavior
+
+Before PR #24, `master` already supported safe folder-level actions in `src/project_catalog.go`:
+
+- `create_folder`
+- `rename_folder`
+- `delete_empty`
+- `delete_recursive`
+- alias rename
+- pin/unpin
+- hide/remove/restore
+
+Existing tests in `src/project_folder_actions_test.go` already checked unsafe Windows names, reference migration on rename, empty-only deletion, exact-name recursive confirmation, and rejection of nested/outside paths.
+
+### PR #24 additions
+
+`ProjectDeletePreview` now records:
+
+- project path/name
+- empty/non-empty
+- file count
+- directory count
+- symlink count
+- total bytes of regular files
+- whether confirmation is required
+- exact required confirmation text (project folder basename)
+
+`inspectProjectDelete(root, path)`:
+
+- first enforces the direct-project-folder boundary.
+- rejects missing/non-directory projects.
+- returns immediately for a truly empty folder.
+- uses `filepath.WalkDir` for a non-empty preview.
+- counts symlink entries without following their targets.
+
+New action `create_project`:
+
+- only allowed at the configured project root.
+- validates a Windows-safe direct folder name.
+- refuses existing targets.
+- creates the directory.
+- when project docs are enabled, initializes `README.md`, `AGENTS.md` and managed `STATE.md` state.
+- rolls back the newly created directory if initial handoff-document generation fails.
+
+Deletion semantics in PR #24:
+
+- `delete_empty` calls the server-side preview and succeeds only if actually empty.
+- `delete_recursive` refuses an empty folder (caller must use the safer empty mode).
+- non-empty recursive deletion requires case-insensitive exact project-folder-name confirmation.
+- project/chat/config references are cleaned and affected chat history is archived rather than discarded.
+
+Do not weaken this to a generic path + recursive flag API.
+
+---
+
+## 5. Project handoff documents
+
+`src/state_doc.go` owns LocalCode-managed project handoff behavior.
+
+When project docs are enabled:
+
+- `README.md` is created if missing.
+- `AGENTS.md` is created if missing.
+- `STATE.md` is managed through LocalCode state markers.
+
+Generated `AGENTS.md` tells coding agents to read README/STATE, inspect Git/tests first, preserve conventions, verify work, avoid secrets and request approval for destructive/external/publishing work.
+
+For newly created projects, PR #24 immediately writes an initial managed STATE entry so the project is not an undocumented empty folder.
+
+Repository-level `STATE.md` (this file) is deliberately different: it is the canonical continuation document for LocalCode itself.
+
+---
+
+## 6. Android / Phone Remote
+
+### Existing `master` behavior
+
+Files:
+
+- `src/remote_server.go`
+- `src/remote_secure_server.go`
+- `src/remote_stream_ticket.go`
+- `src/remote_device_lifecycle.go`
+- `src/static/remote.html`
+- `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java`
+
+Existing Remote supports:
+
+- pairing
+- project list
+- thread list/select/new
+- chat submission
+- attachments/camera through file input
+- snapshots
+- live SSE events
+- stop
+- approvals
+- status/model/engine display
+
+Native Android shell:
+
+- discovers `_localcode._tcp.` via Android NSD/mDNS.
+- consumes TLS fingerprint advertised by LocalCode.
+- understands `localcode://pair` deep links carrying target URL + fingerprint.
+- loads the Remote web UI in a WebView.
+
+### PR #24 mobile project API
+
+New files:
+
+- `src/remote_project_api.go`
+- `src/mobile_safe_remote_server.go`
+
+The actually started Remote server is switched in `src/main.go` from `startProductionRemoteServer` to `startMobileSafeProductionRemoteServer`.
+
+The hardened server registers authenticated:
+
+- `POST /remote/api/project-action`
+- `GET /remote/api/project-delete-preview?path=...`
+
+Remote project-action allowlist is intentionally only:
+
+- `create_project`
+- `delete_empty`
+- `delete_recursive`
+
+Desktop-only broader management actions are not implicitly exposed to the phone.
+
+The mobile-safe HTTP wrapper additionally rejects `decision=global` for `/remote/api/approve` before it can reach the normal approval handler.
+
+### PR #24 Android hardening
+
+`MainActivity.java` now:
+
+- installs `WebChromeClient` so the Remote UI can use explicit prompt/confirm dialogs.
+- still disables WebView file access and mixed content.
+- allows navigation only when candidate URL has exactly the same HTTPS host + effective port as the currently paired Remote origin.
+- no longer accepts every IPv6 address merely because it contains `:`.
+- accepts only addresses classified by `InetAddress` as loopback, link-local or site-local.
+- rejects userinfo-bearing URLs.
+- rejects discovered services without a private address, TLS marker and fingerprint.
+- retains exact SHA-256 certificate fingerprint comparison for the paired/discovered self-signed LocalCode certificate.
+
+A source-level regression test `src/android_remote_security_test.go` pins these invariants.
+
+### PR #24 Remote UI
+
+`src/static/remote.html` now has a Projects tab with:
+
+- New project
+- Delete project
+- Play Store build
+
+New project calls the authenticated server action and uses `create_project`, so scaffolding happens server-side.
+
+Delete project:
+
+1. gets server-side preview.
+2. if empty, asks for a simple final confirmation and calls `delete_empty`.
+3. if non-empty, shows content counts and requires typing the exact project name.
+4. sends that value to `delete_recursive`, where it is checked again server-side.
+
+The client confirmation is not the security boundary. The server-side check is mandatory.
+
+---
+
+## 7. Play Store / Android release-build path
+
+### User goal
+
+From the phone, a user should be able to select an Android project and trigger a complete local release-build task without having to type a long build instruction.
+
+### PR #24 implementation
+
+The Remote UI button **Play-Store-Build**:
+
+- requires a selected project.
+- asks the user to confirm starting the release task.
+- creates a fresh chat for that project so release context does not accidentally inherit another project/thread.
+- sends a fixed DE/EN LocalCode task instructing the native/selected coding engine to inspect:
+  - project structure
+  - Gradle/SDK
+  - applicationId/package
+  - versionCode/versionName
+  - manifest
+  - min/target SDK
+  - existing signing configuration
+- requires existing tests/lint where available.
+- requests `bundleRelease` (.aab) and `assembleRelease` (.apk) where the project supports them.
+- requires artifact path/size/SHA-256 reporting.
+- explicitly forbids automatic keystore/upload-key replacement, secret disclosure, Play Store upload, release-track change or publishing.
+
+This deliberately runs through the normal LocalCode agent, approval, process-control and verification path. The phone button is not a shell backdoor.
+
+### Deterministic helper
+
+New script: `scripts/build-playstore.ps1`
+
+Behavior:
+
+- uses an existing project `gradlew.bat`; no global Gradle installation.
+- enumerates Gradle tasks.
+- runs available `test` and `lint` unless skipped.
+- requires `bundleRelease` to exist for a Play Store build.
+- runs `bundleRelease` and, if present, `assembleRelease`.
+- locates release `.aab`/`.apk` below `build/outputs`.
+- ignores obvious debug/unaligned/unsigned artifacts when reporting final candidates.
+- requires at least one release AAB.
+- prints exact path, byte size and SHA-256 plus machine-readable JSON.
+- never creates/replaces a keystore, reads passwords for display, uploads to Google Play or publishes.
+
+`build-android.ps1` remains the CI/debug builder for the LocalCode Remote APK and uses an ephemeral debug key. It is not the Play Store signing path.
+
+---
+
+## 8. Open reliability/competitive work outside PR #24
+
+### PR #15 – crash-safe durable agent recovery
+
+Branch: `agent/durable-run-recovery`  
+Head currently documented: `628ba4544cd528e7fa78000b69318da33d001cdb`
+
+Feature:
+
+- persistent run journal in app data.
+- redacted operational metadata rather than a second full transcript.
+- atomic journal writes.
+- serialized journal state updates.
+- detects interrupted non-terminal runs.
+- continuation creates a recovery handoff requiring reconciliation of actual Git/filesystem/postconditions.
+- never blindly replays a previous mutation after crash.
+- generic `token=...` redaction gap was fixed.
+
+Quality run #240 completed successfully.
+
+Current merge blocker is repository-rule status freshness: GitHub reports required check `test` as expected after `master` moved, even though the old head Quality run is green. Do not bypass the rule. Update/merge current `master` into the branch (or otherwise produce a fresh PR head/merge state) and rerun Quality, then merge if green.
+
+### PR #16 – reproducible cross-engine benchmark harness
+
+Branch: `agent/engine-benchmark-harness`  
+Head currently documented: `df1d384d17df8534544f95d14cdd100a8a1e4de8`
+
+Feature:
+
+- `benchharness` package + `localcode-bench` CLI.
+- immutable base commit resolution.
+- fresh detached Git worktree per benchmark run.
+- direct argv execution rather than shell-string interpolation.
+- separate setup/engine/check timing and status.
+- hidden/required checks.
+- changed-file/line/unnecessary-diff metrics.
+- adapter metrics for turns/tool calls/tokens/retries/compactions/human intervention.
+- source repo remains untouched.
+- process-tree timeout cleanup.
+- manifest/path validation.
+
+Quality run #242 completed successfully after coverage was raised with real manifest-contract tests rather than lowering the gate.
+
+It has the same likely status-freshness/base-update issue as PR #15. Refresh against current master, rerun Quality, then merge if green.
+
+### Issue #22 – port session doom-loop guard
+
+Old PR #7 was intentionally closed because it was too stale and carried unwanted old workflow changes.
+
+Port only the useful behavior to current master:
+
+- reject no-op `write_file`/`replace_text` as no observable change.
+- session-wide structured action/result fingerprinting.
+- block repeated identical failed/no-progress actions.
+- detect short A/B or A/B/C style stagnation cycles.
+- reset stagnation on actual project mutation or successful verification/new evidence.
+- keep finish/ask_user out of the loop guard.
+
+Do not merge the old PR wholesale.
+
+### Issue #23 – port bounded read-only model subagents
+
+Old PR #14 was fully Quality-validated but became materially behind current master.
+
+Port only the feature delta:
+
+- separate model-backed child exploration context.
+- hard maximum child-step budget (validated design used 8).
+- child capabilities only list/read/search/LSP/finish.
+- no write/delete/move, shell, Git, MCP, web/network, installation, approval bypass or recursive child spawning.
+- deterministic repository-intelligence fallback.
+- visible `subagent:*` UI trace.
+- deterministic mandatory reliability preflight remains model-independent.
+
+Do not reintroduce stale agent code from the closed PR branch.
+
+---
+
+## 9. Remaining matrix gaps after the already integrated AST/LSP/reliability work
+
+Priority order after PR #24/#15/#16 is merged:
+
+1. **Model subagents / role separation** – port #23, then evolve toward Explorer/Planner/Reviewer with isolated curated context and no concurrent mutations.
+2. **Session doom-loop/no-op guard** – port #22.
+3. **Prompt/context caching efficiency** – stable prompt prefix ordering, deterministic context segment hashes, reduced churn, provider-native caching where supported; do not make unsupported Ollama cache claims.
+4. **Context economy** – benchmark against Aider repo-map/token efficiency and beat it with AST/import/LSP evidence per token.
+5. **Git workflow polish** – make common diff/undo/commit flows at least as convenient as Aider without weakening safety.
+6. **Provider breadth** – LocalCode native should not require Ollama forever; keep provider adapters isolated from agent safety logic.
+7. **Fuzzy/structural patch recovery** – improve edits when exact old text drifts, but never bypass SHA approval/precondition semantics.
+8. **UI polish/transparency** – Desktop and Android should expose plan, current phase, tool execution, verification and recoverability at OpenCode-level or better.
+9. **Benchmark evidence** – once #16 is merged, run the same repos/tasks/model/quantization/context limits against LocalCode Native, Aider and OpenCode. Publish raw manifests/results, not only a score.
+10. **Release engineering** – production Play Store signing remains user-controlled. A future release workflow can consume configured secrets securely, but should never auto-generate a replacement upload key for an existing Play app.
+
+---
+
+## 10. Current PR #24 file-level change map
+
+At the time this canonical state was written, PR #24 changes/adds at least:
+
+- `src/project_catalog.go`
+  - ProjectDeletePreview
+  - inspectProjectDelete
+  - create_project
+  - stricter delete mode separation
+- `src/project_folder_actions_test.go`
+  - project scaffold tests
+  - preview counts
+  - symlink non-follow test (skip if Windows runner lacks symlink privilege)
+  - empty recursive-delete rejection
+- `src/remote_project_api.go`
+  - authenticated narrow project management endpoints
+- `src/mobile_safe_remote_server.go`
+  - route registration
+  - mobile global-approval blocking wrapper
+  - secure HTTP/TLS startup using the mobile-safe handler
+- `src/main.go`
+  - production startup switched to `startMobileSafeProductionRemoteServer`
+- `src/static/remote.html`
+  - Projects tab
+  - create/delete flows
+  - Play Store quick action
+- `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java`
+  - same-origin navigation
+  - private-address classification
+  - WebChromeClient dialogs
+- `src/android_remote_security_test.go`
+  - source invariants for Android hardening
+- `src/mobile_project_remote_test.go`
+  - auth/allowlist/delete-confirmation/global-approval tests
+- `scripts/build-playstore.ps1`
+  - deterministic local Gradle release helper
+- `STATE.md`
+  - this canonical handoff
+
+Initial branch commits include:
+
+- `17688e48...` safe project creation/delete previews
+- `a3a5193f...` project scaffold/delete-preview tests
+- `766b7ecb...` remote project API
+- `875a9680...` Play Store build helper
+- `5f3e0144...` Android Remote hardening
+- `632f299f...` Android security regression test
+- `0d3e816b...` mobile project/Play Store UI
+- `41b75f77...` hardened remote server startup
+- `e3737613...` main startup switch
+- `1e6f5ba1...` mobile global-approval block
+- `47a0c11b...` Windows-safe remote project test serialization
+
+PR #24 Quality run #243 was queued/running when this state section was authored. The next AI must inspect the newest run rather than trusting this sentence.
+
+---
+
+## 11. PR #24 merge checklist
+
+Do not mark ready or merge until all are true:
+
+- [ ] gofmt green
+- [ ] go vet green
+- [ ] remote.html inline JavaScript syntax green
+- [ ] Android Remote APK compiles on Windows runner
+- [ ] govulncheck green
+- [ ] full-stack loopback integration green
+- [ ] all Go tests green
+- [ ] race detector green
+- [ ] statement coverage >=80.0%
+- [ ] native Windows builds green
+- [ ] git diff check green
+- [ ] project create/delete tests pass on Windows
+- [ ] Android security source test passes
+- [ ] no new route bypasses Remote token auth
+- [ ] mobile global approval remains blocked
+- [ ] Play Store button does not upload/publish/rotate signing keys
+- [ ] PR still merges cleanly with current master
+
+If `master` advances because #15/#16 are merged, compare/reconcile PR #24 and rerun Quality on the new merge state before merging.
+
+---
+
+## 12. Branch/repository hygiene
+
+Repository cleanup policy:
+
+- Merged feature branches should be deleted when tooling/access allows it.
+- Closed stale branches should not remain as the basis for new changes.
+- Current connector used by the AI does not expose a safe delete-ref operation; do not simulate branch deletion by force-moving refs.
+- Do not restore `.github/workflows/one-time-coverage-analysis.yml`; it was intentionally obsolete and deleted.
+- Keep `.github/workflows/quality.yml` and release workflow(s) unless a replacement is demonstrably better.
+
+Known branches that were previously classified as historical/merged/stale include old approval, atomic-edit, code-intelligence, LSP, Tree-sitter, parallel-read and security-hardening branches. Use current PR/branch listings before deleting anything manually.
+
+---
+
+## 13. Coding/release conventions
+
+- Windows is the primary target; WSL support is useful but must not make Windows startup dependent on WSL.
+- Go code must be gofmt-clean.
+- User-facing changes must keep DE/EN complete.
+- Use explicit, bounded timeouts and cancellation.
+- Prefer deterministic safety checks to prompt-only instructions.
+- No force-push/history rewrite unless the user explicitly requests it and risk is understood.
+- Do not commit generated release binaries, keystores, tokens or passwords.
+- Commit messages should be concise conventional descriptions, e.g. `feat: ...`, `fix: ...`, `test: ...`, `security: ...`, `docs: ...`.
+
+---
+
+## 14. Definition of done for the user’s current direction
+
+The user’s current direction is not merely “add a phone button”. The intended end state is:
+
+1. New projects can be created cleanly from Desktop or phone and immediately contain useful AI handoff docs.
+2. Empty project folders can be removed safely.
+3. Non-empty project folders require explicit, content-informed confirmation and an exact server-side confirmation value.
+4. Phone Remote has least-privilege project management, not a broad administrative shell.
+5. Android connectivity is pinned to the paired private LocalCode endpoint.
+6. Release builds can be initiated simply from phone while all dangerous signing/publishing operations remain separately controlled.
+7. STATE.md always tells a fresh AI exactly what is implemented, what is in flight, what is blocked, and what to do next.
+8. Crash recovery and reproducible cross-engine benchmarks are merged after fresh rule-compliant CI.
+9. Model subagents and doom-loop protection are ported from their validated old designs to current master.
+10. The comparison matrix is repeatedly updated from measured implementation reality until LocalCode leads every row.
+
+When this file is updated after future work, replace stale “current” facts instead of endlessly appending contradictory release notes.
