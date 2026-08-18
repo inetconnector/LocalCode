@@ -39,7 +39,7 @@ function Get-GradleTaskNames {
                 [void]$names.Add($matches[1])
             }
         }
-        return $names
+        return ,$names
     } finally {
         Pop-Location
     }
@@ -78,7 +78,7 @@ if (-not $taskNames.Contains('bundleRelease')) {
 
 Write-Host "Project: $project"
 Write-Host "Tasks: $($planned -join ', ')"
-Write-Host "Safety: this helper never creates/replaces keystores, never reads/signals passwords, and never uploads or publishes."
+Write-Host "Safety: this helper never creates/replaces keystores, never prints signing secrets, and never uploads or publishes."
 
 foreach ($task in $planned) {
     Invoke-GradleTask -Task $task
