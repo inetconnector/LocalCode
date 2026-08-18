@@ -3,9 +3,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
 	"errors"
-	"fmt"
+	"io"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,12 +17,18 @@ import (
 
 const lspPoolMaxEntries = 8
 
+type lspDocumentState struct {
+	Version int
+	Hash    [sha256.Size]byte
+}
+
 type lspPoolEntry struct {
-	mu       sync.Mutex
-	client   *lspClient
-	project  string
-	spec     lspServerSpec
-	lastUsed time.Time
+	mu        sync.Mutex
+	client    *lspClient
+	project   string
+	spec      lspServerSpec
+	documents map[string]lspDocumentState
+	lastUsed  time.Time
 }
 
 type lspClientPool struct {
@@ -38,8 +47,52 @@ func newLSPClientPool(maxEntries int) *lspClientPool {
 	return &lspClientPool{
 		entries:    make(map[string]*lspPoolEntry),
 		maxEntries: maxEntries,
-		start:      startLSPClient,
+		start:      startPersistentLSPClient,
 	}
+}
+
+// startPersistentLSPClient deliberately does not bind the language-server
+// process lifetime to a single query context. The context only bounds the LSP
+// initialize handshake; the pool owns the process lifetime and closes it on
+// eviction, transport failure, or application shutdown.
+func startPersistentLSPClient(ctx context.Context, project string, cfg Config, spec lspServerSpec) (*lspClient, error) {
+	cmd := exec.Command(spec.Executable, spec.Args...)
+	cmd.Dir = project
+	cmd.Env = commandEnvironment(cfg)
+	hideCommandWindow(cmd)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
+	go func() { _, _ = io.Copy(io.Discard, stderr) }()
+	client := &lspClient{
+		stdin:         stdin,
+		cmd:           cmd,
+		workspaceURI:  lspFileURI(project),
+		workspaceName: filepath.Base(project),
+		nextID:        1,
+		incoming:      make(chan lspReadResult, 16),
+	}
+	go client.readLoop(bufio.NewReader(stdout))
+	if err := client.initialize(ctx, spec); err != nil {
+		client.close()
+		return nil, err
+	}
+	return client, nil
 }
 
 func lspPoolKey(project string, spec lspServerSpec) string {
@@ -60,7 +113,12 @@ func (p *lspClientPool) entry(project string, spec lspServerSpec) *lspPoolEntry 
 		p.mu.Unlock()
 		return entry
 	}
-	entry := &lspPoolEntry{project: filepath.Clean(project), spec: spec, lastUsed: time.Now()}
+	entry := &lspPoolEntry{
+		project:   filepath.Clean(project),
+		spec:      spec,
+		documents: make(map[string]lspDocumentState),
+		lastUsed:  time.Now(),
+	}
 	p.entries[key] = entry
 	var evicted *lspPoolEntry
 	if len(p.entries) > p.maxEntries {
@@ -102,7 +160,7 @@ func (p *lspClientPool) evictIdleLocked(exceptKey string) *lspPoolEntry {
 	return selected
 }
 
-func (p *lspClientPool) withClient(ctx context.Context, project string, cfg Config, spec lspServerSpec, fn func(*lspClient) (string, error)) (string, error) {
+func (p *lspClientPool) withDocumentClient(ctx context.Context, project string, cfg Config, spec lspServerSpec, path, text string, fn func(*lspClient) (string, error)) (string, error) {
 	if p == nil || fn == nil {
 		return "", errors.New("LSP pool is not initialized")
 	}
@@ -117,10 +175,19 @@ func (p *lspClientPool) withClient(ctx context.Context, project string, cfg Conf
 				return "", err
 			}
 			entry.client = client
+			entry.documents = make(map[string]lspDocumentState)
 		}
-		entry.client.actionMu.Lock()
+		entry.client.diagnostics = nil
+		if err := entry.syncDocument(path, text); err != nil {
+			entry.client.close()
+			entry.client = nil
+			entry.documents = make(map[string]lspDocumentState)
+			if attempt == 0 && ctx.Err() == nil {
+				continue
+			}
+			return "", err
+		}
 		result, err := fn(entry.client)
-		entry.client.actionMu.Unlock()
 		if err == nil {
 			p.touch(entry)
 			return result, nil
@@ -130,11 +197,41 @@ func (p *lspClientPool) withClient(ctx context.Context, project string, cfg Conf
 		}
 		entry.client.close()
 		entry.client = nil
+		entry.documents = make(map[string]lspDocumentState)
 		if attempt == 1 {
 			return "", err
 		}
 	}
-	return "", fmt.Errorf("LSP request failed after restart")
+	return "", errors.New("LSP request failed after restart")
+}
+
+func (entry *lspPoolEntry) syncDocument(path, text string) error {
+	path = filepath.Clean(path)
+	hash := sha256.Sum256([]byte(text))
+	state, opened := entry.documents[path]
+	if !opened {
+		if err := entry.client.openDocument(path, entry.spec.LanguageID, text); err != nil {
+			return err
+		}
+		entry.documents[path] = lspDocumentState{Version: 1, Hash: hash}
+		return nil
+	}
+	if state.Hash == hash {
+		return nil
+	}
+	state.Version++
+	if err := entry.client.notify("textDocument/didChange", map[string]any{
+		"textDocument": map[string]any{
+			"uri":     lspFileURI(path),
+			"version": state.Version,
+		},
+		"contentChanges": []map[string]any{{"text": text}},
+	}); err != nil {
+		return err
+	}
+	state.Hash = hash
+	entry.documents[path] = state
+	return nil
 }
 
 func (p *lspClientPool) touch(entry *lspPoolEntry) {
@@ -150,8 +247,13 @@ func lspShouldRestart(err error, ctx context.Context) bool {
 	if err == nil || ctx == nil || ctx.Err() != nil {
 		return false
 	}
-	var responseErr *lspServerResponseError
-	if errors.As(err, &responseErr) {
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.HasPrefix(text, "unsupported lsp operation") {
+		return false
+	}
+	// JSON-RPC method/parameter errors are valid responses from a live server;
+	// restarting cannot repair them. Transport/process failures are retried once.
+	if strings.HasPrefix(text, "lsp ") && strings.Contains(text, " error ") {
 		return false
 	}
 	return true
@@ -177,6 +279,7 @@ func (p *lspClientPool) Close() {
 			entry.client.close()
 			entry.client = nil
 		}
+		entry.documents = make(map[string]lspDocumentState)
 		entry.mu.Unlock()
 	}
 }
