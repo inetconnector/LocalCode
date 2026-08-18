@@ -1,0 +1,39 @@
+name: Apply Durable Run Recovery Patch
+
+on:
+  push:
+    branches: [agent/durable-run-recovery]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-durable-run-recovery-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic integration patch
+        shell: pwsh
+        run: |
+          python scripts/apply-durable-run-recovery-patch.py
+          gofmt -w src/agent.go src/types.go src/run_journal.go src/run_journal_test.go
+          git diff --check
+      - name: Commit integrated recovery
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- src/agent.go src/types.go src/run_journal.go src/run_journal_test.go)) {
+            Write-Host 'durable run recovery integration already applied'
+            exit 0
+          }
+          git config user.name 'localcode-ci'
+          git config user.email 'localcode-ci@users.noreply.github.com'
+          git add -- src/agent.go src/types.go src/run_journal.go src/run_journal_test.go
+          git commit -m 'feat: integrate crash-safe run recovery'
+          git push origin HEAD:agent/durable-run-recovery
