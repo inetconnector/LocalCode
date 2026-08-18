@@ -18,6 +18,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -105,7 +106,7 @@ public final class MainActivity extends Activity {
                 expectedFingerprint = "";
                 openRemote(value);
             } else {
-                setStatus("Nur HTTPS-Adressen im lokalen Netzwerk werden akzeptiert.");
+                setStatus("Nur HTTPS-Adressen im lokalen, privaten Netzwerk werden akzeptiert.");
             }
         });
         discoveryPanel.addView(open, fullWidthWrap());
@@ -136,14 +137,11 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
+        webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                if ("https".equalsIgnoreCase(uri.getScheme())) {
-                    return false;
-                }
-                return true;
+                return !sameRemoteOrigin(request.getUrl());
             }
 
             @Override
@@ -163,6 +161,20 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private boolean sameRemoteOrigin(Uri candidate) {
+        if (candidate == null || currentRemoteUrl.isEmpty()) return false;
+        Uri expected = Uri.parse(currentRemoteUrl);
+        if (!"https".equalsIgnoreCase(candidate.getScheme()) || !"https".equalsIgnoreCase(expected.getScheme())) return false;
+        String candidateHost = candidate.getHost();
+        String expectedHost = expected.getHost();
+        if (candidateHost == null || expectedHost == null || !candidateHost.equalsIgnoreCase(expectedHost)) return false;
+        return effectiveHttpsPort(candidate) == effectiveHttpsPort(expected);
+    }
+
+    private static int effectiveHttpsPort(Uri uri) {
+        return uri.getPort() > 0 ? uri.getPort() : 443;
+    }
+
     private void requestDiscoveryPermissionAndStart() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY);
@@ -178,7 +190,7 @@ public final class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startDiscovery();
             } else {
-                setStatus("Lokale Netzwerkerkennung wurde nicht freigegeben. Eine HTTPS-Adresse kann weiterhin manuell geöffnet werden.");
+                setStatus("Lokale Netzwerkerkennung wurde nicht freigegeben. Eine private HTTPS-Adresse kann weiterhin manuell geöffnet werden.");
             }
         }
     }
@@ -217,8 +229,8 @@ public final class MainActivity extends Activity {
                 @Override public void onResolveFailed(NsdServiceInfo info, int errorCode) { setStatus("LocalCode gefunden, Auflösung fehlgeschlagen (" + errorCode + ")."); }
                 @Override public void onServiceResolved(NsdServiceInfo info) {
                     InetAddress host = info.getHost();
-                    if (host == null || info.getPort() <= 0) {
-                        setStatus("LocalCode-Dienst enthält keine verwendbare Adresse.");
+                    if (host == null || info.getPort() <= 0 || !isPrivateAddress(host)) {
+                        setStatus("LocalCode-Dienst enthält keine verwendbare private LAN-Adresse.");
                         return;
                     }
                     Map<String, byte[]> attrs = info.getAttributes();
@@ -273,19 +285,18 @@ public final class MainActivity extends Activity {
     private static boolean isAllowedRemoteUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value.trim());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) return false;
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
         if ("localhost".equalsIgnoreCase(host)) return true;
-        if (host.contains(":")) return true;
-        String[] parts = host.split("\\.");
-        if (parts.length != 4) return false;
         try {
-            int a = Integer.parseInt(parts[0]);
-            int b = Integer.parseInt(parts[1]);
-            return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || a == 127 || (a == 169 && b == 254);
-        } catch (NumberFormatException ex) {
+            return isPrivateAddress(InetAddress.getByName(host));
+        } catch (Exception ex) {
             return false;
         }
+    }
+
+    private static boolean isPrivateAddress(InetAddress address) {
+        return address != null && (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress());
     }
 
     private static String attribute(Map<String, byte[]> attrs, String key) {
