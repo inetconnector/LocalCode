@@ -219,20 +219,29 @@ func TestLocalCodeLSPPoolHelperProcess(t *testing.T) {
 	}
 }
 
-func TestLSPPoolKeyIncludesProjectExecutableAndArguments(t *testing.T) {
+func TestLSPPoolKeyIncludesProjectExecutableArgumentsAndEnvironment(t *testing.T) {
 	base := lspServerSpec{Tool: "gopls", Executable: `C:\\tools\\gopls.exe`, Args: []string{"serve"}, LanguageID: "go"}
-	key := lspPoolKey(`C:\\repo-a`, base)
-	if key == lspPoolKey(`C:\\repo-b`, base) {
+	cfg := defaultConfig()
+	if cfg.EnvironmentVars == nil {
+		cfg.EnvironmentVars = map[string]string{}
+	}
+	key := lspPoolKey(`C:\\repo-a`, cfg, base)
+	if key == lspPoolKey(`C:\\repo-b`, cfg, base) {
 		t.Fatal("project must participate in LSP pool key")
 	}
 	changedExecutable := base
 	changedExecutable.Executable = `C:\\other\\gopls.exe`
-	if key == lspPoolKey(`C:\\repo-a`, changedExecutable) {
+	if key == lspPoolKey(`C:\\repo-a`, cfg, changedExecutable) {
 		t.Fatal("executable must participate in LSP pool key")
 	}
 	changedArgs := base
 	changedArgs.Args = []string{"serve", "-rpc.trace"}
-	if key == lspPoolKey(`C:\\repo-a`, changedArgs) {
+	if key == lspPoolKey(`C:\\repo-a`, cfg, changedArgs) {
 		t.Fatal("arguments must participate in LSP pool key")
+	}
+	changedEnv := cfg
+	changedEnv.EnvironmentVars = map[string]string{"GOWORK": "off"}
+	if key == lspPoolKey(`C:\\repo-a`, changedEnv, base) {
+		t.Fatal("LocalCode environment must participate in LSP pool key")
 	}
 }
