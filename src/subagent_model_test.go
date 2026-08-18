@@ -31,6 +31,39 @@ func TestModelSubagentCapabilitySetRejectsMutations(t *testing.T) {
 	}
 }
 
+func TestMandatoryReliabilityPreflightDoesNotConsumeModelTurns(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package demo\n\nfunc Important() int { return 42 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "deterministic preflight must not call model", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	cfg.LastProject = root
+	ollama := &OllamaClient{BaseURL: server.URL, HTTP: server.Client(), ContextLength: 8192}
+	state := NewAppState(cfg, ollama)
+	t.Cleanup(state.Close)
+	state.mu.Lock()
+	state.Model = "fake-local-model"
+	state.mu.Unlock()
+
+	result, err := state.runReadOnlyModelSubagent(context.Background(), root, cfg, deterministicSubagentTaskPrefix+"inspect Important")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("mandatory reliability preflight consumed %d model calls", calls.Load())
+	}
+	if !strings.Contains(result, "READ-ONLY SUBAGENT HANDOFF") || !strings.Contains(result, "Important") {
+		t.Fatalf("deterministic preflight handoff missing expected evidence:\n%s", result)
+	}
+}
+
 func TestModelSubagentUsesBoundedReadOnlyToolLoop(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.go")
