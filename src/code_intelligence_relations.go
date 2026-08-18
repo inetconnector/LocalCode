@@ -12,7 +12,7 @@ import (
 type codeGraphRelationKind string
 
 const (
-	codeGraphRelationImport     codeGraphRelationKind = "imports"
+	codeGraphRelationImport    codeGraphRelationKind = "imports"
 	codeGraphRelationReference codeGraphRelationKind = "references"
 	codeGraphRelationCall      codeGraphRelationKind = "calls"
 	codeGraphRelationInherit   codeGraphRelationKind = "inherits"
