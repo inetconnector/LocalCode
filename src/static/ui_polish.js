@@ -24,7 +24,8 @@
       'Bestätigung stimmt nicht mit dem Ordnernamen überein.':'Bestätigung stimmt nicht mit dem Ordnernamen überein.',
       'Ordner wurde rekursiv gelöscht.':'Ordner wurde rekursiv gelöscht.',
       'Anzeigenamen bearbeiten':'Anzeigenamen bearbeiten',
-      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.'
+      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.',
+      'Claw Code (experimentell)':'Claw Code (experimentell)'
     });
     Object.assign(i18n.dictionaries.en, {
       'Neuer Ordner':'New folder',
@@ -46,7 +47,8 @@
       'Bestätigung stimmt nicht mit dem Ordnernamen überein.':'Confirmation does not match the folder name.',
       'Ordner wurde rekursiv gelöscht.':'Folder deleted recursively.',
       'Anzeigenamen bearbeiten':'Edit display name',
-      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Files and subfolders are permanently deleted. Local chat history is preserved in the archive.'
+      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Files and subfolders are permanently deleted. Local chat history is preserved in the archive.',
+      'Claw Code (experimentell)':'Claw Code (experimental)'
     });
   }
 
@@ -99,6 +101,38 @@
   function folderBase(path) {
     const parts = String(path || '').split(/[\\/]/).filter(Boolean);
     return parts[parts.length - 1] || '';
+  }
+
+  function installClawEngineUI() {
+    const select = document.querySelector('#setEditingEngine');
+    if (select && !select.querySelector('option[value="claw"]')) {
+      const option = document.createElement('option');
+      option.value = 'claw';
+      option.textContent = tr('Claw Code (experimentell)');
+      const native = select.querySelector('option[value="native"]');
+      select.insertBefore(option, native || null);
+    }
+    if (window.__localCodeClawEngineUIInstalled) return;
+    window.__localCodeClawEngineUIInstalled = true;
+    if (typeof window.selectedEngineName === 'function') {
+      const originalSelectedEngineName = window.selectedEngineName;
+      window.selectedEngineName = function() {
+        if (document.querySelector('#setEditingEngine')?.value === 'claw') return 'Claw Code';
+        return originalSelectedEngineName();
+      };
+    }
+    if (typeof window.updateEngineSettingsVisibility === 'function') {
+      const originalUpdateEngineSettingsVisibility = window.updateEngineSettingsVisibility;
+      window.updateEngineSettingsVisibility = function() {
+        originalUpdateEngineSettingsVisibility();
+        const engine = document.querySelector('#setEditingEngine')?.value || 'aider';
+        if (engine !== 'claw') return;
+        document.querySelector('#aiderEngineSettings')?.classList.add('hidden');
+        document.querySelector('#claudeEngineSettings')?.classList.add('hidden');
+        document.querySelector('#openCodeEngineSettings')?.classList.add('hidden');
+        document.querySelector('#engineLoginBtn')?.classList.add('hidden');
+      };
+    }
   }
 
   function installProjectHeaderAction() {
@@ -300,9 +334,14 @@
       button.title = tr('Neuer Ordner');
       button.setAttribute('aria-label', tr('Neuer Ordner'));
     }
+    const claw = document.querySelector('#setEditingEngine option[value="claw"]');
+    if (claw) claw.textContent = tr('Claw Code (experimentell)');
   }
 
+  installClawEngineUI();
+
   window.addEventListener('load', () => {
+    installClawEngineUI();
     installProjectHeaderAction();
     installFunctionOverrides();
     migrateRightPanelWidth();
