@@ -12,10 +12,10 @@ import (
 
 func TestClawOllamaHostRemovesOpenAIPath(t *testing.T) {
 	cases := map[string]string{
-		"":                                  "http://127.0.0.1:11434",
-		"http://127.0.0.1:11434/":          "http://127.0.0.1:11434",
-		"http://127.0.0.1:11434/v1":        "http://127.0.0.1:11434",
-		"https://local.example.test/v1/":    "https://local.example.test",
+		"":                               "http://127.0.0.1:11434",
+		"http://127.0.0.1:11434/":        "http://127.0.0.1:11434",
+		"http://127.0.0.1:11434/v1":      "http://127.0.0.1:11434",
+		"https://local.example.test/v1/": "https://local.example.test",
 	}
 	for input, want := range cases {
 		if got := clawOllamaHost(input); got != want {
