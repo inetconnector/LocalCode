@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -147,6 +148,34 @@ func clawCapturedStdout(raw string) string {
 		}
 	}
 	return value
+}
+
+type clawVersionReport struct {
+	GitSHA string `json:"git_sha"`
+}
+
+func parseClawVersionReport(raw string) (string, error) {
+	payload := clawCapturedStdout(raw)
+	var report clawVersionReport
+	if err := json.Unmarshal([]byte(payload), &report); err != nil {
+		return "", fmt.Errorf("parse Claw version JSON: %w", err)
+	}
+	gitSHA := strings.TrimSpace(report.GitSHA)
+	if gitSHA == "" {
+		return "", errors.New("Claw version JSON does not contain git_sha")
+	}
+	return gitSHA, nil
+}
+
+func clawExecutableVersion(ctx context.Context, executable string, cfg Config) (string, error) {
+	if executable == "" {
+		return "", errors.New("Claw executable not found")
+	}
+	output, code, err := runCapturedCommand(ctx, executable, []string{"version", "--output-format", "json"}, clawCommandEnvironment(cfg), "")
+	if err != nil || code != 0 {
+		return strings.TrimSpace(output), fmt.Errorf("Claw version command failed with exit code %d: %w", code, err)
+	}
+	return parseClawVersionReport(output)
 }
 
 func clawOfficialOrigin(raw string) bool {
