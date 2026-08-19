@@ -52,18 +52,43 @@ func clawVSDevCmdForCompiler(compiler string) string {
 	return ""
 }
 
-func buildClawWindowsCommandLine(path string, args []string) string {
-	quote := func(value string) string {
-		if value == "" || strings.ContainsAny(value, " \t&|<>^()\"") {
-			return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
-		}
-		return value
+func clawBatchQuotedPath(path string) (string, error) {
+	if strings.ContainsAny(path, "\x00\r\n\"") {
+		return "", errors.New("Windows build path contains unsupported command characters")
 	}
-	parts := []string{quote(path)}
-	for _, arg := range args {
-		parts = append(parts, quote(arg))
+	// Batch files expand percent-delimited environment variables even inside
+	// quotes. Doubling percent signs keeps an unusual but valid path literal.
+	return `"` + strings.ReplaceAll(path, "%", "%%") + `"`, nil
+}
+
+func writeClawCargoBuildScript(rustRoot, devCmd, cargoPath string) (string, error) {
+	quotedDevCmd, err := clawBatchQuotedPath(devCmd)
+	if err != nil {
+		return "", err
 	}
-	return strings.Join(parts, " ")
+	quotedCargo, err := clawBatchQuotedPath(cargoPath)
+	if err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp(rustRoot, ".localcode-claw-build-*.cmd")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	content := "@echo off\r\n" +
+		"call " + quotedDevCmd + " -arch=x64 -host_arch=x64 >nul\r\n" +
+		"if errorlevel 1 exit /b %errorlevel%\r\n" +
+		quotedCargo + " build --workspace --release\r\n"
+	if _, err := file.WriteString(content); err != nil {
+		file.Close()
+		os.Remove(path)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 func runClawCargoBuild(ctx context.Context, cargoPath, rustRoot string, cfg Config) (string, int, error) {
@@ -75,10 +100,15 @@ func runClawCargoBuild(ctx context.Context, cargoPath, rustRoot string, cfg Conf
 	if devCmd == "" {
 		return "", -1, errors.New("VsDevCmd.bat was not found for the Visual C++ toolchain")
 	}
-	devSetup := buildClawWindowsCommandLine(devCmd, []string{"-arch=x64", "-host_arch=x64"})
-	cargoBuild := buildClawWindowsCommandLine(cargoPath, []string{"build", "--workspace", "--release"})
-	command := "call " + devSetup + " >nul && " + cargoBuild
-	return runCapturedCommand(ctx, "cmd.exe", []string{"/d", "/s", "/c", command}, commandEnvironment(cfg), rustRoot)
+	script, err := writeClawCargoBuildScript(rustRoot, devCmd, cargoPath)
+	if err != nil {
+		return "", -1, err
+	}
+	defer os.Remove(script)
+	// Execute a relative temporary batch-file name. This deliberately avoids
+	// passing a nested quoted command through Go's Windows argv quoting and
+	// cmd.exe /S /C, which can turn quotes into literal backslash-quote pairs.
+	return runCapturedCommand(ctx, "cmd.exe", []string{"/d", "/s", "/c", filepath.Base(script)}, commandEnvironment(cfg), rustRoot)
 }
 
 func verifyMicrosoftAuthenticode(ctx context.Context, path string, cfg Config) (string, error) {
