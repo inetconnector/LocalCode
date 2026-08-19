@@ -28,16 +28,16 @@ func TestClawCommandEnvironmentForcesLocalOllama(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.OllamaURL = "http://127.0.0.1:11434/v1"
 	cfg.EnvironmentVars = map[string]string{
-		"OPENAI_BASE_URL":       "https://example.invalid/v1",
-		"OPENAI_API_KEY":        "secret-openai",
-		"ANTHROPIC_API_KEY":     "secret-anthropic",
-		"ANTHROPIC_AUTH_TOKEN":  "secret-token",
-		"XAI_BASE_URL":          "https://api.x.ai/v1",
-		"XAI_API_KEY":           "secret-xai",
-		"DASHSCOPE_BASE_URL":    "https://dashscope.invalid/v1",
-		"DASHSCOPE_API_KEY":     "secret-dashscope",
-		"CLAUDE_CODE_PROVIDER":  "azure",
-		"KEEP_ME":               "yes",
+		"OPENAI_BASE_URL":      "https://example.invalid/v1",
+		"OPENAI_API_KEY":       "secret-openai",
+		"ANTHROPIC_API_KEY":    "secret-anthropic",
+		"ANTHROPIC_AUTH_TOKEN": "secret-token",
+		"XAI_BASE_URL":         "https://api.x.ai/v1",
+		"XAI_API_KEY":          "secret-xai",
+		"DASHSCOPE_BASE_URL":   "https://dashscope.invalid/v1",
+		"DASHSCOPE_API_KEY":    "secret-dashscope",
+		"CLAUDE_CODE_PROVIDER": "azure",
+		"KEEP_ME":              "yes",
 	}
 	env := clawCommandEnvironment(cfg)
 	joined := "\n" + strings.Join(env, "\n") + "\n"
