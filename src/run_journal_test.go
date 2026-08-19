@@ -98,3 +98,77 @@ func TestRunJournalAtomicRewriteLeavesNoTempFiles(t *testing.T) {
 		t.Fatalf("journal temp files leaked: %#v", matches)
 	}
 }
+
+func TestJournalRunTaskPersistsRedactedTask(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	project := t.TempDir()
+	initial := RunRecoveryState{
+		RunID:     "task-update",
+		Project:   project,
+		Task:      "old task",
+		Phase:     "starting",
+		StartedAt: time.Now(),
+	}
+	if err := writeRunJournal(initial); err != nil {
+		t.Fatal(err)
+	}
+
+	state := &AppState{}
+	state.journalRunTask("task-update", "repair login token=should-not-persist")
+
+	journal, err := loadRunJournal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal == nil || !strings.Contains(journal.Task, "[REDACTED]") {
+		t.Fatalf("updated task was not persisted with redaction: %#v", journal)
+	}
+	if strings.Contains(journal.Task, "should-not-persist") {
+		t.Fatalf("updated journal task leaked secret: %q", journal.Task)
+	}
+}
+
+func TestConsumeRecoveryContextIsSingleUse(t *testing.T) {
+	project := t.TempDir()
+	state := &AppState{Recovery: &RunRecoveryState{
+		RunID:     "single-use",
+		Project:   project,
+		Task:      "repair parser",
+		Phase:     "executing:read_file",
+		StartedAt: time.Now().Add(-time.Minute),
+	}}
+
+	contextText, originalTask := state.consumeRecoveryContextForTask(project, "Weiter")
+	if contextText == "" || originalTask != "repair parser" {
+		t.Fatalf("expected consumable recovery handoff, context=%q task=%q", contextText, originalTask)
+	}
+	if !strings.Contains(contextText, "Do NOT replay a mutating action") {
+		t.Fatalf("recovery handoff lost no-replay rule: %s", contextText)
+	}
+	contextText, originalTask = state.consumeRecoveryContextForTask(project, "Weiter")
+	if contextText != "" || originalTask != "" {
+		t.Fatalf("recovery handoff must be single-use, context=%q task=%q", contextText, originalTask)
+	}
+}
+
+func TestRecoveryStartupEventSurfacesInterruptedRun(t *testing.T) {
+	cfg := defaultConfig()
+	if event := recoveryStartupEvent(cfg, nil); event.Type != "" {
+		t.Fatalf("nil recovery produced startup event: %#v", event)
+	}
+
+	recovery := &RunRecoveryState{
+		RunID:     "startup-run",
+		Project:   t.TempDir(),
+		Task:      "repair parser",
+		Phase:     "verifying",
+		StartedAt: time.Now().Add(-time.Minute),
+	}
+	event := recoveryStartupEvent(cfg, recovery)
+	if event.Type != "recovery_available" {
+		t.Fatalf("unexpected startup event type: %#v", event)
+	}
+	if !strings.Contains(event.Detail, "verifying") || !strings.Contains(event.Detail, "repair parser") {
+		t.Fatalf("startup recovery detail lacks checkpoint identity: %q", event.Detail)
+	}
+}

@@ -18,6 +18,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -44,6 +45,7 @@ public final class MainActivity extends Activity {
     private LinearLayout discoveryPanel;
     private TextView status;
     private EditText manualUrl;
+    private EditText manualFingerprint;
     private String expectedFingerprint = "";
     private String currentRemoteUrl = "";
     private boolean discovering;
@@ -97,21 +99,27 @@ public final class MainActivity extends Activity {
         manualUrl.setHint("https://192.168.1.10:32146/remote");
         discoveryPanel.addView(manualUrl, fullWidthWrap());
 
+        manualFingerprint = new EditText(this);
+        manualFingerprint.setSingleLine(true);
+        manualFingerprint.setHint("TLS SHA-256 Fingerprint vom LocalCode-PC");
+        discoveryPanel.addView(manualFingerprint, fullWidthWrap());
+
         Button open = new Button(this);
-        open.setText("Adresse öffnen");
+        open.setText("Adresse sicher öffnen");
         open.setOnClickListener(v -> {
             String value = manualUrl.getText().toString().trim();
-            if (isAllowedRemoteUrl(value)) {
-                expectedFingerprint = "";
+            String fp = normalizeFingerprint(manualFingerprint.getText().toString());
+            if (isAllowedRemoteUrl(value) && validFingerprint(fp)) {
+                expectedFingerprint = fp;
                 openRemote(value);
             } else {
-                setStatus("Nur HTTPS-Adressen im lokalen Netzwerk werden akzeptiert.");
+                setStatus("Manuell sind nur private HTTPS-IP-Adressen plus der 64-stellige TLS-SHA-256-Fingerprint vom LocalCode-PC erlaubt.");
             }
         });
         discoveryPanel.addView(open, fullWidthWrap());
 
         TextView qrHint = new TextView(this);
-        qrHint.setText("QR: Ein localcode://pair-Link öffnet diese App direkt. Die TLS-Fingerprint-Angabe wird dabei angeheftet.");
+        qrHint.setText("Am einfachsten: QR-/Pair-Link verwenden. URL und TLS-Fingerprint werden dann automatisch und zusammen übernommen.");
         qrHint.setPadding(0, dp(12), 0, 0);
         discoveryPanel.addView(qrHint, fullWidthWrap());
 
@@ -136,20 +144,17 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
+        webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                if ("https".equalsIgnoreCase(uri.getScheme())) {
-                    return false;
-                }
-                return true;
+                return !sameRemoteOrigin(request.getUrl());
             }
 
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 String observed = fingerprint(error.getCertificate());
-                if (!expectedFingerprint.isEmpty() && expectedFingerprint.equalsIgnoreCase(observed)) {
+                if (validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) {
                     handler.proceed();
                 } else {
                     handler.cancel();
@@ -161,6 +166,20 @@ public final class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    private boolean sameRemoteOrigin(Uri candidate) {
+        if (candidate == null || currentRemoteUrl.isEmpty()) return false;
+        Uri expected = Uri.parse(currentRemoteUrl);
+        if (!"https".equalsIgnoreCase(candidate.getScheme()) || !"https".equalsIgnoreCase(expected.getScheme())) return false;
+        String candidateHost = candidate.getHost();
+        String expectedHost = expected.getHost();
+        if (candidateHost == null || expectedHost == null || !candidateHost.equalsIgnoreCase(expectedHost)) return false;
+        return effectiveHttpsPort(candidate) == effectiveHttpsPort(expected);
+    }
+
+    private static int effectiveHttpsPort(Uri uri) {
+        return uri.getPort() > 0 ? uri.getPort() : 443;
     }
 
     private void requestDiscoveryPermissionAndStart() {
@@ -178,7 +197,7 @@ public final class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startDiscovery();
             } else {
-                setStatus("Lokale Netzwerkerkennung wurde nicht freigegeben. Eine HTTPS-Adresse kann weiterhin manuell geöffnet werden.");
+                setStatus("Lokale Netzwerkerkennung wurde nicht freigegeben. Alternativ private HTTPS-IP und TLS-Fingerprint vom LocalCode-PC manuell eingeben.");
             }
         }
     }
@@ -217,16 +236,16 @@ public final class MainActivity extends Activity {
                 @Override public void onResolveFailed(NsdServiceInfo info, int errorCode) { setStatus("LocalCode gefunden, Auflösung fehlgeschlagen (" + errorCode + ")."); }
                 @Override public void onServiceResolved(NsdServiceInfo info) {
                     InetAddress host = info.getHost();
-                    if (host == null || info.getPort() <= 0) {
-                        setStatus("LocalCode-Dienst enthält keine verwendbare Adresse.");
+                    if (host == null || info.getPort() <= 0 || !isPrivateAddress(host)) {
+                        setStatus("LocalCode-Dienst enthält keine verwendbare private LAN-Adresse.");
                         return;
                     }
                     Map<String, byte[]> attrs = info.getAttributes();
                     String tls = attribute(attrs, "tls");
                     String fp = normalizeFingerprint(attribute(attrs, "fp"));
                     String path = attribute(attrs, "path");
-                    if (!"1".equals(tls) || fp.isEmpty()) {
-                        setStatus("Unsicherer LocalCode-Dienst verworfen: TLS/Fingerprint fehlt.");
+                    if (!"1".equals(tls) || !validFingerprint(fp)) {
+                        setStatus("Unsicherer LocalCode-Dienst verworfen: gültiger TLS-Fingerprint fehlt.");
                         return;
                     }
                     if (path.isEmpty()) path = "/remote";
@@ -249,7 +268,7 @@ public final class MainActivity extends Activity {
         if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
-        if (target != null && isAllowedRemoteUrl(target) && !fp.isEmpty()) {
+        if (target != null && isAllowedRemoteUrl(target) && validFingerprint(fp)) {
             expectedFingerprint = fp;
             openRemote(target);
         } else {
@@ -258,8 +277,8 @@ public final class MainActivity extends Activity {
     }
 
     private void openRemote(String target) {
-        if (!isAllowedRemoteUrl(target)) {
-            setStatus("Unsichere Remote-Adresse verworfen.");
+        if (!isAllowedRemoteUrl(target) || !validFingerprint(expectedFingerprint)) {
+            setStatus("Unsichere Remote-Adresse oder ungültiger TLS-Fingerprint verworfen.");
             return;
         }
         currentRemoteUrl = target;
@@ -273,19 +292,38 @@ public final class MainActivity extends Activity {
     private static boolean isAllowedRemoteUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value.trim());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) return false;
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
         if ("localhost".equalsIgnoreCase(host)) return true;
-        if (host.contains(":")) return true;
-        String[] parts = host.split("\\.");
-        if (parts.length != 4) return false;
+        if (!isLiteralIPv4(host) && !host.contains(":")) return false;
         try {
-            int a = Integer.parseInt(parts[0]);
-            int b = Integer.parseInt(parts[1]);
-            return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || a == 127 || (a == 169 && b == 254);
-        } catch (NumberFormatException ex) {
+            return isPrivateAddress(InetAddress.getByName(host));
+        } catch (Exception ex) {
             return false;
         }
+    }
+
+    private static boolean isLiteralIPv4(String host) {
+        if (host == null) return false;
+        String[] parts = host.split("\\.", -1);
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) return false;
+            for (int i = 0; i < part.length(); i++) {
+                if (!Character.isDigit(part.charAt(i))) return false;
+            }
+            try {
+                int value = Integer.parseInt(part);
+                if (value < 0 || value > 255) return false;
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isPrivateAddress(InetAddress address) {
+        return address != null && (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress());
     }
 
     private static String attribute(Map<String, byte[]> attrs, String key) {
@@ -311,6 +349,10 @@ public final class MainActivity extends Activity {
 
     private static String normalizeFingerprint(String value) {
         return value == null ? "" : value.replace(":", "").replace(" ", "").trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static boolean validFingerprint(String value) {
+        return value != null && value.matches("[0-9A-F]{64}");
     }
 
     private static String printable(String value) {

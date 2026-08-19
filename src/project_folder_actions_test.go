@@ -92,6 +92,88 @@ func TestProjectActionCreateAndRenameFolderUpdatesReferences(t *testing.T) {
 	}
 }
 
+func TestProjectActionCreateProjectPreparesHandoffDocs(t *testing.T) {
+	state, root := newFolderActionTestState(t)
+	state.Config.CreateProjectDocs = true
+	state.Config.AutoStateUpdate = true
+	state.Config.StateFile = "STATE.md"
+
+	created, err := state.ProjectAction(root, "create_project", "ReadyProject")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Path != filepath.Join(root, "ReadyProject") {
+		t.Fatalf("unexpected project path: %q", created.Path)
+	}
+	for _, name := range []string{"README.md", "AGENTS.md", "STATE.md"} {
+		path := filepath.Join(created.Path, name)
+		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("handoff document %s missing: %v", name, err)
+		}
+	}
+	stateBytes, err := os.ReadFile(filepath.Join(created.Path, "STATE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(stateBytes)
+	if !strings.Contains(text, stateBegin) || !strings.Contains(text, stateEnd) {
+		t.Fatalf("STATE.md managed section missing:\n%s", text)
+	}
+	if !strings.Contains(text, "Projekt sicher angelegt") && !strings.Contains(text, "Project created safely") {
+		t.Fatalf("STATE.md project creation handoff missing:\n%s", text)
+	}
+}
+
+func TestInspectProjectDeleteReportsContents(t *testing.T) {
+	state, root := newFolderActionTestState(t)
+	_ = state
+	project := filepath.Join(root, "PreviewProject")
+	if err := os.MkdirAll(filepath.Join(project, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "one.txt"), []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "nested", "two.txt"), []byte("1234567"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := inspectProjectDelete(root, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Empty || !preview.ConfirmationRequired || preview.Confirmation != "PreviewProject" {
+		t.Fatalf("unexpected preview flags: %#v", preview)
+	}
+	if preview.Files != 2 || preview.Directories != 1 || preview.Bytes != 12 {
+		t.Fatalf("unexpected preview counters: %#v", preview)
+	}
+}
+
+func TestInspectProjectDeleteDoesNotFollowSymlinkTargets(t *testing.T) {
+	_, root := newFolderActionTestState(t)
+	project := filepath.Join(root, "SymlinkProject")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("outside-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(project, "outside-link")); err != nil {
+		t.Skipf("symlink creation unavailable on this runner: %v", err)
+	}
+	preview, err := inspectProjectDelete(root, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Symlinks != 1 || preview.Files != 0 || preview.Bytes != 0 {
+		t.Fatalf("delete preview followed or miscounted symlink target: %#v", preview)
+	}
+}
+
 func TestProjectActionDeleteEmptyRequiresEmptyFolder(t *testing.T) {
 	state, root := newFolderActionTestState(t)
 	nonEmpty := filepath.Join(root, "NonEmpty")
@@ -151,6 +233,20 @@ func TestProjectActionRecursiveDeleteRequiresExactFolderConfirmation(t *testing.
 	}
 	if thread := state.Threads["thread-1"]; thread == nil || !thread.Archived {
 		t.Fatalf("chat history should be preserved and archived: %#v", thread)
+	}
+}
+
+func TestProjectActionRecursiveDeleteRejectsEmptyFolder(t *testing.T) {
+	state, root := newFolderActionTestState(t)
+	empty := filepath.Join(root, "EmptyRecursive")
+	if err := os.Mkdir(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.ProjectAction(empty, "delete_recursive", "EmptyRecursive"); err == nil || !strings.Contains(err.Error(), "use delete_empty") {
+		t.Fatalf("expected empty recursive-delete rejection, got %v", err)
+	}
+	if _, err := os.Stat(empty); err != nil {
+		t.Fatalf("empty folder should remain after wrong deletion mode: %v", err)
 	}
 }
 
