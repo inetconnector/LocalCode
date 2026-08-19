@@ -52,6 +52,20 @@ func clawVSDevCmdForCompiler(compiler string) string {
 	return ""
 }
 
+func buildClawWindowsCommandLine(path string, args []string) string {
+	quote := func(value string) string {
+		if value == "" || strings.ContainsAny(value, " \t&|<>^()\"") {
+			return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+		}
+		return value
+	}
+	parts := []string{quote(path)}
+	for _, arg := range args {
+		parts = append(parts, quote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
 func runClawCargoBuild(ctx context.Context, cargoPath, rustRoot string, cfg Config) (string, int, error) {
 	compiler := findClawVCToolchain()
 	if compiler == "" {
@@ -61,8 +75,8 @@ func runClawCargoBuild(ctx context.Context, cargoPath, rustRoot string, cfg Conf
 	if devCmd == "" {
 		return "", -1, errors.New("VsDevCmd.bat was not found for the Visual C++ toolchain")
 	}
-	devSetup := buildWindowsCommandLine(devCmd, []string{"-arch=x64", "-host_arch=x64"})
-	cargoBuild := buildWindowsCommandLine(cargoPath, []string{"build", "--workspace", "--release"})
+	devSetup := buildClawWindowsCommandLine(devCmd, []string{"-arch=x64", "-host_arch=x64"})
+	cargoBuild := buildClawWindowsCommandLine(cargoPath, []string{"build", "--workspace", "--release"})
 	command := "call " + devSetup + " >nul && " + cargoBuild
 	return runCapturedCommand(ctx, "cmd.exe", []string{"/d", "/s", "/c", command}, commandEnvironment(cfg), rustRoot)
 }
