@@ -18,6 +18,17 @@ func TestParseClawVersionReportUsesGitSHA(t *testing.T) {
 	}
 }
 
+func TestParseClawVersionReportIgnoresCapturedStderr(t *testing.T) {
+	raw := "STDOUT:\r\n{\"git_sha\":\"" + clawPinnedCommit + "\"}\r\nSTDERR:\r\nwarning: diagnostic only\r\n"
+	got, err := parseClawVersionReport(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != clawPinnedCommit {
+		t.Fatalf("parsed Claw git SHA = %q; want %q", got, clawPinnedCommit)
+	}
+}
+
 func TestParseClawVersionReportFailsClosedWithoutGitSHA(t *testing.T) {
 	for _, raw := range []string{
 		`{"git_sha_short":"08106b0"}`,
