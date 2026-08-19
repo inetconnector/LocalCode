@@ -4,14 +4,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -378,6 +376,3 @@ func installOpenCode(ctx context.Context, project string, cfg Config) (CodingEng
 	}
 	return status, cfg, strings.Join(details, "\n\n"), nil
 }
-
-func installCodingEngine(ctx context.Context, project, engine string, cfg Config) (CodingEngineStatus, Config, string, error) {
-	engine = normalize
