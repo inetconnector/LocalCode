@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"log"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -273,6 +275,7 @@ type AppState struct {
 	RunPhase       string
 	RunStartedAt   time.Time
 	LastProgressAt time.Time
+	Recovery       *RunRecoveryState
 
 	Events           []UIEvent
 	Pending          *PendingAction
@@ -304,11 +307,13 @@ type RemotePairingState struct {
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 	threads := loadThreads()
+	recovery := loadRecoverableRun()
 	state := &AppState{
 		Config:         cfg,
 		Ollama:         ollama,
 		Project:        cfg.LastProject,
 		Model:          cfg.LastModel,
+		Recovery:       recovery,
 		Threads:        threads,
 		subscribers:    make(map[chan UIEvent]struct{}),
 		threadSaveCh:   make(chan map[string]*ChatThread, 1),
@@ -330,6 +335,17 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 				state.Model = latest.Model
 			}
 		}
+	}
+	if recovery != nil {
+		if thread := threads[recovery.ThreadID]; thread != nil && !thread.Archived && strings.EqualFold(filepath.Clean(thread.Project), filepath.Clean(recovery.Project)) {
+			state.CurrentThread = thread.ID
+			state.Project = thread.Project
+			state.Events = append([]UIEvent(nil), thread.Events...)
+			if thread.Model != "" {
+				state.Model = thread.Model
+			}
+		}
+		state.AddEvent(recoveryStartupEvent(cfg, recovery))
 	}
 	return state
 }
@@ -374,8 +390,15 @@ func (s *AppState) AddEvent(ev UIEvent) {
 	for ch := range s.subscribers {
 		subs = append(subs, ch)
 	}
+	journalRunID := ""
+	if s.Running {
+		journalRunID = s.RunID
+	}
 	s.mu.Unlock()
 	s.queueThreadSave(threadSnapshot)
+	if journalRunID != "" {
+		s.journalRunEvent(journalRunID, ev)
+	}
 
 	for _, ch := range subs {
 		select {
