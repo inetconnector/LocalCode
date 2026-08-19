@@ -20,6 +20,7 @@ const (
 	editingEngineAider    = "aider"
 	editingEngineClaude   = "claude"
 	editingEngineOpenCode = "opencode"
+	editingEngineClaw     = "claw"
 	editingEngineNative   = "native"
 )
 
@@ -37,9 +38,7 @@ type CodingEngineStatus struct {
 	Error            string `json:"error,omitempty"`
 }
 
-type CodingEngineNotInstalledError struct {
-	Status CodingEngineStatus
-}
+type CodingEngineNotInstalledError struct{ Status CodingEngineStatus }
 
 func (e *CodingEngineNotInstalledError) Error() string {
 	if strings.TrimSpace(e.Status.Error) != "" {
@@ -60,9 +59,10 @@ type CodingEngineRunResult struct {
 }
 
 func normalizeEditingEngine(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative:
-		return strings.ToLower(strings.TrimSpace(value))
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineClaw, editingEngineNative:
+		return value
 	default:
 		return editingEngineAider
 	}
@@ -83,6 +83,8 @@ func codingEngineDisplayName(engine string) string {
 		return "Claude Code"
 	case editingEngineOpenCode:
 		return "OpenCode"
+	case editingEngineClaw:
+		return "Claw Code"
 	case editingEngineNative:
 		return "LocalCode nativ"
 	default:
@@ -96,7 +98,7 @@ func codingEngineEnabled(cfg Config, engine string) bool {
 		return cfg.ClaudeCodeEnabled
 	case editingEngineOpenCode:
 		return cfg.OpenCodeEnabled
-	case editingEngineNative:
+	case editingEngineClaw, editingEngineNative:
 		return true
 	default:
 		return cfg.AiderEnabled
@@ -109,6 +111,8 @@ func codingEngineAutoInstall(cfg Config, engine string) bool {
 		return cfg.ClaudeCodeAutoInstall
 	case editingEngineOpenCode:
 		return cfg.OpenCodeAutoInstall
+	case editingEngineClaw:
+		return cfg.SetupDownloadsEnabled
 	case editingEngineNative:
 		return false
 	default:
@@ -123,8 +127,7 @@ func executableCandidate(path string) string {
 	}
 	info, err := os.Stat(path)
 	if err == nil && !info.IsDir() {
-		abs, absErr := filepath.Abs(path)
-		if absErr == nil {
+		if abs, absErr := filepath.Abs(path); absErr == nil {
 			return filepath.Clean(abs)
 		}
 		return filepath.Clean(path)
@@ -151,13 +154,8 @@ func firstExecutable(candidates ...string) string {
 	return ""
 }
 
-func claudeToolRoot() string {
-	return filepath.Join(appDataDir(), "tools", "claude-code")
-}
-
-func openCodeToolRoot() string {
-	return filepath.Join(appDataDir(), "tools", "opencode")
-}
+func claudeToolRoot() string   { return filepath.Join(appDataDir(), "tools", "claude-code") }
+func openCodeToolRoot() string { return filepath.Join(appDataDir(), "tools", "opencode") }
 
 func findClaudeCodeExecutable(cfg Config) string {
 	if configured := strings.TrimSpace(cfg.ClaudeCodeExecutable); configured != "" {
@@ -171,13 +169,7 @@ func findClaudeCodeExecutable(cfg Config) string {
 	profile := userProfileDir()
 	localApp := os.Getenv("LOCALAPPDATA")
 	appData := os.Getenv("APPDATA")
-	return firstExecutable(
-		pathCandidate,
-		filepath.Join(profile, ".local", "bin", name),
-		filepath.Join(claudeToolRoot(), name),
-		filepath.Join(localApp, "Programs", "Claude Code", name),
-		filepath.Join(appData, "npm", "claude.cmd"),
-	)
+	return firstExecutable(pathCandidate, filepath.Join(profile, ".local", "bin", name), filepath.Join(claudeToolRoot(), name), filepath.Join(localApp, "Programs", "Claude Code", name), filepath.Join(appData, "npm", "claude.cmd"))
 }
 
 func openCodeExecutableNames() []string {
@@ -196,11 +188,7 @@ func findOpenCodeExecutable(cfg Config) string {
 		if found, err := exec.LookPath(name); err == nil {
 			candidates = append(candidates, found)
 		}
-		candidates = append(candidates,
-			filepath.Join(openCodeToolRoot(), name),
-			filepath.Join(openCodeToolRoot(), "bin", name),
-			filepath.Join(os.Getenv("APPDATA"), "npm", name),
-		)
+		candidates = append(candidates, filepath.Join(openCodeToolRoot(), name), filepath.Join(openCodeToolRoot(), "bin", name), filepath.Join(os.Getenv("APPDATA"), "npm", name))
 	}
 	return firstExecutable(candidates...)
 }
@@ -222,10 +210,7 @@ func claudeAuthenticationStatus(ctx context.Context, executable string, cfg Conf
 	}
 	output, code, err := runCapturedCommand(ctx, executable, []string{"auth", "status", "--text"}, commandEnvironment(cfg), "")
 	text := strings.TrimSpace(output)
-	if err == nil && code == 0 {
-		return true, text
-	}
-	return false, text
+	return err == nil && code == 0, text
 }
 
 func openCodeAuthenticationStatus(ctx context.Context, executable string, cfg Config) (bool, string) {
@@ -247,11 +232,7 @@ func selectedCodingEngineStatus(ctx context.Context, cfg Config) CodingEngineSta
 
 func codingEngineStatus(ctx context.Context, cfg Config, engine string) CodingEngineStatus {
 	engine = normalizeEditingEngine(engine)
-	status := CodingEngineStatus{
-		Engine:      engine,
-		DisplayName: codingEngineDisplayName(engine),
-		Enabled:     codingEngineEnabled(cfg, engine),
-	}
+	status := CodingEngineStatus{Engine: engine, DisplayName: codingEngineDisplayName(engine), Enabled: codingEngineEnabled(cfg, engine)}
 	if engine == editingEngineNative {
 		status.Installed = true
 		status.Authenticated = true
@@ -274,14 +255,19 @@ func codingEngineStatus(ctx context.Context, cfg Config, engine string) CodingEn
 		status.Error = aider.Error
 		return status
 	}
-	if engine == editingEngineClaude {
+	switch engine {
+	case editingEngineClaude:
 		status.Executable = findClaudeCodeExecutable(cfg)
 		status.InstallationRoot = claudeToolRoot()
 		status.ExpectedVersion = strings.TrimSpace(cfg.ClaudeCodeChannel)
-	} else {
+	case editingEngineOpenCode:
 		status.Executable = findOpenCodeExecutable(cfg)
 		status.InstallationRoot = openCodeToolRoot()
 		status.ExpectedVersion = strings.TrimSpace(cfg.OpenCodeVersion)
+	case editingEngineClaw:
+		status.Executable = findClawExecutable()
+		status.InstallationRoot = clawToolRoot()
+		status.ExpectedVersion = clawPinnedCommit
 	}
 	if status.Executable == "" {
 		status.Error = status.DisplayName + " executable not found"
@@ -296,13 +282,17 @@ func codingEngineStatus(ctx context.Context, cfg Config, engine string) CodingEn
 	}
 	status.Version = foundVersion
 	status.Installed = true
+	if engine == editingEngineClaw {
+		status.Authenticated = true
+		status.Authentication = "Local Ollama via process-scoped OLLAMA_HOST"
+		return status
+	}
 	authCtx, authCancel := context.WithTimeout(ctx, 20*time.Second)
 	if engine == editingEngineClaude {
 		status.Authenticated, status.Authentication = claudeAuthenticationStatus(authCtx, status.Executable, cfg)
 	} else {
 		status.Authenticated, status.Authentication = openCodeAuthenticationStatus(authCtx, status.Executable, cfg)
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.OpenCodeModel)), "ollama/") || strings.TrimSpace(cfg.OpenCodeModel) == "" {
-			// Local Ollama providers do not require provider credentials.
 			status.Authenticated = true
 		}
 	}
@@ -332,8 +322,6 @@ func installClaudeCode(ctx context.Context, cfg Config) (CodingEngineStatus, str
 	if channel == "" {
 		channel = "stable"
 	}
-	// Anthropic's native Windows installer is user-local and accepts the
-	// release channel (stable/latest) or an exact version as its argument.
 	script := claudeInstallPowerShell(channel)
 	output, code, err := runCapturedCommand(ctx, "powershell.exe", []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script}, commandEnvironment(cfg), appDataDir())
 	if err != nil {
@@ -416,6 +404,8 @@ func installCodingEngine(ctx context.Context, project, engine string, cfg Config
 		return status, normalizeConfig(cfg), output, err
 	case editingEngineOpenCode:
 		return installOpenCode(ctx, project, cfg)
+	case editingEngineClaw:
+		return installClawCode(ctx, project, cfg)
 	case editingEngineNative:
 		return codingEngineStatus(ctx, cfg, engine), cfg, "embedded engine", nil
 	default:
@@ -442,6 +432,8 @@ func selectedEngineModel(cfg Config, fallback string) string {
 			return "ollama/" + fallback
 		}
 		return ""
+	case editingEngineClaw:
+		return clawSelectedModel(cfg, fallback)
 	default:
 		if strings.TrimSpace(cfg.AiderMainModel) != "" {
 			return strings.TrimSpace(cfg.AiderMainModel)
@@ -462,7 +454,6 @@ func buildClaudeCodeArgs(task, model, mode, threadID string, cfg Config) []strin
 	if maxTurns < 1 {
 		maxTurns = 24
 	}
-	prompt := task
 	args := []string{"-p", "--output-format", "text", "--permission-mode", permission, "--max-turns", strconv.Itoa(maxTurns), "--no-chrome", "--append-system-prompt", "Work only inside the current project. Do not create commits or push unless explicitly requested. Summarize changed files and verification results."}
 	if strings.TrimSpace(model) != "" {
 		args = append(args, "--model", model)
@@ -470,8 +461,7 @@ func buildClaudeCodeArgs(task, model, mode, threadID string, cfg Config) []strin
 	if strings.TrimSpace(threadID) != "" {
 		args = append(args, "--name", "localcode-"+safeThreadFileName(threadID))
 	}
-	args = append(args, prompt)
-	return args
+	return append(args, task)
 }
 
 func buildOpenCodeArgs(task, model, mode string, cfg Config) []string {
@@ -490,8 +480,7 @@ func buildOpenCodeArgs(task, model, mode string, cfg Config) []string {
 	if cfg.OpenCodeAutoApprove && mode != "repo-map" {
 		args = append(args, "--auto")
 	}
-	args = append(args, task)
-	return args
+	return append(args, task)
 }
 
 func engineTaskForMode(project, task, mode string, cfg Config) string {
@@ -542,23 +531,7 @@ func openCodeCommandEnvironment(cfg Config, model string) []string {
 	if modelID == "" {
 		return env
 	}
-	// OpenCode requires an explicit custom-provider entry for a local Ollama
-	// endpoint. OPENCODE_CONFIG_CONTENT is an official per-process config
-	// source, so this does not overwrite the user's global/project config.
-	content := map[string]any{
-		"provider": map[string]any{
-			"ollama": map[string]any{
-				"npm":  "@ai-sdk/openai-compatible",
-				"name": "Ollama (local)",
-				"options": map[string]any{
-					"baseURL": ollamaOpenAIBaseURL(cfg.OllamaURL),
-				},
-				"models": map[string]any{
-					modelID: map[string]any{"name": modelID},
-				},
-			},
-		},
-	}
+	content := map[string]any{"provider": map[string]any{"ollama": map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "Ollama (local)", "options": map[string]any{"baseURL": ollamaOpenAIBaseURL(cfg.OllamaURL)}, "models": map[string]any{modelID: map[string]any{"name": modelID}}}}}
 	if data, err := json.Marshal(content); err == nil {
 		env = append(env, "OPENCODE_CONFIG_CONTENT="+string(data))
 	}
@@ -588,9 +561,12 @@ func runCodingEngine(ctx context.Context, project, task, model, threadID, mode s
 	actualTask := engineTaskForMode(project, task, mode, cfg)
 	actualModel := selectedEngineModel(cfg, model)
 	var args []string
-	if engine == editingEngineClaude {
+	switch engine {
+	case editingEngineClaude:
 		args = buildClaudeCodeArgs(actualTask, actualModel, mode, threadID, cfg)
-	} else {
+	case editingEngineClaw:
+		args = buildClawArgs(actualTask, actualModel, mode)
+	default:
 		args = buildOpenCodeArgs(actualTask, actualModel, mode, cfg)
 	}
 	before := snapshotProjectFingerprints(project)
@@ -605,6 +581,8 @@ func runCodingEngine(ctx context.Context, project, task, model, threadID, mode s
 	env := commandEnvironment(cfg)
 	if engine == editingEngineOpenCode {
 		env = openCodeCommandEnvironment(cfg, actualModel)
+	} else if engine == editingEngineClaw {
+		env = clawCommandEnvironment(cfg)
 	}
 	started := time.Now()
 	output, exitCode, runErr := runCapturedCommand(ctx, status.Executable, args, env, project)
@@ -625,11 +603,7 @@ func runCodingEngine(ctx context.Context, project, task, model, threadID, mode s
 func formatCodingEngineResult(result CodingEngineRunResult, cfg Config) string {
 	name := codingEngineDisplayName(result.Engine)
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s: %s\n%s: %s\n%s: %d\n%s: %s\n",
-		localizeConfigText(cfg, "Engine", "Engine"), name,
-		localizeConfigText(cfg, "Programmdatei", "Executable"), result.Executable,
-		localizeConfigText(cfg, "Exitcode", "Exit code"), result.ExitCode,
-		localizeConfigText(cfg, "Dauer", "Duration"), result.Duration.Round(time.Millisecond))
+	fmt.Fprintf(&out, "%s: %s\n%s: %s\n%s: %d\n%s: %s\n", localizeConfigText(cfg, "Engine", "Engine"), name, localizeConfigText(cfg, "Programmdatei", "Executable"), result.Executable, localizeConfigText(cfg, "Exitcode", "Exit code"), result.ExitCode, localizeConfigText(cfg, "Dauer", "Duration"), result.Duration.Round(time.Millisecond))
 	if result.BackupDir != "" {
 		fmt.Fprintf(&out, "%s: %s\n", localizeConfigText(cfg, "Backup", "Backup"), result.BackupDir)
 	}
@@ -714,9 +688,7 @@ func (s *AppState) offerInstallCodingEngine(ctx context.Context, project string,
 		return cfg, status.Error, false, &CodingEngineNotInstalledError{Status: status}
 	}
 	action := AgentAction{Action: "install_engine", Message: localizeConfigText(cfg, status.DisplayName+" installieren", "Install "+status.DisplayName), Task: engine}
-	preview := localizeConfigText(cfg,
-		"LocalCode installiert "+status.DisplayName+" benutzerlokal mit dem offiziellen Installationsweg und verifiziert Programmdatei und Version. Zugangsdaten werden nicht automatisiert erzeugt.",
-		"LocalCode installs "+status.DisplayName+" for the current user through the official installation method and verifies the executable and version. Credentials are not generated automatically.")
+	preview := localizeConfigText(cfg, "LocalCode installiert "+status.DisplayName+" benutzerlokal mit einem gepinnten beziehungsweise offiziellen Installationsweg und verifiziert Programmdatei und Version. Zugangsdaten werden nicht automatisiert erzeugt.", "LocalCode installs "+status.DisplayName+" for the current user through a pinned or official installation method and verifies the executable and version. Credentials are not generated automatically.")
 	approved, err := s.requestApprovalWithPreview(ctx, project, action, preview)
 	if err != nil {
 		return cfg, "", false, err
