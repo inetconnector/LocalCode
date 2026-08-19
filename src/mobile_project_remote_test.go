@@ -156,10 +156,10 @@ func TestMobileEditingEngineSelectionIsAuthenticatedBoundedAndIdleOnly(t *testin
 	if selectClaw.Code != http.StatusOK {
 		t.Fatalf("Claw selection = %d body=%s", selectClaw.Code, selectClaw.Body.String())
 	}
-	state.mu.RLock()
+	state.mu.Lock()
 	selected := state.Config.EditingEngine
 	state.Running = true
-	state.mu.RUnlock()
+	state.mu.Unlock()
 	if selected != editingEngineClaw {
 		t.Fatalf("mobile selected engine = %q; want %q", selected, editingEngineClaw)
 	}
@@ -168,10 +168,10 @@ func TestMobileEditingEngineSelectionIsAuthenticatedBoundedAndIdleOnly(t *testin
 	if whileRunning.Code != http.StatusConflict {
 		t.Fatalf("engine change while running = %d body=%s", whileRunning.Code, whileRunning.Body.String())
 	}
-	state.mu.RLock()
+	state.mu.Lock()
 	stillSelected := state.Config.EditingEngine
 	state.Running = false
-	state.mu.RUnlock()
+	state.mu.Unlock()
 	if stillSelected != editingEngineClaw {
 		t.Fatalf("running engine change mutated config to %q", stillSelected)
 	}
