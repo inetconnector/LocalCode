@@ -37,9 +37,9 @@ func (s *Server) handleCodingEngineStatus(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	selected := requestedCodingEngine(r, cfg, "")
-	statuses := make([]CodingEngineStatus, 0, 4)
+	statuses := make([]CodingEngineStatus, 0, 5)
 	selectedStatus := CodingEngineStatus{}
-	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative} {
+	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineClaw, editingEngineNative} {
 		status := codingEngineStatus(ctx, cfg, engine)
 		statuses = append(statuses, status)
 		if engine == selected {
@@ -107,7 +107,7 @@ func (s *Server) handleCodingEngineSetup(w http.ResponseWriter, r *http.Request)
 		_ = writeJSON(w, map[string]any{"ok": true, "status": status, "detail": detail, "settings": updated})
 	case "login":
 		status := codingEngineStatus(ctx, cfg, engine)
-		if engine == editingEngineAider || engine == editingEngineNative {
+		if engine == editingEngineAider || engine == editingEngineClaw || engine == editingEngineNative {
 			_ = writeJSON(w, map[string]any{"ok": true, "status": status, "detail": status.DisplayName + " requires no separate CLI login from LocalCode."})
 			return
 		}
