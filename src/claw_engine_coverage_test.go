@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,5 +91,54 @@ func TestInstallClawCodeRespectsSetupDownloadPolicy(t *testing.T) {
 	}
 	if status.Engine != editingEngineClaw {
 		t.Fatalf("status engine = %q; want %q", status.Engine, editingEngineClaw)
+	}
+}
+
+func isolateClawExecutableSearch(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("LOCALAPPDATA", root)
+	t.Setenv("APPDATA", root)
+	t.Setenv("USERPROFILE", root)
+	t.Setenv("PATH", "")
+}
+
+func TestSelectedEngineModelRoutesClawToLocalOllamaName(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.EditingEngine = editingEngineClaw
+	cfg.OllamaDefaultModel = "qwen2.5-coder:7b"
+	if got := selectedEngineModel(cfg, "qwen2.5-coder:14b"); got != "qwen2.5-coder:14b" {
+		t.Fatalf("selected Claw model = %q", got)
+	}
+	if got := selectedEngineModel(cfg, ""); got != "qwen2.5-coder:7b" {
+		t.Fatalf("default Claw model = %q", got)
+	}
+}
+
+func TestInstallCodingEngineDispatchesClawWithoutBypassingDownloadPolicy(t *testing.T) {
+	isolateClawExecutableSearch(t)
+	cfg := defaultConfig()
+	cfg.SetupDownloadsEnabled = false
+	status, returned, output, err := installCodingEngine(context.Background(), t.TempDir(), editingEngineClaw, cfg)
+	if err == nil || !strings.Contains(err.Error(), "downloads for automatic setup are disabled") {
+		t.Fatalf("expected Claw installer policy error, got %v", err)
+	}
+	if status.Engine != editingEngineClaw || returned.SetupDownloadsEnabled || output != "" {
+		t.Fatalf("unexpected Claw install dispatch result: status=%#v downloads=%v output=%q", status, returned.SetupDownloadsEnabled, output)
+	}
+}
+
+func TestRunCodingEngineReturnsTypedNotInstalledForClaw(t *testing.T) {
+	isolateClawExecutableSearch(t)
+	cfg := defaultConfig()
+	cfg.EditingEngine = editingEngineClaw
+	project := t.TempDir()
+	_, err := runCodingEngine(context.Background(), project, "inspect", "qwen2.5-coder:14b", "", "repo-map", cfg)
+	var missing *CodingEngineNotInstalledError
+	if !errors.As(err, &missing) {
+		t.Fatalf("expected CodingEngineNotInstalledError, got %T: %v", err, err)
+	}
+	if missing.Status.Engine != editingEngineClaw {
+		t.Fatalf("missing-engine status = %#v", missing.Status)
 	}
 }
