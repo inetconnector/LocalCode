@@ -121,18 +121,18 @@ func ensureClawBuildDependency(ctx context.Context, project, name string, cfg Co
 	if info.Available {
 		return cfg, info.Path, nil
 	}
-	if name == "git" {
-		updated, output, err := installKnownTool(ctx, project, name, cfg)
-		if err != nil {
-			return cfg, output, err
-		}
-		info = discoverTool(project, name, updated, true)
-		if !info.Available {
-			return updated, output, errors.New("git is unavailable after managed installation")
-		}
-		return updated, info.Path, nil
+	if !toolInstallSupported(name) {
+		return cfg, "", fmt.Errorf("%s is required to build Claw Code and has no managed installer", name)
 	}
-	return cfg, "", fmt.Errorf("%s is required to build Claw Code; install the Rust stable toolchain first", name)
+	updated, output, err := installKnownTool(ctx, project, name, cfg)
+	if err != nil {
+		return cfg, output, err
+	}
+	info = discoverTool(project, name, updated, true)
+	if !info.Available {
+		return updated, output, fmt.Errorf("%s is unavailable after managed installation", name)
+	}
+	return updated, info.Path, nil
 }
 
 func preparePinnedClawSource(ctx context.Context, gitPath string, cfg Config) (string, string, error) {
@@ -191,10 +191,11 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 		return codingEngineStatus(ctx, updated, editingEngineClaw), updated, gitPath, err
 	}
 	cfg = updated
-	_, cargoPath, err := ensureClawBuildDependency(ctx, project, "cargo", cfg)
+	updated, cargoPath, err := ensureClawBuildDependency(ctx, project, "cargo", cfg)
 	if err != nil {
-		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, "", err
+		return codingEngineStatus(ctx, updated, editingEngineClaw), updated, "", err
 	}
+	cfg = updated
 	sourceRoot, sourceDetail, err := preparePinnedClawSource(ctx, gitPath, cfg)
 	if err != nil {
 		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, sourceDetail, err
