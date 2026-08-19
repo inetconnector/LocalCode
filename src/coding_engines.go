@@ -272,7 +272,13 @@ func codingEngineStatus(ctx context.Context, cfg Config, engine string) CodingEn
 		return status
 	}
 	versionCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	foundVersion, err := engineExecutableVersion(versionCtx, status.Executable, cfg)
+	var foundVersion string
+	var err error
+	if engine == editingEngineClaw {
+		foundVersion, err = clawExecutableVersion(versionCtx, status.Executable, cfg)
+	} else {
+		foundVersion, err = engineExecutableVersion(versionCtx, status.Executable, cfg)
+	}
 	cancel()
 	if err != nil {
 		status.Error = err.Error()
