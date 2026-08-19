@@ -69,10 +69,10 @@ func TestClawBenchmarkEnvironmentForcesLocalOllamaAndStripsCloudCredentials(t *t
 
 func TestNormalizeClawBenchmarkOllamaHost(t *testing.T) {
 	cases := map[string]string{
-		"":                                defaultClawBenchmarkOllamaHost,
-		"http://127.0.0.1:11434/":         "http://127.0.0.1:11434",
-		"http://127.0.0.1:11434/v1":       "http://127.0.0.1:11434",
-		"http://127.0.0.1:11434/v1/":      "http://127.0.0.1:11434",
+		"":                                 defaultClawBenchmarkOllamaHost,
+		"http://127.0.0.1:11434/":          "http://127.0.0.1:11434",
+		"http://127.0.0.1:11434/v1":        "http://127.0.0.1:11434",
+		"http://127.0.0.1:11434/v1/":       "http://127.0.0.1:11434",
 		"http://localhost:11434/custom/v1": "http://localhost:11434/custom",
 	}
 	for input, want := range cases {
