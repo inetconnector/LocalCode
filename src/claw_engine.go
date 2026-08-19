@@ -207,12 +207,19 @@ func preparePinnedClawSource(ctx context.Context, gitPath string, cfg Config) (s
 }
 
 func installClawCode(ctx context.Context, project string, cfg Config) (CodingEngineStatus, Config, string, error) {
-	if !cfg.SetupDownloadsEnabled {
-		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, "", errors.New("downloads for automatic setup are disabled")
-	}
 	if existing := findClawExecutable(); existing != "" {
 		status := codingEngineStatus(ctx, cfg, editingEngineClaw)
+		if !status.Installed {
+			detail := "Existing Claw Code executable could not be verified: " + existing
+			if strings.TrimSpace(status.Error) != "" {
+				detail += "\n" + status.Error
+			}
+			return status, cfg, detail, errors.New("existing Claw Code installation could not be verified; fix or remove it before managed installation")
+		}
 		return status, cfg, "Existing Claw Code installation detected and verified: " + existing, nil
+	}
+	if !cfg.SetupDownloadsEnabled {
+		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, "", errors.New("downloads for automatic setup are disabled")
 	}
 	updated, gitPath, err := ensureClawBuildDependency(ctx, project, "git", cfg)
 	if err != nil {
