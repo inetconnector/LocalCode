@@ -69,7 +69,7 @@ func ensureClawMSVCToolchain(ctx context.Context, cfg Config) (string, string, e
 	hideCommandWindow(cmd)
 	cmd.Env = commandEnvironment(cfg)
 	output, runErr := cmd.CombinedOutput()
-	detail := strings.TrimSpace("Authenticode: "+verified+"\n$ vs_buildtools.exe "+strings.Join(args, " ")+"\n"+string(output))
+	detail := strings.TrimSpace("Authenticode: " + verified + "\n$ vs_buildtools.exe " + strings.Join(args, " ") + "\n" + string(output))
 	if runErr != nil {
 		return "", truncateText(detail, 120000), runErr
 	}
