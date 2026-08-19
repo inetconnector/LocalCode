@@ -27,6 +27,7 @@ func TestAndroidRemoteLocksNavigationToPinnedPrivateOrigin(t *testing.T) {
 		"value.matches(\"[0-9A-F]{64}\")",
 		"isLiteralIPv4(host)",
 		"manualFingerprint",
+		"expectedFingerprint = fp;",
 		"MIXED_CONTENT_NEVER_ALLOW",
 		"setAllowFileAccess(false)",
 	} {
@@ -40,7 +41,17 @@ func TestAndroidRemoteLocksNavigationToPinnedPrivateOrigin(t *testing.T) {
 	if strings.Contains(text, `if ("https".equalsIgnoreCase(uri.getScheme()))`) {
 		t.Fatal("Android Remote must not allow arbitrary HTTPS navigation")
 	}
-	if strings.Contains(text, `expectedFingerprint = ""`) {
+
+	manualStart := strings.Index(text, "open.setOnClickListener")
+	manualEnd := strings.Index(text, "discoveryPanel.addView(open")
+	if manualStart < 0 || manualEnd <= manualStart {
+		t.Fatal("manual Android Remote handler could not be isolated")
+	}
+	manualHandler := text[manualStart:manualEnd]
+	if strings.Contains(manualHandler, `expectedFingerprint = ""`) {
 		t.Fatal("manual Android Remote must not clear certificate pinning")
+	}
+	if !strings.Contains(manualHandler, "validFingerprint(fp)") || !strings.Contains(manualHandler, "expectedFingerprint = fp;") {
+		t.Fatal("manual Android Remote must require and retain the operator-provided TLS fingerprint")
 	}
 }
