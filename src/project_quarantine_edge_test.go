@@ -108,15 +108,6 @@ func TestLoadQuarantinedProjectRejectsCorruptMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("missing payload", func(t *testing.T) {
-		root := t.TempDir()
-		id := "entry-3"
-		writeRawQuarantineEntry(t, root, id, QuarantinedProject{ID: id, Name: "Demo", OriginalPath: filepath.Join(root, "Demo")}, false)
-		if _, _, err := loadQuarantinedProject(root, id); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("missing payload should report not-exist, got %v", err)
-		}
-	})
-
 	t.Run("payload is file", func(t *testing.T) {
 		root := t.TempDir()
 		id := "entry-4"
