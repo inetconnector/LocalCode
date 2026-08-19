@@ -184,7 +184,7 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 	}
 	if existing := findClawExecutable(); existing != "" {
 		status := codingEngineStatus(ctx, cfg, editingEngineClaw)
-		return status, cfg, "Existing Claw Code installation detected and verified: " + existing, nil
+		return status, cfg, "Existing Claw Code installation detected and verified: "+existing, nil
 	}
 	updated, gitPath, err := ensureClawBuildDependency(ctx, project, "git", cfg)
 	if err != nil {
@@ -234,5 +234,5 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 	if !status.Installed {
 		return status, cfg, detail, errors.New("Claw installation could not be verified")
 	}
-	return status, cfg, strings.TrimSpace(detail + "\nVerified pinned Claw revision: " + clawPinnedCommit), nil
+	return status, cfg, strings.TrimSpace(detail+"\nVerified pinned Claw revision: "+clawPinnedCommit), nil
 }
