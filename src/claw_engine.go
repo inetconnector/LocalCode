@@ -196,14 +196,18 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 		return codingEngineStatus(ctx, updated, editingEngineClaw), updated, "", err
 	}
 	cfg = updated
+	_, msvcDetail, err := ensureClawMSVCToolchain(ctx, cfg)
+	if err != nil {
+		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, msvcDetail, err
+	}
 	sourceRoot, sourceDetail, err := preparePinnedClawSource(ctx, gitPath, cfg)
 	if err != nil {
-		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, sourceDetail, err
+		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, strings.TrimSpace(msvcDetail+"\n"+sourceDetail), err
 	}
 	rustRoot := filepath.Join(sourceRoot, "rust")
 	args := []string{"build", "--workspace", "--release"}
 	output, code, runErr := runCapturedCommand(ctx, cargoPath, args, commandEnvironment(cfg), rustRoot)
-	detail := strings.TrimSpace(sourceDetail + "\n" + output)
+	detail := strings.TrimSpace(msvcDetail + "\n" + sourceDetail + "\n" + output)
 	if runErr != nil || code != 0 {
 		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, detail, fmt.Errorf("Claw release build failed with exit code %d: %w", code, runErr)
 	}
