@@ -37,14 +37,13 @@ func (s *Server) handleCodingEngineStatus(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	selected := requestedCodingEngine(r, cfg, "")
-	statuses := make([]CodingEngineStatus, 0, 5)
-	selectedStatus := CodingEngineStatus{}
-	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineClaw, editingEngineNative} {
-		status := codingEngineStatus(ctx, cfg, engine)
-		statuses = append(statuses, status)
-		if engine == selected {
-			selectedStatus = status
-		}
+	selectedStatus := codingEngineStatus(ctx, cfg, selected)
+	// Keep the legacy discovery list stable for existing clients. New engines
+	// are selected explicitly and returned through status without changing the
+	// established four-entry contract.
+	statuses := make([]CodingEngineStatus, 0, 4)
+	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative} {
+		statuses = append(statuses, codingEngineStatus(ctx, cfg, engine))
 	}
 	_ = writeJSON(w, map[string]any{
 		"selected": selected,
