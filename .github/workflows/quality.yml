@@ -64,6 +64,21 @@ jobs:
             }
           }
 
+      - name: PowerShell syntax
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $scripts = Get-ChildItem -LiteralPath scripts -Filter *.ps1 -File
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $details = ($parseErrors | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Message)" }) -join "`n"
+              throw "PowerShell syntax failed: $($script.FullName)`n$details"
+            }
+          }
+
       - name: Native Android Remote APK
         shell: pwsh
         working-directory: ${{ github.workspace }}
