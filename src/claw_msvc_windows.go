@@ -33,6 +33,40 @@ func findClawVCToolchain() string {
 	return ""
 }
 
+func clawVSDevCmdForCompiler(compiler string) string {
+	dir := filepath.Dir(filepath.Clean(compiler))
+	for depth := 0; depth < 12; depth++ {
+		if strings.EqualFold(filepath.Base(dir), "VC") {
+			candidate := filepath.Join(filepath.Dir(dir), "Common7", "Tools", "VsDevCmd.bat")
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+			return ""
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+func runClawCargoBuild(ctx context.Context, cargoPath, rustRoot string, cfg Config) (string, int, error) {
+	compiler := findClawVCToolchain()
+	if compiler == "" {
+		return "", -1, errors.New("Visual C++ compiler is unavailable for the Windows Claw build")
+	}
+	devCmd := clawVSDevCmdForCompiler(compiler)
+	if devCmd == "" {
+		return "", -1, errors.New("VsDevCmd.bat was not found for the Visual C++ toolchain")
+	}
+	devSetup := buildWindowsCommandLine(devCmd, []string{"-arch=x64", "-host_arch=x64"})
+	cargoBuild := buildWindowsCommandLine(cargoPath, []string{"build", "--workspace", "--release"})
+	command := "call " + devSetup + " >nul && " + cargoBuild
+	return runCapturedCommand(ctx, "cmd.exe", []string{"/d", "/s", "/c", command}, commandEnvironment(cfg), rustRoot)
+}
+
 func verifyMicrosoftAuthenticode(ctx context.Context, path string, cfg Config) (string, error) {
 	script := "$s=Get-AuthenticodeSignature -LiteralPath " + quotePowerShellLiteral(path) + "; " +
 		"if($s.Status -ne 'Valid' -or -not $s.SignerCertificate -or $s.SignerCertificate.Subject -notmatch 'Microsoft'){Write-Error 'invalid Microsoft Authenticode signature'; exit 23}; " +
@@ -46,6 +80,9 @@ func verifyMicrosoftAuthenticode(ctx context.Context, path string, cfg Config) (
 
 func ensureClawMSVCToolchain(ctx context.Context, cfg Config) (string, string, error) {
 	if existing := findClawVCToolchain(); existing != "" {
+		if clawVSDevCmdForCompiler(existing) == "" {
+			return "", "", errors.New("Visual C++ compiler was found but VsDevCmd.bat is missing")
+		}
 		return existing, "Visual C++ toolchain already available: " + existing, nil
 	}
 	if !cfg.SetupDownloadsEnabled {
@@ -76,6 +113,9 @@ func ensureClawMSVCToolchain(ctx context.Context, cfg Config) (string, string, e
 	compiler := findClawVCToolchain()
 	if compiler == "" {
 		return "", truncateText(detail, 120000), errors.New("Visual C++ installer completed but cl.exe was not found")
+	}
+	if clawVSDevCmdForCompiler(compiler) == "" {
+		return "", truncateText(detail, 120000), errors.New("Visual C++ installer completed but VsDevCmd.bat was not found")
 	}
 	return compiler, truncateText(detail+"\nVerified compiler: "+compiler, 120000), nil
 }
