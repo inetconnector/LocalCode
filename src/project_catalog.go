@@ -145,6 +145,9 @@ func directProjectFolder(root, path string) (string, error) {
 	if strings.EqualFold(full, root) || !strings.EqualFold(filepath.Dir(full), root) {
 		return "", errors.New("folder operation is limited to direct project folders")
 	}
+	if strings.EqualFold(filepath.Base(full), projectQuarantineDirName) {
+		return "", errors.New("LocalCode quarantine is not a project action target")
+	}
 	return full, nil
 }
 
@@ -281,7 +284,7 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		s.mu.RLock()
 		cfg := s.Config
 		s.mu.RUnlock()
-		if action == "create_project" && cfg.CreateProjectDocs {
+		if action == "create_project" {
 			if err := ensureProjectDocs(created, cfg); err != nil {
 				_ = os.RemoveAll(created)
 				return ProjectSummary{}, err
@@ -380,7 +383,8 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		if value == "" || !strings.EqualFold(value, preview.Confirmation) {
 			return ProjectSummary{}, errors.New("recursive delete confirmation must match the folder name")
 		}
-		if err := os.RemoveAll(full); err != nil {
+		entry, err := quarantineProject(root, full)
+		if err != nil {
 			return ProjectSummary{}, err
 		}
 		_, cfgErr := s.mutateConfig(func(cfg *Config) error {
@@ -393,6 +397,9 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 			return nil
 		})
 		if cfgErr != nil {
+			if _, restoreErr := restoreQuarantinedProject(root, entry.ID); restoreErr != nil {
+				return ProjectSummary{}, fmt.Errorf("update project references after quarantine: %v; rollback failed: %w", cfgErr, restoreErr)
+			}
 			return ProjectSummary{}, cfgErr
 		}
 		s.updateProjectRuntimePath(full, "", true)

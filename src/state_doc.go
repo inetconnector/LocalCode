@@ -17,9 +17,6 @@ const legacyStateBegin = "<!-- LOCAL" + "CODEX:STATE:BEGIN -->"
 const legacyStateEnd = "<!-- LOCAL" + "CODEX:STATE:END -->"
 
 func ensureProjectDocs(project string, cfg Config) error {
-	if !cfg.CreateProjectDocs {
-		return nil
-	}
 	readme := filepath.Join(project, "README.md")
 	if _, err := os.Stat(readme); os.IsNotExist(err) {
 		content := fmt.Sprintf(`# %s
@@ -128,7 +125,9 @@ func (s *AppState) UpdateProjectState(note string) {
 	if project == "" || !cfg.AutoStateUpdate {
 		return
 	}
-	_ = ensureProjectDocs(project, cfg)
+	if cfg.CreateProjectDocs {
+		_ = ensureProjectDocs(project, cfg)
+	}
 	_ = updateStateDocument(project, cfg, running, model, task, summary, actions, note)
 }
 
@@ -168,6 +167,13 @@ func updateStateDocument(project string, cfg Config, running bool, model, task, 
 		actions = []string{localized(lang, "noch keine Agentenaktion in dieser Sitzung", "no agent action in this session yet")}
 	}
 
+	gitBranch := localized(lang, "(kein Git-Branch)", "(no Git branch)")
+	gitSummary := localized(lang, "Kein Git-Repository.", "Not a Git repository.")
+	if projectHasGitMetadata(project) {
+		gitBranch = gitBranchName(project, cfg)
+		gitSummary = gitStatusSummary(project, cfg)
+	}
+
 	status := localized(lang, "bereit", "ready")
 	if running {
 		status = localized(lang, "arbeitet", "working")
@@ -182,8 +188,8 @@ func updateStateDocument(project string, cfg Config, running bool, model, task, 
 	fmt.Fprintf(&b, "- **%s:** %s\n", localized(lang, "Letzte Aufgabe", "Latest task"), task)
 	fmt.Fprintf(&b, "- **%s:** %s\n", localized(lang, "Letztes Ergebnis", "Latest result"), summary)
 	fmt.Fprintf(&b, "- **%s:** %s\n", localized(lang, "Aktualisierungsgrund", "Update reason"), note)
-	fmt.Fprintf(&b, "- **%s:** `%s`\n", localized(lang, "Git-Branch", "Git branch"), gitBranchName(project, cfg))
-	b.WriteString("\n## " + localized(lang, "Git-Status", "Git status") + "\n\n```text\n" + gitStatusSummary(project, cfg) + "\n```\n")
+	fmt.Fprintf(&b, "- **%s:** `%s`\n", localized(lang, "Git-Branch", "Git branch"), gitBranch)
+	b.WriteString("\n## " + localized(lang, "Git-Status", "Git status") + "\n\n```text\n" + gitSummary + "\n```\n")
 	b.WriteString("\n## " + localized(lang, "Letzte Agentenaktionen", "Recent agent actions") + "\n\n")
 	for _, action := range actions {
 		b.WriteString("- " + action + "\n")
