@@ -38,25 +38,33 @@ func TestClawRustProfilesUseManagedRustupOnWindows(t *testing.T) {
 	}
 }
 
-func TestClawEngineUIIsLoadedAfterBasePolishScript(t *testing.T) {
+func TestClawEngineUIIsIntegratedIntoPolishLayer(t *testing.T) {
 	loader, err := os.ReadFile("static/i18n.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(loader)
-	polish := strings.Index(text, "/ui_polish.js")
-	claw := strings.Index(text, "/claw_engine_ui.js")
-	if polish < 0 || claw < 0 || claw < polish {
-		t.Fatalf("Claw UI patch must load after ui_polish.js: %s", text)
+	loaderText := string(loader)
+	if !strings.Contains(loaderText, "/ui_polish.js") {
+		t.Fatalf("base UI polish script is not loaded: %s", loaderText)
 	}
-	patch, err := os.ReadFile("static/claw_engine_ui.js")
+	if strings.Contains(loaderText, "claw_engine_ui.js") {
+		t.Fatalf("Claw UI must not depend on a second patch script: %s", loaderText)
+	}
+
+	polish, err := os.ReadFile("static/ui_polish.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	patchText := string(patch)
-	for _, required := range []string{"value = 'claw'", "window.addEventListener('load'", "engineLoginBtn", "__localCodeClawWrapped"} {
-		if !strings.Contains(patchText, required) {
-			t.Fatalf("Claw UI patch missing %q", required)
+	polishText := string(polish)
+	for _, required := range []string{
+		"function installClawEngineUI()",
+		"option.value = 'claw'",
+		"return 'Claw Code'",
+		"engineLoginBtn",
+		"installClawEngineUI();",
+	} {
+		if !strings.Contains(polishText, required) {
+			t.Fatalf("integrated Claw UI missing %q", required)
 		}
 	}
 }
