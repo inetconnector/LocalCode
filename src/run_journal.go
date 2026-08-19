@@ -17,7 +17,7 @@ import (
 const runJournalSchemaVersion = 1
 
 var (
-	runJournalFileMu          sync.Mutex
+	runJournalFileMu         sync.Mutex
 	runJournalSecretPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(authorization\s*[:=]\s*bearer\s+)[^\s]+`),
 		regexp.MustCompile(`(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret)\s*[:=]\s*)[^\s,;]+`),
