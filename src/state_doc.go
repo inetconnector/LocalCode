@@ -37,7 +37,7 @@ Dieses Repository wird mit LocalCode bearbeitet. Ergänze hier Zweck, Architektu
 
 ### Git-Workflow
 
-1. Vor Änderungen den Arbeitsbaum mit ` + "`git status`" + ` prüfen.
+1. Vor Änderungen den Arbeitsbaum mit `+"`git status`"+` prüfen.
 2. Änderungen in einem eigenen Branch durchführen.
 3. Diffs und Tests vor einem Commit prüfen.
 4. Keine Geheimnisse, Zugangsdaten oder generierten Binärdateien committen.
@@ -57,7 +57,7 @@ This repository is maintained with LocalCode. Add the project purpose, architect
 
 ### Git workflow
 
-1. Check the working tree with ` + "`git status`" + ` before making changes.
+1. Check the working tree with `+"`git status`"+` before making changes.
 2. Work in a dedicated branch.
 3. Review diffs and run tests before committing.
 4. Never commit secrets, credentials or generated binaries.
