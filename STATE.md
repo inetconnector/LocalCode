@@ -1,650 +1,619 @@
 # LocalCode – canonical project state / kanonische KI-Übergabe
 
-**Stand:** 2026-08-19 00:xx Europe/Berlin  
+**Stand:** 2026-08-19 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Master at start of the current mobile/project work:** `16c429bd911fa520b504c11f052f887cd6043569`  
-**Active feature branch:** `agent/mobile-safe-project-playstore`  
-**Active PR:** #24 `feat: safe mobile project management and Play Store builds` (Draft until complete Quality is green)  
-**State policy:** This file is the authoritative current handoff. Historical detail remains in Git history. Do not reconstruct project status from old chat logs if this file and current Git state are available.
+**Current master:** `ddf1606c31d253b5fbbe5a2a67f10f8dae435bee`  
+**Active mobile/project branch:** `agent/mobile-safe-project-playstore`  
+**Active PR:** #24 `feat: safe mobile project management and Play Store builds`  
+**State policy:** This file is the authoritative continuation document for LocalCode itself. Read it completely before changing code. Historical detail belongs in Git history and closed PRs, not in contradictory appended notes.
 
 ---
 
-## 0. What the next AI must do first
+## 0. Mandatory first steps for the next AI
 
-1. Read this entire file before changing code.
-2. Check `git status`, current branch, current `master`, open PRs and required CI.
-3. Read `AGENTS.md`, `README.md` and any more specific project instructions for files being changed.
-4. Never assume an old PR branch is current. Compare it to `master` first.
-5. Never weaken Quality, approval, path, secret, atomic-write or remote-security gates merely to make a PR green.
-6. Do not claim LocalCode is better than Aider/OpenCode in a matrix row unless the implementation exists and the comparison is defensible. The long-term goal is to beat both honestly, not by changing scoring rules.
-7. For code changes, keep DE/EN user-facing text consistent.
-8. Before merge, require the complete Windows Quality workflow to pass.
+1. Read this entire file.
+2. Read `AGENTS.md` and `README.md`.
+3. Inspect current `master`, current branch, `git status`, open PRs/issues and the newest required CI run before editing.
+4. Never assume a SHA, PR state or CI sentence below is still current if GitHub has advanced; verify it.
+5. Never weaken approval, path, secret, remote, atomic-write, race, coverage or verification gates merely to make CI green.
+6. Keep all user-facing DE/EN text complete.
+7. Do not claim LocalCode beats Aider/OpenCode in a matrix row unless the implementation and benchmark evidence support it.
+8. Prefer small, current-master feature PRs. Do not merge stale historical PRs wholesale.
+9. Destructive Git operations, secret handling, external login and publishing always require explicit user approval.
+10. Before merge require the complete Windows Quality workflow to pass against the current merge state.
 
 ---
 
-## 1. Product goal
+## 1. Product objective
 
-LocalCode is a Windows-first local coding-agent/development platform. It should provide a native agent that is at least as capable as Aider/OpenCode while being more deterministic, transparent, recoverable and safe for local repositories.
+LocalCode is a Windows-first local coding-agent/development platform. The long-term acceptance criterion is to make every meaningful technical comparison row objectively stronger than Aider and OpenCode while remaining honest about gaps.
 
-Target flow:
+Target execution flow:
 
-`User -> LocalCode UI/Android Remote -> agent supervisor -> local/provider model -> repository intelligence -> tools/files/Git/shell/LSP/MCP -> approval/precondition -> atomic mutation -> verification -> reviewer/success gate -> result`
+`User -> Desktop/Android Remote -> supervisor -> model -> repository intelligence -> planner/explorer -> tools/LSP/Git -> approval + precondition -> atomic mutation -> verification -> reviewer/success gate -> result`
 
-Supported editing engines are intended to include:
+Intended engines:
 
 - LocalCode Native
 - Aider
 - Claude Code
 - OpenCode
 
-Primary local-model path is Ollama on Windows. The system must remain useful when the model is imperfect: safety, file integrity, verification and recovery are application responsibilities, not prompt-only responsibilities.
+Primary local-model path is Ollama on Windows. Safety, correctness, recovery and verification are application responsibilities, not prompt-only responsibilities.
 
-### Long-term competitive acceptance criterion
-
-Every meaningful technical comparison row should eventually be objectively LocalCode-leading, especially:
+Priority comparison rows:
 
 - repository intelligence/context selection
-- AST/semantic navigation
-- LSP/session reuse
+- semantic AST/LSP navigation
+- local-model context efficiency
 - patch/edit reliability
 - stale/concurrent edit protection
-- approvals/security
 - planning/execution/review separation
 - subagents/parallel exploration
 - verification
-- recovery
-- local-model efficiency
+- crash recovery
+- permissions/security
+- process cancellation
 - Git workflow
-- tool/MCP breadth
-- UI/remote transparency
-- reproducible coding benchmarks
-
-Do not fake this criterion. If Aider/OpenCode is better in a row, record the gap and implement it.
+- remote/mobile transparency
+- reproducible benchmark success
 
 ---
 
-## 2. Current architecture and capabilities already on `master`
+## 2. Current `master` milestones
 
-### Native agent / supervisor
+### PR #16 benchmark harness — MERGED
 
-- Structured agent action schema with validation/normalization.
-- Intent classification and supervisor-forced reliability actions.
-- Completion guards block empty/placeholder/incomplete implementations and missing post-edit verification where required.
-- Bounded repair of invalid model actions.
-- Large mutation payloads are compacted in model history; exact current file content can be re-read.
-- Tool outputs remain visible to the user while model context is bounded.
-- Native path supports project/file tools, shell/tool discovery, Git, MCP, web tools, project automation, assets and image operations.
+Merged commit:
 
-### File mutation reliability
+`9757520675918f9b9f824595d1ce676be6782704`
 
-LocalCode treats mutations as transactions rather than trusting a model success string.
+Master now contains a reproducible cross-engine benchmark harness:
 
-Current invariants include:
+- package `benchharness`
+- CLI `localcode-bench`
+- immutable base commit resolution
+- fresh detached Git worktree per run
+- direct argv execution rather than shell-string interpolation
+- separate setup/engine/check timings, exit codes and timeouts
+- hidden/required checks
+- changed-file/added/deleted/unnecessary-diff metrics
+- untracked text-file accounting
+- optional adapter metrics for turns, tool calls, tokens, retries, failed patches, compactions and human intervention
+- source repository is never the engine working directory
+- path/manifest safety validation
+- documented fair-run contract for LocalCode/Aider/OpenCode
 
-- SHA-256 file versions.
-- approval-bound file preconditions.
-- per-path edit locking.
-- same-directory temporary writes.
-- revalidation immediately before commit.
-- atomic replace primitives, including Windows-native replacement behavior.
-- conflict errors instead of silently overwriting an externally changed file.
-- postconditions reporting existence/type/size/SHA where applicable.
-- backups/recovery paths for managed edits and Aider integration.
+Benchmark fairness requires same repository commit, task, model, quantization, context limit, hidden tests and environment constraints. Raw manifests/results must be retained; a single self-reported score is not evidence.
 
-Never regress these to plain `os.WriteFile` after an approval for an existing file.
+### PR #15 crash-safe durable recovery — MERGED
 
-### Repository intelligence
+Merged commit:
 
-Current stack combines multiple evidence sources rather than one regex repo map:
+`ddf1606c31d253b5fbbe5a2a67f10f8dae435bee`
 
-- import-aware file graph.
-- task/identifier/path relevance.
-- definitions/references and relation weighting.
-- PageRank-like propagation/ranking.
-- task navigation and focused snippets.
-- build/test pairing and verification-command inference.
-- Go compiler AST for Go.
-- Tree-sitter under CGO for JavaScript/JSX/MJS/CJS, TypeScript, TSX, Python, Rust, C and C/C++ headers/sources.
-- lexical/import-aware fallback where the stronger provider is unavailable.
-- deterministic no-CGO fallback is retained so Windows deployment is not made dependent on one parser runtime.
+Recovery design:
 
-Important source files:
+- persistent active-run journal under LocalCode app data, not the project repository
+- redacted operational metadata only: run/thread/project/model/task/phase and selected checkpoint metadata
+- no full tool-result transcript, attachment content or command output copied into recovery storage
+- secret redaction for Authorization/Bearer, API-key, token, password/passwd and secret forms
+- same-directory atomic write layer
+- dedicated mutex around journal read/modify/write operations
+- detects only valid non-terminal interrupted runs whose project still exists
+- startup exposes recoverable run and associated thread where possible
+- `Weiter`/`Continue` or the same original task receives a recovery handoff
+- handoff explicitly forbids blindly replaying a previous mutation
+- filesystem/Git/postconditions must be re-read before deciding what remains
+- unrelated new tasks do not inherit old recovery context
+- stop/force-stop/terminal completion are journaled
+
+Journal performance/security optimization now on master:
+
+- durable events are limited to recovery-relevant checkpoints
+- redundant `user`, `agent_step`, `tool_result`, generic `status` and assistant transcript-like events do not cause atomic journal rewrites
+- task is already stored separately
+- action/phase checkpoints carry recovery progress
+- less free text is persisted and fewer synchronous disk writes occur
+
+The final #15 Quality run passed format, vet, Android, vulnerability scan, full-stack, normal tests, race detector, coverage, Windows builds and diff check before merge.
+
+---
+
+## 3. Core safety architecture already present
+
+### File mutation invariants
+
+LocalCode mutations are transactions, not model success strings.
+
+Preserve:
+
+- SHA-256 file versions
+- approval-bound file preconditions
+- per-path locking
+- same-directory temporary writes
+- revalidation immediately before commit
+- atomic replace/move primitives including Windows-native replacement behavior
+- conflict instead of silent overwrite if a file changed externally
+- postconditions with existence/type/size/hash where applicable
+- backup/Git recovery paths
+- process-tree cancellation for owned external processes
+
+Never regress existing-file edits to an unchecked `os.WriteFile` after approval.
+
+### Path and deletion boundary
+
+- canonicalize paths
+- enforce project/root containment
+- project-folder destructive actions are limited to direct children of configured project root
+- reject nested/outside targets
+- never follow symlink targets during delete preview
+- a non-empty project must never disappear after one ambiguous click
+
+### Approvals
+
+- mobile is intentionally narrower than Desktop
+- phone must never create globally persistent approval rules
+- phone may approve once or for the current project where supported
+- publishing, external login, release-track changes and secret-bearing operations need a separate explicit approval
+
+### Secrets
+
+Never log, persist or display:
+
+- API keys
+- bearer tokens
+- passwords
+- keystore passwords
+- upload keys/private keys
+- service-account credentials
+
+Paired-device tokens are stored hashed. Release helpers must not invent or rotate an existing Play upload key.
+
+---
+
+## 4. Repository intelligence / semantics
+
+Current architecture combines multiple evidence sources:
+
+- import-aware repository graph
+- task/path/identifier relevance
+- definitions/references and relation weighting
+- PageRank-like propagation
+- focused snippets
+- build/test pairing and verification-command inference
+- Go compiler AST for Go
+- multi-language semantic parsing where available
+- lexical/import-aware fallback when a stronger provider is unavailable
+- deterministic Windows-safe fallback must remain available
+
+Verify exact language-provider coverage in current source before making a public comparison claim.
+
+Important files are under:
 
 - `src/code_intelligence_*.go`
 - `src/repo_intelligence.go`
 
 ### LSP
 
-LocalCode has native read-only LSP navigation and a persistent pool. Supported server candidates include Go, JS/TS, Python, Rust, C/C++, C#, Java and Kotlin when their language servers are available.
-
-Operations include:
-
-- definition
-- references
-- hover
-- document/workspace symbols
-- implementation
-- call hierarchy preparation
-- incoming/outgoing calls
-
-Persistent LSP sessions are keyed/reused with health/invalidation behavior rather than starting one process per every query.
+Current LocalCode supports read-only semantic navigation with language-server candidates for major languages when installed. Operations include definition, references, hover, document/workspace symbols, implementation and call hierarchy. A persistent pool/reuse path has been integrated; verify exact health/restart behavior before claiming superiority over OpenCode.
 
 ### Parallel exploration
 
-Independent repository reads can fan out with bounded parallelism while results are merged in stable input order. This path is read-only; it does not grant mutation/shell/network/MCP rights merely because work is parallelized.
+Independent read-only repository probes can run with bounded parallelism and stable deterministic output order. This does not grant mutation/shell/network/MCP permissions to the parallel path.
 
-A true model-backed child-agent implementation was validated in old PR #14 but the old branch became too stale to merge safely. See Issue #23 below.
+A true model-backed child-agent architecture remains an open gap; see Section 11.
 
-### Verification / CI
+---
 
-The permanent Quality workflow is `.github/workflows/quality.yml`.
+## 5. Permanent Quality contract
 
-Required stages currently include:
+Workflow:
 
-- Go version/setup
-- gofmt
+`.github/workflows/quality.yml`
+
+Required gates include:
+
+- Go setup/version
+- `gofmt`
 - `go vet ./...`
 - frontend JavaScript syntax, including inline scripts
+- PowerShell syntax parsing when the PR #24 workflow change is present
 - native Android Remote APK build
 - `govulncheck`
 - full-stack loopback HTTP integration
 - complete Go tests
 - race detector
-- statement coverage gate >= 80.0%
-- native Windows builds
+- statement coverage >= 80.0%
+- native Windows GUI/diagnostic builds
 - `git diff --check`
 
-Do not lower the 80% gate to make a feature pass. Add useful tests or reduce unnecessary untested complexity.
+Never lower the 80% threshold to rescue a PR. Add meaningful tests or remove unnecessary untested complexity.
 
-The obsolete temporary coverage diagnostic workflow was removed in PR #21 and must not be restored.
+Known CI timing issue:
 
----
-
-## 3. Security invariants
-
-These are product requirements, not optional style preferences.
-
-### Repository/file boundary
-
-- Resolve paths canonically and require them to remain inside the allowed project/root boundary.
-- Destructive project-folder operations are limited to direct children of the configured project root.
-- Nested/outside paths must be rejected.
-- Symlinks must not be used to escape a root or to make a preview recursively inspect an external target.
-- A non-empty project folder must never be recursively deleted on a single ambiguous click.
-
-### Approvals
-
-- Mutating/destructive/external actions use approval rules.
-- File mutation approval should remain bound to the file version shown/approved.
-- Mobile Remote is intentionally narrower than Desktop.
-- Mobile Remote must not create a globally persistent approval rule. Mobile may approve once or persist for the current project only.
-- Publishing, external login, release-track changes and secret-bearing operations require explicit separate approval.
-
-### Secrets
-
-- Do not log or persist raw API keys, bearer tokens, passwords, keystore passwords, upload keys or other credentials.
-- Run-journal redaction must cover authorization/bearer, API-key variants, password/secret variants and generic `token=...` forms.
-- Mobile paired-device tokens are stored hashed, not in plaintext configuration.
-- Play Store automation must not manufacture/replace/rotate a keystore/upload key as a convenience shortcut.
-
-### Process control
-
-- Timeouts/cancel should terminate the owned process tree, not merely the immediate parent process.
-- External processes must not survive a cancelled run accidentally.
-
-### Remote network
-
-Existing design:
-
-- Desktop API remains loopback-only.
-- LAN Remote uses a separate server.
-- Non-loopback production Remote requires TLS.
-- Pairing is short-lived, numeric and attempt-limited.
-- Long-lived paired-device tokens are random and stored as SHA-256 hashes.
-- Mutation requests are protected against cross-origin/fetch-site abuse.
-- CSP/no-store/nosniff/X-Frame/referrer/permissions headers are set by Remote.
-- SSE uses a separately issued short-lived stream ticket rather than ordinary API query-token authentication.
-
-Current PR #24 further tightens Android/phone behavior; see Section 6.
-
-No engineer or AI should describe any non-trivial networked software as mathematically “100% safe”. The project objective is defense in depth with explicit, testable invariants and least privilege.
+- `TestAgentRejectsEmptyWriteFileAndRetries` has a polling wait with a 4-second deadline.
+- One #24 Windows run exceeded it by roughly 0.4 s while the immediate rerun passed normal tests.
+- This is an old generic agent test, not a Mobile feature assertion.
+- If this recurs, harden the test timing on current master; do not change Mobile product behavior to satisfy it.
+- Because the wait helper polls and returns immediately on completion, a larger CI-safe maximum need not slow normal passing tests.
 
 ---
 
-## 4. Project management – current behavior
+## 6. PR #24 – mobile-safe projects and Play Store build
 
-Before PR #24, `master` already supported safe folder-level actions in `src/project_catalog.go`:
+Branch:
 
-- `create_folder`
-- `rename_folder`
-- `delete_empty`
-- `delete_recursive`
-- alias rename
-- pin/unpin
-- hide/remove/restore
+`agent/mobile-safe-project-playstore`
 
-Existing tests in `src/project_folder_actions_test.go` already checked unsafe Windows names, reference migration on rename, empty-only deletion, exact-name recursive confirmation, and rejection of nested/outside paths.
+Base after recovery merge:
 
-### PR #24 additions
+`master` at `ddf1606c31d253b5fbbe5a2a67f10f8dae435bee`
 
-`ProjectDeletePreview` now records:
+PR remains Draft until a fresh complete Quality run against this base is green.
 
-- project path/name
-- empty/non-empty
+### Project delete preview
+
+PR #24 adds `ProjectDeletePreview` and server-side `inspectProjectDelete`:
+
+- path/name
+- empty flag
 - file count
 - directory count
 - symlink count
 - total bytes of regular files
 - whether confirmation is required
-- exact required confirmation text (project folder basename)
+- exact project-basename confirmation string
 
-`inspectProjectDelete(root, path)`:
+Preview rules:
 
-- first enforces the direct-project-folder boundary.
-- rejects missing/non-directory projects.
-- returns immediately for a truly empty folder.
-- uses `filepath.WalkDir` for a non-empty preview.
-- counts symlink entries without following their targets.
+- target must be a direct child project directory
+- missing/non-directory target is rejected
+- empty folder returns immediately
+- non-empty preview walks with `filepath.WalkDir`
+- symlink entries are counted but their targets are not followed
 
-New action `create_project`:
+### Project actions
 
-- only allowed at the configured project root.
-- validates a Windows-safe direct folder name.
-- refuses existing targets.
-- creates the directory.
-- when project docs are enabled, initializes `README.md`, `AGENTS.md` and managed `STATE.md` state.
-- rolls back the newly created directory if initial handoff-document generation fails.
+The branch supports:
 
-Deletion semantics in PR #24:
+- `create_folder`
+- `create_project`
+- `delete_empty`
+- `delete_recursive`
+- existing rename/pin/hide/restore catalog actions on Desktop
 
-- `delete_empty` calls the server-side preview and succeeds only if actually empty.
-- `delete_recursive` refuses an empty folder (caller must use the safer empty mode).
-- non-empty recursive deletion requires case-insensitive exact project-folder-name confirmation.
-- project/chat/config references are cleaned and affected chat history is archived rather than discarded.
+Deletion mode separation:
 
-Do not weaken this to a generic path + recursive flag API.
+- `delete_empty` succeeds only for an actually empty project
+- `delete_recursive` refuses empty projects
+- non-empty recursive delete requires exact case-insensitive project-basename confirmation
+- project/config references are cleaned and affected chat threads are archived
 
----
+### IMPORTANT KNOWN SEMANTIC GAP — must be fixed next
 
-## 5. Project handoff documents
+Current branch implementation of `create_project` still scaffolds README/AGENTS/STATE only when old config flag `CreateProjectDocs` is enabled.
 
-`src/state_doc.go` owns LocalCode-managed project handoff behavior.
+Desired contract is different:
 
-When project docs are enabled:
+- `create_folder` = intentionally bare folder
+- `create_project` = always a real project scaffold with README.md + AGENTS.md + STATE.md, independent of the old automatic-doc preference
 
-- `README.md` is created if missing.
-- `AGENTS.md` is created if missing.
-- `STATE.md` is managed through LocalCode state markers.
+Do not claim this desired contract is already implemented. Fix it in the immediately following consolidated project-safety/quarantine PR unless #24 is deliberately amended and revalidated first.
 
-Generated `AGENTS.md` tells coding agents to read README/STATE, inspect Git/tests first, preserve conventions, verify work, avoid secrets and request approval for destructive/external/publishing work.
-
-For newly created projects, PR #24 immediately writes an initial managed STATE entry so the project is not an undocumented empty folder.
-
-Repository-level `STATE.md` (this file) is deliberately different: it is the canonical continuation document for LocalCode itself.
+Desktop project creation should also use `create_project` when the user chooses “new project”, so Desktop and phone semantics match.
 
 ---
 
-## 6. Android / Phone Remote
+## 7. Phone/Android Remote security in PR #24
 
-### Existing `master` behavior
-
-Files:
+Relevant files:
 
 - `src/remote_server.go`
 - `src/remote_secure_server.go`
-- `src/remote_stream_ticket.go`
-- `src/remote_device_lifecycle.go`
+- `src/remote_project_api.go`
+- `src/mobile_safe_remote_server.go`
 - `src/static/remote.html`
 - `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java`
 
-Existing Remote supports:
+Existing remote capabilities include pairing, projects, threads, chat, attachments/camera, live events, stop and approvals.
 
-- pairing
-- project list
-- thread list/select/new
-- chat submission
-- attachments/camera through file input
-- snapshots
-- live SSE events
-- stop
-- approvals
-- status/model/engine display
-
-Native Android shell:
-
-- discovers `_localcode._tcp.` via Android NSD/mDNS.
-- consumes TLS fingerprint advertised by LocalCode.
-- understands `localcode://pair` deep links carrying target URL + fingerprint.
-- loads the Remote web UI in a WebView.
-
-### PR #24 mobile project API
-
-New files:
-
-- `src/remote_project_api.go`
-- `src/mobile_safe_remote_server.go`
-
-The actually started Remote server is switched in `src/main.go` from `startProductionRemoteServer` to `startMobileSafeProductionRemoteServer`.
-
-The hardened server registers authenticated:
+PR #24 adds authenticated:
 
 - `POST /remote/api/project-action`
 - `GET /remote/api/project-delete-preview?path=...`
 
-Remote project-action allowlist is intentionally only:
+Mobile project-action allowlist is deliberately only:
 
 - `create_project`
 - `delete_empty`
 - `delete_recursive`
 
-Desktop-only broader management actions are not implicitly exposed to the phone.
+Do not expose rename, arbitrary filesystem operations, shell or broad admin APIs merely for convenience.
 
-The mobile-safe HTTP wrapper additionally rejects `decision=global` for `/remote/api/approve` before it can reach the normal approval handler.
+Mobile approval wrapper rejects global persistence before the ordinary approval handler receives the request.
 
-### PR #24 Android hardening
+### Android WebView invariants
 
-`MainActivity.java` now:
+`MainActivity.java` is hardened to:
 
-- installs `WebChromeClient` so the Remote UI can use explicit prompt/confirm dialogs.
-- still disables WebView file access and mixed content.
-- allows navigation only when candidate URL has exactly the same HTTPS host + effective port as the currently paired Remote origin.
-- no longer accepts every IPv6 address merely because it contains `:`.
-- accepts only addresses classified by `InetAddress` as loopback, link-local or site-local.
-- rejects userinfo-bearing URLs.
-- rejects discovered services without a private address, TLS marker and fingerprint.
-- retains exact SHA-256 certificate fingerprint comparison for the paired/discovered self-signed LocalCode certificate.
+- HTTPS only
+- navigate only within exactly the paired remote host + effective HTTPS port
+- mixed content disabled
+- file access disabled
+- reject userinfo-bearing URLs
+- no blanket “any IPv6 is private” rule
+- discovered hosts must be loopback/link-local/site-local private addresses
+- discovered service requires TLS marker and fingerprint
+- self-signed LocalCode TLS proceeds only when SHA-256 certificate fingerprint matches the expected pin
 
-A source-level regression test `src/android_remote_security_test.go` pins these invariants.
+Manual connection is stricter:
 
-### PR #24 Remote UI
+- only numeric private IP or localhost; no arbitrary DNS host
+- requires an explicit valid 64-hex SHA-256 fingerprint
+- retains that fingerprint rather than clearing pinning
 
-`src/static/remote.html` now has a Projects tab with:
+QR/mDNS is the preferred easy path because URL and fingerprint arrive together.
+
+`src/android_remote_security_test.go` isolates the manual click handler and verifies that it requires and retains the pin. Do not revert to a broad source-string check that mistakes the initial empty field declaration for a pin-clear operation.
+
+No networked software should be described as mathematically “100% safe”. The design goal is least privilege, defense in depth and testable boundaries.
+
+---
+
+## 8. Remote project UX in PR #24
+
+`src/static/remote.html` adds a Projects area with:
 
 - New project
 - Delete project
 - Play Store build
 
-New project calls the authenticated server action and uses `create_project`, so scaffolding happens server-side.
+Delete flow:
 
-Delete project:
+1. ask server for delete preview
+2. if empty, use explicit final confirmation then `delete_empty`
+3. if non-empty, show content counts
+4. require typing exact project name
+5. send exact value to `delete_recursive`
+6. server validates again
 
-1. gets server-side preview.
-2. if empty, asks for a simple final confirmation and calls `delete_empty`.
-3. if non-empty, shows content counts and requires typing the exact project name.
-4. sends that value to `delete_recursive`, where it is checked again server-side.
+The browser prompt is not the security boundary. Server-side path validation + mode separation + exact confirmation are mandatory.
 
-The client confirmation is not the security boundary. The server-side check is mandatory.
-
----
-
-## 7. Play Store / Android release-build path
-
-### User goal
-
-From the phone, a user should be able to select an Android project and trigger a complete local release-build task without having to type a long build instruction.
-
-### PR #24 implementation
-
-The Remote UI button **Play-Store-Build**:
-
-- requires a selected project.
-- asks the user to confirm starting the release task.
-- creates a fresh chat for that project so release context does not accidentally inherit another project/thread.
-- sends a fixed DE/EN LocalCode task instructing the native/selected coding engine to inspect:
-  - project structure
-  - Gradle/SDK
-  - applicationId/package
-  - versionCode/versionName
-  - manifest
-  - min/target SDK
-  - existing signing configuration
-- requires existing tests/lint where available.
-- requests `bundleRelease` (.aab) and `assembleRelease` (.apk) where the project supports them.
-- requires artifact path/size/SHA-256 reporting.
-- explicitly forbids automatic keystore/upload-key replacement, secret disclosure, Play Store upload, release-track change or publishing.
-
-This deliberately runs through the normal LocalCode agent, approval, process-control and verification path. The phone button is not a shell backdoor.
-
-### Deterministic helper
-
-New script: `scripts/build-playstore.ps1`
-
-Behavior:
-
-- uses an existing project `gradlew.bat`; no global Gradle installation.
-- enumerates Gradle tasks.
-- runs available `test` and `lint` unless skipped.
-- requires `bundleRelease` to exist for a Play Store build.
-- runs `bundleRelease` and, if present, `assembleRelease`.
-- locates release `.aab`/`.apk` below `build/outputs`.
-- ignores obvious debug/unaligned/unsigned artifacts when reporting final candidates.
-- requires at least one release AAB.
-- prints exact path, byte size and SHA-256 plus machine-readable JSON.
-- never creates/replaces a keystore, reads passwords for display, uploads to Google Play or publishes.
-
-`build-android.ps1` remains the CI/debug builder for the LocalCode Remote APK and uses an ephemeral debug key. It is not the Play Store signing path.
+Future improvement immediately after #24: non-empty deletion should become reversible quarantine rather than immediate `os.RemoveAll`; see Section 10.
 
 ---
 
-## 8. Open reliability/competitive work outside PR #24
+## 9. Play Store build path in PR #24
 
-### PR #15 – crash-safe durable agent recovery
+### Phone action
 
-Branch: `agent/durable-run-recovery`  
-Head currently documented: `628ba4544cd528e7fa78000b69318da33d001cdb`
+The phone Play-Store button starts a normal LocalCode agent task for the selected project. It is not a shell backdoor.
 
-Feature:
+The fixed task tells LocalCode to inspect:
 
-- persistent run journal in app data.
-- redacted operational metadata rather than a second full transcript.
-- atomic journal writes.
-- serialized journal state updates.
-- detects interrupted non-terminal runs.
-- continuation creates a recovery handoff requiring reconciliation of actual Git/filesystem/postconditions.
-- never blindly replays a previous mutation after crash.
-- generic `token=...` redaction gap was fixed.
+- Gradle/SDK
+- applicationId/package
+- versionCode/versionName
+- manifest
+- min/target SDK
+- existing signing configuration
+- tests/lint
 
-Quality run #240 completed successfully.
+It requests release AAB/APK generation where supported and requires artifact path/size/hash reporting.
 
-Current merge blocker is repository-rule status freshness: GitHub reports required check `test` as expected after `master` moved, even though the old head Quality run is green. Do not bypass the rule. Update/merge current `master` into the branch (or otherwise produce a fresh PR head/merge state) and rerun Quality, then merge if green.
+It explicitly forbids automatic:
 
-### PR #16 – reproducible cross-engine benchmark harness
+- upload-key/keystore replacement
+- secret disclosure
+- Play Console upload
+- release-track changes
+- publishing
 
-Branch: `agent/engine-benchmark-harness`  
-Head currently documented: `df1d384d17df8534544f95d14cdd100a8a1e4de8`
+Those are separate approved operations.
 
-Feature:
+### `scripts/build-playstore.ps1`
 
-- `benchharness` package + `localcode-bench` CLI.
-- immutable base commit resolution.
-- fresh detached Git worktree per benchmark run.
-- direct argv execution rather than shell-string interpolation.
-- separate setup/engine/check timing and status.
-- hidden/required checks.
-- changed-file/line/unnecessary-diff metrics.
-- adapter metrics for turns/tool calls/tokens/retries/compactions/human intervention.
-- source repo remains untouched.
-- process-tree timeout cleanup.
-- manifest/path validation.
+Deterministic helper rules:
 
-Quality run #242 completed successfully after coverage was raised with real manifest-contract tests rather than lowering the gate.
+- use project `gradlew.bat`, not a random global Gradle
+- enumerate available tasks
+- run available `test` and `lint` unless skipped
+- require `bundleRelease`
+- run `bundleRelease`
+- run `assembleRelease` when available
+- find release `.aab`/`.apk` below `build/outputs`
+- exclude obvious debug/unaligned/unsigned final candidates
+- require at least one AAB
+- output path, bytes, SHA-256 and machine-readable JSON
+- require AAB signature verification through `jarsigner -verify`
+- verify APK with `apksigner` when available
+- never generate/replace/rotate a keystore
+- never print signing secrets
+- never upload or publish
 
-It has the same likely status-freshness/base-update issue as PR #15. Refresh against current master, rerun Quality, then merge if green.
-
-### Issue #22 – port session doom-loop guard
-
-Old PR #7 was intentionally closed because it was too stale and carried unwanted old workflow changes.
-
-Port only the useful behavior to current master:
-
-- reject no-op `write_file`/`replace_text` as no observable change.
-- session-wide structured action/result fingerprinting.
-- block repeated identical failed/no-progress actions.
-- detect short A/B or A/B/C style stagnation cycles.
-- reset stagnation on actual project mutation or successful verification/new evidence.
-- keep finish/ask_user out of the loop guard.
-
-Do not merge the old PR wholesale.
-
-### Issue #23 – port bounded read-only model subagents
-
-Old PR #14 was fully Quality-validated but became materially behind current master.
-
-Port only the feature delta:
-
-- separate model-backed child exploration context.
-- hard maximum child-step budget (validated design used 8).
-- child capabilities only list/read/search/LSP/finish.
-- no write/delete/move, shell, Git, MCP, web/network, installation, approval bypass or recursive child spawning.
-- deterministic repository-intelligence fallback.
-- visible `subagent:*` UI trace.
-- deterministic mandatory reliability preflight remains model-independent.
-
-Do not reintroduce stale agent code from the closed PR branch.
+`build-android.ps1` is the debug/CI builder for the LocalCode Remote APK using an ephemeral debug key. It is not the production Play Store signing path.
 
 ---
 
-## 9. Remaining matrix gaps after the already integrated AST/LSP/reliability work
+## 10. Immediate next project-safety PR after #24
 
-Priority order after PR #24/#15/#16 is merged:
+A branch name was reserved earlier:
 
-1. **Model subagents / role separation** – port #23, then evolve toward Explorer/Planner/Reviewer with isolated curated context and no concurrent mutations.
-2. **Session doom-loop/no-op guard** – port #22.
-3. **Prompt/context caching efficiency** – stable prompt prefix ordering, deterministic context segment hashes, reduced churn, provider-native caching where supported; do not make unsupported Ollama cache claims.
-4. **Context economy** – benchmark against Aider repo-map/token efficiency and beat it with AST/import/LSP evidence per token.
-5. **Git workflow polish** – make common diff/undo/commit flows at least as convenient as Aider without weakening safety.
-6. **Provider breadth** – LocalCode native should not require Ollama forever; keep provider adapters isolated from agent safety logic.
-7. **Fuzzy/structural patch recovery** – improve edits when exact old text drifts, but never bypass SHA approval/precondition semantics.
-8. **UI polish/transparency** – Desktop and Android should expose plan, current phase, tool execution, verification and recoverability at OpenCode-level or better.
-9. **Benchmark evidence** – once #16 is merged, run the same repos/tasks/model/quantization/context limits against LocalCode Native, Aider and OpenCode. Publish raw manifests/results, not only a score.
-10. **Release engineering** – production Play Store signing remains user-controlled. A future release workflow can consume configured secrets securely, but should never auto-generate a replacement upload key for an existing Play app.
+`agent/reversible-project-quarantine`
 
----
+It was originally created from an older master and must be recreated or safely synchronized to the newest master after #24 merge before coding.
 
-## 10. Current PR #24 file-level change map
+Implement one coherent contract:
 
-At the time this canonical state was written, PR #24 changes/adds at least:
+1. `create_folder` remains bare.
+2. `create_project` always creates README.md + AGENTS.md + STATE.md independent of old `CreateProjectDocs` preference.
+3. Desktop “new project” uses `create_project`.
+4. Phone uses the same server-side project semantics.
+5. Confirmed non-empty delete does **not** permanently `RemoveAll` immediately.
+6. Move non-empty project into a LocalCode-managed quarantine on the same volume where possible.
+7. Store minimal metadata: unique ID, original path/name, quarantine time, preview counts/bytes.
+8. Provide restore; fail safely if original destination is occupied.
+9. Permanent purge is a separate destructive action with its own exact confirmation.
+10. Quarantine/restore/purge must not follow symlink targets.
+11. Do not silently fall back to risky copy-then-delete across volumes.
+12. Preserve/restore or explicitly archive relevant chat/config references in a deterministic way.
+13. Add race/path/collision/occupied-restore/purge-confirmation/interruption tests.
 
-- `src/project_catalog.go`
-  - ProjectDeletePreview
-  - inspectProjectDelete
-  - create_project
-  - stricter delete mode separation
-- `src/project_folder_actions_test.go`
-  - project scaffold tests
-  - preview counts
-  - symlink non-follow test (skip if Windows runner lacks symlink privilege)
-  - empty recursive-delete rejection
-- `src/remote_project_api.go`
-  - authenticated narrow project management endpoints
-- `src/mobile_safe_remote_server.go`
-  - route registration
-  - mobile global-approval blocking wrapper
-  - secure HTTP/TLS startup using the mobile-safe handler
-- `src/main.go`
-  - production startup switched to `startMobileSafeProductionRemoteServer`
-- `src/static/remote.html`
-  - Projects tab
-  - create/delete flows
-  - Play Store quick action
-- `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java`
-  - same-origin navigation
-  - private-address classification
-  - WebChromeClient dialogs
-- `src/android_remote_security_test.go`
-  - source invariants for Android hardening
-- `src/mobile_project_remote_test.go`
-  - auth/allowlist/delete-confirmation/global-approval tests
-- `scripts/build-playstore.ps1`
-  - deterministic local Gradle release helper
-- `STATE.md`
-  - this canonical handoff
-
-Initial branch commits include:
-
-- `17688e48...` safe project creation/delete previews
-- `a3a5193f...` project scaffold/delete-preview tests
-- `766b7ecb...` remote project API
-- `875a9680...` Play Store build helper
-- `5f3e0144...` Android Remote hardening
-- `632f299f...` Android security regression test
-- `0d3e816b...` mobile project/Play Store UI
-- `41b75f77...` hardened remote server startup
-- `e3737613...` main startup switch
-- `1e6f5ba1...` mobile global-approval block
-- `47a0c11b...` Windows-safe remote project test serialization
-
-PR #24 Quality run #243 was queued/running when this state section was authored. The next AI must inspect the newest run rather than trusting this sentence.
+After this feature exists, Mobile may expose list/restore quarantine entries; purge should remain tightly gated.
 
 ---
 
-## 11. PR #24 merge checklist
+## 11. Remaining competitive work
 
-Do not mark ready or merge until all are true:
+### A. Session doom-loop/no-op guard
 
-- [ ] gofmt green
-- [ ] go vet green
-- [ ] remote.html inline JavaScript syntax green
-- [ ] Android Remote APK compiles on Windows runner
-- [ ] govulncheck green
-- [ ] full-stack loopback integration green
-- [ ] all Go tests green
-- [ ] race detector green
-- [ ] statement coverage >=80.0%
-- [ ] native Windows builds green
-- [ ] git diff check green
-- [ ] project create/delete tests pass on Windows
-- [ ] Android security source test passes
-- [ ] no new route bypasses Remote token auth
-- [ ] mobile global approval remains blocked
-- [ ] Play Store button does not upload/publish/rotate signing keys
-- [ ] PR still merges cleanly with current master
+Do not merge old stale PR #7 wholesale. Port only useful behavior to current master:
 
-If `master` advances because #15/#16 are merged, compare/reconcile PR #24 and rerun Quality on the new merge state before merging.
+- reject no-op `write_file` when requested content is already identical
+- reject no-op `replace_text` when replacement leaves file unchanged
+- structured action fingerprint includes edit payload/tool args but ignores human explanation text
+- outcome fingerprint
+- block third identical failed action
+- block repeated same-result no-progress reads/tools
+- detect short A/B and A/B/C style cycles
+- changed tool output counts as new evidence
+- successful real project mutation resets stagnation history
+- successful verification resets stagnation history
+- `finish` and `ask_user` are excluded
+
+Suggested commit:
+
+`feat: block stagnant agent tool loops`
+
+### B. True model-backed subagents / roles
+
+Old PR #14 contained a validated design but is stale. Port feature delta only:
+
+- isolated child context
+- bounded maximum child steps
+- Explorer capability only: list/read/search/LSP/finish
+- no write/delete/move
+- no shell/Git/MCP/network/install
+- no approval bypass
+- no recursive child spawning
+- deterministic repository-intelligence fallback
+- visible `subagent:*` trace
+
+Then evolve toward:
+
+- Explorer
+- Planner
+- Executor
+- Reviewer
+
+No concurrent mutations. Reviewer should receive task + plan + diff + verification evidence rather than the full chat transcript.
+
+### C. Prompt/context efficiency
+
+- stable deterministic prompt-prefix ordering
+- hash/cache stable context segments
+- reduce timestamps/random ordering in cacheable prefix
+- reuse curated repository context
+- use provider-native caching only where actually supported
+- do not make unsupported Ollama KV-cache claims
+
+### D. Context economy / Aider comparison
+
+Use the merged benchmark harness to compare correctness per context/token, not only raw repo-map richness. Same task/model/quantization/ctx, hidden tests and repo commit.
+
+### E. Git workflow polish
+
+Common diff/undo/commit flows should become at least as easy as Aider while retaining stronger preconditions and recovery.
+
+### F. Provider breadth
+
+Keep provider adapters separate from safety/supervisor logic so Native is not permanently tied to Ollama.
+
+### G. Patch drift recovery
+
+Improve fuzzy/structural edit recovery when exact old text drifts, but never bypass approved SHA/precondition semantics.
+
+### H. UI transparency
+
+Desktop and Android should surface plan, phase, tool execution, approvals, verification and recoverability at OpenCode-level or better.
 
 ---
 
-## 12. Branch/repository hygiene
+## 12. Current PR #24 validation state
 
-Repository cleanup policy:
+Important history:
 
-- Merged feature branches should be deleted when tooling/access allows it.
-- Closed stale branches should not remain as the basis for new changes.
-- Current connector used by the AI does not expose a safe delete-ref operation; do not simulate branch deletion by force-moving refs.
-- Do not restore `.github/workflows/one-time-coverage-analysis.yml`; it was intentionally obsolete and deleted.
-- Keep `.github/workflows/quality.yml` and release workflow(s) unless a replacement is demonstrably better.
+- Earlier #24 run passed all early gates but one generic agent mock test exceeded its 4-second polling deadline by ~0.4 s.
+- Immediate rerun passed the complete normal test suite and entered Race/Coverage.
+- That run was against the pre-recovery merge state.
+- PR base is now current master `ddf1606c31d253b5fbbe5a2a67f10f8dae435bee`.
+- This `STATE.md` commit intentionally creates a real branch synchronize event so Quality must run again against the current master combination.
 
-Known branches that were previously classified as historical/merged/stale include old approval, atomic-edit, code-intelligence, LSP, Tree-sitter, parallel-read and security-hardening branches. Use current PR/branch listings before deleting anything manually.
+**Next AI/action:** inspect the newest #24 Quality run created after this commit. Do not merge based only on the older rerun.
+
+Before merge require:
+
+- [ ] gofmt
+- [ ] vet
+- [ ] JS syntax
+- [ ] PowerShell syntax
+- [ ] Android Remote APK build
+- [ ] govulncheck
+- [ ] full-stack loopback integration
+- [ ] complete Go tests
+- [ ] race detector
+- [ ] coverage >=80.0%
+- [ ] native Windows builds
+- [ ] diff check
+- [ ] project create/delete regression tests
+- [ ] Android pinning/private-origin tests
+- [ ] mobile route authentication
+- [ ] mobile global-approval block
+- [ ] Play Store helper still never uploads/publishes/rotates keys
+- [ ] PR mergeable with current master
+
+Only after every box is green:
+
+1. mark PR #24 ready for review
+2. re-read PR head SHA
+3. merge with `expected_head_sha`
+4. record merge SHA in this file on the next master-based feature branch
+5. recreate/sync quarantine branch from resulting master
 
 ---
 
-## 13. Coding/release conventions
+## 13. Branch and workflow hygiene
 
-- Windows is the primary target; WSL support is useful but must not make Windows startup dependent on WSL.
-- Go code must be gofmt-clean.
-- User-facing changes must keep DE/EN complete.
-- Use explicit, bounded timeouts and cancellation.
-- Prefer deterministic safety checks to prompt-only instructions.
-- No force-push/history rewrite unless the user explicitly requests it and risk is understood.
-- Do not commit generated release binaries, keystores, tokens or passwords.
-- Commit messages should be concise conventional descriptions, e.g. `feat: ...`, `fix: ...`, `test: ...`, `security: ...`, `docs: ...`.
+- Delete merged feature branches when safe tooling/access permits.
+- Do not reuse stale closed branches as implementation bases.
+- Do not force-move refs to simulate deletion.
+- Do not restore obsolete temporary coverage workflows.
+- Keep Quality and real release workflows unless a replacement is demonstrably stronger.
+- Before deleting an Actions workflow, verify it is unused/obsolete rather than guessing from filename.
+
+The repository has historical branches from atomic edit, approvals, AST/LSP, parallel reads and security work. Recheck current branch/PR listings before cleanup because status changes as merges occur.
 
 ---
 
 ## 14. Definition of done for the user’s current direction
 
-The user’s current direction is not merely “add a phone button”. The intended end state is:
+The user’s request is broader than “add a phone button”. The intended state is:
 
-1. New projects can be created cleanly from Desktop or phone and immediately contain useful AI handoff docs.
-2. Empty project folders can be removed safely.
-3. Non-empty project folders require explicit, content-informed confirmation and an exact server-side confirmation value.
-4. Phone Remote has least-privilege project management, not a broad administrative shell.
-5. Android connectivity is pinned to the paired private LocalCode endpoint.
-6. Release builds can be initiated simply from phone while all dangerous signing/publishing operations remain separately controlled.
-7. STATE.md always tells a fresh AI exactly what is implemented, what is in flight, what is blocked, and what to do next.
-8. Crash recovery and reproducible cross-engine benchmarks are merged after fresh rule-compliant CI.
-9. Model subagents and doom-loop protection are ported from their validated old designs to current master.
-10. The comparison matrix is repeatedly updated from measured implementation reality until LocalCode leads every row.
+1. Projects are easy to create from Desktop and phone.
+2. A true `create_project` always has useful handoff docs.
+3. Empty folders can be removed safely.
+4. Non-empty projects require content-informed exact confirmation and then become reversible before permanent destruction.
+5. Phone Remote has least privilege rather than a broad shell/admin surface.
+6. Android connection is private-origin restricted and certificate-pinned.
+7. A Play Store release build can be initiated from the phone without silently changing signing identity or publishing.
+8. AAB/APK artifacts are verified and hashed.
+9. Interrupted agent work is recoverable without blind mutation replay.
+10. LocalCode/Aider/OpenCode can be benchmarked fairly from identical inputs.
+11. Doom loops/no-op edits are blocked deterministically.
+12. Model-backed Explorer/Planner/Reviewer roles are isolated and bounded.
+13. `STATE.md` is always sufficient for a fresh AI to resume from current repository reality.
+14. The comparison matrix is updated only from implemented and measured evidence until LocalCode objectively leads every row.
 
-When this file is updated after future work, replace stale “current” facts instead of endlessly appending contradictory release notes.
+When updating this file later, **replace stale current facts**. Do not append contradictory historical snapshots.
