@@ -82,12 +82,16 @@ func removeEnvironmentKeys(env []string, keys ...string) []string {
 
 func clawCommandEnvironment(cfg Config) []string {
 	// The LocalCode Claw profile is deliberately local-first. Do not allow
-	// ambient cloud-provider credentials or a stale OpenAI-compatible endpoint
-	// to silently route a supposedly local run away from Ollama.
+	// ambient cloud-provider credentials, provider overrides, or a stale
+	// OpenAI-compatible endpoint to silently route a supposedly local run away
+	// from Ollama.
 	env := removeEnvironmentKeys(commandEnvironment(cfg),
 		"OLLAMA_HOST",
 		"OPENAI_BASE_URL", "OPENAI_API_KEY",
 		"ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+		"XAI_BASE_URL", "XAI_API_KEY",
+		"DASHSCOPE_BASE_URL", "DASHSCOPE_API_KEY",
+		"CLAUDE_CODE_PROVIDER",
 	)
 	return append(env,
 		"OLLAMA_HOST="+clawOllamaHost(cfg.OllamaURL),
@@ -135,6 +139,30 @@ func ensureClawBuildDependency(ctx context.Context, project, name string, cfg Co
 	return updated, info.Path, nil
 }
 
+func clawCapturedStdout(raw string) string {
+	value := strings.TrimSpace(raw)
+	for _, prefix := range []string{"STDOUT:\r\n", "STDOUT:\n"} {
+		if strings.HasPrefix(value, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+		}
+	}
+	return value
+}
+
+func clawOfficialOrigin(raw string) bool {
+	origin := strings.ToLower(strings.TrimSpace(clawCapturedStdout(raw)))
+	origin = strings.TrimSuffix(origin, "/")
+	origin = strings.TrimSuffix(origin, ".git")
+	switch origin {
+	case "https://github.com/ultraworkers/claw-code",
+		"git@github.com:ultraworkers/claw-code",
+		"ssh://git@github.com/ultraworkers/claw-code":
+		return true
+	default:
+		return false
+	}
+}
+
 func preparePinnedClawSource(ctx context.Context, gitPath string, cfg Config) (string, string, error) {
 	root := clawManagedSourceRoot()
 	var detail []string
@@ -143,7 +171,7 @@ func preparePinnedClawSource(ctx context.Context, gitPath string, cfg Config) (s
 		if runErr != nil || code != 0 {
 			return root, strings.TrimSpace(origin), errors.New("managed Claw source exists but is not a usable Git repository")
 		}
-		if !strings.Contains(strings.ToLower(origin), "github.com/ultraworkers/claw-code") {
+		if !clawOfficialOrigin(origin) {
 			return root, strings.TrimSpace(origin), errors.New("managed Claw source has an unexpected origin; refusing to overwrite it")
 		}
 	} else if err == nil {
@@ -171,7 +199,7 @@ func preparePinnedClawSource(ctx context.Context, gitPath string, cfg Config) (s
 		return root, strings.Join(detail, "\n"), fmt.Errorf("Claw pinned revision checkout failed with exit code %d: %w", code, runErr)
 	}
 	actual, code, runErr := runCapturedCommand(ctx, gitPath, []string{"-C", root, "rev-parse", "HEAD"}, commandEnvironment(cfg), "")
-	actual = strings.TrimSpace(strings.TrimPrefix(actual, "STDOUT:\n"))
+	actual = clawCapturedStdout(actual)
 	if runErr != nil || code != 0 || !strings.EqualFold(actual, clawPinnedCommit) {
 		return root, strings.Join(detail, "\n"), fmt.Errorf("Claw source revision verification failed: got %q", actual)
 	}
