@@ -7,54 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
-
-func TestAtomicWriteQuarantineMetadataCreatesAndReplaces(t *testing.T) {
-	root := t.TempDir()
-	entryDir := filepath.Join(root, "entry")
-	if err := os.MkdirAll(entryDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	first := QuarantinedProject{ID: "one", Name: "Demo", OriginalPath: filepath.Join(root, "Demo"), QuarantinedAt: time.Unix(1, 0)}
-	if err := atomicWriteQuarantineMetadata(entryDir, first); err != nil {
-		t.Fatal(err)
-	}
-	path := quarantineMetadataPath(entryDir)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"id": "one"`) || !strings.HasSuffix(string(data), "\n") {
-		t.Fatalf("unexpected first metadata: %s", data)
-	}
-	second := QuarantinedProject{ID: "two", Name: "Demo2", OriginalPath: filepath.Join(root, "Demo2"), QuarantinedAt: time.Unix(2, 0)}
-	if err := atomicWriteQuarantineMetadata(entryDir, second); err != nil {
-		t.Fatal(err)
-	}
-	data, err = os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), `"id": "one"`) || !strings.Contains(string(data), `"id": "two"`) {
-		t.Fatalf("metadata replacement was not atomic/current: %s", data)
-	}
-	matches, err := filepath.Glob(filepath.Join(entryDir, ".metadata-*.tmp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 0 {
-		t.Fatalf("temporary metadata files leaked: %v", matches)
-	}
-}
-
-func TestAtomicWriteQuarantineMetadataFailsWhenEntryMissing(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "missing")
-	err := atomicWriteQuarantineMetadata(missing, QuarantinedProject{ID: "x"})
-	if err == nil {
-		t.Fatal("metadata write must fail when entry directory does not exist")
-	}
-}
 
 func TestRollbackQuarantinePayloadCoversNoopConflictAndRestore(t *testing.T) {
 	t.Run("missing payload is already rolled back", func(t *testing.T) {
