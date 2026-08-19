@@ -142,3 +142,29 @@ func TestRunCodingEngineReturnsTypedNotInstalledForClaw(t *testing.T) {
 		t.Fatalf("missing-engine status = %#v", missing.Status)
 	}
 }
+
+func TestInstallClawCodeRejectsUnverifiableExistingExecutable(t *testing.T) {
+	isolateClawExecutableSearch(t)
+	existing := filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "ClawCode", "bin", filepath.Base(clawManagedBinary()))
+	if err := os.MkdirAll(filepath.Dir(existing), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existing, []byte("not a Claw executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.SetupDownloadsEnabled = true
+	status, _, detail, err := installClawCode(context.Background(), t.TempDir(), cfg)
+	if err == nil || !strings.Contains(err.Error(), "could not be verified") {
+		t.Fatalf("unverifiable executable must fail closed, got err=%v detail=%q", err, detail)
+	}
+	if status.Installed {
+		t.Fatalf("unverifiable executable reported installed: %#v", status)
+	}
+	if filepath.Clean(status.Executable) != filepath.Clean(existing) {
+		t.Fatalf("status executable = %q; want %q", status.Executable, existing)
+	}
+	if !strings.Contains(detail, existing) {
+		t.Fatalf("verification failure detail does not identify executable: %q", detail)
+	}
+}
