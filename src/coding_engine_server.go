@@ -38,14 +38,21 @@ func (s *Server) handleCodingEngineStatus(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	selected := requestedCodingEngine(r, cfg, "")
 	selectedStatus := codingEngineStatus(ctx, cfg, selected)
-	statuses := make([]CodingEngineStatus, 0, 5)
-	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineClaw, editingEngineNative} {
+
+	// Keep the established four-engine list stable for older desktop/mobile
+	// clients. Experimental engines are additive, can still be selected through
+	// ?engine=..., and are surfaced separately so clients can opt in without a
+	// brittle list-length/schema migration.
+	statuses := make([]CodingEngineStatus, 0, 4)
+	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative} {
 		statuses = append(statuses, codingEngineStatus(ctx, cfg, engine))
 	}
+	experimental := []CodingEngineStatus{codingEngineStatus(ctx, cfg, editingEngineClaw)}
 	_ = writeJSON(w, map[string]any{
-		"selected": selected,
-		"status":   selectedStatus,
-		"engines":  statuses,
+		"selected":             selected,
+		"status":               selectedStatus,
+		"engines":              statuses,
+		"experimental_engines": experimental,
 	})
 }
 
