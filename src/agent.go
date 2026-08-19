@@ -297,6 +297,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.ActionLog = nil
 	}
 	cfg := s.Config
+	threadID = s.CurrentThread
 	s.mu.Unlock()
 
 	agentMessage := userMessage
@@ -319,6 +320,12 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		}
 	}
 
+	journalTask := agentMessage
+	if isContinuation && continuation != nil && strings.TrimSpace(continuation.OriginalTask) != "" {
+		journalTask = continuation.OriginalTask
+	}
+	s.beginRunJournal(runID, project, model, journalTask, threadID, now)
+
 	_ = saveConfig(cfg)
 	_ = ensureProjectDocs(project, cfg)
 	if isContinuation {
@@ -340,6 +347,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 			s.mu.Unlock()
 			s.UpdateProjectState(localizeConfigText(cfg, "Erinnerungsaktion fehlgeschlagen", "Memory action failed"))
 			s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+			s.finishRunJournal(runID, "memory_failed")
 			return nil
 		}
 		s.mu.Lock()
@@ -354,6 +362,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.recordAction("Erinnerungsaktion: " + directMemory.Kind)
 		s.UpdateProjectState(localizeConfigText(cfg, "Erinnerungsaktion abgeschlossen", "Memory action completed"))
 		s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+		s.finishRunJournal(runID, "memory_completed")
 		return nil
 	}
 	if isContinuation {
@@ -368,11 +377,15 @@ func (s *AppState) StopAgent() bool {
 	s.mu.Lock()
 	cancel := s.Cancel
 	running := s.Running
+	runID := s.RunID
 	if running {
 		s.RunPhase = "cancelling"
 		s.LastProgressAt = time.Now()
 	}
 	s.mu.Unlock()
+	if running {
+		s.journalRunPhase(runID, "cancelling")
+	}
 	if cancel != nil {
 		cancel()
 	}
@@ -387,6 +400,7 @@ func (s *AppState) ForceStopAgent() bool {
 	cancel := s.Cancel
 	pending := s.Pending
 	wasRunning := s.Running
+	runID := s.RunID
 	if wasRunning {
 		// Invalidate the current run so a late goroutine cannot switch the UI back
 		// into a running state or execute an after-task hook.
@@ -399,6 +413,9 @@ func (s *AppState) ForceStopAgent() bool {
 		s.LastProgressAt = time.Now()
 	}
 	s.mu.Unlock()
+	if wasRunning {
+		s.finishRunJournal(runID, "force_stopped")
+	}
 	if cancel != nil {
 		cancel()
 	}
@@ -417,11 +434,15 @@ func (s *AppState) ForceStopAgent() bool {
 
 func (s *AppState) setRunPhase(runID, phase string) {
 	s.mu.Lock()
-	if s.Running && s.RunID == runID {
+	updated := s.Running && s.RunID == runID
+	if updated {
 		s.RunPhase = phase
 		s.LastProgressAt = time.Now()
 	}
 	s.mu.Unlock()
+	if updated {
+		s.journalRunPhase(runID, phase)
+	}
 }
 
 func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
@@ -470,6 +491,11 @@ func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 		s.LastProgressAt = time.Now()
 	}
 	s.mu.Unlock()
+	outcome := "completed"
+	if !runAfterHook {
+		outcome = "waiting_for_user_or_cancelled"
+	}
+	s.finishRunJournal(runID, outcome)
 }
 
 func (s *AppState) prepareAttachmentContext(ctx context.Context, userMessage string, attachments []Attachment) (string, func(), error) {
@@ -524,6 +550,14 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
+	recoveryContext, recoveredTask := s.consumeRecoveryContextForTask(project, userMessage)
+	effectiveTask := userMessage
+	if recoveredTask != "" {
+		effectiveTask = recoveredTask
+		s.journalRunTask(runID, effectiveTask)
+		instructions += "\n\n" + recoveryContext
+		s.AddEvent(UIEvent{Type: "recovery", Message: localizeConfigText(cfg, "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", "Interrupted task is resuming from the last confirmed state"), Detail: localizeConfigText(cfg, "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft.", "Current files and Git state are re-checked before any mutating action.")})
+	}
 	engine := normalizeEditingEngine(cfg.EditingEngine)
 	engineHint := "ENGINE-HINWEIS: Für mehrdateilige Codeänderungen ist engine_edit verfügbar."
 	if engine == editingEngineNative {
@@ -536,9 +570,9 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	}
 	language := responseLanguage(cfg)
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
-	automationHint := taskAutomationHint(userMessage)
-	qualityHint := taskQualityHint(userMessage)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, userMessage), userMessage, attachmentContext, qualityHint, automationHint)}}
+	automationHint := taskAutomationHint(effectiveTask)
+	qualityHint := taskQualityHint(effectiveTask)
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), effectiveTask, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -552,7 +586,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.AddEvent(UIEvent{Type: "agent_step", Message: "Hook vor Aufgabe ausgeführt", Detail: truncateText(out, 12000)})
 	}
 
-	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", userMessage)
+	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", effectiveTask)
 	runAfterHook = outcome == "done"
 }
 
