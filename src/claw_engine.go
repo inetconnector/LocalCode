@@ -184,7 +184,7 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 	}
 	if existing := findClawExecutable(); existing != "" {
 		status := codingEngineStatus(ctx, cfg, editingEngineClaw)
-		return status, cfg, "Existing Claw Code installation detected and verified: "+existing, nil
+		return status, cfg, "Existing Claw Code installation detected and verified: " + existing, nil
 	}
 	updated, gitPath, err := ensureClawBuildDependency(ctx, project, "git", cfg)
 	if err != nil {
@@ -202,7 +202,7 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 	}
 	sourceRoot, sourceDetail, err := preparePinnedClawSource(ctx, gitPath, cfg)
 	if err != nil {
-		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, strings.TrimSpace(msvcDetail+"\n"+sourceDetail), err
+		return codingEngineStatus(ctx, cfg, editingEngineClaw), cfg, strings.TrimSpace(msvcDetail + "\n" + sourceDetail), err
 	}
 	rustRoot := filepath.Join(sourceRoot, "rust")
 	args := []string{"build", "--workspace", "--release"}
@@ -234,5 +234,5 @@ func installClawCode(ctx context.Context, project string, cfg Config) (CodingEng
 	if !status.Installed {
 		return status, cfg, detail, errors.New("Claw installation could not be verified")
 	}
-	return status, cfg, strings.TrimSpace(detail+"\nVerified pinned Claw revision: "+clawPinnedCommit), nil
+	return status, cfg, strings.TrimSpace(detail + "\nVerified pinned Claw revision: " + clawPinnedCommit), nil
 }
