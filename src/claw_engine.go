@@ -144,7 +144,17 @@ func clawCapturedStdout(raw string) string {
 	value := strings.TrimSpace(raw)
 	for _, prefix := range []string{"STDOUT:\r\n", "STDOUT:\n"} {
 		if strings.HasPrefix(value, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+			value = strings.TrimSpace(strings.TrimPrefix(value, prefix))
+			break
+		}
+	}
+	// runCapturedCommand labels stdout and stderr separately. A successful
+	// Claw command can still emit a warning on stderr; version JSON must be
+	// parsed only from the stdout channel rather than from the combined text.
+	for _, marker := range []string{"\r\nSTDERR:\r\n", "\nSTDERR:\n", "\r\nSTDERR:", "\nSTDERR:"} {
+		if index := strings.Index(value, marker); index >= 0 {
+			value = strings.TrimSpace(value[:index])
+			break
 		}
 	}
 	return value
