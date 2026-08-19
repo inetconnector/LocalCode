@@ -28,15 +28,26 @@ func TestClawCommandEnvironmentForcesLocalOllama(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.OllamaURL = "http://127.0.0.1:11434/v1"
 	cfg.EnvironmentVars = map[string]string{
-		"OPENAI_BASE_URL":      "https://example.invalid/v1",
-		"OPENAI_API_KEY":       "secret-openai",
-		"ANTHROPIC_API_KEY":    "secret-anthropic",
-		"ANTHROPIC_AUTH_TOKEN": "secret-token",
-		"KEEP_ME":              "yes",
+		"OPENAI_BASE_URL":       "https://example.invalid/v1",
+		"OPENAI_API_KEY":        "secret-openai",
+		"ANTHROPIC_API_KEY":     "secret-anthropic",
+		"ANTHROPIC_AUTH_TOKEN":  "secret-token",
+		"XAI_BASE_URL":          "https://api.x.ai/v1",
+		"XAI_API_KEY":           "secret-xai",
+		"DASHSCOPE_BASE_URL":    "https://dashscope.invalid/v1",
+		"DASHSCOPE_API_KEY":     "secret-dashscope",
+		"CLAUDE_CODE_PROVIDER":  "azure",
+		"KEEP_ME":               "yes",
 	}
 	env := clawCommandEnvironment(cfg)
 	joined := "\n" + strings.Join(env, "\n") + "\n"
-	for _, forbidden := range []string{"OPENAI_BASE_URL=", "OPENAI_API_KEY=", "ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN="} {
+	for _, forbidden := range []string{
+		"OPENAI_BASE_URL=", "OPENAI_API_KEY=",
+		"ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN=",
+		"XAI_BASE_URL=", "XAI_API_KEY=",
+		"DASHSCOPE_BASE_URL=", "DASHSCOPE_API_KEY=",
+		"CLAUDE_CODE_PROVIDER=",
+	} {
 		if strings.Contains(joined, "\n"+forbidden) {
 			t.Fatalf("Claw environment leaked provider variable %s: %s", forbidden, joined)
 		}
@@ -44,6 +55,34 @@ func TestClawCommandEnvironmentForcesLocalOllama(t *testing.T) {
 	for _, required := range []string{"\nOLLAMA_HOST=http://127.0.0.1:11434\n", "\nCLAW_OUTPUT_FORMAT=json\n", "\nKEEP_ME=yes\n"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("Claw environment missing %q: %s", required, joined)
+		}
+	}
+}
+
+func TestClawOfficialOriginAllowsOnlyCanonicalUpstream(t *testing.T) {
+	allowed := []string{
+		"https://github.com/ultraworkers/claw-code.git",
+		"https://github.com/ultraworkers/claw-code/",
+		"git@github.com:ultraworkers/claw-code.git",
+		"ssh://git@github.com/ultraworkers/claw-code.git",
+		"STDOUT:\nhttps://github.com/ultraworkers/claw-code.git\n",
+	}
+	for _, origin := range allowed {
+		if !clawOfficialOrigin(origin) {
+			t.Fatalf("official Claw origin rejected: %q", origin)
+		}
+	}
+	blocked := []string{
+		"http://github.com/ultraworkers/claw-code.git",
+		"https://github.com/ultraworkers/claw-code-evil.git",
+		"https://github.com/attacker/ultraworkers-claw-code.git",
+		"https://example.invalid/github.com/ultraworkers/claw-code.git",
+		"git://github.com/ultraworkers/claw-code.git",
+		"https://github.com/ultraworkers/claw-code.git/extra",
+	}
+	for _, origin := range blocked {
+		if clawOfficialOrigin(origin) {
+			t.Fatalf("lookalike/insecure Claw origin accepted: %q", origin)
 		}
 	}
 }
