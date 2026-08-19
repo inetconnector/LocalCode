@@ -177,3 +177,90 @@ func TestListQuarantinedProjectsWithoutStoreIsEmpty(t *testing.T) {
 		t.Fatalf("unexpected quarantine entries: %#v", entries)
 	}
 }
+
+func TestQuarantineProjectRejectsEmptyAndNonDirectoryTargets(t *testing.T) {
+	root := t.TempDir()
+	empty := filepath.Join(root, "Empty")
+	if err := os.Mkdir(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := quarantineProject(root, empty); err == nil || !strings.Contains(err.Error(), "empty project") {
+		t.Fatalf("empty project must use delete_empty, got %v", err)
+	}
+
+	file := filepath.Join(root, "NotADirectory")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := quarantineProject(root, file); err == nil || !strings.Contains(err.Error(), "real project directory") {
+		t.Fatalf("non-directory quarantine target must fail closed, got %v", err)
+	}
+}
+
+func TestEnsureProjectQuarantineRootRejectsRegularFile(t *testing.T) {
+	root := t.TempDir()
+	path := projectQuarantineRoot(root)
+	if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureProjectQuarantineRoot(root); err == nil || !strings.Contains(err.Error(), "real directory") {
+		t.Fatalf("regular-file quarantine root must be rejected, got %v", err)
+	}
+}
+
+func TestLoadQuarantinedProjectRejectsInvalidIDAndIdentityMismatch(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := loadQuarantinedProject(root, "../escape"); err == nil || !strings.Contains(err.Error(), "invalid quarantine id") {
+		t.Fatalf("invalid quarantine id must fail before filesystem access, got %v", err)
+	}
+
+	project := filepath.Join(root, "Mismatch")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "data.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := quarantineProject(root, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryDir := filepath.Join(projectQuarantineRoot(root), entry.ID)
+	metadata := quarantineMetadataPath(entryDir)
+	data, err := os.ReadFile(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corrupt := strings.Replace(string(data), `"id": "`+entry.ID+`"`, `"id": "different"`, 1)
+	if corrupt == string(data) {
+		t.Fatal("test could not alter quarantine metadata id")
+	}
+	if err := os.WriteFile(metadata, []byte(corrupt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loadQuarantinedProject(root, entry.ID); err == nil || !strings.Contains(err.Error(), "identity mismatch") {
+		t.Fatalf("metadata identity mismatch must fail closed, got %v", err)
+	}
+}
+
+func TestLoadQuarantinedProjectRejectsMalformedMetadata(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "Malformed")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "data.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := quarantineProject(root, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := quarantineMetadataPath(filepath.Join(projectQuarantineRoot(root), entry.ID))
+	if err := os.WriteFile(metadata, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loadQuarantinedProject(root, entry.ID); err == nil {
+		t.Fatal("malformed quarantine metadata must be rejected")
+	}
+}
