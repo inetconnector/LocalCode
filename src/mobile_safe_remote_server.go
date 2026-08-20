@@ -50,6 +50,8 @@ func newMobileSafeRemoteServer(state *AppState) *RemoteServer {
 	remote := NewRemoteServer(state)
 	remote.mux.HandleFunc("/remote/api/project-action", remote.withAuth(remote.handleRemoteProjectAction))
 	remote.mux.HandleFunc("/remote/api/project-delete-preview", remote.withAuth(remote.handleRemoteProjectDeletePreview))
+	remote.mux.HandleFunc("/remote/api/project-quarantine", remote.withAuth(remote.handleRemoteProjectQuarantineList))
+	remote.mux.HandleFunc("/remote/api/project-quarantine-action", remote.withAuth(remote.handleRemoteProjectQuarantineAction))
 	remote.mux.HandleFunc("/remote/api/editing-engine", remote.withAuth(remote.handleRemoteEditingEngine))
 	return remote
 }
