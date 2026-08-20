@@ -97,17 +97,17 @@ func TestAgentLoopGuardDetectsShortCycles(t *testing.T) {
 		results []string
 	}{
 		{
-			name: "period two",
+			name:    "period two",
 			actions: []AgentAction{{Action: "read_file", Path: "a.go"}, {Action: "search_text", Query: "Thing"}},
 			results: []string{"A", "B"},
 		},
 		{
-			name: "period three",
+			name:    "period three",
 			actions: []AgentAction{{Action: "read_file", Path: "a.go"}, {Action: "read_file", Path: "b.go"}, {Action: "search_text", Query: "Thing"}},
 			results: []string{"A", "B", "C"},
 		},
 		{
-			name: "period four",
+			name:    "period four",
 			actions: []AgentAction{{Action: "read_file", Path: "a.go"}, {Action: "read_file", Path: "b.go"}, {Action: "search_text", Query: "Thing"}, {Action: "list_files", Path: "src", MaxDepth: 2}},
 			results: []string{"A", "B", "C", "D"},
 		},
