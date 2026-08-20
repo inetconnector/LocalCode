@@ -5,12 +5,12 @@ $text = [IO.File]::ReadAllText($patchPath)
 $bad = @'
 $newReliability = "Task: deterministicSubagentTaskPrefix +`n`t`t`t`t\"Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: \" + intent.OriginalTask,"
 '@.Trim()
-$good = @'
-$newReliability = @'
+$good = @"
+`$newReliability = @'
 Task: deterministicSubagentTaskPrefix +
     "Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,
 '@.Trim()
-'@.Trim()
+"@.Trim()
 if (-not $text.Contains($bad)) {
     throw 'Expected temporary PowerShell quoting anchor was not found.'
 }
