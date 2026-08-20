@@ -15,6 +15,7 @@ if (-not $text.Contains($bad)) {
     throw 'Expected temporary PowerShell quoting anchor was not found.'
 }
 $text = $text.Replace($bad, $good)
+$text = $text.Replace('Test-Log-Sicht anfordern.', 'Testlog-Sicht anfordern.')
 [IO.File]::WriteAllText($patchPath, $text, [Text.UTF8Encoding]::new($false))
 
 & $patchPath
