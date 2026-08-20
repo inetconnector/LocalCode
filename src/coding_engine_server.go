@@ -37,19 +37,22 @@ func (s *Server) handleCodingEngineStatus(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	selected := requestedCodingEngine(r, cfg, "")
+	selectedStatus := codingEngineStatus(ctx, cfg, selected)
+
+	// Keep the established four-engine list stable for older desktop/mobile
+	// clients. Experimental engines are additive, can still be selected through
+	// ?engine=..., and are surfaced separately so clients can opt in without a
+	// brittle list-length/schema migration.
 	statuses := make([]CodingEngineStatus, 0, 4)
-	selectedStatus := CodingEngineStatus{}
 	for _, engine := range []string{editingEngineAider, editingEngineClaude, editingEngineOpenCode, editingEngineNative} {
-		status := codingEngineStatus(ctx, cfg, engine)
-		statuses = append(statuses, status)
-		if engine == selected {
-			selectedStatus = status
-		}
+		statuses = append(statuses, codingEngineStatus(ctx, cfg, engine))
 	}
+	experimental := []CodingEngineStatus{codingEngineStatus(ctx, cfg, editingEngineClaw)}
 	_ = writeJSON(w, map[string]any{
-		"selected": selected,
-		"status":   selectedStatus,
-		"engines":  statuses,
+		"selected":             selected,
+		"status":               selectedStatus,
+		"engines":              statuses,
+		"experimental_engines": experimental,
 	})
 }
 
@@ -107,7 +110,7 @@ func (s *Server) handleCodingEngineSetup(w http.ResponseWriter, r *http.Request)
 		_ = writeJSON(w, map[string]any{"ok": true, "status": status, "detail": detail, "settings": updated})
 	case "login":
 		status := codingEngineStatus(ctx, cfg, engine)
-		if engine == editingEngineAider || engine == editingEngineNative {
+		if engine == editingEngineAider || engine == editingEngineClaw || engine == editingEngineNative {
 			_ = writeJSON(w, map[string]any{"ok": true, "status": status, "detail": status.DisplayName + " requires no separate CLI login from LocalCode."})
 			return
 		}

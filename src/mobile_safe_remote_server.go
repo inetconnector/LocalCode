@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const mobileRemoteApprovalMaxBody = 16 << 10
+const (
+	mobileRemoteApprovalMaxBody = 16 << 10
+	mobileRemoteEngineMaxBody   = 4 << 10
+)
 
 type mobileSafeRemoteHandler struct {
 	remote *RemoteServer
@@ -49,7 +52,55 @@ func newMobileSafeRemoteServer(state *AppState) *RemoteServer {
 	remote.mux.HandleFunc("/remote/api/project-delete-preview", remote.withAuth(remote.handleRemoteProjectDeletePreview))
 	remote.mux.HandleFunc("/remote/api/project-quarantine", remote.withAuth(remote.handleRemoteProjectQuarantineList))
 	remote.mux.HandleFunc("/remote/api/project-quarantine-action", remote.withAuth(remote.handleRemoteProjectQuarantineAction))
+	remote.mux.HandleFunc("/remote/api/editing-engine", remote.withAuth(remote.handleRemoteEditingEngine))
 	return remote
+}
+
+func (s *RemoteServer) handleRemoteEditingEngine(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, mobileRemoteEngineMaxBody)
+	var req struct {
+		Engine string `json:"engine"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, "invalid editing engine request", http.StatusBadRequest)
+		return
+	}
+	requested := strings.ToLower(strings.TrimSpace(req.Engine))
+	engine := normalizeEditingEngine(requested)
+	if requested == "" || engine != requested {
+		http.Error(w, "unknown editing engine", http.StatusBadRequest)
+		return
+	}
+
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	if s.state.Running {
+		http.Error(w, "agent is running", http.StatusConflict)
+		return
+	}
+	cfg := s.state.Config
+	if !codingEngineEnabled(cfg, engine) {
+		http.Error(w, "editing engine is disabled", http.StatusConflict)
+		return
+	}
+	updated := cfg
+	updated.EditingEngine = engine
+	updated = normalizeConfig(updated)
+	if err := saveConfig(updated); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.state.Config = updated
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":           true,
+		"engine":       engine,
+		"display_name": codingEngineDisplayName(engine),
+	})
 }
 
 func mobileSafeRemoteHTTPHandler(remote *RemoteServer) http.Handler {

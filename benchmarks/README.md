@@ -25,7 +25,37 @@ From `src`:
 go run ./cmd/localcode-bench -manifest ../benchmarks/my-task.json -out ../benchmarks/results/native.json
 ```
 
-Run the same manifest three times with only `engine`, `engine_command` and any engine-specific adapter environment changed. Keep `repository`, `base_ref`, `task`, `model`, setup and checks identical for LocalCode native, Aider and OpenCode.
+Run the same manifest once per engine with only `engine`, `engine_command` and engine-specific adapter environment changed. Keep `repository`, `base_ref`, `task`, `model`, setup and checks identical for LocalCode native, Aider, OpenCode and Claw Code.
+
+## Claw Code adapter
+
+`src/cmd/localcode-bench-claw` is the LocalCode adapter for reproducible Claw Code runs. Build it before benchmarking; the adapter never downloads, installs or upgrades Claw during a measured run.
+
+From `src` on Windows, for example:
+
+```text
+go build -o ../benchmarks/bin/localcode-bench-claw.exe ./cmd/localcode-bench-claw
+```
+
+A Claw manifest points `engine_command` at that adapter and supplies the exact Claw executable under test:
+
+```json
+{
+  "engine": "claw-code",
+  "model": "qwen2.5-coder:14b",
+  "engine_command": ["C:\\bench-tools\\localcode-bench-claw.exe"],
+  "environment": {
+    "LOCALCODE_BENCH_CLAW": "C:\\LocalCode\\tools\\claw-code\\bin\\claw.exe",
+    "LOCALCODE_BENCH_OLLAMA_HOST": "http://127.0.0.1:11434"
+  }
+}
+```
+
+The harness itself supplies `LOCALCODE_BENCH_TASK`, `LOCALCODE_BENCH_MODEL`, `LOCALCODE_BENCH_WORKTREE`, `LOCALCODE_BENCH_ENGINE` and `LOCALCODE_BENCH_BASE`. The Claw adapter refuses a missing or relative Claw executable path, refuses to run outside the isolated benchmark worktree, and always invokes Claw with JSON output and `workspace-write`. It never requests `danger-full-access`.
+
+For local-first fairness, the adapter sets `OLLAMA_HOST` only in the Claw subprocess and removes ambient OpenAI, Anthropic, xAI and DashScope credentials/base URLs plus Claw model/permission overrides. This keeps an ostensibly local benchmark from silently drifting to a cloud provider. Use the same Ollama endpoint, model, quantization and context settings for every engine being compared.
+
+The adapter currently does not manufacture optional self-reported token/tool counters from unstable output fields. Build/test/hidden-test success, runtime and Git diff metrics remain measured independently by the harness. Add adapter metrics only when the engine exposes a stable machine-readable contract for them.
 
 ## Manifest example
 
