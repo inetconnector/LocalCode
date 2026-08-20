@@ -9,6 +9,8 @@
 **Final tested PR #40 head:** `9c3b25b1b070d80c075e9b697a9fffe86f0d3184`  
 **Quality on final PR #40 head:** #406 – success  
 **Current documentation refresh branch:** `docs/state-todo-after-native-agent-teams`  
+**Active documentation PR:** #41 `docs: refresh bootstrap state and TODO after native agent teams`  
+**Documentation content baseline before this PR-metadata sync:** `143bd1abfba147434d42820f7f39b1fb0b58d81a`  
 **Open implementation PR:** none at this snapshot  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
 **Immediate implementation priority after this documentation refresh:** #32 Phase 4 – Task DAG + dependency validation/scheduling foundation  
@@ -74,7 +76,7 @@ The application is a Go program with embedded web UI, local HTTP/SSE backend, Ol
 - `src/server.go` and project/remote API files – Desktop/local HTTP and Mobile Remote routing/security boundaries.
 - `src/static/ui_polish.js` – Desktop UI behavior/polish and project UX.
 - `src/static/remote.html` – narrow Mobile Remote UI.
-- Quality workflow under `.github/workflows/quality.yml` is the mandatory Windows merge gate.
+- `.github/workflows/quality.yml` – mandatory Windows merge gate.
 
 When adding Task-DAG/scheduler code, prefer new focused files rather than expanding `agent.go` into a monolith. Preserve the existing single-agent path as a compatibility path while orchestration is added above it.
 
@@ -139,13 +141,9 @@ The repository also contains a cross-engine benchmark harness that isolates runs
 
 ## 3. PR #40 merged – Native Agent Teams foundation
 
-PR #40 is complete and merged into `master` as:
+PR #40 is complete and merged into `master` as `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`.
 
-`97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`
-
-Final feature head:
-
-`9c3b25b1b070d80c075e9b697a9fffe86f0d3184`
+Final feature head: `9c3b25b1b070d80c075e9b697a9fffe86f0d3184`.
 
 Quality #406 passed on that exact final head with all required gates: gofmt, vet, JS syntax, PowerShell syntax, Android Remote APK, vulnerability scan, full-stack loopback integration, complete tests, race detector, statement coverage >=80%, native Windows builds and final diff check. Before merge the branch was 0 behind `master`, mergeable and had no review submissions or unresolved review threads.
 
@@ -158,24 +156,15 @@ Merged capability:
 - child action schema limited to `list_files`, `read_file`, `search_text`, approval-free `lsp`, `finish`
 - mutation, shell, Git, network/web, MCP, installation, memory, approval requests and recursive spawning absent from the child schema
 - Planner may emit structured follow-up task proposals but cannot execute mutation-capable roles
-- Reviewer is an independent role intended to receive explicit task/evidence, not builder self-justification
-- deterministic read-only fallback when model unavailable/fails or budget is exhausted
+- Reviewer is independent and intended to receive explicit task/evidence, not builder self-justification
+- deterministic read-only fallback when model unavailable/fails or budget exhausted
 - mandatory edit-reliability preflight remains deterministic and consumes no child-model calls
 - child tool steps surface as `subagent:<role>:<action>` events
 - DE/EN README, architecture and security documentation updated
 
-Intentionally NOT implemented yet:
+Intentionally not implemented yet: Task DAG validation/state machine/scheduling, mission persistence, resource manager, mutation-capable Builder agents, Git-worktree isolation, Integrator/Test-Agent orchestration, dynamic Agent Factory/replanning, OS/QEMU mission execution.
 
-- Task DAG validation/state machine/scheduling
-- mission persistence/recovery
-- resource manager separating logical parallelism from inference parallelism
-- mutation-capable Builder agents
-- Git-worktree isolation
-- Integrator/Test-Agent orchestration
-- dynamic Agent Factory/replanning
-- OS/QEMU mission execution
-
-Historical PR/branch #14 was not merged wholesale; only useful current-compatible read-only model-subagent design was ported.
+Historical PR/branch #14 was not stale-merged wholesale; only useful current-compatible read-only model-subagent design was ported.
 
 ---
 
@@ -206,13 +195,13 @@ Never lower the 80% threshold or weaken sandbox, approvals, atomic writes, path/
 
 ### Issue #32 – UMAF-LC / Native orchestration
 
-Issue #32 remains open. Phase 1–3 foundation is now merged via #40.
+Issue #32 remains open. Phase 1–3 foundation is merged via #40.
 
-Target architecture remains:
+Target architecture:
 
 `Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler/Resource Manager -> Agent Factory -> Explorer/Builder/Test/Reviewer -> Worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
 
-Do not build dozens of hard-coded agent classes. Agent identity should remain data-driven:
+Do not build dozens of hard-coded agent classes. Agent identity remains data-driven:
 
 `Agent = Runtime + Role + Mission + Context + Capabilities + Budget + Workspace + Parent`
 
@@ -230,19 +219,21 @@ Open issues #22, #23 and #25 are likely superseded by merged work and must be re
 
 ## 6. Exact next implementation step
 
-After this STATE/TODO documentation refresh is Quality-green and merged:
+Current workstream: finish documentation PR #41 on exact-head Quality and merge it into `master`.
+
+After #41 is merged:
 
 1. Verify/close issue #23 if every acceptance item is satisfied by #40.
-2. Start a **fresh branch from the then-current `master`** for #32 Phase 4. Do not continue on `feat/native-agent-teams`.
-3. First Phase-4 slice should be **Task DAG + dependency validation only**, with no mutation/worktrees yet.
-4. Extend `AgentTask`/adjacent new types with mission/parent/dependency/task-state semantics while preserving the existing single-agent and read-only child paths.
-5. Add deterministic DAG validation: duplicate IDs, missing dependencies and cycles must fail closed.
-6. Add task state transitions such as proposed/blocked/ready/running/succeeded/failed/cancelled/retryable and deterministic release/failed-dependency behavior.
+2. Start a fresh branch from then-current `master` for #32 Phase 4; do not continue on `feat/native-agent-teams`.
+3. First Phase-4 slice is **Task DAG + dependency validation only**, with no mutation/worktrees yet.
+4. Extend `AgentTask`/adjacent focused types with mission/parent/dependency/task-state semantics while preserving existing single-agent/read-only-child paths.
+5. Deterministically reject duplicate IDs, missing dependencies and cycles.
+6. Add task states such as proposed/blocked/ready/running/succeeded/failed/cancelled/retryable plus dependency release/failure propagation.
 7. Convert Planner `SuggestedTasks` into validated machine-readable DAG proposals; do not parse prose.
-8. Add focused tests for cycle rejection, missing dependencies, dependency release, failure propagation and multiple independent ready tasks.
-9. Do **not** add Builder mutation, worktrees, asynchronous persistence or broad scheduler concurrency in this first slice.
-10. Run full Quality on exact head, merge only after 0-behind/mergeability/review checks, then immediately refresh `STATE.md` and `TODO.md` again.
+8. Add focused tests for duplicate IDs, missing dependencies, cycles, dependency release, failure propagation and multiple independent ready tasks.
+9. Do not add Builder mutation, worktrees, asynchronous persistence or broad scheduler concurrency in this first slice.
+10. Full Quality on exact head; merge only after 0-behind/mergeability/review checks; immediately refresh STATE/TODO again.
 
-Then proceed to the next small slice: scheduler/resource manager separating logical queues from model-inference concurrency and enforcing mission/task budgets.
+Then proceed to scheduler/resource manager separation of logical queues from model-inference concurrency and mission/task budgets.
 
 `TODO.md` contains the exhaustive remaining roadmap and acceptance criteria.
