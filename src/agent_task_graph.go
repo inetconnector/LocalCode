@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxAgentTaskIDLength   = 80
+	maxAgentTaskIDLength    = 80
 	maxAgentRoleLabelLength = 80
 )
 
@@ -347,4 +347,14 @@ func agentTaskTransitionAllowed(current, next AgentTaskState) bool {
 	default:
 		return false
 	}
+}
+func buildPlannerTaskGraph(parent AgentTask, result AgentResult) (AgentTaskGraph, error) {
+	if parent.Role != AgentRolePlanner {
+		return AgentTaskGraph{}, fmt.Errorf("task %q is not a planner", parent.ID)
+	}
+	missionID := strings.TrimSpace(parent.MissionID)
+	if missionID == "" {
+		missionID = strings.TrimSpace(parent.ID)
+	}
+	return buildAgentTaskGraph(missionID, strings.TrimSpace(parent.ID), result.SuggestedTasks)
 }
