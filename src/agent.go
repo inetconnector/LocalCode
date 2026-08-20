@@ -153,7 +153,7 @@ Arbeitsweise:
 - Halte Änderungen klein und kohärent.
 - Führe vor dem Abschluss passende Tests, Linter und Builds tatsächlich aus.
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
-- Nutze subagent_analyze(task), wenn eine getrennte, unverändernde Exploration oder Testlog-Analyse sinnvoll ist. Diese Aktion liest nur Projektkontext, ausdrücklich erwähnte Dateien und Suchtreffer und liefert einen strukturierten Handoff; sie darf keine Dateien ändern, keine Befehle ausführen, keine Netzwerkzugriffe starten und keine MCP-Tools aufrufen.
+- Nutze subagent_analyze(task,name) für isolierte read-only Child-Agents. name ist optional und darf explorer, planner oder reviewer sein; ohne name wird explorer verwendet. Child-Agents haben eigenen Modellkontext und harte Modell-/Tool-/Zeit-/geschätzte-Token-Budgets, dürfen aber nur list_files/read_file/search_text/LSP/finish verwenden und niemals mutieren, Shell/Git/Netzwerk/MCP/Installationen/Genehmigungen/Rekursion starten.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
 - LocalCode verwaltet die MCP-Server filesystem, powershell, git, fetch, github und playwright. Liste bei einem noch unbekannten Server zuerst seine Fähigkeiten. Nutze filesystem für sichere Projektdateien, powershell für PowerShell-spezifische Aufgaben, git für strukturierte Git-Aktionen, fetch für Webinhalte, github für GitHub-Objekte und playwright für zustandsbehaftete Browserautomation. Wenn eine Laufzeit oder Anmeldung fehlt, löst LocalCode Installation beziehungsweise Login kontrolliert aus; gib nicht vorschnell auf.
 - Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Android SDK, Visual-Studio-Installationen, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR. Fehlt ein unterstütztes Werkzeug, bietet LocalCode dem Nutzer automatisch eine kontrollierte Installation an und wiederholt danach exakt den ursprünglichen Aufruf; frage dafür nicht zusätzlich mit ask_user.
@@ -2055,7 +2055,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 	case "project_info":
 		result = projectInfo(project, cfg)
 	case "subagent_analyze":
-		result, err = runReadOnlySubagent(project, cfg, a.Task)
+		result, err = s.runReadOnlyModelSubagent(ctx, project, cfg, a.Task, a.Name)
 	case "command_list":
 		result = formatProjectCommandList(project)
 	case "command_read":

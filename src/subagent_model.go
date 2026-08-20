@@ -248,11 +248,11 @@ func (s *AppState) runNativeReadOnlyAgentTask(ctx context.Context, project strin
 		}
 
 		s.AddEvent(UIEvent{
-			Type:   "agent_step",
+			Type:    "agent_step",
 			Message: childRoleDisplayName(cfg, task.Role) + ": " + strings.TrimSpace(action.Message),
-			Detail: childBudgetDetail(cfg, task.Budget, usage),
-			Action: "subagent:" + string(task.Role) + ":" + action.Action,
-			Path:   action.Path,
+			Detail:  childBudgetDetail(cfg, task.Budget, usage),
+			Action:  "subagent:" + string(task.Role) + ":" + action.Action,
+			Path:    action.Path,
 		})
 		result, toolErr := s.executeNativeChildAction(totalCtx, project, cfg, action)
 		usage.ToolCalls++

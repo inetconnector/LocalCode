@@ -86,15 +86,15 @@ type AgentTaskProposal struct {
 }
 
 type AgentResult struct {
-	Status         AgentResultStatus  `json:"status"`
-	Summary        string             `json:"summary"`
-	Findings       []Finding          `json:"findings,omitempty"`
-	ChangedFiles   []string           `json:"changed_files,omitempty"`
-	Commits        []string           `json:"commits,omitempty"`
-	Tests          []TestResult       `json:"tests,omitempty"`
-	Risks          []Risk             `json:"risks,omitempty"`
+	Status         AgentResultStatus   `json:"status"`
+	Summary        string              `json:"summary"`
+	Findings       []Finding           `json:"findings,omitempty"`
+	ChangedFiles   []string            `json:"changed_files,omitempty"`
+	Commits        []string            `json:"commits,omitempty"`
+	Tests          []TestResult        `json:"tests,omitempty"`
+	Risks          []Risk              `json:"risks,omitempty"`
 	SuggestedTasks []AgentTaskProposal `json:"suggested_tasks,omitempty"`
-	Usage          AgentUsage         `json:"usage"`
+	Usage          AgentUsage          `json:"usage"`
 }
 
 type AgentTask struct {
