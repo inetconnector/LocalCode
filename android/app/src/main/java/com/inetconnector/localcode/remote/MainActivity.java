@@ -3,18 +3,17 @@ package com.inetconnector.localcode.remote;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.net.http.SslCertificate;
+import android.net.http.SslError;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.net.http.SslCertificate;
-import android.net.http.SslError;
 import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
@@ -96,12 +95,12 @@ public final class MainActivity extends Activity {
         discoveryPanel.addView(title, fullWidthWrap());
 
         status = new TextView(this);
-        status.setText("Suche LocalCode im lokalen Netzwerk …");
+        status.setText(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
         status.setPadding(0, dp(10), 0, dp(12));
         discoveryPanel.addView(status, fullWidthWrap());
 
         Button discover = new Button(this);
-        discover.setText("LocalCode automatisch suchen");
+        discover.setText(tr("LocalCode automatisch suchen", "Find LocalCode automatically"));
         discover.setOnClickListener(v -> requestDiscoveryPermissionAndStart());
         discoveryPanel.addView(discover, fullWidthWrap());
 
@@ -112,11 +111,11 @@ public final class MainActivity extends Activity {
 
         manualFingerprint = new EditText(this);
         manualFingerprint.setSingleLine(true);
-        manualFingerprint.setHint("TLS SHA-256 Fingerprint vom LocalCode-PC");
+        manualFingerprint.setHint(tr("TLS-SHA-256-Fingerprint vom LocalCode-PC", "TLS SHA-256 fingerprint from the LocalCode PC"));
         discoveryPanel.addView(manualFingerprint, fullWidthWrap());
 
         Button open = new Button(this);
-        open.setText("Adresse sicher öffnen");
+        open.setText(tr("Adresse sicher öffnen", "Open address securely"));
         open.setOnClickListener(v -> {
             String value = manualUrl.getText().toString().trim();
             String fp = normalizeFingerprint(manualFingerprint.getText().toString());
@@ -124,13 +123,17 @@ public final class MainActivity extends Activity {
                 expectedFingerprint = fp;
                 openRemote(value);
             } else {
-                setStatus("Manuell sind nur private HTTPS-IP-Adressen plus der 64-stellige TLS-SHA-256-Fingerprint vom LocalCode-PC erlaubt.");
+                setStatus(tr(
+                        "Manuell sind nur private HTTPS-IP-Adressen plus der 64-stellige TLS-SHA-256-Fingerprint vom LocalCode-PC erlaubt.",
+                        "Manual setup allows only private HTTPS IP addresses together with the 64-character TLS SHA-256 fingerprint from the LocalCode PC."));
             }
         });
         discoveryPanel.addView(open, fullWidthWrap());
 
         TextView qrHint = new TextView(this);
-        qrHint.setText("Am einfachsten: QR-/Pair-Link verwenden. URL und TLS-Fingerprint werden dann automatisch und zusammen übernommen.");
+        qrHint.setText(tr(
+                "Am einfachsten: QR-/Pair-Link verwenden. URL und TLS-Fingerprint werden dann automatisch und zusammen übernommen.",
+                "Easiest: use the QR/pair link. The URL and TLS fingerprint are then transferred together automatically."));
         qrHint.setPadding(0, dp(12), 0, 0);
         discoveryPanel.addView(qrHint, fullWidthWrap());
 
@@ -159,25 +162,29 @@ public final class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                if (filePathCallback != null) {
-                    filePathCallback.onReceiveValue(null);
-                }
+                cancelPendingFileChooser();
                 filePathCallback = callback;
                 Intent intent;
                 try {
                     intent = params.createIntent();
                 } catch (RuntimeException ex) {
-                    filePathCallback = null;
-                    setStatus("Dateiauswahl konnte nicht geöffnet werden: " + ex.getMessage());
-                    return false;
+                    cancelPendingFileChooser();
+                    showRemoteError(
+                            "Dateiauswahl konnte nicht geöffnet werden.",
+                            "The file picker could not be opened.",
+                            ex);
+                    return true;
                 }
                 try {
                     startActivityForResult(intent, REQUEST_FILE_CHOOSER);
                     return true;
-                } catch (ActivityNotFoundException ex) {
-                    filePathCallback = null;
-                    setStatus("Keine passende Dateiauswahl-App gefunden.");
-                    return false;
+                } catch (RuntimeException ex) {
+                    cancelPendingFileChooser();
+                    showRemoteError(
+                            "Keine passende Dateiauswahl-App gefunden.",
+                            "No compatible file picker app was found.",
+                            ex);
+                    return true;
                 }
             }
         });
@@ -197,7 +204,9 @@ public final class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         webView.setVisibility(View.GONE);
                         discoveryPanel.setVisibility(View.VISIBLE);
-                        setStatus("TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed));
+                        setStatus(tr(
+                                "TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed),
+                                "TLS certificate not confirmed. Expected: " + printable(expectedFingerprint) + " · Received: " + printable(observed)));
                     });
                 }
             }
@@ -210,16 +219,29 @@ public final class MainActivity extends Activity {
             ValueCallback<Uri[]> callback = filePathCallback;
             filePathCallback = null;
             if (callback != null) {
-                Uri[] results = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
-                callback.onReceiveValue(results);
+                try {
+                    Uri[] results = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
+                    callback.onReceiveValue(results);
+                } catch (RuntimeException ex) {
+                    callback.onReceiveValue(null);
+                    showRemoteError(
+                            "Die ausgewählten Dateien konnten nicht übernommen werden.",
+                            "The selected files could not be attached.",
+                            ex);
+                }
             }
             return;
         }
         if (requestCode == REQUEST_SPEECH) {
             if (resultCode == RESULT_OK && data != null) {
                 ArrayList<String> matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-                if (matches != null && !matches.isEmpty()) {
+                if (matches != null && !matches.isEmpty() && matches.get(0) != null && !matches.get(0).trim().isEmpty()) {
                     deliverVoiceText(matches.get(0));
+                } else {
+                    showRemoteError(
+                            "Die Spracheingabe lieferte keinen Text.",
+                            "Voice input returned no text.",
+                            null);
                 }
             }
             return;
@@ -239,11 +261,20 @@ public final class MainActivity extends Activity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
         intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "LocalCode");
+        if (intent.resolveActivity(getPackageManager()) == null) {
+            showRemoteError(
+                    "Keine Spracheingabe-App gefunden.",
+                    "No voice input app was found.",
+                    null);
+            return;
+        }
         try {
             startActivityForResult(intent, REQUEST_SPEECH);
-        } catch (ActivityNotFoundException ex) {
-            deliverVoiceText("");
-            setStatus("Keine Spracheingabe-App gefunden.");
+        } catch (RuntimeException ex) {
+            showRemoteError(
+                    "Spracheingabe konnte nicht gestartet werden.",
+                    "Voice input could not be started.",
+                    ex);
         }
     }
 
@@ -251,6 +282,26 @@ public final class MainActivity extends Activity {
         if (webView == null) return;
         String script = "window.localCodeVoiceResult&&window.localCodeVoiceResult(" + JSONObject.quote(text == null ? "" : text) + ")";
         webView.evaluateJavascript(script, null);
+    }
+
+    private void showRemoteError(String german, String english, RuntimeException error) {
+        String message = tr(german, english);
+        String detail = error == null || error.getMessage() == null ? "" : error.getMessage().trim();
+        if (!detail.isEmpty()) message += " " + detail;
+        final String visibleMessage = message;
+        runOnUiThread(() -> {
+            if (webView != null && webView.getVisibility() == View.VISIBLE) {
+                webView.evaluateJavascript("window.alert(" + JSONObject.quote(visibleMessage) + ")", null);
+            } else if (status != null) {
+                status.setText(visibleMessage);
+            }
+        });
+    }
+
+    private void cancelPendingFileChooser() {
+        ValueCallback<Uri[]> callback = filePathCallback;
+        filePathCallback = null;
+        if (callback != null) callback.onReceiveValue(null);
     }
 
     private boolean sameRemoteOrigin(Uri candidate) {
@@ -282,7 +333,9 @@ public final class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startDiscovery();
             } else {
-                setStatus("Lokale Netzwerkerkennung wurde nicht freigegeben. Alternativ private HTTPS-IP und TLS-Fingerprint vom LocalCode-PC manuell eingeben.");
+                setStatus(tr(
+                        "Lokale Netzwerkerkennung wurde nicht freigegeben. Alternativ private HTTPS-IP und TLS-Fingerprint vom LocalCode-PC manuell eingeben.",
+                        "Local network discovery was not allowed. Alternatively enter the private HTTPS IP and TLS fingerprint from the LocalCode PC manually."));
             }
         }
     }
@@ -292,11 +345,17 @@ public final class MainActivity extends Activity {
             return;
         }
         acquireMulticastLock();
-        setStatus("Suche LocalCode per mDNS …");
+        setStatus(tr("Suche LocalCode per mDNS …", "Searching for LocalCode via mDNS …"));
         discoveryListener = new NsdManager.DiscoveryListener() {
             @Override public void onDiscoveryStarted(String serviceType) { discovering = true; }
             @Override public void onDiscoveryStopped(String serviceType) { discovering = false; releaseMulticastLock(); }
-            @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) { discovering = false; releaseMulticastLock(); setStatus("mDNS-Suche konnte nicht gestartet werden (" + errorCode + ")."); }
+            @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) {
+                discovering = false;
+                releaseMulticastLock();
+                setStatus(tr(
+                        "mDNS-Suche konnte nicht gestartet werden (" + errorCode + ").",
+                        "mDNS discovery could not be started (" + errorCode + ")."));
+            }
             @Override public void onStopDiscoveryFailed(String serviceType, int errorCode) { discovering = false; releaseMulticastLock(); }
             @Override public void onServiceLost(NsdServiceInfo serviceInfo) { }
             @Override public void onServiceFound(NsdServiceInfo serviceInfo) {
@@ -311,18 +370,24 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException ex) {
             discovering = false;
             releaseMulticastLock();
-            setStatus("mDNS-Suche fehlgeschlagen: " + ex.getMessage());
+            setStatus(tr("mDNS-Suche fehlgeschlagen: ", "mDNS discovery failed: ") + safeMessage(ex));
         }
     }
 
     private void resolve(NsdServiceInfo serviceInfo) {
         try {
             nsdManager.resolveService(serviceInfo, new NsdManager.ResolveListener() {
-                @Override public void onResolveFailed(NsdServiceInfo info, int errorCode) { setStatus("LocalCode gefunden, Auflösung fehlgeschlagen (" + errorCode + ")."); }
+                @Override public void onResolveFailed(NsdServiceInfo info, int errorCode) {
+                    setStatus(tr(
+                            "LocalCode gefunden, Auflösung fehlgeschlagen (" + errorCode + ").",
+                            "LocalCode was found, but resolving it failed (" + errorCode + ")."));
+                }
                 @Override public void onServiceResolved(NsdServiceInfo info) {
                     InetAddress host = info.getHost();
                     if (host == null || info.getPort() <= 0 || !isPrivateAddress(host)) {
-                        setStatus("LocalCode-Dienst enthält keine verwendbare private LAN-Adresse.");
+                        setStatus(tr(
+                                "LocalCode-Dienst enthält keine verwendbare private LAN-Adresse.",
+                                "The LocalCode service does not contain a usable private LAN address."));
                         return;
                     }
                     Map<String, byte[]> attrs = info.getAttributes();
@@ -330,7 +395,9 @@ public final class MainActivity extends Activity {
                     String fp = normalizeFingerprint(attribute(attrs, "fp"));
                     String path = attribute(attrs, "path");
                     if (!"1".equals(tls) || !validFingerprint(fp)) {
-                        setStatus("Unsicherer LocalCode-Dienst verworfen: gültiger TLS-Fingerprint fehlt.");
+                        setStatus(tr(
+                                "Unsicherer LocalCode-Dienst verworfen: gültiger TLS-Fingerprint fehlt.",
+                                "Unsafe LocalCode service rejected: a valid TLS fingerprint is missing."));
                         return;
                     }
                     if (path.isEmpty()) path = "/remote";
@@ -343,7 +410,7 @@ public final class MainActivity extends Activity {
                 }
             });
         } catch (RuntimeException ex) {
-            setStatus("LocalCode-Auflösung fehlgeschlagen: " + ex.getMessage());
+            setStatus(tr("LocalCode-Auflösung fehlgeschlagen: ", "Resolving LocalCode failed: ") + safeMessage(ex));
         }
     }
 
@@ -357,13 +424,17 @@ public final class MainActivity extends Activity {
             expectedFingerprint = fp;
             openRemote(target);
         } else {
-            setStatus("Der QR-/Deep-Link ist unvollständig oder unsicher.");
+            setStatus(tr(
+                    "Der QR-/Deep-Link ist unvollständig oder unsicher.",
+                    "The QR/deep link is incomplete or unsafe."));
         }
     }
 
     private void openRemote(String target) {
         if (!isAllowedRemoteUrl(target) || !validFingerprint(expectedFingerprint)) {
-            setStatus("Unsichere Remote-Adresse oder ungültiger TLS-Fingerprint verworfen.");
+            setStatus(tr(
+                    "Unsichere Remote-Adresse oder ungültiger TLS-Fingerprint verworfen.",
+                    "Unsafe Remote address or invalid TLS fingerprint rejected."));
             return;
         }
         currentRemoteUrl = target;
@@ -444,6 +515,16 @@ public final class MainActivity extends Activity {
         return value == null || value.isEmpty() ? "—" : value;
     }
 
+    private String tr(String german, String english) {
+        return Locale.getDefault().getLanguage().equalsIgnoreCase("de") ? german : english;
+    }
+
+    private static String safeMessage(RuntimeException ex) {
+        return ex == null || ex.getMessage() == null || ex.getMessage().trim().isEmpty()
+                ? ex == null ? "" : ex.getClass().getSimpleName()
+                : ex.getMessage().trim();
+    }
+
     private void acquireMulticastLock() {
         if (multicastLock != null && multicastLock.isHeld()) return;
         WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
@@ -473,7 +554,9 @@ public final class MainActivity extends Activity {
     }
 
     private void setStatus(String message) {
-        runOnUiThread(() -> status.setText(message));
+        runOnUiThread(() -> {
+            if (status != null) status.setText(message);
+        });
     }
 
     private int dp(int value) {
@@ -483,7 +566,12 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopDiscovery();
-        if (webView != null) webView.destroy();
+        cancelPendingFileChooser();
+        if (webView != null) {
+            webView.removeJavascriptInterface("LocalCodeAndroid");
+            webView.stopLoading();
+            webView.destroy();
+        }
         super.onDestroy();
     }
 }
