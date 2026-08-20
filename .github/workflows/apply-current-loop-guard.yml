@@ -1,0 +1,106 @@
+name: Apply current loop guard integration
+
+on:
+  push:
+    branches:
+      - reliability/current-session-loop-guard
+    paths:
+      - .github/workflows/apply-current-loop-guard.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: reliability/current-session-loop-guard
+          fetch-depth: 0
+
+      - name: Apply exact agent-loop integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/agent.go")
+          text = path.read_text(encoding="utf-8")
+          if "loopGuard := newAgentLoopGuard()" in text:
+              print("Loop guard already integrated")
+              raise SystemExit(0)
+
+          replacements = [
+              (
+                  "\tblockedFinishCounts := map[string]int{}\n\tfor step := 1; step <= maxSteps; step++ {",
+                  "\tblockedFinishCounts := map[string]int{}\n\tloopGuard := newAgentLoopGuard()\n\tfor step := 1; step <= maxSteps; step++ {",
+              ),
+              (
+                  "\t\tsignature := actionSignature(action)\n"
+                  "\t\tif signature == lastSignature && action.Action != \"finish\" {\n"
+                  "\t\t\trepeatBlocks++\n"
+                  "\t\t\ts.AddEvent(UIEvent{Type: \"warning\", Message: \"Identische Werkzeugaktion blockiert\", Detail: action.Action + \" wurde unmittelbar zuvor bereits ohne neue Information angefordert.\"})\n"
+                  "\t\t\thint := \"SYSTEMHINWEIS: Die identische Aktion wurde blockiert. Wähle eine andere Diagnose. Entdecke das Werkzeug, verwende einen absoluten Pfad, werte die vollständige Ausgabe aus oder recherchiere offizielle Dokumentation.\"\n"
+                  "\t\t\tif repeatBlocks >= 2 {\n"
+                  "\t\t\t\thint += \" Stelle keine weitere gleichartige Rückfrage; schließe mit einer präzisen Fehlerdiagnose ab, falls keine sichere Alternative existiert.\"\n"
+                  "\t\t\t}\n"
+                  "\t\t\tmessages = append(messages, OllamaMessage{Role: \"user\", Content: hint})\n"
+                  "\t\t\tcontinue\n"
+                  "\t\t}\n"
+                  "\t\tlastSignature = signature",
+                  "\t\tsignature := actionSignature(action)\n"
+                  "\t\tif signature == lastSignature && action.Action != \"finish\" {\n"
+                  "\t\t\trepeatBlocks++\n"
+                  "\t\t\ts.AddEvent(UIEvent{Type: \"warning\", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})\n"
+                  "\t\t\tmessages = append(messages, OllamaMessage{Role: \"user\", Content: agentImmediateRepeatHint(cfg, repeatBlocks)})\n"
+                  "\t\t\tcontinue\n"
+                  "\t\t}\n"
+                  "\t\tif reason := loopGuard.ShouldBlock(action); reason != agentLoopBlockNone {\n"
+                  "\t\t\trepeatBlocks++\n"
+                  "\t\t\ts.AddEvent(UIEvent{Type: \"warning\", Message: localizeConfigText(cfg, \"Stagnierende Werkzeugschleife blockiert\", \"Stagnant tool loop blocked\"), Detail: agentLoopBlockDetail(cfg, reason, action), Action: action.Action})\n"
+                  "\t\t\tmessages = append(messages, OllamaMessage{Role: \"user\", Content: agentLoopBlockHint(cfg, repeatBlocks)})\n"
+                  "\t\t\tcontinue\n"
+                  "\t\t}\n"
+                  "\t\tlastSignature = signature",
+              ),
+              (
+                  "\t\tif actionVerifiesProject(action, originalTask) && !toolFailed {\n"
+                  "\t\t\tchangedSinceVerification = false\n"
+                  "\t\t}\n"
+                  "\t\ttoolMessage := \"TOOL RESULT for \" + action.Action + \":\\n\" + truncateText(result, contextToolResultLimit(cfg))",
+                  "\t\tif actionVerifiesProject(action, originalTask) && !toolFailed {\n"
+                  "\t\t\tchangedSinceVerification = false\n"
+                  "\t\t}\n"
+                  "\t\tloopGuard.Observe(action, result, toolFailed, originalTask)\n"
+                  "\t\ttoolMessage := \"TOOL RESULT for \" + action.Action + \":\\n\" + truncateText(result, contextToolResultLimit(cfg))",
+              ),
+              (
+                  "eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist",
+                  "eine externe Engine (Aider, Claude Code, OpenCode oder Claw Code) ausgewählt ist",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exact replacement anchor once, found {count}: {old[:100]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          gofmt -w src/agent.go
+
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          if git diff --quiet -- src/agent.go; then
+            echo "No agent.go changes to commit"
+            exit 0
+          fi
+          git diff --check -- src/agent.go
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/agent.go
+          git commit -m "feat: wire session loop guard into agent"
+          git push origin HEAD:reliability/current-session-loop-guard
