@@ -8,10 +8,10 @@
 **Last merged bootstrap/state refresh:** PR #41, merge `5872f7b9d9fe91d8d0c82d6cce29cbbc2cfdbf8f`  
 **Active feature branch:** `feat/native-agent-task-dag`  
 **Active draft PR:** #42 `feat: add deterministic native agent task DAG`  
-**Last permanent implementation/documentation head before this STATE update:** `836d3a3689ecfea74690d1ecda44b0302e4b2516`  
+**Permanent PR head before this final STATE-only refresh:** `18fff83fa6c020f48da7042a39eee45d613f543f`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
 **Issue #23:** completed after PR #40 verification  
-**Current implementation slice:** #32 Phase 4 – deterministic Task DAG + Planner graph validation/state semantics  
+**Current implementation slice:** #32 Phase 4 – deterministic Task DAG + Planner graph validation/state semantics; implementation complete, final exact-head Quality/merge gate pending  
 **Canonical unfinished-work ledger:** `TODO.md`
 
 `STATE.md` is the authoritative self-contained bootstrap description of what is true now. `TODO.md` is the exhaustive list of unfinished functional work. Git history and closed PRs/issues are history; neither file may accumulate contradictory snapshots.
@@ -32,7 +32,7 @@ Blocking rules:
 4. `STATE.md` describes current implemented/verified reality; `TODO.md` contains only unfinished functional work, dependencies and acceptance gates.
 5. Replace stale facts instead of appending contradictory snapshots.
 6. A change is not operationally complete while either file describes the previous repository reality.
-7. Exact self-commit/merge SHAs cannot be predicted from inside the commit that records them. Record verified baselines honestly and update resulting SHAs in the next current-state refresh; never invent a SHA.
+7. Exact self-commit/merge SHAs cannot be predicted from inside the commit that records them. Record the verified functional/documentation baseline honestly; do not create recursive STATE-only updates merely to record the SHA of this final STATE refresh itself.
 
 ---
 
@@ -68,23 +68,23 @@ Logical task parallelism must be separated from model-inference parallelism so m
 
 - `AGENTS.md` – repository-wide coding, safety, localization and STATE/TODO maintenance rules.
 - `STATE.md` – this self-contained current-state bootstrap.
-- `TODO.md` – exhaustive unfinished functional work and acceptance gates.
-- `README.md` – user-facing DE/EN feature/usage contract; now documents the Native Agent Task DAG.
-- `docs/ARCHITECTURE.md` – architecture boundaries; now documents Phase-4 DAG semantics and later-layer boundaries.
-- `docs/SECURITY.md` – security model; now explicitly states that requested capabilities/dynamic role labels do not grant authority.
+- `TODO.md` – exhaustive unfinished functional work and acceptance gates; Phase 4 now contains only final Quality/merge work, with Phase 5 as the next feature.
+- `README.md` – user-facing DE/EN feature/usage contract; documents the Native Agent Task DAG.
+- `docs/ARCHITECTURE.md` – architecture boundaries; documents Phase-4 DAG semantics and later-layer boundaries.
+- `docs/SECURITY.md` – security model; explicitly states that requested capabilities/dynamic role labels do not grant authority.
 - `src/agent.go` – main Native agent action schema/tool loop and dispatch integration.
 - `src/agent_supervisor.go` – intent/supervisor action eligibility and control logic.
 - `src/edit_reliability.go` – deterministic edit preflight/reliability path.
 - `src/subagent.go` – deterministic read-only repository handoff/fallback path.
 - `src/agent_team_types.go` – AgentTask/role/capability/budget/result contracts; Phase 4 adds graph states, proposal IDs, state reasons and requested-vs-granted capabilities.
-- `src/subagent_model.go` – bounded model-backed read-only Explorer/Planner/Reviewer runtime; Planner outputs are now validated into machine-readable DAGs before acceptance.
+- `src/subagent_model.go` – bounded model-backed read-only Explorer/Planner/Reviewer runtime; Planner outputs are validated into machine-readable DAGs before acceptance.
 - `src/subagent_model_test.go` – child-role/budget/fallback/Planner graph regression tests.
 - `src/agent_task_graph.go` – Phase-4 deterministic DAG builder, validator, dependency reconciliation and transition logic.
 - `src/agent_task_graph_test.go` – DAG/state safety regression tests.
 - `src/server.go` and project/remote API files – Desktop/local HTTP and Mobile Remote routing/security boundaries.
 - `src/static/ui_polish.js` – Desktop UI behavior/polish and project UX.
 - `src/static/remote.html` – narrow Mobile Remote UI.
-- `.github/workflows/quality.yml` – mandatory Windows merge gate; on the permanent branch head it is restored to the same content as `master`.
+- `.github/workflows/quality.yml` – mandatory Windows merge gate; restored to the same permanent content as `master`.
 
 When adding orchestration code, prefer new focused files rather than expanding `agent.go` into a monolith. Preserve the existing single-agent path as a compatibility path while orchestration is added above it.
 
@@ -92,7 +92,7 @@ When adding orchestration code, prefer new focused files rather than expanding `
 
 ## 2. Permanent safety / correctness baseline
 
-Current `master` and this branch preserve:
+Current `master` and PR #42 preserve:
 
 - project-root containment and symlink/path-escape protections
 - SHA-256 file-version preconditions
@@ -139,11 +139,11 @@ Issue #23 is closed/completed because #40 satisfied its bounded read-only model-
 
 ---
 
-## 4. Active PR #42 – deterministic Task DAG foundation
+## 4. PR #42 – deterministic Task DAG foundation
 
 Branch: `feat/native-agent-task-dag`, based on master `5872f7b9d9fe91d8d0c82d6cce29cbbc2cfdbf8f`.
 
-Permanent implementation currently present on PR #42:
+Implementation present on PR #42:
 
 - `AgentTaskProposal` has a stable explicit `ID`.
 - `AgentTask` has graph-specific `StateReason` and `RequestedCapabilities` separate from actually granted `Capabilities`.
@@ -155,14 +155,15 @@ Permanent implementation currently present on PR #42:
 - Dependency reconciliation deterministically derives ready/blocked state.
 - Successful dependencies release dependents; failed/cancelled dependencies block them with structured state reasons.
 - Controlled transitions cover ready -> running -> succeeded/completed/failed/cancelled/retryable and reject unsafe/terminal restarts.
-- Planner structured schema now requires `id`, `role`, and `objective` for every suggested task.
+- Planner structured schema requires `id`, `role`, and `objective` for every suggested task.
 - Planner dependencies refer to stable task IDs rather than role prose.
 - On Planner `finish`, a non-empty proposal set is converted to `AgentTaskGraph`; invalid/missing/cyclic graphs are rejected inside the existing bounded child loop and a corrected structured finish result is requested. Existing model/time/token budgets still apply.
 - Formatted Planner results include validated machine-readable `task_graph` data.
 - Focused tests cover invalid identifiers, duplicate/missing/self/cyclic dependencies, inert dynamic roles/requested capabilities, deterministic parallel readiness, dependency release, legacy completed compatibility, failure/cancellation propagation, retry, unsafe transition rejection and invalid-Planner-graph correction.
 - Focused DAG/Planner tests passed before the integration commit was pushed.
 - `README.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` contain DE/EN documentation of the DAG and its non-escalating security boundary.
-- All temporary integration workflows/scripts have been removed. `.github/workflows/quality.yml` is restored to the standard master content.
+- All temporary integration workflows/scripts have been removed. `.github/workflows/quality.yml` is standard again.
+- `TODO.md` was refreshed on commit `18fff83fa6c020f48da7042a39eee45d613f543f` so implemented Phase-4 work is no longer listed as unfinished.
 
 Intentionally NOT implemented by PR #42:
 
@@ -179,7 +180,7 @@ Intentionally NOT implemented by PR #42:
 
 During development, temporary PR-specific workflow helpers were attempted. Early transient runs failed safely before product-code commits because of a wrong `go.mod` path and then overly brittle multiline PowerShell anchors. A later transient Quality run #417 exposed the real `gofmt` requirement in `src/agent_task_graph.go`. The final integration used exact branch-bound assertions plus `gofmt`, `git diff --check` and focused tests before push. All temporary workflows/scripts were subsequently removed. Do not recreate them; they are not part of the product architecture.
 
-The exact permanent head `836d3a3689ecfea74690d1ecda44b0302e4b2516` existed before this STATE/TODO refresh. Because this documentation refresh changes the PR head again, **the final required Quality run must be taken from the post-STATE/TODO exact head**, not from any earlier transient run.
+The permanent implementation/documentation/TODO baseline immediately before this final STATE-only refresh is `18fff83fa6c020f48da7042a39eee45d613f543f`. This STATE refresh necessarily creates one later documentation-only head. Use that resulting head for the final Quality run and merge checks; do not create another STATE-only commit merely to record its own SHA.
 
 ---
 
@@ -210,11 +211,11 @@ Never lower the 80% threshold or weaken sandbox, approvals, atomic writes, path/
 
 ### Issue #32 – UMAF-LC / Native orchestration
 
-Issue #32 remains open. Phase 1–3 foundation is merged via #40. Phase 4 is PR #42 and is functionally implemented; only final exact-head verification/merge remains.
+Issue #32 remains open. Phase 1–3 foundation is merged via #40. Phase 4 is PR #42 and is functionally implemented; only final exact-head Quality/merge remains.
 
 After #42 the intended sequence is:
 
-1. Phase 5 scheduler/resource manager separating logical parallelism from model-inference parallelism, with bounded queues and mission/task budgets.
+1. Phase 5 scheduler/resource manager separating logical parallelism from model-inference parallelism, with deterministic bounded queues, resource classes and mission/task budgets.
 2. Phase 6 durable missions + recovery integrated with the existing run journal.
 3. Phase 7 isolated Git-worktree mutation agents under normal LocalCode approvals/preconditions.
 4. Phase 8 Integrator + Test Agent + independent Reviewer loop.
@@ -235,13 +236,10 @@ Issue #23 is completed. Issues #22 and #25 still require reconciliation against 
 
 ## 7. Exact next action
 
-From PR #42:
-
-1. Update `TODO.md` in the same workstream to mark all implemented Phase-4 items complete and leave only verification/merge items open.
-2. Treat the resulting post-STATE/TODO head as the only merge candidate.
-3. Run the complete standard Windows Quality workflow on that exact head.
-4. If any gate fails, fix only the concrete failure and update STATE/TODO if repository reality changes materially.
-5. When Quality is fully green, verify PR #42 is 0 behind current `master`, mergeable, exact head unchanged, with no blocking reviews or unresolved review threads.
-6. Mark #42 ready and merge only with `expected_head_sha`.
-7. Immediately refresh `STATE.md` and `TODO.md` for the resulting master so a new AI can restart from them without chat history.
-8. Then create a fresh current-master branch for Phase 5 scheduler/resource-manager foundation. Do not add worktree mutation in that same slice.
+1. Treat the head created by this final STATE-only refresh as the only PR #42 merge candidate.
+2. Run the complete standard Windows Quality workflow on that exact head.
+3. If any gate fails, fix only the concrete failure and refresh STATE/TODO only if repository reality changes materially.
+4. When Quality is fully green, verify PR #42 is 0 behind current `master`, mergeable, exact head unchanged, with no blocking reviews or unresolved review threads.
+5. Mark #42 ready and merge only with `expected_head_sha`.
+6. Immediately refresh `STATE.md` and `TODO.md` for the resulting master using the functional-baseline/self-SHA convention.
+7. Then create a fresh current-master branch for Phase 5 scheduler/resource-manager foundation. Do not add worktree mutation in that same slice.
