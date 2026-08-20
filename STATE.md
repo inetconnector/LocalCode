@@ -3,48 +3,42 @@
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current verified functional master before this documentation-only state update:** `c576f27cf75b642987aa56c7227840a133d00e07`  
-**Last merged feature:** PR #42 `feat: add deterministic native agent task DAG`  
-**PR #42 merge:** `c576f27cf75b642987aa56c7227840a133d00e07`  
+**Current verified master:** `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
+**Last merged functional feature:** PR #42 `feat: add deterministic native agent task DAG`, merge `c576f27cf75b642987aa56c7227840a133d00e07`  
+**Post-#42 bootstrap refresh:** PR #43 `docs: refresh canonical state after task DAG merge`, merge `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
 **Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
-**Quality on final PR #42 head:** #433 – success; total statement coverage **80.2%**  
-**Documentation refresh carrier:** PR #43 `docs: refresh canonical state after task DAG merge`, branch `docs/state-after-task-dag`  
-**Carrier content baseline before this self-resolving metadata update:** `47123d2a16e779ff3c4e13d97d0d4118d24d5707`  
-**Open implementation PR:** none at this functional snapshot  
-**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
-**Immediate functional priority after this documentation refresh reaches `master`:** #32 Phase 5 – Scheduler / Resource Manager foundation  
+**Quality #433 on that head:** success; total statement coverage **80.2%**  
+**Active implementation branch:** `feat/native-agent-scheduler-foundation`  
+**Active implementation PR:** draft PR #44 `feat: add native agent scheduler resource foundation` against `master`, remote head `98be9b583d724d75625ceebdc277c358ab921192`, merge state `CLEAN` when checked on 2026-08-20
+**Local continuation after PR #44 remote head:** uncommitted scheduler robustness, test-isolation/coverage stabilization, Windows build/checksum portability, POSIX-`rm` avoidance, hidden Windows startup/Remote-firewall PowerShell helpers, Desktop composer engine selector with LocalCode-native default, Remote drag-and-drop attachments, mobile Remote pairing keyboard/form fix, Remote tab swipe gestures, Android WebView all-file chooser support, Android Remote voice input, Remote send robustness, Remote LocalCode default engine, LocalCode favicon/Windows resource icon/Android launcher icon, UMAF audit notes, tests, DE/EN documentation updates and local Quality-style verification in this working tree
+**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities` – open  
+**Current slice:** #32 Phase 5 – backend Scheduler / Resource Manager foundation  
 **Canonical unfinished-work ledger:** `TODO.md`
 
-**Self-resolving carrier rule:** when this file is read on `docs/state-after-task-dag`, PR #43 is the active documentation carrier. When this exact content is read from `master` after PR #43, the carrier is already merged by definition. Do not create another documentation PR merely to change “#43 carrier” into “#43 merged”. Always verify current GitHub reality before resuming. Functional branch/PR/CI changes still require normal STATE/TODO refreshes.
-
-`STATE.md` is the authoritative self-contained bootstrap description of what is true now. `TODO.md` is the exhaustive list of unfinished functional work. Git history and closed PRs/issues are history; neither file may accumulate contradictory snapshots.
+`STATE.md` is the authoritative self-contained AI bootstrap. A newly started AI with no chat history, memory or prior context must be able to read this file and safely continue the project immediately. `TODO.md` is the exhaustive list of unfinished functional work and acceptance gates. Replace stale facts rather than appending contradictory snapshots.
 
 ---
 
-## 0. Permanent bootstrap + maintenance invariant
+## 0. Permanent STATE.md + TODO.md invariant
 
 `STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.
 
-**Self-contained AI bootstrap invariant:** a newly started AI with no chat history, no memory and no prior context must be able to read `STATE.md` and understand the project well enough to resume implementation immediately, safely and correctly. `STATE.md` must therefore contain the current functional master baseline, relevant active branch/PR/CI reality, product goal, architecture, important files/entrypoints, safety/Quality invariants, implemented capabilities, known problems/failed approaches, open decisions and the exact next implementation step. Important facts from other files must be summarized here with those source files named; bare links are not a substitute for continuation context.
-
-Blocking rules:
-
 1. Before material work read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md`.
-2. Verify GitHub reality before resuming: current `master`, active implementation branch/PR, open issues, exact head, reviews/threads and latest required Quality run.
-3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, refresh `STATE.md` and `TODO.md` in the same workstream or immediately afterward.
-4. Documentation-only carrier PRs may use the self-resolving carrier convention above: record the verified functional master before the docs-only update and do not create an infinite chain solely to record the docs PR's own merge SHA.
-5. `STATE.md` describes current implemented/verified reality; `TODO.md` contains only unfinished functional work, dependencies and acceptance gates.
-6. Replace stale facts instead of appending contradictory snapshots.
-7. A material functional change is not operationally complete while either file describes the previous repository reality.
-8. Exact self-commit/merge SHAs cannot be predicted from inside the commit that records them. Record verified baselines honestly; never invent a SHA.
+2. Verify GitHub reality before resuming: current `master`, active branch/PR, open issues, exact head, CI, reviews and review threads.
+3. After every material branch/base/head change, PR/merge, CI result, roadmap/scope decision, completed milestone, known failure or safety/architecture change, update both files in the same workstream or immediately afterward.
+4. `STATE.md` describes current implemented/verified reality, architecture, important files, safety/Quality invariants, known problems and exact next steps.
+5. `TODO.md` contains only unfinished functional work, dependencies and acceptance criteria. Completed work belongs here in STATE, Git history and merged/closed issues/PRs.
+6. Documentation-only carrier PRs may use a self-resolving convention to avoid infinite documentation-merge chains; functional changes do not get that exception.
+7. Never invent a future commit, CI or merge SHA.
+8. The statement-coverage Quality gate remains **>=80.0%** and may not be weakened to make CI pass.
 
 ---
 
-## 1. Product objective and architecture
+## 1. Product objective
 
-LocalCode is a Windows-first local coding-agent/development platform centered on local models and controlled tool execution. Ollama is the default local inference path. LocalCode is the supervisor and safety boundary even when external coding engines are selected.
+LocalCode is a Windows-first, local-first coding-agent/development system centered on local models and controlled tool execution. It is not merely a chat UI: LocalCode acts as supervisor, policy boundary, tool runtime, project manager, recovery layer and UI around LocalCode Native and selectable external coding engines.
 
-Selectable coding engines on current functional master:
+Current selectable coding engines:
 
 - LocalCode Native
 - Aider
@@ -52,219 +46,367 @@ Selectable coding engines on current functional master:
 - OpenCode
 - Claw Code
 
-Long-term objective: make LocalCode Native objectively stronger than Aider/OpenCode/Claw in repository intelligence, edit reliability, safety, recovery, orchestration, context efficiency, verification and reproducible benchmark success. Do not claim parity/superiority without measured evidence.
+Ollama is the default local inference path. Issue #30 plans an optional backend-neutral llama.cpp/DMC path later, below the LocalCode supervisor. There must be no silent provider/model drift.
 
-High-level runtime:
+Long-term objective: make LocalCode Native objectively stronger than Aider/OpenCode/Claw in repository intelligence, edit reliability, safety, recovery, orchestration, context efficiency, verification and reproducible benchmark success. Do **not** claim parity or superiority without measured, reproducible results.
 
-`User/UI -> LocalCode supervisor -> Native agent or selected external engine -> controlled tools -> project/Git/build/test/network/MCP boundaries -> verification/recovery`
+Target large-scale UMAF-LC architecture:
 
-Target UMAF-LC orchestration architecture:
+`Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler/Resource Manager -> Agent Factory -> Explorer/Builder/Test/Reviewer -> isolated workspaces/worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
 
-`Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler/Resource Manager -> Agent Factory -> Explorer/Builder/Test/Reviewer -> Worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
-
-Agent identity remains data-driven:
+Agent identity is data-driven rather than a rigid hierarchy of Go classes:
 
 `Agent = Runtime + Role + Mission + Context + Capabilities + Budget + Workspace + Parent`
 
-Logical task parallelism must be separated from model-inference parallelism so many logical tasks can exist without requiring equally many simultaneous local-model contexts. This separation is the core Phase-5 design constraint.
+A core design constraint for local hardware is:
 
-### Important continuation files / code map
+`logical task parallelism != model inference parallelism`
 
-- `AGENTS.md` – repository-wide coding, safety, localization and STATE/TODO rules.
-- `STATE.md` – this self-contained current-state bootstrap.
-- `TODO.md` – exhaustive unfinished functional roadmap and acceptance gates.
-- `README.md` – user-facing DE/EN feature/usage contract; documents Native Agent Teams and the Task DAG.
-- `docs/ARCHITECTURE.md` – architecture boundaries and Phase-4 DAG semantics.
-- `docs/SECURITY.md` – security model; requested capabilities/dynamic role labels do not grant authority.
-- `src/agent.go` – main Native agent action schema/tool loop and dispatch integration.
-- `src/agent_supervisor.go` – intent/supervisor action eligibility and control logic.
-- `src/edit_reliability.go` – deterministic edit preflight/reliability path.
-- `src/subagent.go` – deterministic read-only repository handoff/fallback path.
-- `src/agent_team_types.go` – reusable AgentTask/role/capability/budget/result contracts, graph states and requested-vs-granted capability separation.
-- `src/subagent_model.go` – bounded model-backed read-only Explorer/Planner/Reviewer runtime and Planner DAG handoff.
-- `src/subagent_model_test.go` – child-role/budget/fallback/Planner graph regression tests.
-- `src/agent_task_graph.go` – deterministic DAG builder/validator, dependency reconciliation, readiness and state transitions. This is the primary backend input to Phase 5.
-- `src/agent_task_graph_test.go` – Phase-4 DAG/state safety regression tests.
-- `src/run_journal.go` – existing durable run/recovery authority; future mission persistence must integrate here rather than compete with it.
-- `src/types.go` – AppState and shared runtime state; inspect carefully before adding scheduler ownership/lifetime.
-- `src/server.go` and remote API files – Desktop/local HTTP and Mobile Remote routing/security boundaries.
-- `src/static/ui_polish.js` – Desktop UI.
+A mission may contain many logically ready tasks while only one or a small bounded number of model contexts are admitted to the local GPU/CPU at once.
+
+---
+
+## 2. Runtime and major existing capabilities
+
+High-level path:
+
+`User/Desktop or Mobile UI -> LocalCode supervisor -> Native/external engine -> controlled tools -> project/Git/build/test/network/MCP boundaries -> verification -> run journal/recovery`
+
+Important already-implemented capabilities include:
+
+- Windows native Go application with embedded browser UI and loopback Desktop HTTP/SSE server.
+- Separate narrow Mobile Remote server with pairing/token boundaries; Mobile has fewer permissions than Desktop.
+- Project catalog, task/chat history, project creation, empty folders, reversible project quarantine/trash, restore and exact-confirmation permanent purge.
+- Ollama discovery, model bootstrap and bounded local-model calls.
+- External Aider, Claude Code, OpenCode and Claw Code engine integration under LocalCode supervision.
+- Repository intelligence/reference graph and task-ranked context.
+- LSP navigation.
+- Git tools, build/deployment discovery and controlled commands.
+- Web research with public-IP/SSRF protections.
+- MCP builtin/stdio/HTTP support with explicit configuration, process control, timeouts and auth handling.
+- Project/global instructions, Cursor-compatible rules, Skills and progressive skill/resource loading.
+- Project slash commands as deterministic text templates; they do not grant shell/tool permission.
+- Local persistent memories with secret-like-content rejection.
+- Context compaction and token-economy guards.
+- Attachments, SVG/raster asset creation, local image-generation boundary, image conversion and local browser rendering.
+- Approval rules, SHA-bound edit preconditions, backups, atomic conflict-safe writes and postconditions.
+- Task/tool hooks running inside the normal command safety boundary.
+- Durable active-run journal and interrupted-run recovery.
+- Session-wide repeated-action/result and short-cycle stagnation guard plus explicit no-op mutation rejection.
+- Full Windows Quality workflow with race detector and >=80% statement coverage gate.
+
+---
+
+## 3. Permanent safety and correctness baseline
+
+These invariants are mandatory for all future orchestration work:
+
+- Project-root containment and canonical path/symlink/NTFS-junction escape protection.
+- SHA-256/version preconditions bind approval to the previewed file state.
+- Per-path locking and same-directory staging/atomic replacement where applicable.
+- External modification produces a conflict instead of silent overwrite.
+- Checked mutation postconditions and backup/Git recovery paths.
+- Owned external processes have timeout/cancellation and Windows process-tree termination.
+- No default or persistent `danger-full-access` equivalent; no silent privilege escalation.
+- `RequestedCapabilities` are request/planning data only. They never become executable `Capabilities` automatically.
+- Dynamic role labels emitted by a Planner are inert until governance maps them to an executable runtime.
+- No concurrent unsupervised mutation of the same workspace.
+- Future worktrees grant isolation, not extra authority; normal approvals/preconditions remain mandatory.
+- Durable `run_journal.go` remains the recovery authority; future mission persistence must integrate with it, not compete with it.
+- Mobile permissions remain narrower than Desktop.
+- Secrets are not intentionally persisted/logged/displayed.
+- Child mutation must eventually be diff-reviewable and verified before mission success.
+- Phase 5 first slice remains **child-mutation free**.
+
+---
+
+## 4. Important continuation files / code map
+
+Repository rules and docs:
+
+- `AGENTS.md` – repository-wide coding, security, localization and STATE/TODO rules.
+- `STATE.md` – this full AI bootstrap.
+- `TODO.md` – exhaustive unfinished functional roadmap.
+- `README.md` – DE/EN user-facing product and feature contract.
+- `docs/ARCHITECTURE.md` – runtime/component boundaries.
+- `docs/SECURITY.md` – application security model and permission boundaries.
+- `.github/workflows/quality.yml` – mandatory Windows Quality gate; triggers on `master`, PRs to `master`, or manual dispatch.
+
+Native runtime/orchestration:
+
+- `src/agent.go` – main Native action schema, main agent loop, approvals and tool dispatch.
+- `src/agent_supervisor.go` – deterministic intent/supervisor logic.
+- `src/edit_reliability.go` – deterministic edit-reliability preflight.
+- `src/agent_loop_guard.go` – session-wide no-progress/repeated-action guard.
+- `src/subagent.go` – deterministic read-only repository handoff/fallback.
+- `src/agent_team_types.go` – AgentRole, AgentTask, AgentBudget, AgentUsage, AgentResult, capabilities and structured child contracts.
+- `src/subagent_model.go` – bounded model-backed read-only Explorer/Planner/Reviewer runtime.
+- `src/agent_task_graph.go` – Phase-4 deterministic DAG validation, readiness/dependency reconciliation and state transitions.
+- `src/agent_scheduler.go` – **active Phase-5 branch:** backend-only bounded scheduler/resource-manager foundation.
+- `src/agent_scheduler_test.go` and `src/agent_scheduler_additional_test.go` – **active Phase-5 branch:** focused scheduler/resource/budget/cancellation tests.
+- `src/run_journal.go` – durable active-run/recovery state; future mission persistence must extend this authority.
+- `src/types.go` – `Config`, `AppState`, global main-agent runtime state.
+- `src/config.go` – default configuration; first scheduler slice intentionally does not yet add persisted scheduler concurrency settings.
+
+Project/UI/remote boundaries:
+
+- `src/server.go` – Desktop loopback API.
+- `src/remote_server.go` and mobile-safe API files – paired Mobile Remote boundary.
+- `src/project_catalog.go`, `src/project_quarantine*.go` – project management/quarantine.
+- `src/static/ui_polish.js` – Desktop UI behavior.
 - `src/static/remote.html` – narrow Mobile Remote UI.
-- `.github/workflows/quality.yml` – mandatory Windows merge gate.
 
-When adding orchestration code, prefer new focused files rather than expanding `agent.go` into a monolith. Preserve the existing single-agent/read-only-child paths as compatibility paths while orchestration is added above them.
-
----
-
-## 2. Permanent safety / correctness baseline
-
-Current functional master preserves:
-
-- project-root containment and symlink/path-escape protections
-- SHA-256 file-version preconditions
-- approval bound to the previewed file version
-- per-path locking
-- same-directory staging and atomic replacement/move behavior
-- conflict instead of silent overwrite after external modification
-- checked mutation postconditions and backup/Git recovery paths
-- process-tree timeout/cancellation for owned external processes
-- no default or persistent `danger-full-access` equivalent
-- Mobile permissions narrower than Desktop
-- no silent provider/model drift
-- secrets not intentionally persisted/logged/displayed
-- durable redacted active-run journal and interrupted-run recovery without blind mutation replay
-- session-wide repeated-action/result and short-cycle stagnation detection
-- explicit no-op mutation rejection
-- read-only LSP navigation without implicit mutation authority
-
-Never bypass these through scheduling, dynamic roles, capability requests, resource queues or future worktrees.
-
-No Phase-5 scheduler/resource abstraction may implicitly grant capabilities. `RequestedCapabilities` remains planning/request data; executable `Capabilities` must still come from LocalCode governance. No concurrent unsupervised mutation of the same workspace is allowed. Phase 5 must remain mutation-free for child tasks.
+Prefer focused new files for orchestration rather than growing `agent.go` into a monolith. Preserve the existing single-main-agent and bounded read-only child paths while new orchestration layers are added above them.
 
 ---
 
-## 3. Merged Native Agent Teams foundation – PR #40
+## 5. Merged Native Agent Teams foundation – PR #40
 
-PR #40 merged as `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`. Final feature head `9c3b25b1b070d80c075e9b697a9fffe86f0d3184` passed Quality #406.
+PR #40 merged as `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`; final feature head `9c3b25b1b070d80c075e9b697a9fffe86f0d3184` passed Quality #406.
 
-Merged capability:
+Merged capabilities:
 
 - reusable `AgentTask`, `AgentBudget`, capability and structured `AgentResult` contracts
 - model-backed read-only Explorer, Planner and Reviewer roles
-- separate curated child model contexts
-- hard model-call/tool-call/time/estimated-token budgets
+- separate curated child-model contexts
+- hard per-child model-call, tool-call, elapsed-time and estimated-token budgets
 - child action schema limited to `list_files`, `read_file`, `search_text`, approval-free `lsp`, `finish`
-- mutation, shell, Git, network/web, MCP, installation, memory, approval requests and recursive spawning absent from child schema
+- mutation, shell, Git, network/web, MCP, install, memory, approval requests and recursive spawning absent from child schema
 - Planner may emit structured follow-up proposals but cannot execute mutation-capable roles
-- Reviewer independent from Builder reasoning
-- deterministic read-only fallback when model unavailable/fails or budget is exhausted
+- Reviewer independent of Builder reasoning
+- deterministic read-only fallback when model unavailable/fails or budget ends
 - deterministic mandatory edit-reliability preflight
 - visible `subagent:<role>:<action>` traces
 
-Issue #23 is closed/completed because #40 satisfied its bounded read-only model-subagent requirements without stale-merging historical PR #14.
+Issue #23 was closed after this capability was verified; historical PR #14 was not stale-merged wholesale.
 
 ---
 
-## 4. PR #42 merged – deterministic Native Agent Task DAG
+## 6. Merged Phase 4 – deterministic Native Agent Task DAG, PR #42
 
-PR #42 `feat: add deterministic native agent task DAG` is complete and merged into `master` as `c576f27cf75b642987aa56c7227840a133d00e07`.
+PR #42 merged as `c576f27cf75b642987aa56c7227840a133d00e07`. Final tested feature head `9bbd616d054c767030a6f6e7f0c89b8da005c545`; Quality #433 passed with **80.2%** total statement coverage.
 
-Final tested feature head: `9bbd616d054c767030a6f6e7f0c89b8da005c545`.
+Merged capability:
 
-Quality #433 passed on that exact final head. The complete Windows gate was green: Go setup/version, gofmt, `go vet ./...`, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, `govulncheck` with no vulnerabilities found, full-stack loopback HTTP integration, complete tests, race detector, coverage, native Windows builds and `git diff --check`. Total statement coverage was **80.2%**. Before merge the PR was 0 behind `master`, mergeable, with no review submissions or unresolved review threads, and it was merged using `expected_head_sha`.
+- stable explicit machine-readable `AgentTaskProposal.ID`
+- `AgentTaskGraph{MissionID, Tasks}`
+- deterministic validation for invalid/duplicate IDs, missing/self/duplicate/cyclic dependencies and inconsistent mission/state/parent metadata
+- graph-specific `proposed`, `ready`, `succeeded`, `cancelled`, `retryable` states while retaining legacy standalone child states
+- deterministic dependency reconciliation and ready/blocked state
+- successful dependency release and failed/cancelled dependency blocking
+- controlled state transitions and retry semantics
+- Planner schema requires stable task IDs; dependencies reference IDs rather than prose roles
+- invalid Planner graphs are rejected and corrected inside the existing bounded child-model loop
+- machine-readable `task_graph` included in formatted Planner results
+- Planner dynamic role labels remain inert plan data
+- Planner `RequestedCapabilities` remain separate from actually granted `Capabilities`; DAG creation grants no authority
+- focused regression tests and synchronized DE/EN architecture/security documentation
 
-Merged Phase-4 capability:
+Not implemented by #42: scheduler/resource queues, model-concurrency management, mission persistence, Builder mutation, worktrees, Integrator mutation, Mobile permission expansion or QEMU/OS mission execution.
 
-- `AgentTaskProposal` has stable explicit machine-readable `ID`.
-- `AgentTask` has graph-specific `StateReason` and `RequestedCapabilities` separate from actually granted `Capabilities`.
-- Graph states include `proposed`, `ready`, `succeeded`, `cancelled`, `retryable`; legacy `pending/running/completed/blocked/failed` remain valid for compatibility.
-- `AgentTaskGraph` carries mission ID and task nodes.
-- deterministic validation rejects invalid IDs/role labels, duplicate task IDs/dependencies, missing dependencies, self-dependencies, dependency cycles, mission mismatch, invalid states and invalid parent semantics.
-- dynamic Planner role labels remain inert plan data; they do not become executable Native roles merely by being proposed.
-- requested capabilities are copied only to `RequestedCapabilities`; DAG construction grants no executable capabilities.
-- dependency reconciliation derives ready/blocked state deterministically.
-- successful dependencies release dependents; failed/cancelled dependencies block them with structured state reasons.
-- controlled transitions cover ready -> running -> succeeded/completed/failed/cancelled/retryable and reject unsafe/terminal restarts.
-- Planner structured schema requires stable `id`, `role` and `objective` for each suggested task; dependencies reference task IDs rather than prose labels.
-- Planner `finish` with proposals builds a validated `AgentTaskGraph`; invalid/missing/cyclic graphs are rejected inside the existing bounded child loop and corrected within the same model/time/token budgets.
-- formatted Planner output includes machine-readable `task_graph` data.
-- focused tests cover invalid identifiers, duplicate/missing/self/cyclic dependencies, inert dynamic roles/requested capabilities, multiple independent ready tasks, dependency release, legacy completed compatibility, failure/cancellation propagation, retry, unsafe transitions and invalid-Planner-graph correction.
-- DE/EN README, architecture and security documentation describe the DAG and its non-escalating security boundary.
+---
 
-Intentionally still absent after #42:
+## 7. Current Phase-5 branch – Scheduler / Resource Manager foundation
 
-- asynchronous scheduler/resource queues
-- model-inference concurrency management
-- persistent Mission Manager / durable task graph storage
+Branch `feat/native-agent-scheduler-foundation` was created exactly from current master `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`. No competing open implementation PR existed at branch creation.
+
+### Implemented on the branch before this documentation refresh
+
+`src/agent_scheduler.go` adds backend-only contracts; it does **not** dispatch mutation-capable children.
+
+Resource model:
+
+- `AgentResourceClass`: `model-inference`, `read-cpu`, `build`, `exclusive-integration`.
+- `AgentResourceLimits` uses bounded defaults: max queued 256, model inference **1**, read/CPU 4, build 1, exclusive integration 1.
+- Logical ready queue and actual resource admission are separate.
+- Queue order is deterministic from DAG/task order.
+- A saturated resource class can be skipped so a later task using a free different class may run; older tasks of the same resource class retain precedence.
+- Queue insertion is bounded and atomic: if adding the current ready set exceeds the configured queue limit, no partial append occurs.
+- Queued entries are pruned if the DAG state is no longer `ready`.
+
+Governance/security admission:
+
+- Planner-proposed `RequestedCapabilities` do not grant executable authority.
+- Admission requires the executable role to be one of the current Native read-only roles and requires the role's actual granted capabilities in `AgentTask.Capabilities`.
+- Dynamic labels such as `kernel-memory-specialist` remain queued/visible planning data but are not admitted to an executable runtime.
+- Default resource class for executable current child tasks is model inference; explicit backend resource overrides can classify cheap read/CPU work without changing permissions.
+
+Runtime accounting:
+
+- Resource admission creates an exact scheduler lease with child `context.Context` under a mission context.
+- Admission transitions DAG task `ready -> running` only after role/capability/resource checks succeed.
+- Release validates the exact lease, performs the normal DAG state transition and releases the resource slot.
+- Per-task cancellation removes queued entries or cancels a running child context and releases the resource.
+- Mission cancellation cancels all scheduler-owned active contexts, clears queued/active resource ownership and transitions queued/running scheduler tasks to `cancelled` where allowed.
+- `AgentSchedulerSnapshot` exposes mission ID, queued/running counts, per-resource limits/in-use/available state and per-task queue/resource/running state.
+- Generic `AgentBudgetSnapshot` computes limit, usage, remaining model/tool/token/time budget plus structured exhausted reason. It can represent a task or mission budget without changing permissions.
+- `agentBudgetHardStop` returns `AgentResultBudgetExhausted` rather than silently continuing after an exhausted budget.
+- Release now cleans up the scheduler-owned lease if the graph task was externally moved out of `running` before release; invalid transitions are still reported as errors.
+- Nil graph snapshots and mission cancellation are safe and expose resource state without panicking.
+- Local test isolation now hides real user Claw installations from download-policy tests and accepts localized German/English setup-decline/disabled wording where the behavior is the same.
+- Windows build checksum generation no longer depends on the `Get-FileHash` cmdlet; `scripts/build.ps1` uses .NET SHA-256 hashing so isolated Windows PowerShell builds can still produce `CHECKSUMS-SHA256.txt`.
+- Native agent guidance now states that the local default environment is Windows/PowerShell. Missing POSIX `rm` attempts are redirected toward `delete_file`/`copy_path`/`move_path` or explicit PowerShell `Remove-Item`, and avoidable manual-`rm` questions are blocked.
+- Windows startup and Remote LAN firewall helper PowerShell processes now run through hidden-window paths: `START.bat` passes `-WindowStyle Hidden`, the outer firewall runner uses `hideCommandWindow`, and the elevated firewall rule process requests `-WindowStyle Hidden`.
+- The Desktop composer now exposes a visible `engineSelect` next to the model selector for LocalCode, Aider, OpenCode, Claude Code and Claw Code. Changing it immediately persists `editing_engine`, keeps Settings synchronized and disables the selector while a run is active. Fresh desktop defaults now use `native`/LocalCode instead of Aider.
+- Desktop attachments already supported file picker, paste and drag-and-drop; `src/static/remote.html` now supports Remote drag-and-drop attachments with matching client-side file count/size limits before the shared backend attachment validation.
+- The Remote pairing screen now uses a real form submit path and a top-aligned scrollable keyboard-safe layout so Android soft-keyboard resizing does not collapse the `Verbinden`/`Connect` button.
+- Remote tabs now support horizontal touch swipe gestures in addition to explicit tab buttons, while form controls and buttons keep their normal touch behavior.
+- The Android shell now implements WebView `onShowFileChooser`, so the Remote attachment button opens Android's native picker for all file types and returns selected URIs to the browser file input.
+- The Android shell now exposes a narrow `LocalCodeAndroid.startVoiceInput()` bridge that starts Android speech recognition and returns recognized text to the Remote prompt; browser/WebView pages without the native bridge can fall back to Web Speech when available.
+- Remote send handling now uses a direct click handler, send-in-progress lock, disabled-state updates for empty/running/sending states, and visible alert errors instead of silent rejected promises.
+- Remote on first use defaults to the `native`/LocalCode engine through phone-local preference storage; later manual engine choices are remembered on the phone.
+- LocalCode now includes a shared SVG favicon, a generated multi-size Windows ICO embedded through `src/rsrc_windows_amd64.syso`, and an Android vector launcher icon referenced from the manifest.
+
+Focused tests added:
+
+- one-model-slot admission and release/re-admission
+- independent read/CPU resource progress while model slot is saturated
+- same-resource fairness/no starvation of the older queued model task
+- dependency readiness and release
+- requested-vs-granted capability separation and dynamic-role non-execution
+- mission cancellation of queued/running tasks and child contexts
+- task cancellation for queued and active leases
+- stale-lease rejection and release on failure
+- bounded queue atomicity
+- duplicate QueueReady idempotence and non-ready pruning
+- parent-context cancellation
+- all budget exhaustion dimensions and zero-clamped remaining values
+- active resource/task snapshots
+- invalid resource-class rejection
+- release cleanup after an invalid graph transition caused by an externally terminal task
+- nil graph mission-cancel and snapshot robustness
+- localized setup-policy and install-decline assertions for the local wave3/bootstrap tests
+- Windows/POSIX `rm` prompt and recovery redirection
+- Desktop and Remote composer attachment drag-and-drop affordances
+
+Synchronized DE/EN documentation now describes the backend scheduler contract in `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md` without claiming real asynchronous child-agent dispatch.
+
+GitHub reality has changed since the earlier branch bootstrap: draft PR #44 exists. The local working tree currently contains uncommitted continuation changes after remote head `98be9b583d724d75625ceebdc277c358ab921192`. Do not create another PR for this branch.
+
+Verification during this local continuation:
+
+- `go version` – local Go `go1.26.6 windows/amd64` (GitHub Quality uses Go `1.25.13`).
+- `gofmt -l` over all Go files – clean.
+- `go vet ./...` in `src` – passed.
+- Frontend JavaScript syntax – passed with bundled Codex Node `C:\Users\frede\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe`; system `node` was not on PATH.
+- PowerShell syntax for `scripts/*.ps1` – passed, 6 files.
+- Focused Remote firewall regression `go test -count=1 -run "TestRemoteFirewall|TestFullStackLoopbackDesktopAndRemoteHTTP|TestRemotePairing" .` – passed.
+- Focused desktop engine selector/default regression `go test -count=1 -run "Test.*Engine|Test.*Aider|TestRuntimeBootstrap|TestRequiredModels|TestDefault.*Config|TestSettingsEndpoint|TestComposerSupportsEnterAndGeneralAttachments" .` – passed.
+- Focused regression `go test -count=1 -run "TestComposerSupportsEnterAndGeneralAttachments|TestRemoteComposerSupportsDragDropAttachments|TestValidateGeneralAttachments|TestExtractTextAndZipAttachments|TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool|TestBlockedAvoidanceQuestion|TestWindowsPowerShellScriptEncodings|TestBuildBatchUsesPowerShellDriver" .` – passed.
+- Frontend JavaScript syntax for `src/static/i18n_base.js`, embedded `src/static/index.html` scripts and embedded `src/static/remote.html` scripts – passed with bundled Codex Node.
+- Native Android Remote APK – passed via `./scripts/build-android.ps1`; final installed debug APK SHA-256 `f55f9142e248485dd480f6b2812d598753be0038b3a3f0faa3fc307e9f952833`. `aapt dump badging` confirms `application-icon-160:'res/drawable/ic_launcher.xml'`.
+- `govulncheck@v1.1.4 ./...` – passed, no vulnerabilities found.
+- Full-stack loopback HTTP integration `go test ./... -run '^TestFullStackLoopbackDesktopAndRemoteHTTP$' -count=1 -timeout=5m` – passed.
+- `go test -count=1 ./...` in `src` – passed.
+- `go test ./... -race -count=1 -timeout=25m` in `src` – passed.
+- Coverage `go test ./... -count=1 -covermode=atomic` plus `go tool cover` – passed, total statement coverage **80.4%**.
+- Native Windows GUI and diagnostics builds – passed to `C:\Users\frede\AppData\Local\Temp\localcode-build-check`.
+- Final `cmd /c BUILD.bat` after Remote drag-and-drop, Android pairing/send/voice/file-picker/default-engine fixes, app icons, Windows/POSIX portability changes, hidden startup/Remote-firewall PowerShell helpers and the Desktop composer engine selector – passed all six stages on 2026-08-20. Generated checksums: `LocalCode.exe` SHA-256 `DBDC00DB66988C66E4AE6E439BEF05BFE44C65899F835E7A3566AC83F38F2DD5`; `LocalCode-Debug.exe` SHA-256 `ECA211FAED46C42EA3A598B2757142CD3ABA371689F5392EDD364D9F7D891550`.
+- `dist\LocalCode.exe` was started after the final build; observed process PID `23016` from `C:\Users\frede\Projekte\LocalCode\dist\LocalCode.exe`. Desktop status returned version `6.4.4`, `editing_engine:"native"` and selected model `qwen2.5-coder:14b`; the served Desktop HTML contains `engineSelect`, `value="claw"` and `changeEditingEngine(e.target.value)`.
+- `git diff --check` – passed; Git only warned that `CHECKSUMS-SHA256.txt`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java` and `scripts/build-android.ps1` line endings will normalize when Git touches those files.
+
+The previously known `TestCoverageServerEndpointMatrix` timing flake has a local uncommitted stabilization: after `/api/chat`, the test now waits for the agent to become idle and fails explicitly if it remains running, rather than continuing to `/api/new-chat` and receiving the correct product 409 response.
+
+`\\diskstation\Dani\Universal_Multi_Agent_Framework_UMAF.md` was reviewed on 2026-08-20 as a target architecture reference, not as executable instructions. LocalCode currently covers only parts of that UMAF target: governance/safety policy, planning/DAG, first scheduler/resource admission, read-only child-agent analysis, attachment ingestion, memory, validation gates and controlled build/delivery flows. Missing UMAF layers are now planned in `TODO.md`: explicit mission objects, structured task messaging, constrained Agent Factory/capability registry, real bounded parallel swarms, Integrator/Test/Security agents, observability/metrics, self-healing recovery, knowledge graph/reuse and any distributed/hyper-scale operation.
+
+### Explicitly out of scope for this first Phase-5 slice
+
+- real scheduler-driven child-agent dispatch integration (planned as the next Phase-5 increment after the backend contract is stable)
 - mutation-capable Builder agents
-- Git-worktree isolation
+- Git worktrees
 - Integrator/Test-Agent mutation orchestration
-- Mobile permission expansion
-- QEMU/OS mission execution
-
-### Historical development note
-
-During #42 development, temporary PR-specific workflow helpers were used to overcome connector-only editing limitations. Early transient runs failed safely due a wrong `go.mod` path and brittle multiline PowerShell anchors; transient Quality #417 exposed a real `gofmt` requirement. The eventual integration used exact assertions, gofmt, diff checks and focused tests before push. All temporary helpers were removed before the final tested head. Do not recreate them as product architecture.
+- durable mission persistence
+- Mobile permission widening
+- QEMU/OS execution
 
 ---
 
-## 5. Permanent Quality contract
+## 8. Known Quality flake discovered during PR #43
 
-Every material implementation PR must pass the exact final-head Windows Quality workflow, including at least:
+PR #43 was documentation-only. Its first Quality #437 attempt passed setup, format, vet, JS, PowerShell, Android, vulnerability scan, full-stack integration, complete tests and race detector, but the coverage run failed inside `TestCoverageServerEndpointMatrix`.
+
+Observed failure:
+
+- test expected HTTP 200 but received 409 `Agent läuft gerade`
+- location: `src/coverage_expansion_test.go`, around the chat/new-chat lifecycle
+- coverage run then reported 79.4% only because the test process failed
+
+Root cause visible in the test: after starting `/api/chat`, the test waits at most 3 seconds for `state.Running` to become false, but it does not assert that the agent really stopped before continuing to `/api/new-chat`. On a slow coverage run the agent may still be active and the endpoint correctly returns 409.
+
+The exact same unchanged PR #43 head was rerun once. The second complete Quality #437 attempt passed **all** gates, including coverage, Windows builds and diff check. That proves the docs diff did not cause the failure and strongly identifies a timing/test-isolation flake. A deterministic stabilization of this test remains desirable; do not lower coverage or loosen product behavior to hide it.
+
+---
+
+## 9. Quality contract
+
+Every material implementation PR must pass the standard Windows Quality workflow on its exact final head:
 
 - Go setup/version
 - gofmt
 - `go vet ./...`
 - frontend JavaScript syntax
 - PowerShell syntax
-- native Android Remote APK build
+- native Android Remote APK
 - `govulncheck`
 - full-stack loopback HTTP integration
 - complete Go tests
 - race detector
-- statement coverage >=80.0%
+- total statement coverage >=80.0%
 - native Windows builds including GUI path
 - `git diff --check`
-- exact head/behind/mergeability/review-thread checks before merge
 
-Never lower the 80% threshold or weaken sandbox, approvals, atomic writes, path/symlink protection, Mobile restrictions, cancellation, secret handling or loop guards to rescue CI.
+Before merge additionally verify exact head unchanged, 0 behind current `master`, mergeable, no blocking reviews and no unresolved review threads. Merge only with `expected_head_sha`. Never weaken safety or the coverage threshold to make a run pass.
 
 ---
 
-## 6. Roadmap state
+## 10. Remaining roadmap
 
 ### Issue #32 – UMAF-LC / Native orchestration
 
-Issue #32 remains open. Phase 1–3 foundation is merged via #40. Phase 4 Task DAG is merged via #42. The immediate next feature is Phase 5 Scheduler / Resource Manager.
+Phase 1–3: merged via #40.  
+Phase 4 Task DAG: merged via #42.  
+Phase 5 Scheduler/Resource Manager: **active branch described above**.
 
-Phase-5 objective: represent many logically ready tasks while bounding actual executor resources — especially local-model inference — independently. A large DAG must not imply many simultaneous model contexts on local GPU/CPU resources.
+After a stable Phase-5 backend foundation:
 
-Preferred first Phase-5 slice:
+1. integrate scheduler/resource admission with real read-only Explorer/Planner/Reviewer dispatch
+2. surface read-only queue/resource/budget state in Desktop and a narrower Mobile view without permission expansion
+3. add resource health/diagnostics and larger-DAG/cancellation-race tests
+4. Phase 6 durable missions/recovery integrated with `run_journal.go`
+5. Phase 7 optional isolated Git-worktree mutation agents under normal approvals/preconditions
+6. Phase 8 Integrator + Test Agent + independent Reviewer loop
+7. Phase 9 constrained dynamic Agent Factory, replanning and mission-level stagnation controls
+8. deferred tool discovery/context economy, typed project commands, broader safe MCP transports and Doctor diagnostics
+9. reproducible multi-agent benchmarks against Native/Aider/OpenCode/Claw using same model/repo/task where supported
+10. OS/QEMU challenge only after scheduler, persistence, worktrees and independent integration/review/test loops are stable
 
-- backend-only scheduler/resource contracts over the merged `AgentTaskGraph`
-- deterministic bounded logical ready queue
-- explicit resource classes and concurrency limits, with model inference separate from cheap CPU/read/search work
-- conservative model-inference default (single active model slot unless explicitly configured later)
-- mission/task budget accounting and structured remaining/exhausted state
-- cancellation propagation and deterministic queue ordering/fairness tests
-- failed/cancelled/blocked DAG nodes consume no executor slot until genuinely ready/retried
-- preserve current single-agent/read-only child execution compatibility
-- no Builder mutation, worktrees, Integrator mutation or Mobile permission widening in this first scheduler slice
+### OS-scale LocalCode challenge
 
-Later #32 sequence:
-
-1. Phase 5 scheduler/resource manager.
-2. Phase 6 durable missions + recovery integrated with existing run journal.
-3. Phase 7 isolated Git-worktree mutation agents under normal LocalCode approvals/preconditions.
-4. Phase 8 Integrator + Test Agent + independent Reviewer loop.
-5. Phase 9 constrained dynamic Agent Factory, replanning and mission-level stagnation controls.
-6. Deferred tool discovery/context economy, typed project commands, broader safe MCP transports and Doctor diagnostics.
-7. Reproducible multi-agent benchmark expansion against Aider/OpenCode/Claw.
-8. OS/QEMU challenge only after underlying orchestration/recovery/integration primitives are stable.
+Eventually the benchmark may build a bootable x86-64 OS with memory, interrupts, scheduler, drivers, filesystem, userspace and FreeDoom under QEMU. Success must be machine-verifiable through build artifacts, bounded QEMU execution and structured serial/test markers. Do not market a toy boot stub as Antigravity-equivalent.
 
 ### Issue #30 – llama.cpp / DMC backend
 
-Issue #30 remains open and follows the main orchestration foundation. Ollama stays default. A llama.cpp backend must live below the supervisor, remain local/loopback by default, make provider/model selection explicit, and must not be labeled DMC-enabled until runtime markers/self-tests prove real DMC KV selection/rehydration.
+Still open and intentionally separate from orchestration. Ollama remains default. Future backend abstraction must be explicit and loopback/local by default. Do not claim DMC execution until runtime provenance/self-tests prove real DMC behavior. Benchmark Ollama vs dense llama.cpp vs true DMC where available.
 
 ### Repository hygiene
 
-Issue #23 is completed. Issues #22 and #25 still require reconciliation against merged work and may be closed only after their acceptance criteria are verified.
+- Issue #23: completed.
+- Issue #22: still needs reconciliation against merged session-wide doom-loop guard #36 before closing.
+- Issue #25: still needs reconciliation against project quarantine/Trash work #26/#33/#38 before closing.
+- Keep #32 open until orchestration and benchmark acceptance are complete.
+- Keep #30 open until backend/runtime/benchmark acceptance is complete.
 
 ---
 
-## 7. Exact next functional implementation step
+## 11. Exact next action
 
-After this documentation refresh is merged to `master`:
+From branch `feat/native-agent-scheduler-foundation`:
 
-1. Verify current `master` contains #42 merge `c576f27cf75b642987aa56c7227840a133d00e07` plus the self-resolving PR #43 docs carrier and that no competing implementation PR appeared.
-2. Read current `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, then inspect `src/agent_task_graph.go`, `src/agent_team_types.go`, `src/subagent_model.go`, `src/types.go` and existing cancellation/budget helpers.
-3. Create a fresh branch from the then-current `master` for #32 Phase 5; do not reuse `feat/native-agent-task-dag`.
-4. Implement the smallest safe scheduler/resource-manager foundation in focused new files. Start backend-only; do not add worktrees/mutation.
-5. Deterministically separate logical ready-task queueing from resource admission. Multiple graph tasks may be logically ready while only the configured number of model-inference tasks can execute.
-6. Add explicit bounded resource classes/limits and conservative defaults; model inference should default to one slot.
-7. Add structured mission/task resource/budget snapshots, cancellation propagation, deterministic ordering and fairness/starvation tests.
-8. Preserve all existing single-agent/read-only-child behavior and safety boundaries.
-9. Update DE/EN docs and STATE/TODO with the exact implemented slice.
-10. Full exact-head Quality, pre-merge review/behind checks, SHA-bound merge, then immediate STATE/TODO refresh before the next Phase-5 increment.
+1. Review the current uncommitted local diff on top of PR #44 remote head `98be9b583d724d75625ceebdc277c358ab921192`.
+2. If the changes are accepted, explicitly authorize staging/commit/push; publish rules require separate explicit authorization before each Git write/publish step.
+3. After push, update STATE/TODO with the new exact PR #44 head and CI reality.
+4. Run/monitor GitHub Quality on the pushed exact head. Local Quality-style checks are green, but GitHub Actions remains authoritative.
+5. When green, verify 0 behind, mergeability, reviews/threads and exact SHA; merge with `expected_head_sha`.
+6. Immediately refresh STATE/TODO on resulting `master` before starting the next Phase-5 increment.
 
-`TODO.md` contains the exhaustive remaining functional roadmap and acceptance criteria.
+`TODO.md` is authoritative for every unfinished functional item.

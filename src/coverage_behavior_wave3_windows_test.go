@@ -50,6 +50,16 @@ func waitForPendingWave3(t *testing.T, state *AppState) *PendingAction {
 	return nil
 }
 
+func containsDisabledText(value string) bool {
+	value = strings.ToLower(value)
+	return strings.Contains(value, "disabled") || strings.Contains(value, "deaktiviert")
+}
+
+func containsDeclinedText(value string) bool {
+	value = strings.ToLower(value)
+	return strings.Contains(value, "declined") || strings.Contains(value, "abgelehnt")
+}
+
 func TestRuntimeBootstrapAgainstLocalOllamaFixture(t *testing.T) {
 	cfg := isolateWave3Config(t)
 	cfg.OllamaAutoInstall = false
@@ -94,7 +104,7 @@ func TestRuntimeBootstrapAgainstLocalOllamaFixture(t *testing.T) {
 
 	noPull := cfg
 	noPull.OllamaAutoPull = false
-	if _, _, err := ensureConfiguredModelsWithProgress(context.Background(), noPull, client, nil, reporter); err == nil || !strings.Contains(strings.ToLower(err.Error()), "disabled") {
+	if _, _, err := ensureConfiguredModelsWithProgress(context.Background(), noPull, client, nil, reporter); err == nil || !containsDisabledText(err.Error()) {
 		t.Fatalf("expected auto-pull disabled error, got %v", err)
 	}
 
@@ -124,7 +134,7 @@ func TestEditingEngineBootstrapSafeBranches(t *testing.T) {
 	disabled.EditingEngine = editingEngineClaude
 	disabled.ClaudeCodeEnabled = false
 	updated, detail, err = ensureSelectedEditingEngineRuntimeWithProgress(ctx, disabled, nil)
-	if err != nil || updated.EditingEngine != editingEngineNative || !strings.Contains(strings.ToLower(detail), "disabled") {
+	if err != nil || updated.EditingEngine != editingEngineNative || !containsDisabledText(detail) {
 		t.Fatalf("disabled updated=%q detail=%q err=%v", updated.EditingEngine, detail, err)
 	}
 
@@ -395,7 +405,7 @@ func TestMissingToolInstallOfferDeclineAndProjectCommandContext(t *testing.T) {
 	pending := waitForPendingWave3(t, state)
 	pending.Result <- ApprovalDecision{Approved: false}
 	result := <-resultCh
-	if result.err != nil || result.installed || !strings.Contains(strings.ToLower(result.detail), "declined") {
+	if result.err != nil || result.installed || !containsDeclinedText(result.detail) {
 		t.Fatalf("declined offer detail=%q installed=%v err=%v", result.detail, result.installed, result.err)
 	}
 

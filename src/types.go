@@ -65,7 +65,7 @@ type Config struct {
 	OllamaAutoInstall                 bool    `json:"ollama_auto_install"`
 	OllamaAutoPull                    bool    `json:"ollama_auto_pull"`
 	OllamaDefaultModel                string  `json:"ollama_default_model"`
-	EditingEngine                     string  `json:"editing_engine"` // aider | claude | opencode | native
+	EditingEngine                     string  `json:"editing_engine"` // native | aider | claude | opencode | claw
 	AiderEnabled                      bool    `json:"aider_enabled"`
 	AiderAutoInstall                  bool    `json:"aider_auto_install"`
 	AiderVersion                      string  `json:"aider_version"`

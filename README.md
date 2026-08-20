@@ -4,6 +4,10 @@
 
 LocalCode is a local Windows coding-agent application for Ollama. It provides project-based chats, controlled tool execution, Git, builds, Android deployment, web research, MCP, attachments, approvals, context compaction, and a desktop-style user interface. LocalCode is an independent project and is not OpenAI Codex.
 
+LocalCode liefert eigene Desktop-/Favicon-Grafik und ein Android-Launcher-Icon; Browser-Hüllen und APK-Builds sollen nicht auf generische Edge- oder Android-Standardsymbole zurückfallen.
+
+LocalCode ships its own desktop/favicon artwork and Android launcher icon; browser shells and APK builds should not fall back to generic Edge or Android default icons.
+
 ---
 
 ## Deutsch
@@ -13,7 +17,7 @@ LocalCode is a local Windows coding-agent application for Ollama. It provides pr
 1. Das ZIP vollständig in einen neuen Ordner entpacken.
 2. `START.bat` doppelklicken. Die Markierung `dist\REBUILD-NATIVE.txt` erzwingt vor dem ersten Programmstart einen vollständigen nativen Windows-Build und wird erst nach erfolgreicher Prüfung entfernt.
 3. Fehlt eine unterstützte Go-Version, lädt das Build-Skript die aktuelle stabile Windows-Version direkt von `go.dev`, prüft deren offiziellen SHA-256-Wert und verwendet sie projektlokal.
-4. Vor der eigentlichen Oberfläche öffnet LocalCode ein kompaktes Startfenster. Es zeigt die aktuelle Prüfung, Installation und den Fortschritt großer Modelldownloads sowie bei Fehlern Wiederholen, Log-Ordner, eingeschränkten Start und Beenden.
+4. Vor der eigentlichen Oberfläche öffnet LocalCode ein kompaktes Startfenster. Es zeigt die aktuelle Prüfung, Installation und den Fortschritt großer Modelldownloads sowie bei Fehlern Wiederholen, Log-Ordner, eingeschränkten Start und Beenden. Nicht-interaktive Windows-Helfer wie Rebuild-Prüfung und Remote-Firewall-Regel laufen ohne sichtbares PowerShell-Fenster.
 5. Beim ersten Programmstart prüft LocalCode Ollama, das konfigurierte Coding-Modell und die ausgewählte Coding-Agent-Engine. Fehlende unterstützte Komponenten werden automatisch benutzerlokal installiert und anschließend verifiziert.
 6. LocalCode öffnet sich unter Windows bevorzugt in Edge oder Chrome im App-Modus.
 
@@ -48,9 +52,9 @@ Standardmodell für eine neue Installation: `qwen2.5-coder:14b`. Bereits vorhand
 
 ### Handy-Remote
 
-LocalCode startet zusätzlich eine token-geschützte Remote-Web-App für Handys im lokalen Netzwerk. Im Desktop-Menü **Hilfe → Remote koppeln** erzeugt LocalCode einen kurzlebigen sechsstelligen Pairing-Code und zeigt die LAN-Adresse der Remote-App. Auf dem Handy wird `/remote` geöffnet, der Code eingegeben und ein Geräte-Token erzeugt. Das Token wird nur auf dem Handy gespeichert; LocalCode persistiert nur den Hash.
+LocalCode startet zusätzlich eine token-geschützte Remote-Web-App für Handys im lokalen Netzwerk. Im Desktop-Menü **Hilfe → Remote koppeln** erzeugt LocalCode einen kurzlebigen achtstelligen Pairing-Code und zeigt die LAN-Adresse der Remote-App. Auf dem Handy wird `/remote` geöffnet, der Code eingegeben und per Button oder Tastaturaktion verbunden; danach wird ein Geräte-Token erzeugt. Das Token wird nur auf dem Handy gespeichert; LocalCode persistiert nur den Hash.
 
-Die Remote-App folgt dem schmalen dunklen AHSMA-Handylayout: Projekt- und Task-Auswahl, laufende Chatansicht, neue Aufgaben, Datei-/Kamera-Anhänge über den Browser-Dateidialog, Stopp und Genehmigungen sind direkt bedienbar. Die eigentliche Arbeit läuft weiterhin auf dem Windows-Rechner mit dessen Projekten, Werkzeugen, Modellen, Genehmigungen und Sicherheitsregeln. Eine verpackte native Android-Hülle und automatische mDNS/QR-Erkennung bleiben Folgeaufgaben.
+Die Remote-App folgt dem schmalen dunklen AHSMA-Handylayout: Projekt- und Task-Auswahl, laufende Chatansicht, neue Aufgaben, Anhänge, Stopp und Genehmigungen sind direkt bedienbar. In der Android-Hülle öffnet die Büroklammer die native Dateiauswahl der WebView für alle Dateitypen; Drag-and-drop bleibt im Browser möglich. Ein Mikrofonknopf startet Androids Spracheingabe und fügt das erkannte Diktat in die Nachricht ein. Tabs lassen sich antippen oder per horizontalem Swipe wechseln. Die Handy-Oberfläche startet standardmäßig mit der Engine **LocalCode**, eine manuelle Auswahl wird auf dem Handy gemerkt. Die eigentliche Arbeit läuft weiterhin auf dem Windows-Rechner mit dessen Projekten, Werkzeugen, Modellen, Genehmigungen und Sicherheitsregeln. Eine verpackte native Android-Hülle und automatische mDNS/QR-Erkennung bleiben Folgeaufgaben.
 
 ### Agent und Kontext
 
@@ -82,13 +86,16 @@ Die Werkzeugerkennung umfasst Windows-Standardpfade, benutzerlokale Installation
 
 ### Umschaltbare Coding-Agent-Engines
 
-Unter **Einstellungen → Konfiguration → Coding-Agent-Engine** kann LocalCode zwischen drei vollständig angebundenen externen Bearbeitungs-Engines umschalten:
+Unter **Einstellungen → Konfiguration → Coding-Agent-Engine** kann LocalCode zwischen vier angebundenen externen Bearbeitungs-Engines umschalten:
 
-- **Aider 0.86.2** – Standard für lokale Ollama-Modelle. LocalCode installiert Aider reproduzierbar über `uv tool` mit Python 3.12 und verwendet `ollama_chat/<modell>`.
+- **Aider 0.86.2** – geeignet für lokale Ollama-Modelle. LocalCode installiert Aider reproduzierbar über `uv tool` mit Python 3.12 und verwendet `ollama_chat/<modell>`.
 - **Claude Code** – Anthropics native CLI. Unter Windows verwendet LocalCode den offiziellen benutzerlokalen PowerShell-Installer, prüft Version und Anmeldung und startet Aufgaben nichtinteraktiv über `claude -p`. Stable-, Latest- oder konkrete Versionskanäle sind konfigurierbar. Für die Nutzung ist ein geeigneter Claude-/Anthropic-Zugang oder eine unterstützte Provider-Konfiguration erforderlich.
 - **OpenCode** – provideroffene CLI. LocalCode installiert `opencode-ai` benutzerlokal über ein verwaltetes Node.js/npm, unterstützt `provider/modell`, Anmeldung über `opencode auth login` und lokale Ollama-Modelle. Für Ollama erzeugt LocalCode pro Prozess eine passende OpenCode-Providerkonfiguration, ohne die globale OpenCode-Konfiguration zu überschreiben.
+- **Claw Code** – experimentelle Claw-CLI-Integration für Repository-Analyse und Bearbeitungsmodi unter derselben LocalCode-Genehmigungsgrenze.
 
-Zusätzlich bleibt **LocalCode nativ** als interne Werkzeugschleife verfügbar. Diese Option ist keine vierte externe Engine.
+Zusätzlich bleibt **LocalCode nativ** als interne Werkzeugschleife verfügbar. Diese Option ist keine fünfte externe Engine.
+
+Die aktive Engine kann zusätzlich direkt in der Eingabeleiste neben dem Modell umgeschaltet werden. Neue Desktop-Installationen starten standardmäßig mit **LocalCode nativ**; Aider, Claude Code, OpenCode und Claw Code bleiben manuell auswählbar.
 
 Für jede externe Engine sind Statusprüfung, Installation/Reparatur, Anmeldung (soweit erforderlich), Repository-Analysetest, kontrollierter Abbruch, Ausgabeerfassung und Wiederherstellung der letzten Änderung integriert. Der Supervisor verwendet für mehrdateilige Änderungen, Repository-Analyse, Linting und Tests immer die aktuell ausgewählte Engine. Die alten `aider_*`-Agentenaktionen bleiben als kompatible Aliase erhalten.
 
@@ -185,7 +192,7 @@ Apache License 2.0. Siehe `LICENSE`, `NOTICE` und `THIRD_PARTY_NOTICES.md`.
 1. Extract the ZIP completely into a new directory.
 2. Double-click `START.bat` or `BUILD-AND-RUN.bat`.
 3. If no supported Go version is available, the build script downloads the current stable Windows release directly from `go.dev`, verifies its official SHA-256 value, and uses it inside the project.
-4. Before the main UI, LocalCode opens a compact startup window showing the current check, installation, and large model-download progress. On failure it offers retry, log-folder access, limited mode, and exit.
+4. Before the main UI, LocalCode opens a compact startup window showing the current check, installation, and large model-download progress. On failure it offers retry, log-folder access, limited mode, and exit. Non-interactive Windows helpers such as the rebuild check and Remote firewall rule run without a visible PowerShell window.
 5. On first application startup, LocalCode verifies Ollama, the configured coding model, and the selected coding-agent engine. Missing supported components are installed automatically for the current user and verified afterwards.
 6. On Windows, LocalCode preferably opens in Edge or Chrome application mode.
 
@@ -220,9 +227,9 @@ Default model for a fresh installation: `qwen2.5-coder:14b`. Existing Ollama ins
 
 ### Phone Remote
 
-LocalCode also starts a token-protected Remote web app for phones on the local network. From the desktop menu **Help → Pair Remote**, LocalCode creates a short-lived six-digit pairing code and shows the LAN address for the Remote app. The phone opens `/remote`, enters the code, and receives a device token. The token is stored only on the phone; LocalCode persists only its hash.
+LocalCode also starts a token-protected Remote web app for phones on the local network. From the desktop menu **Help → Pair Remote**, LocalCode creates a short-lived eight-digit pairing code and shows the LAN address for the Remote app. The phone opens `/remote`, enters the code, and connects through the button or keyboard action; then it receives a device token. The token is stored only on the phone; LocalCode persists only its hash.
 
-The Remote app follows the narrow dark AHSMA phone layout: project and task selection, live chat review, new tasks, browser file/camera attachments, stop, and approvals are directly usable. The actual work still runs on the Windows computer with its projects, tools, models, approvals, and security rules. A packaged native Android shell and automatic mDNS/QR discovery remain follow-up tasks.
+The Remote app follows the narrow dark AHSMA phone layout: project and task selection, live chat review, new tasks, attachments, stop, and approvals are directly usable. In the Android shell, the paperclip opens the native WebView file chooser for all file types; drag-and-drop remains available in browsers. A microphone button starts Android voice input and appends the recognized dictation to the message. Tabs can be tapped or changed with a horizontal swipe. The phone UI starts with **LocalCode** as the default engine, and manual selections are remembered on the phone. The actual work still runs on the Windows computer with its projects, tools, models, approvals, and security rules. A packaged native Android shell and automatic mDNS/QR discovery remain follow-up tasks.
 
 ### Agent and context
 
@@ -254,13 +261,16 @@ Tool discovery covers Windows standard paths, per-user installations, and WinGet
 
 ### Switchable coding-agent engines
 
-Under **Settings → Configuration → Coding-agent engine**, LocalCode can switch between three fully integrated external editing engines:
+Under **Settings → Configuration → Coding-agent engine**, LocalCode can switch between four integrated external editing engines:
 
-- **Aider 0.86.2** – the default for local Ollama models. LocalCode installs Aider reproducibly through `uv tool` with Python 3.12 and uses `ollama_chat/<model>`.
+- **Aider 0.86.2** – suitable for local Ollama models. LocalCode installs Aider reproducibly through `uv tool` with Python 3.12 and uses `ollama_chat/<model>`.
 - **Claude Code** – Anthropic's native CLI. On Windows, LocalCode uses the official per-user PowerShell installer, verifies the version and authentication state, and runs tasks non-interactively through `claude -p`. Stable, latest, or exact-version channels are configurable. A suitable Claude/Anthropic account or supported provider configuration is required.
 - **OpenCode** – a provider-neutral CLI. LocalCode installs `opencode-ai` per user through managed Node.js/npm, supports `provider/model`, sign-in through `opencode auth login`, and local Ollama models. For Ollama, LocalCode supplies a process-scoped OpenCode provider configuration without overwriting the user's global OpenCode configuration.
+- **Claw Code** – experimental Claw CLI integration for repository analysis and editing modes under the same LocalCode approval boundary.
 
-**LocalCode native** remains available as the internal tool loop; it is not a fourth external engine.
+**LocalCode native** remains available as the internal tool loop; it is not a fifth external engine.
+
+The active engine can also be switched directly in the composer next to the model selector. Fresh desktop installations default to **LocalCode native**; Aider, Claude Code, OpenCode, and Claw Code remain manually selectable.
 
 Each external engine has integrated status checks, installation/repair, sign-in where required, repository-analysis testing, controlled cancellation, output capture, and restoration of the last change. The supervisor uses the selected engine for multi-file edits, repository analysis, linting, and tests. Legacy `aider_*` agent actions remain compatible aliases.
 
@@ -351,3 +361,9 @@ Apache License 2.0. See `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
 **DE:** LocalCode Native kann Planner-Vorschläge jetzt als deterministischen, maschinenlesbaren Task-DAG modellieren. Jede vorgeschlagene Aufgabe besitzt eine stabile ID; doppelte/fehlende/zyklische Abhängigkeiten werden verworfen. Dynamische Rollenbezeichnungen und angeforderte Capabilities sind ausschließlich Planungsdaten und gewähren weder Ausführungsrechte noch neue Tools. Dieser Schritt plant und bewertet Readiness; er startet noch keine mutierenden Builder, Worktrees oder parallelen Scheduler-Jobs.
 
 **EN:** LocalCode Native can now model Planner proposals as a deterministic machine-readable task DAG. Every proposed task has a stable ID; duplicate, missing, self-referential, or cyclic dependencies are rejected. Dynamic role labels and requested capabilities are planning data only and never grant execution authority or new tools. This phase models planning/readiness only; it does not yet start mutating Builders, worktrees, or parallel scheduler jobs.
+
+## Native Agent Scheduler / Native-Agent-Scheduler
+
+**DE:** Die erste Scheduler-/Resource-Manager-Schicht trennt logische Task-Bereitschaft von tatsächlicher Ressourcenaufnahme. Mehrere DAG-Aufgaben können bereitstehen, während LocalCode standardmäßig nur einen lokalen Modell-Inference-Slot und getrennte begrenzte Slots für günstige Lese-/CPU-Arbeit, Build-Arbeit und exklusive Integration verwaltet. Admission verlangt weiterhin eine ausführbare Native-Rolle und tatsächlich gewährte Capabilities; Planner-Wünsche in `RequestedCapabilities` bleiben inert. Der Slice erzeugt Snapshots für Queue, laufende Leases, Ressourcen und Budgets und kann Scheduler-eigene Kontexte abbrechen, startet aber noch keine echten parallelen Child-Agenten, mutierenden Builder, Worktrees oder Integrator-/Test-Agenten.
+
+**EN:** The first Scheduler/Resource Manager layer separates logical task readiness from actual resource admission. Multiple DAG tasks can be ready while LocalCode defaults to one local model-inference slot plus separate bounded slots for cheap read/CPU work, build work, and exclusive integration. Admission still requires an executable Native role and actually granted capabilities; Planner requests in `RequestedCapabilities` remain inert. This slice exposes queue, running-lease, resource, and budget snapshots and can cancel scheduler-owned contexts, but it does not yet start real parallel child agents, mutating Builders, worktrees, or Integrator/Test Agents.

@@ -10,6 +10,8 @@ This directory contains the native Android shell for LocalCode Remote.
 - The Android WebView accepts the self-signed LocalCode certificate only when its SHA-256 fingerprint matches the value discovered over DNS-SD or supplied in a `localcode://pair` deep link.
 - Cleartext WebView traffic is disabled in the Android manifest.
 - The existing eight-digit LocalCode pairing code is still entered in the Remote web UI after the transport endpoint has been discovered.
+- WebView file inputs are handed to Android's native file chooser through `onShowFileChooser`; selected URIs stay inside Android's normal picker grants and are passed back to the Remote web app as browser file attachments.
+- Voice input uses Android's `RecognizerIntent` through a narrow `LocalCodeAndroid` JavaScript bridge. The bridge only starts speech recognition and returns recognized text to the prompt field.
 
 ## QR / deep-link handoff
 

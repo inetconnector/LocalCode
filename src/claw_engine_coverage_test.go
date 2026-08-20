@@ -77,6 +77,7 @@ func TestEnsureClawBuildDependencyFailsClosedForUnknownTool(t *testing.T) {
 }
 
 func TestInstallClawCodeRespectsSetupDownloadPolicy(t *testing.T) {
+	isolateClawExecutableSearch(t)
 	cfg := defaultConfig()
 	cfg.SetupDownloadsEnabled = false
 	status, returned, output, err := installClawCode(context.Background(), t.TempDir(), cfg)

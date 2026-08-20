@@ -6,6 +6,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -24,7 +25,7 @@ func TestRemoteFirewallRuleValidationAndScope(t *testing.T) {
 	if err := ensureRemoteFirewallRule(32146); err != nil {
 		t.Fatal(err)
 	}
-	for _, marker := range []string{"LocalCode Remote 32146", "-Profile Private", "-RemoteAddress LocalSubnet", "-LocalPort 32146", "-Verb RunAs"} {
+	for _, marker := range []string{"LocalCode Remote 32146", "-Profile Private", "-RemoteAddress LocalSubnet", "-LocalPort 32146", "-Verb RunAs", "-WindowStyle Hidden"} {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("firewall script missing %q: %s", marker, script)
 		}
@@ -43,5 +44,18 @@ func TestRemoteFirewallElevationFailureIsReturned(t *testing.T) {
 	runRemoteFirewallPowerShell = func(string) error { return errors.New("declined") }
 	if err := ensureRemoteFirewallRule(32146); err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Fatalf("expected elevation failure, got %v", err)
+	}
+}
+
+func TestRemoteFirewallRunnerHidesOuterPowerShell(t *testing.T) {
+	source, err := os.ReadFile("remote_firewall_windows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, marker := range []string{"exec.Command(\"powershell.exe\"", "hideCommandWindow(cmd)", "cmd.Run()"} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("firewall runner no longer hides the outer PowerShell process; missing %q", marker)
+		}
 	}
 }

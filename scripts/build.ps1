@@ -46,6 +46,21 @@ function Test-GoVersion([string]$GoExe) {
     }
 }
 
+function Get-SHA256Hex([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $hash = $sha.ComputeHash($stream)
+            return ([BitConverter]::ToString($hash) -replace '-', '').ToUpperInvariant()
+        } finally {
+            $sha.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 try {
     Write-Host ('LocalCode ' + $Version + ' native Windows build')
     Write-Host ('Project: ' + $Root)
@@ -127,8 +142,8 @@ try {
     )
 
     $checksums = @(
-        ('LocalCode.exe  ' + (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Dist 'LocalCode.exe')).Hash),
-        ('LocalCode-Debug.exe  ' + (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Dist 'LocalCode-Debug.exe')).Hash)
+        ('LocalCode.exe  ' + (Get-SHA256Hex (Join-Path $Dist 'LocalCode.exe'))),
+        ('LocalCode-Debug.exe  ' + (Get-SHA256Hex (Join-Path $Dist 'LocalCode-Debug.exe')))
     )
     Set-Content -LiteralPath (Join-Path $Root 'CHECKSUMS-SHA256.txt') -Value $checksums -Encoding Ascii
     Remove-Item -LiteralPath (Join-Path $Dist 'REBUILD-NATIVE.txt') -Force -ErrorAction SilentlyContinue
