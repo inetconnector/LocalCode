@@ -2,14 +2,12 @@
 
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
-**Current functional master before bootstrap carrier #41:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
-**Last merged feature:** PR #40 `feat: add bounded native agent team roles`  
-**Final tested PR #40 head:** `9c3b25b1b070d80c075e9b697a9fffe86f0d3184`  
-**Quality on final PR #40 head:** #406 – success  
-**Bootstrap refresh carrier:** PR #41, branch `docs/state-todo-after-native-agent-teams`  
-**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
+**Current functional master:** `5872f7b9d9fe91d8d0c82d6cce29cbbc2cfdbf8f`  
+**Active implementation branch:** `feat/native-agent-task-dag`  
+**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
+**Issue #23:** completed  
 
-This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current reality and is the self-contained AI bootstrap. Documentation-only carrier mechanics are not functional backlog; when this content is read from `master`, carrier #41 is already merged by definition. Always verify GitHub reality before resuming.
+This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current reality and is the self-contained AI bootstrap. Keep both files mutually current; remove completed work instead of keeping historical checkboxes open.
 
 ---
 
@@ -17,88 +15,85 @@ This file is the authoritative exhaustive list of unfinished **functional** Loca
 
 `STATE.md` and `TODO.md` MUST remain completely current together.
 
-`STATE.md` is the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory or prior context must be able to understand the complete project state and resume implementation immediately. `TODO.md` is the exhaustive unfinished functional-work ledger; `STATE.md` must summarize enough of this roadmap and the exact next functional action to make continuation possible on its own.
-
-Blocking rules:
-
-1. Read both files before material work.
+1. Read both before material work.
 2. Verify current `master`, active implementation branch/PR, open issues, reviews and latest required Quality against GitHub reality before resuming.
-3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
-4. Documentation-only carrier PRs may use the self-resolving convention documented in `STATE.md`; do not create an infinite chain of documentation PRs solely to record the previous carrier as merged.
-5. Remove/rewrite completed or superseded TODO items; history belongs in Git and closed issues/PRs.
-6. Replace stale facts instead of appending contradictory snapshots.
-7. A functional feature/fix is not operationally complete until both files reflect the new reality.
-8. Never invent self-commit/merge SHAs.
+3. After every material branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
+4. `TODO.md` contains only unfinished functional work, dependencies and acceptance gates; history belongs in Git and closed PRs/issues.
+5. A functional change is not operationally complete until both files reflect the new reality.
+6. Never invent self-commit/merge SHAs.
 
 ---
 
-## 1. Immediate functional work
+## 1. Immediate work – #32 Phase 4 Task DAG
 
-Priority: **P0 / next**
+Priority: **P0 / current**
 
-PR #40 is complete and merged; no #40 merge work remains.
+Already implemented on `feat/native-agent-task-dag`:
 
-- [ ] Verify issue #23 against merged PR #40 and close it as completed if it is still open. Current evidence strongly indicates full satisfaction: model-backed `subagent_model.go`, tests, read-only list/read/search/LSP/finish boundary, deterministic `LOCALCODE_DETERMINISTIC_PREFLIGHT`, Explorer max 8 model calls, fallback and UI trace all exist on master.
-- [ ] Start #32 Phase 4 on a fresh branch from the then-current `master` after the bootstrap carrier is merged.
-- [ ] Implement the Task-DAG/dependency-validation slice described below; do not add mutation/worktrees in the same PR.
+- [x] Stable explicit `AgentTaskProposal.ID`.
+- [x] `RequestedCapabilities` separated from actually granted `Capabilities`; Planner proposals grant no authority.
+- [x] Graph-specific states added while retaining legacy standalone states for compatibility.
+- [x] `AgentTaskGraph` with mission/task nodes.
+- [x] Deterministic validation for invalid IDs/roles, duplicate IDs/dependencies, missing dependencies, self-dependencies and cycles.
+- [x] Mission/parent/state consistency validation.
+- [x] Deterministic ready/blocked reconciliation.
+- [x] Successful dependency release and failed/cancelled dependency blocking.
+- [x] Controlled state-transition validation and retry semantics.
+- [x] Dynamic role labels remain inert plan data rather than executable Native roles.
+- [x] Focused DAG/state regression tests created.
+
+Still required before this slice may merge:
+
+- [ ] Planner structured schema must require stable task `id` for every `suggested_tasks` entry.
+- [ ] Invalid/missing/cyclic Planner graphs must be rejected inside the bounded child-model loop and corrected within existing budgets.
+- [ ] Planner formatted structured output must include a validated machine-readable `task_graph` when proposals exist.
+- [ ] Update existing Planner test data to use stable IDs.
+- [ ] Add regression test proving an invalid Planner graph is rejected and corrected rather than accepted.
+- [ ] Run focused DAG/Planner tests and fix only concrete failures.
+- [ ] Remove `.github/workflows/temp-dag-integration.yml` and leave no temporary helper files in the final diff.
+- [ ] Update README / `docs/ARCHITECTURE.md` / `docs/SECURITY.md` in DE/EN as appropriate: DAG proposals are validated data only; dynamic roles/requested capabilities do not execute or grant authority.
+- [ ] Update `STATE.md` + `TODO.md` to the final PR/head/CI reality.
+- [ ] Full exact-final-head Windows Quality must pass.
+- [ ] Verify 0 behind `master`, exact head, mergeability, no blocking reviews and no unresolved review threads.
+- [ ] Merge with `expected_head_sha`; no force-push/history rewrite.
+- [ ] Immediately refresh `STATE.md` + `TODO.md` for resulting `master`.
+
+Explicitly out of scope for this slice:
+
+- asynchronous task execution scheduler
+- model-inference resource queues
+- persistent missions
+- Builder mutation
+- Git worktrees
+- Integrator/Test-Agent mutation orchestration
+- Mobile permission expansion
+- QEMU/OS execution
 
 ---
 
-## 2. Issue #32 – UMAF-LC / Native Agent Teams
-
-Priority: **P0**
-
-Merged foundation (#40): generic AgentTask/role/capability/budget/result contracts plus model-backed read-only Explorer/Planner/Reviewer. Everything below remains unfinished.
+## 2. Issue #32 – remaining UMAF-LC / Native Agent Teams roadmap
 
 Architecture principle:
 
 `Agent = Runtime + Role + Mission + Context + Capabilities + Budget + Workspace + Parent`
 
-Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestration must remain backend-independent and preserve LocalCode approval, sandbox, atomic-write, recovery and verification boundaries.
-
-### Phase 4 – Task DAG and dependency model — NEXT FEATURE SLICE
-
-- [ ] Add/normalize mission ID, parent task ID, dependency IDs and explicit graph task states adjacent to merged `AgentTask` without breaking existing single-agent/read-only-child paths.
-- [ ] Preserve legacy standalone child states where compatibility matters; graph logic should add explicit proposed/blocked/ready/running/succeeded/failed/cancelled/retryable semantics without silently corrupting old serialized values.
-- [ ] Require Planner `SuggestedTasks` to contain stable machine-readable task IDs.
-- [ ] Dependencies must reference task IDs, never prose labels.
-- [ ] Keep requested/planned capabilities separate from capabilities actually granted to executable agents; a Planner proposal must never grant authority.
-- [ ] Implement deterministic DAG validation.
-- [ ] Reject duplicate task IDs.
-- [ ] Reject empty/invalid task IDs and dependency IDs.
-- [ ] Reject missing dependency targets.
-- [ ] Reject self-dependencies.
-- [ ] Reject dependency cycles deterministically/fail closed.
-- [ ] Build graph nodes from validated Planner proposals without prose parsing.
-- [ ] Deterministically compute ready vs blocked tasks from dependency state.
-- [ ] Release dependents when prerequisites succeed.
-- [ ] Propagate failed/cancelled dependency blocking.
-- [ ] Represent multiple independent ready tasks as logical readiness without broad asynchronous execution yet.
-- [ ] Add deterministic allowed state-transition checks; blocked tasks must not jump directly into running.
-- [ ] Add tests for proposal validation, dynamic role labels as inert data, requested-vs-granted capabilities, duplicate IDs, missing dependencies, self-dependency, cycles, readiness, success release, failure blocking, retry flow and multiple independent ready tasks.
-- [ ] Preserve project-root/sandbox/no-privilege-escalation invariants.
-- [ ] Keep first DAG slice free of Builder mutation, Git worktrees and mission persistence.
-- [ ] Update DE/EN README/architecture/security docs to state that DAG proposals are validated data only and do not execute/grant capabilities.
-- [ ] Full exact-head Quality + review/behind/mergeability gates before merge.
-- [ ] Immediately refresh `STATE.md` + `TODO.md` after merge.
+Do not create a rigid hierarchy of hard-coded Go agent classes. Orchestration must remain backend-independent and preserve LocalCode approval, sandbox, atomic-write, recovery and verification boundaries.
 
 ### Phase 5 – Scheduler and resource manager
 
 - [ ] Separate logical task parallelism from model inference parallelism.
-- [ ] Add bounded queues/resource classes for model inference, CPU/read/search work, builds/linkers and exclusive integration/test resources.
+- [ ] Add bounded resource classes/queues for model inference, CPU/read/search work, builds/linkers and exclusive integration/test resources.
 - [ ] Use conservative local-GPU/model concurrency defaults; logical task count must not imply equal simultaneous model contexts.
-- [ ] Extend mission/task model/tool/time/estimated-token budgets.
-- [ ] Enforce hard-stop semantics with structured budget-exhausted results.
-- [ ] Add cancellation propagation.
-- [ ] Add fairness/starvation tests.
+- [ ] Extend mission/task model/tool/time/estimated-token budgets and structured budget-exhausted outcomes.
+- [ ] Add cancellation propagation, fairness/starvation tests and deterministic queue ordering.
 - [ ] Surface queued/running/blocked state and remaining budgets in Desktop/Remote without widening Mobile permissions.
 
 ### Phase 6 – Persistent missions and recovery
 
 - [ ] Introduce durable mission metadata separate from chat prose.
-- [ ] Persist graph, task states, structured results, attempts, model/tool usage, timestamps and verification state.
+- [ ] Persist graph, task states, structured results, attempts, usage, timestamps and verification state.
 - [ ] Integrate with existing durable run journal instead of creating a competing recovery authority.
-- [ ] On restart reconcile project/Git/postconditions before resuming; never blindly replay mutation.
+- [ ] Reconcile project/Git/postconditions before restart/resume; never blindly replay mutation.
 - [ ] Support mission/task pause, resume, cancel and retry.
 - [ ] Add bounded mission knowledge for architecture decisions, interfaces/contracts, known failures and test results.
 - [ ] Add crash/restart tests for ready, running, failed and partially integrated tasks.
@@ -107,12 +102,10 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 
 - [ ] Add optional isolated worktree workspace type for mutation-capable child agents.
 - [ ] Create worktrees only under LocalCode-managed validated paths with symlink/path protections.
-- [ ] Give each Builder task its own branch/worktree.
-- [ ] Never allow unsupervised concurrent mutation of the same workspace.
+- [ ] Give each Builder task its own branch/worktree; never allow unsupervised concurrent mutation of the same workspace.
 - [ ] Builder actions still pass normal validation, approvals, SHA/preconditions, backups and process rules; worktrees grant no extra authority.
 - [ ] Record changed files, diff, commits and verification in structured `AgentResult`.
-- [ ] Clean worktrees safely; no destructive global reset/clean shortcuts.
-- [ ] Handle cancellation, orphan worktrees and crash recovery deterministically.
+- [ ] Safe cleanup/cancellation/orphan recovery; no destructive global reset/clean shortcuts.
 - [ ] Add stale-base, collision, symlink/path-escape, cancellation and Windows worktree tests.
 
 ### Phase 8 – Integrator, Test Agent and independent Reviewer
@@ -129,7 +122,7 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 ### Phase 9 – Dynamic agent spawning and replanning
 
 - [ ] Allow Planner/Mission Manager to request validated dynamic role labels from data rather than Go class proliferation.
-- [ ] Constrained Agent Factory: role/objective/capabilities/budget/workspace/model/parent.
+- [ ] Constrained Agent Factory: role/objective/requested capabilities/budget/workspace/model/parent; governance grants actual capabilities separately.
 - [ ] Cap team size, nesting depth, model calls, tool calls and mission duration.
 - [ ] Prevent children self-granting capabilities or spawning mutation descendants outside governance policy.
 - [ ] Add structured replanning after failed dependencies, changed evidence or integration conflicts.
@@ -137,7 +130,7 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 
 ### Deferred tool discovery / context economy
 
-- [ ] Add deferred/tool-search so large tool registries are not injected into every model context.
+- [ ] Add deferred/tool-search so large registries are not injected into every model context.
 - [ ] Keep deterministic minimal core schemas; load extended capability definitions only when relevant.
 - [ ] Measure context savings and task success before claiming benefit.
 - [ ] Preserve stable prompt prefixes where useful for caching.
@@ -174,14 +167,14 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 
 Priority: **P1 only after stable DAG + scheduler + worktrees + integrator/reviewer/test loop**
 
-- [ ] Discover `clang`/`gcc`, `nasm`, `ld`/`lld`, `cmake`/`make`/`ninja`, optional Rust/Cargo, `qemu-system-x86_64`, ISO/boot tooling, `gdb`, `objdump`, `readelf` through controlled tool discovery.
-- [ ] Do not silently install toolchains.
-- [ ] Add QEMU wrapper with timeout, owned-process cancellation and bounded logs/artifacts.
-- [ ] Add machine-readable serial acceptance markers for boot/memory/scheduler/VFS/userspace stages.
-- [ ] Add structured QEMU Test Agent results; “build succeeded” is insufficient.
+- [ ] Controlled discovery of `clang`/`gcc`, `nasm`, `ld`/`lld`, build tools, optional Rust/Cargo, `qemu-system-x86_64`, ISO/boot tools, `gdb`, `objdump`, `readelf`.
+- [ ] Never silently install toolchains.
+- [ ] QEMU wrapper with timeout, owned-process cancellation and bounded logs/artifacts.
+- [ ] Machine-readable serial acceptance markers for boot/memory/scheduler/VFS/userspace stages.
+- [ ] Structured QEMU Test Agent results; “build succeeded” is insufficient.
 - [ ] Stage benchmark: boot -> kernel entry -> memory -> interrupts/timer -> scheduler -> storage/filesystem -> syscalls/userspace -> keyboard/framebuffer -> FreeDoom launch.
-- [ ] Persist each OS task input/context/result/diff/commit/tests/cost/duration for pause/restart/retry.
-- [ ] Add visual verification only after deterministic serial/build/test criteria.
+- [ ] Persist every OS task input/context/result/diff/commit/tests/cost/duration for pause/restart/retry.
+- [ ] Visual verification only after deterministic serial/build/test criteria.
 - [ ] Publish only reproducible results; never market a toy boot stub as Antigravity-equivalent.
 
 ---
@@ -192,28 +185,27 @@ Priority: **P1 after main #32 foundation**
 
 - [ ] Backend-neutral inference interface below Native runtime.
 - [ ] Keep Ollama default/current behavior.
-- [ ] Add optional loopback-only OpenAI-compatible llama.cpp adapter.
-- [ ] Explicit backend selection/health; no secrets or silent provider/model drift.
-- [ ] Managed process-tree lifecycle, timeout, health and restart for local llama.cpp.
+- [ ] Optional loopback-only OpenAI-compatible llama.cpp adapter.
+- [ ] Explicit backend selection/health; no silent provider/model drift.
+- [ ] Managed local llama.cpp process lifecycle, timeout, health and restart.
 - [ ] Verify runtime provenance/version before DMC label.
 - [ ] Use DMC selection/rehydration only when Windows runtime truly executes it and self-tests prove it.
 - [ ] Preserve dense llama.cpp and Ollama fallback.
 - [ ] Benchmark same model/task/context across Ollama/dense llama.cpp/true DMC where available.
-- [ ] Measure correctness, retained context, first-token latency, total runtime, peak memory/VRAM, long-context recall.
+- [ ] Measure correctness, retained context, first-token latency, total runtime, peak memory/VRAM and long-context recall.
 - [ ] No DMC claim without runtime evidence.
 
 ---
 
-## 5. Repository hygiene / stale issue reconciliation
+## 5. Repository hygiene
 
-Priority: **P1; #23 before Phase 4 branch**
+Priority: **P1; interleave after current Phase-4 slice**
 
-- [ ] Verify/close issue #23 against merged #40.
-- [ ] Verify issue #22 against merged #36/session-wide doom-loop guard; close if fully satisfied.
-- [ ] Verify issue #25 against #26/#33/#38; close if reversible quarantine + Desktop/Mobile UX acceptance is fully satisfied.
+- [x] Issue #23 verified against #40 and closed completed.
+- [ ] Verify issue #22 against merged #36/session-wide doom-loop guard; close only if all acceptance criteria are satisfied.
+- [ ] Verify issue #25 against #26/#33/#38; close only if reversible quarantine + Desktop/Mobile UX acceptance is fully satisfied.
 - [ ] Keep #32 open until orchestration/benchmark acceptance complete.
 - [ ] Keep #30 open until backend/runtime/benchmark acceptance complete.
-- [ ] Remove closed/superseded work from active TODO sections.
 
 ---
 
@@ -249,6 +241,6 @@ Every relevant PR remains blocked until exact final head passes:
 - [ ] native Windows builds including GUI path
 - [ ] `git diff --check`
 - [ ] exact-head, mergeability, behind/master and review-thread checks before merge
-- [ ] `STATE.md` + `TODO.md` refresh after material functional result/merge
+- [ ] `STATE.md` + `TODO.md` refresh after material result/merge
 
 Never lower the 80% gate or weaken sandbox, approvals, atomic writes, path/symlink protections, Mobile restrictions, process cancellation, secret handling or no-progress guards to make CI pass.
