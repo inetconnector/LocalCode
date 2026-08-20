@@ -17,7 +17,15 @@ func TestAndroidRemoteLocksNavigationToPinnedPrivateOrigin(t *testing.T) {
 	}
 	text := string(data)
 	for _, required := range []string{
-		"setWebChromeClient(new WebChromeClient())",
+		"setWebChromeClient(new WebChromeClient()",
+		"onShowFileChooser",
+		"FileChooserParams.parseResult",
+		"REQUEST_FILE_CHOOSER",
+		"addJavascriptInterface(new AndroidBridge(), \"LocalCodeAndroid\")",
+		"@JavascriptInterface",
+		"RecognizerIntent.ACTION_RECOGNIZE_SPEECH",
+		"REQUEST_SPEECH",
+		"JSONObject.quote",
 		"sameRemoteOrigin(request.getUrl())",
 		"address.isLoopbackAddress()",
 		"address.isLinkLocalAddress()",
@@ -53,5 +61,30 @@ func TestAndroidRemoteLocksNavigationToPinnedPrivateOrigin(t *testing.T) {
 	}
 	if !strings.Contains(manualHandler, "validFingerprint(fp)") || !strings.Contains(manualHandler, "expectedFingerprint = fp;") {
 		t.Fatal("manual Android Remote must require and retain the operator-provided TLS fingerprint")
+	}
+}
+
+func TestAndroidRemoteDeclaresLauncherIcon(t *testing.T) {
+	manifestPath := filepath.Join("..", "android", "app", "src", "main", "AndroidManifest.xml")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := string(data)
+	for _, required := range []string{
+		`android:icon="@drawable/ic_launcher"`,
+		`android:roundIcon="@drawable/ic_launcher"`,
+	} {
+		if !strings.Contains(manifest, required) {
+			t.Fatalf("Android launcher icon manifest entry missing: %s", required)
+		}
+	}
+	iconPath := filepath.Join("..", "android", "app", "src", "main", "res", "drawable", "ic_launcher.xml")
+	icon, err := os.ReadFile(iconPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(icon), `android:viewportWidth="108"`) || !strings.Contains(string(icon), `#06b6d4`) {
+		t.Fatal("Android launcher vector icon does not look like the LocalCode icon")
 	}
 }

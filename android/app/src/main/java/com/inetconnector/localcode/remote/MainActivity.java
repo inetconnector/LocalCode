@@ -3,6 +3,7 @@ package com.inetconnector.localcode.remote;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -14,10 +15,13 @@ import android.os.Build;
 import android.os.Bundle;
 import android.net.http.SslCertificate;
 import android.net.http.SslError;
+import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -31,12 +35,18 @@ import android.widget.TextView;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Map;
 
+import org.json.JSONObject;
+
+@SuppressWarnings("deprecation")
 public final class MainActivity extends Activity {
     private static final String SERVICE_TYPE = "_localcode._tcp.";
     private static final int REQUEST_NEARBY = 701;
+    private static final int REQUEST_FILE_CHOOSER = 702;
+    private static final int REQUEST_SPEECH = 703;
 
     private NsdManager nsdManager;
     private NsdManager.DiscoveryListener discoveryListener;
@@ -46,6 +56,7 @@ public final class MainActivity extends Activity {
     private TextView status;
     private EditText manualUrl;
     private EditText manualFingerprint;
+    private ValueCallback<Uri[]> filePathCallback;
     private String expectedFingerprint = "";
     private String currentRemoteUrl = "";
     private boolean discovering;
@@ -144,7 +155,32 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.addJavascriptInterface(new AndroidBridge(), "LocalCodeAndroid");
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = callback;
+                Intent intent;
+                try {
+                    intent = params.createIntent();
+                } catch (RuntimeException ex) {
+                    filePathCallback = null;
+                    setStatus("Dateiauswahl konnte nicht geöffnet werden: " + ex.getMessage());
+                    return false;
+                }
+                try {
+                    startActivityForResult(intent, REQUEST_FILE_CHOOSER);
+                    return true;
+                } catch (ActivityNotFoundException ex) {
+                    filePathCallback = null;
+                    setStatus("Keine passende Dateiauswahl-App gefunden.");
+                    return false;
+                }
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -166,6 +202,55 @@ public final class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_FILE_CHOOSER) {
+            ValueCallback<Uri[]> callback = filePathCallback;
+            filePathCallback = null;
+            if (callback != null) {
+                Uri[] results = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
+                callback.onReceiveValue(results);
+            }
+            return;
+        }
+        if (requestCode == REQUEST_SPEECH) {
+            if (resultCode == RESULT_OK && data != null) {
+                ArrayList<String> matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                if (matches != null && !matches.isEmpty()) {
+                    deliverVoiceText(matches.get(0));
+                }
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    private final class AndroidBridge {
+        @JavascriptInterface
+        public void startVoiceInput() {
+            runOnUiThread(() -> startVoiceRecognizer());
+        }
+    }
+
+    private void startVoiceRecognizer() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "LocalCode");
+        try {
+            startActivityForResult(intent, REQUEST_SPEECH);
+        } catch (ActivityNotFoundException ex) {
+            deliverVoiceText("");
+            setStatus("Keine Spracheingabe-App gefunden.");
+        }
+    }
+
+    private void deliverVoiceText(String text) {
+        if (webView == null) return;
+        String script = "window.localCodeVoiceResult&&window.localCodeVoiceResult(" + JSONObject.quote(text == null ? "" : text) + ")";
+        webView.evaluateJavascript(script, null);
     }
 
     private boolean sameRemoteOrigin(Uri candidate) {

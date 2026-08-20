@@ -156,6 +156,44 @@ func TestAgentSchedulerRejectsStaleLeaseAndReleasesFailedTask(t *testing.T) {
 	}
 }
 
+func TestAgentSchedulerReleaseCleansResourceWhenTaskNoLongerRunning(t *testing.T) {
+	graph := schedulerTestGraph(t, []AgentTaskProposal{{ID: "a", Role: "explorer", Objective: "a"}})
+	grantSchedulerTestCapabilities(t, &graph, "a")
+	scheduler := NewAgentScheduler(context.Background(), AgentResourceLimits{})
+	defer scheduler.missionCancel()
+	if err := scheduler.QueueReady(&graph, nil); err != nil {
+		t.Fatal(err)
+	}
+	lease, ok, err := scheduler.AdmitNext(&graph)
+	if err != nil || !ok {
+		t.Fatalf("admission ok=%v err=%v", ok, err)
+	}
+	task := agentTaskByID(&graph, "a")
+	task.State = AgentTaskCancelled
+	if err := scheduler.Release(&graph, lease, AgentTaskSucceeded); err == nil {
+		t.Fatal("release should report the invalid graph transition")
+	}
+	select {
+	case <-lease.Context.Done():
+	case <-time.After(time.Second):
+		t.Fatal("release did not cancel task context after external terminal state")
+	}
+	if snapshot := scheduler.Snapshot(&graph, nil); snapshot.Running != 0 || snapshot.Resources[0].InUse != 0 {
+		t.Fatalf("scheduler leaked resource after invalid graph transition: %+v", snapshot)
+	}
+}
+
+func TestAgentSchedulerNilGraphSnapshotAndMissionCancelAreSafe(t *testing.T) {
+	scheduler := NewAgentScheduler(context.Background(), AgentResourceLimits{})
+	if err := scheduler.CancelMission(nil); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := scheduler.Snapshot(nil, nil)
+	if !snapshot.Cancelled || snapshot.Queued != 0 || snapshot.Running != 0 || len(snapshot.Tasks) != 0 || len(snapshot.Resources) != 4 {
+		t.Fatalf("unexpected nil graph snapshot after cancellation: %+v", snapshot)
+	}
+}
+
 func TestAgentSchedulerParentCancellationStopsAdmission(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
 	scheduler := NewAgentScheduler(parent, AgentResourceLimits{})

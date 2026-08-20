@@ -642,6 +642,26 @@ func requireCoverageStatus(t *testing.T, rr *httptest.ResponseRecorder, want int
 	}
 }
 
+func waitCoverageAgentIdle(t *testing.T, state *AppState, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		state.mu.RLock()
+		running := state.Running
+		state.mu.RUnlock()
+		if !running {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	state.mu.RLock()
+	running := state.Running
+	state.mu.RUnlock()
+	if running {
+		t.Fatalf("agent still running after %s", timeout)
+	}
+}
+
 func TestCoverageServerEndpointMatrix(t *testing.T) {
 	base := isolateCoverageEnv(t)
 	home := filepath.Join(base, "profile")
@@ -783,16 +803,7 @@ func TestCoverageServerEndpointMatrix(t *testing.T) {
 	requireCoverageStatus(t, rr, http.StatusBadRequest)
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/chat", map[string]any{"message": "hello", "model": "test-model"})
 	requireCoverageStatus(t, rr, http.StatusOK)
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		state.mu.RLock()
-		running := state.Running
-		state.mu.RUnlock()
-		if !running {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitCoverageAgentIdle(t, state, 10*time.Second)
 	rr = serveCoverageRequest(t, server, http.MethodGet, "/api/threads", nil)
 	requireCoverageStatus(t, rr, http.StatusOK)
 	rr = serveCoverageRequest(t, server, http.MethodPost, "/api/new-chat", map[string]any{"project": project})

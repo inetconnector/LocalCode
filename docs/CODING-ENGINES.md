@@ -1,8 +1,8 @@
 # Coding-agent engines / Coding-Agent-Engines
 
-LocalCode 6.4.3 can switch between three external coding-agent engines from **Settings → Configuration → Coding-agent engine**. The selection affects multi-file editing, repository analysis, linting, and test-repair actions. **LocalCode native** remains available as the internal tool loop and is not a fourth external engine.
+LocalCode 6.4.4 can switch between four external coding-agent engines from **Settings → Configuration → Coding-agent engine** or directly in the composer next to the model selector. The selection affects multi-file editing, repository analysis, linting, and test-repair actions. Fresh desktop configurations default to **LocalCode native**, which remains available as the internal tool loop and is not a fifth external engine.
 
-LocalCode 6.4.3 kann unter **Einstellungen → Konfiguration → Coding-Agent-Engine** zwischen drei externen Coding-Agent-Engines umschalten. Die Auswahl gilt für mehrdateilige Bearbeitung, Repository-Analyse, Linting und Testreparatur. **LocalCode nativ** bleibt als interne Werkzeugschleife verfügbar und ist keine vierte externe Engine.
+LocalCode 6.4.4 kann unter **Einstellungen → Konfiguration → Coding-Agent-Engine** oder direkt in der Eingabeleiste neben dem Modell zwischen vier externen Coding-Agent-Engines umschalten. Die Auswahl gilt für mehrdateilige Bearbeitung, Repository-Analyse, Linting und Testreparatur. Frische Desktop-Konfigurationen verwenden standardmäßig **LocalCode nativ**; diese interne Werkzeugschleife ist keine fünfte externe Engine.
 
 ## Comparison / Vergleich
 
@@ -11,10 +11,11 @@ LocalCode 6.4.3 kann unter **Einstellungen → Konfiguration → Coding-Agent-En
 | Aider | Local-first work with Ollama; explicit Git-oriented editing / lokale Ollama-Workflows und kontrollierte Git-orientierte Bearbeitung | Pinned `aider-chat==0.86.2` through a managed `uv tool` environment with Python 3.12 | `ollama_chat/<model>` by default; Aider-supported providers may be configured separately |
 | Claude Code | Highly agentic cloud coding with Anthropic models / stark agentische Cloud-Bearbeitung mit Anthropic-Modellen | Official native Windows PowerShell installer; `stable`, `latest`, or an exact version/channel | Model alias such as `sonnet`; Anthropic sign-in or supported enterprise/provider setup required |
 | OpenCode | Provider-neutral workflows, including local Ollama and cloud providers / provideroffene Workflows einschließlich lokalem Ollama und Cloud-Providern | `opencode-ai` through a LocalCode-managed Node.js/npm prefix | `provider/model`, for example `ollama/qwen2.5-coder:14b` or a configured cloud-provider model |
+| Claw Code | Experimental Claw workflows under LocalCode supervision / experimentelle Claw-Workflows unter LocalCode-Aufsicht | LocalCode-managed Claw setup/download flow where enabled | Claw-supported model/provider configuration |
 
 ## Common integration / Gemeinsame Integration
 
-For all three external engines LocalCode provides:
+For all four external engines LocalCode provides:
 
 - selection in Settings and engine-specific settings panels;
 - executable discovery, version check, installation/repair, and status display;
@@ -27,7 +28,7 @@ For all three external engines LocalCode provides:
 - supervisor routing through generic `engine_*` actions; legacy `aider_*` actions remain compatible aliases.
 - explicitly configured Claude Code and OpenCode executable paths are authoritative; if such a path is missing, LocalCode reports that configuration error instead of falling back to a global executable.
 
-Für alle drei externen Engines bietet LocalCode:
+Für alle vier externen Engines bietet LocalCode:
 
 - Auswahl in den Einstellungen und enginespezifische Einstellungsbereiche;
 - Erkennung der Programmdatei, Versionsprüfung, Installation/Reparatur und Statusanzeige;

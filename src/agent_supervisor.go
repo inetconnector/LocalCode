@@ -168,6 +168,10 @@ func forcedActionForIntent(intent taskIntent, completed map[string]bool, cfg Con
 func toolFailureRecoveryDirective(action AgentAction, result string, err error, task string) string {
 	text := strings.ToLower(result + "\n" + fmt.Sprint(err))
 	var directives []string
+	actionTool := normalizedQuestion(action.Tool)
+	actionCommand := normalizedQuestion(action.Command)
+	posixRemoveMissing := (actionTool == "rm" || strings.HasPrefix(actionCommand, "rm ") || strings.Contains(text, "tool 'rm'") || strings.Contains(text, "tool rm") || strings.Contains(text, "werkzeug 'rm'") || strings.Contains(text, "werkzeug rm")) &&
+		(strings.Contains(text, "not found") || strings.Contains(text, "not recognized") || strings.Contains(text, "command not found") || strings.Contains(text, "wurde nicht gefunden"))
 	if strings.Contains(text, "not a git repository") || strings.Contains(text, "kein git-repository") {
 		if classifyTaskIntent(task).GitRequested {
 			directives = append(directives, "Git ist für die Nutzeraufgabe erforderlich. Verwende git init deterministisch, verifiziere danach mit git rev-parse --is-inside-work-tree und fahre erst dann fort.")
@@ -184,7 +188,9 @@ func toolFailureRecoveryDirective(action AgentAction, result string, err error, 
 	if strings.Contains(text, "search query is empty") || strings.Contains(text, "query is empty") {
 		directives = append(directives, "Erzeuge eine konkrete Suchanfrage aus der aktuellen Nutzeraufgabe und rufe web_search erneut genau einmal auf.")
 	}
-	if strings.Contains(text, "not recognized") || strings.Contains(text, "command not found") || strings.Contains(text, "wurde nicht gefunden") {
+	if posixRemoveMissing {
+		directives = append(directives, "rm ist ein POSIX-Werkzeug und auf Windows kein passender Standardweg. Verwende fuer Dateioperationen delete_file, copy_path oder move_path; falls Shell zwingend noetig ist, nutze PowerShell wie Remove-Item mit expliziten Projektpfaden. Frage nicht nach manueller rm-Ausfuehrung.")
+	} else if strings.Contains(text, "not recognized") || strings.Contains(text, "command not found") || strings.Contains(text, "wurde nicht gefunden") {
 		directives = append(directives, "Nutze discover_tool mit dem Programmnamen. Prüfe PATH, Projekt-Wrapper, Visual-Studio-, Android-SDK- und Standardpfade. Wenn eine unterstützte Installation fehlt, löst LocalCode die Installationsgenehmigung aus.")
 	}
 	if strings.Contains(text, "no observable project changes") || strings.Contains(text, "keine projektänderungen") || strings.Contains(text, "geänderte dateien: keine erkannt") {

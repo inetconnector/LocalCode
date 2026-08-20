@@ -310,14 +310,23 @@ func (s *AgentScheduler) Release(graph *AgentTaskGraph, lease AgentResourceLease
 		return fmt.Errorf("task %q does not hold this scheduler lease", lease.TaskID)
 	}
 	if err := transitionAgentTask(graph, lease.TaskID, next); err != nil {
+		task := agentTaskByID(graph, lease.TaskID)
+		if task == nil || task.State != AgentTaskRunning {
+			s.releaseActiveLeaseLocked(lease.TaskID, active)
+			return fmt.Errorf("%w; scheduler lease released because task is no longer running", err)
+		}
 		return err
 	}
-	active.cancel()
-	delete(s.active, lease.TaskID)
-	if s.inUse[lease.ResourceClass] > 0 {
-		s.inUse[lease.ResourceClass]--
-	}
+	s.releaseActiveLeaseLocked(lease.TaskID, active)
 	return nil
+}
+
+func (s *AgentScheduler) releaseActiveLeaseLocked(taskID string, active agentActiveLease) {
+	active.cancel()
+	delete(s.active, taskID)
+	if s.inUse[active.lease.ResourceClass] > 0 {
+		s.inUse[active.lease.ResourceClass]--
+	}
 }
 
 func (s *AgentScheduler) CancelTask(graph *AgentTaskGraph, taskID string) error {
@@ -382,6 +391,9 @@ func (s *AgentScheduler) CancelMission(graph *AgentTaskGraph) error {
 	s.active = map[string]agentActiveLease{}
 	s.inUse = map[AgentResourceClass]int{}
 
+	if graph == nil {
+		return nil
+	}
 	for i := range graph.Tasks {
 		task := &graph.Tasks[i]
 		if _, shouldCancel := cancelIDs[task.ID]; !shouldCancel {
@@ -497,6 +509,9 @@ func (s *AgentScheduler) Snapshot(graph *AgentTaskGraph, usageByTask map[string]
 	for index, entry := range s.queue {
 		queuePosition[entry.TaskID] = index + 1
 		queueResource[entry.TaskID] = entry.ResourceClass
+	}
+	if graph == nil {
+		return snapshot
 	}
 	for _, task := range graph.Tasks {
 		taskSnapshot := AgentTaskScheduleSnapshot{

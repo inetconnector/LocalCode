@@ -14,6 +14,7 @@ import (
 
 var runRemoteFirewallPowerShell = func(script string) error {
 	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	hideCommandWindow(cmd)
 	return cmd.Run()
 }
 
@@ -42,7 +43,7 @@ func ensureRemoteFirewallRule(port int) error {
 		"if(-not $existing){New-NetFirewallRule -DisplayName " + powershellSingleQuoted(name) +
 		" -Direction Inbound -Action Allow -Protocol TCP -LocalPort " + portText +
 		" -Profile Private -RemoteAddress LocalSubnet -Program " + powershellSingleQuoted(exe) + " | Out-Null}"
-	script := "$p=Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-Command'," + powershellSingleQuoted(inner) + "); exit $p.ExitCode"
+	script := "$p=Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-Command'," + powershellSingleQuoted(inner) + "); exit $p.ExitCode"
 	if err := runRemoteFirewallPowerShell(script); err != nil {
 		return fmt.Errorf("firewall elevation was declined or failed: %w", err)
 	}

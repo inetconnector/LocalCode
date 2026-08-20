@@ -493,6 +493,24 @@ func TestBlockedAvoidanceQuestion(t *testing.T) {
 	}
 }
 
+func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {
+	for _, want := range []string{"Windows/PowerShell", "delete_file", "copy_path", "move_path", "rm", "Remove-Item"} {
+		if !strings.Contains(agentSystemPrompt, want) {
+			t.Fatalf("agent system prompt missing Windows portability guidance %q", want)
+		}
+	}
+
+	blocked, hint := blockedAvoidanceQuestion("erstelle ein pacman spiel mit allem drum und dran in c#", "Das Tool 'rm' wurde nicht gefunden. Möchten Sie das Verzeichnis manuell leeren oder eine andere Aktion durchführen?")
+	if !blocked || !strings.Contains(hint, "delete_file") || !strings.Contains(hint, "Remove-Item") {
+		t.Fatalf("rm avoidance question not redirected: blocked=%v hint=%q", blocked, hint)
+	}
+
+	directive := toolFailureRecoveryDirective(AgentAction{Action: "discover_tool", Tool: "rm"}, "Das Werkzeug 'rm' wurde nicht gefunden.", errors.New("not found"), "erstelle ein Spiel")
+	if !strings.Contains(directive, "POSIX") || !strings.Contains(directive, "delete_file") || !strings.Contains(directive, "Remove-Item") {
+		t.Fatalf("rm recovery directive missing Windows guidance:\n%s", directive)
+	}
+}
+
 func TestDetectProjectPlanAndroid(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "gradlew"), []byte("#!/bin/sh\n"), 0o755); err != nil {

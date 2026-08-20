@@ -122,6 +122,10 @@ func blockedAvoidanceQuestion(task, question string) (bool, string) {
 			return true, "Diese Frage kann LocalCode selbst mit Werkzeugen klären. Nutze discover_tool oder tool_inventory, prüfe absolute Pfade, führe eine sichere Diagnose aus und werte Exitcode, STDOUT und STDERR aus. Fehlt ein unterstütztes Werkzeug, löst LocalCode automatisch eine Installationsgenehmigung aus. Frage den Nutzer erst nach einer tatsächlich notwendigen physischen Aktion wie RSA-Bestätigung am Gerät."
 		}
 	}
+	if (strings.Contains(q, "tool rm") || strings.Contains(q, "tool 'rm'") || strings.Contains(q, `tool "rm"`) || strings.Contains(q, "werkzeug rm") || strings.Contains(q, "werkzeug 'rm'") || strings.Contains(q, `werkzeug "rm"`) || strings.Contains(q, " rm wurde nicht gefunden") || strings.Contains(q, " 'rm' wurde nicht gefunden") || strings.Contains(q, ` "rm" wurde nicht gefunden`)) &&
+		(strings.Contains(q, "nicht gefunden") || strings.Contains(q, "manuell") || strings.Contains(q, "andere aktion")) {
+		return true, "rm ist ein POSIX-Werkzeug und auf Windows kein passender Standardweg. Verwende fuer Dateioperationen delete_file, copy_path oder move_path; falls Shell zwingend noetig ist, nutze PowerShell wie Remove-Item mit expliziten Projektpfaden. Frage nicht nach manueller rm-Ausfuehrung."
+	}
 	return false, ""
 }
 

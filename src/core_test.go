@@ -1519,8 +1519,15 @@ func TestComposerSupportsEnterAndGeneralAttachments(t *testing.T) {
 	for _, required := range []string{
 		`id="fileInput"`,
 		`id="attachBtn"`,
+		`id="engineSelect"`,
+		`changeEditingEngine(e.target.value)`,
+		`syncEngineControls(state.status.editing_engine`,
+		`<option value="native">LocalCode`,
+		`<option value="claw">Claw Code`,
 		`e.key==='Enter'&&!e.shiftKey`,
 		`onpaste=`,
+		`ondragover=`,
+		`ondrop=`,
 		`focusPrompt(true)`,
 		`const attachments=state.attachments`,
 		`Dateien hinzufügen`,
@@ -1528,6 +1535,13 @@ func TestComposerSupportsEnterAndGeneralAttachments(t *testing.T) {
 		if !strings.Contains(html, required) {
 			t.Fatalf("missing composer feature %q", required)
 		}
+	}
+}
+
+func TestDefaultDesktopEngineIsLocalCodeNative(t *testing.T) {
+	cfg := defaultConfig()
+	if cfg.EditingEngine != editingEngineNative {
+		t.Fatalf("fresh desktop config should default to LocalCode native, got %q", cfg.EditingEngine)
 	}
 }
 
@@ -1682,6 +1696,137 @@ func TestResizablePanelsAndCodexStyleSettingsAreEmbedded(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Fatalf("missing resizable/settings feature %q", want)
 		}
+	}
+}
+
+func TestRemoteComposerSupportsDragDropAttachments(t *testing.T) {
+	data, err := staticFS.ReadFile("static/remote.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, required := range []string{
+		`id="fileInput"`,
+		`MAX_FILES=20`,
+		`MAX_FILE_BYTES=32*1024*1024`,
+		`MAX_TOTAL_BYTES=96*1024*1024`,
+		`async function addFiles(files)`,
+		`composer.ondragover=`,
+		`composer.ondrop=`,
+		`addFiles(e.dataTransfer.files)`,
+		`file_too_large`,
+		`total_too_large`,
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("missing remote attachment feature %q", required)
+		}
+	}
+}
+
+func TestRemotePairingFormSurvivesMobileKeyboard(t *testing.T) {
+	data, err := staticFS.ReadFile("static/remote.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, required := range []string{
+		`<form id="pairForm">`,
+		`id="pairBtn" type="submit"`,
+		`.pair{height:100%;display:grid;place-items:start center;overflow:auto;`,
+		`padding:48px 24px 24px`,
+		`async function pair(ev){ev?.preventDefault();const btn=$('#pairBtn');`,
+		`btn.disabled=true`,
+		`finally{btn.disabled=false}`,
+		`$('#pairForm').onsubmit=pair`,
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("missing mobile pairing keyboard safeguard %q", required)
+		}
+	}
+	if strings.Contains(html, `$('#pairBtn').onclick=pair`) {
+		t.Fatal("pairing should be handled by form submit, not only by a button click")
+	}
+}
+
+func TestRemoteTabsSupportSwipeGestures(t *testing.T) {
+	data, err := staticFS.ReadFile("static/remote.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, required := range []string{
+		`const viewOrder=['tasks','projects','trash','approve','review','new'];`,
+		`function swipeView(step)`,
+		`function bindSwipe()`,
+		`touchstart`,
+		`touchend`,
+		`Math.abs(dx)<60`,
+		`swipeView(dx<0?1:-1)`,
+		`bindSwipe();`,
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("missing remote tab swipe feature %q", required)
+		}
+	}
+}
+
+func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
+	data, err := staticFS.ReadFile("static/remote.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, required := range []string{
+		`id="sendBtn" class="round send" type="button"`,
+		`$('#sendBtn').onclick=send`,
+		`function updateSendState()`,
+		`state.sending=true;updateSendState()`,
+		`catch(e){window.alert(e.message)}finally{state.sending=false;updateSendState()}`,
+		`preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native'`,
+		`async function ensurePreferredEngine()`,
+		`await ensurePreferredEngine()`,
+		`catch(e){state.engineSynced=false;console.warn(e)}`,
+		`localStorage.setItem('localcodeRemoteEngine',engine)`,
+		`$('#attachBtn').onclick=()=>$('#fileInput').click()`,
+		`id="fileInput" class="hidden" type="file" multiple`,
+		`data-i18n-title="upload"`,
+		`id="voiceBtn" class="round" type="button" data-i18n-title="voice"`,
+		`window.localCodeVoiceResult=text=>appendPromptText(text)`,
+		`function startVoiceInput()`,
+		`window.LocalCodeAndroid?.startVoiceInput`,
+		`window.SpeechRecognition||window.webkitSpeechRecognition`,
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("missing mobile send/attachment/default-engine safeguard %q", required)
+		}
+	}
+	if strings.Contains(html, `state.status?.editing_engine||'aider'`) {
+		t.Fatal("remote UI must not default to Aider")
+	}
+	if strings.Contains(html, `accept="image/*`) {
+		t.Fatal("remote file picker should allow all file types")
+	}
+}
+
+func TestApplicationIconsAreBundled(t *testing.T) {
+	for _, staticPath := range []string{"static/favicon.svg", "static/index.html", "static/remote.html"} {
+		data, err := staticFS.ReadFile(staticPath)
+		if err != nil {
+			t.Fatalf("%s missing: %v", staticPath, err)
+		}
+		text := string(data)
+		if staticPath == "static/favicon.svg" {
+			if !strings.Contains(text, "#06b6d4") || !strings.Contains(text, "LocalCode") {
+				t.Fatalf("favicon does not look like the LocalCode icon: %s", staticPath)
+			}
+			continue
+		}
+		if !strings.Contains(text, `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`) {
+			t.Fatalf("%s does not reference the LocalCode favicon", staticPath)
+		}
+	}
+	if info, err := os.Stat("rsrc_windows_amd64.syso"); err != nil || info.Size() == 0 {
+		t.Fatalf("Windows icon resource missing or empty: info=%v err=%v", info, err)
 	}
 }
 

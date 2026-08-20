@@ -9,6 +9,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 $androidRoot = Join-Path $repo 'android\app\src\main'
 $manifest = Join-Path $androidRoot 'AndroidManifest.xml'
 $javaSource = Join-Path $androidRoot 'java\com\inetconnector\localcode\remote\MainActivity.java'
+$resDir = Join-Path $androidRoot 'res'
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "Android manifest missing: $manifest" }
 if (-not (Test-Path -LiteralPath $javaSource -PathType Leaf)) { throw "Android source missing: $javaSource" }
 
@@ -58,14 +59,21 @@ Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyC
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $classes = Join-Path $OutputDirectory 'classes'
 $dex = Join-Path $OutputDirectory 'dex'
-New-Item -ItemType Directory -Path $classes,$dex -Force | Out-Null
+$compiledRes = Join-Path $OutputDirectory 'compiled-res'
+New-Item -ItemType Directory -Path $classes,$dex,$compiledRes -Force | Out-Null
 
 $unsigned = Join-Path $OutputDirectory 'LocalCode-Remote-unsigned.apk'
 $aligned = Join-Path $OutputDirectory 'LocalCode-Remote-aligned.apk'
 $signed = Join-Path $OutputDirectory 'LocalCode-Remote-debug.apk'
 $keystore = Join-Path $OutputDirectory 'debug.keystore'
 
-& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code 1 --version-name '1.0' -o $unsigned
+$resourceArgs = @()
+if (Test-Path -LiteralPath $resDir -PathType Container) {
+    & $aapt2 compile --dir $resDir -o $compiledRes
+    if ($LASTEXITCODE -ne 0) { throw "aapt2 compile resources failed with exit code $LASTEXITCODE" }
+    $resourceArgs = @(Get-ChildItem -LiteralPath $compiledRes -Recurse -File -Filter *.flat | ForEach-Object FullName)
+}
+& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code 1 --version-name '1.0' -o $unsigned @resourceArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed with exit code $LASTEXITCODE" }
 
 & $javac -encoding UTF-8 -source 17 -target 17 -classpath $androidJar -d $classes $javaSource

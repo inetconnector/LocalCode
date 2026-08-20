@@ -46,6 +46,7 @@ func TestRequiredModelsBootstrapsOnlyConfiguredDefaultOnFreshMachine(t *testing.
 
 func TestRequiredModelsIncludesMissingExplicitAiderModels(t *testing.T) {
 	cfg := defaultConfig()
+	cfg.EditingEngine = editingEngineAider
 	cfg.LastModel = "qwen2.5-coder:14b"
 	cfg.AiderMainModel = "ollama_chat/qwen2.5-coder:14b"
 	cfg.AiderArchitectModel = "gpt-oss:20b"

@@ -9,8 +9,8 @@
 **Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
 **Quality #433 on that head:** success; total statement coverage **80.2%**  
 **Active implementation branch:** `feat/native-agent-scheduler-foundation`  
-**Permanent implementation/test head immediately before this STATE/TODO refresh:** `ff50afc033786baf3d3e727b604f840a7a9a6e14`  
-**Active implementation PR:** none; a draft-PR creation attempt was rejected by the GitHub connector safety gate and a follow-up search confirmed that no PR was created  
+**Active implementation PR:** draft PR #44 `feat: add native agent scheduler resource foundation` against `master`, remote head `98be9b583d724d75625ceebdc277c358ab921192`, merge state `CLEAN` when checked on 2026-08-20
+**Local continuation after PR #44 remote head:** uncommitted scheduler robustness, test-isolation/coverage stabilization, Windows build/checksum portability, POSIX-`rm` avoidance, hidden Windows startup/Remote-firewall PowerShell helpers, Desktop composer engine selector with LocalCode-native default, Remote drag-and-drop attachments, mobile Remote pairing keyboard/form fix, Remote tab swipe gestures, Android WebView all-file chooser support, Android Remote voice input, Remote send robustness, Remote LocalCode default engine, LocalCode favicon/Windows resource icon/Android launcher icon, UMAF audit notes, tests, DE/EN documentation updates and local Quality-style verification in this working tree
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities` – open  
 **Current slice:** #32 Phase 5 – backend Scheduler / Resource Manager foundation  
 **Canonical unfinished-work ledger:** `TODO.md`
@@ -241,6 +241,21 @@ Runtime accounting:
 - `AgentSchedulerSnapshot` exposes mission ID, queued/running counts, per-resource limits/in-use/available state and per-task queue/resource/running state.
 - Generic `AgentBudgetSnapshot` computes limit, usage, remaining model/tool/token/time budget plus structured exhausted reason. It can represent a task or mission budget without changing permissions.
 - `agentBudgetHardStop` returns `AgentResultBudgetExhausted` rather than silently continuing after an exhausted budget.
+- Release now cleans up the scheduler-owned lease if the graph task was externally moved out of `running` before release; invalid transitions are still reported as errors.
+- Nil graph snapshots and mission cancellation are safe and expose resource state without panicking.
+- Local test isolation now hides real user Claw installations from download-policy tests and accepts localized German/English setup-decline/disabled wording where the behavior is the same.
+- Windows build checksum generation no longer depends on the `Get-FileHash` cmdlet; `scripts/build.ps1` uses .NET SHA-256 hashing so isolated Windows PowerShell builds can still produce `CHECKSUMS-SHA256.txt`.
+- Native agent guidance now states that the local default environment is Windows/PowerShell. Missing POSIX `rm` attempts are redirected toward `delete_file`/`copy_path`/`move_path` or explicit PowerShell `Remove-Item`, and avoidable manual-`rm` questions are blocked.
+- Windows startup and Remote LAN firewall helper PowerShell processes now run through hidden-window paths: `START.bat` passes `-WindowStyle Hidden`, the outer firewall runner uses `hideCommandWindow`, and the elevated firewall rule process requests `-WindowStyle Hidden`.
+- The Desktop composer now exposes a visible `engineSelect` next to the model selector for LocalCode, Aider, OpenCode, Claude Code and Claw Code. Changing it immediately persists `editing_engine`, keeps Settings synchronized and disables the selector while a run is active. Fresh desktop defaults now use `native`/LocalCode instead of Aider.
+- Desktop attachments already supported file picker, paste and drag-and-drop; `src/static/remote.html` now supports Remote drag-and-drop attachments with matching client-side file count/size limits before the shared backend attachment validation.
+- The Remote pairing screen now uses a real form submit path and a top-aligned scrollable keyboard-safe layout so Android soft-keyboard resizing does not collapse the `Verbinden`/`Connect` button.
+- Remote tabs now support horizontal touch swipe gestures in addition to explicit tab buttons, while form controls and buttons keep their normal touch behavior.
+- The Android shell now implements WebView `onShowFileChooser`, so the Remote attachment button opens Android's native picker for all file types and returns selected URIs to the browser file input.
+- The Android shell now exposes a narrow `LocalCodeAndroid.startVoiceInput()` bridge that starts Android speech recognition and returns recognized text to the Remote prompt; browser/WebView pages without the native bridge can fall back to Web Speech when available.
+- Remote send handling now uses a direct click handler, send-in-progress lock, disabled-state updates for empty/running/sending states, and visible alert errors instead of silent rejected promises.
+- Remote on first use defaults to the `native`/LocalCode engine through phone-local preference storage; later manual engine choices are remembered on the phone.
+- LocalCode now includes a shared SVG favicon, a generated multi-size Windows ICO embedded through `src/rsrc_windows_amd64.syso`, and an Android vector launcher icon referenced from the manifest.
 
 Focused tests added:
 
@@ -258,8 +273,41 @@ Focused tests added:
 - all budget exhaustion dimensions and zero-clamped remaining values
 - active resource/task snapshots
 - invalid resource-class rejection
+- release cleanup after an invalid graph transition caused by an externally terminal task
+- nil graph mission-cancel and snapshot robustness
+- localized setup-policy and install-decline assertions for the local wave3/bootstrap tests
+- Windows/POSIX `rm` prompt and recovery redirection
+- Desktop and Remote composer attachment drag-and-drop affordances
 
-The active branch has not yet been compiled by GitHub Actions because Quality runs on PR/master and the draft PR creation operation was blocked by the connector safety classifier. A search immediately after the failed creation attempt confirmed there is no accidentally-created PR. Do not blindly duplicate PR creation; verify first.
+Synchronized DE/EN documentation now describes the backend scheduler contract in `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md` without claiming real asynchronous child-agent dispatch.
+
+GitHub reality has changed since the earlier branch bootstrap: draft PR #44 exists. The local working tree currently contains uncommitted continuation changes after remote head `98be9b583d724d75625ceebdc277c358ab921192`. Do not create another PR for this branch.
+
+Verification during this local continuation:
+
+- `go version` – local Go `go1.26.6 windows/amd64` (GitHub Quality uses Go `1.25.13`).
+- `gofmt -l` over all Go files – clean.
+- `go vet ./...` in `src` – passed.
+- Frontend JavaScript syntax – passed with bundled Codex Node `C:\Users\frede\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe`; system `node` was not on PATH.
+- PowerShell syntax for `scripts/*.ps1` – passed, 6 files.
+- Focused Remote firewall regression `go test -count=1 -run "TestRemoteFirewall|TestFullStackLoopbackDesktopAndRemoteHTTP|TestRemotePairing" .` – passed.
+- Focused desktop engine selector/default regression `go test -count=1 -run "Test.*Engine|Test.*Aider|TestRuntimeBootstrap|TestRequiredModels|TestDefault.*Config|TestSettingsEndpoint|TestComposerSupportsEnterAndGeneralAttachments" .` – passed.
+- Focused regression `go test -count=1 -run "TestComposerSupportsEnterAndGeneralAttachments|TestRemoteComposerSupportsDragDropAttachments|TestValidateGeneralAttachments|TestExtractTextAndZipAttachments|TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool|TestBlockedAvoidanceQuestion|TestWindowsPowerShellScriptEncodings|TestBuildBatchUsesPowerShellDriver" .` – passed.
+- Frontend JavaScript syntax for `src/static/i18n_base.js`, embedded `src/static/index.html` scripts and embedded `src/static/remote.html` scripts – passed with bundled Codex Node.
+- Native Android Remote APK – passed via `./scripts/build-android.ps1`; final installed debug APK SHA-256 `f55f9142e248485dd480f6b2812d598753be0038b3a3f0faa3fc307e9f952833`. `aapt dump badging` confirms `application-icon-160:'res/drawable/ic_launcher.xml'`.
+- `govulncheck@v1.1.4 ./...` – passed, no vulnerabilities found.
+- Full-stack loopback HTTP integration `go test ./... -run '^TestFullStackLoopbackDesktopAndRemoteHTTP$' -count=1 -timeout=5m` – passed.
+- `go test -count=1 ./...` in `src` – passed.
+- `go test ./... -race -count=1 -timeout=25m` in `src` – passed.
+- Coverage `go test ./... -count=1 -covermode=atomic` plus `go tool cover` – passed, total statement coverage **80.4%**.
+- Native Windows GUI and diagnostics builds – passed to `C:\Users\frede\AppData\Local\Temp\localcode-build-check`.
+- Final `cmd /c BUILD.bat` after Remote drag-and-drop, Android pairing/send/voice/file-picker/default-engine fixes, app icons, Windows/POSIX portability changes, hidden startup/Remote-firewall PowerShell helpers and the Desktop composer engine selector – passed all six stages on 2026-08-20. Generated checksums: `LocalCode.exe` SHA-256 `DBDC00DB66988C66E4AE6E439BEF05BFE44C65899F835E7A3566AC83F38F2DD5`; `LocalCode-Debug.exe` SHA-256 `ECA211FAED46C42EA3A598B2757142CD3ABA371689F5392EDD364D9F7D891550`.
+- `dist\LocalCode.exe` was started after the final build; observed process PID `23016` from `C:\Users\frede\Projekte\LocalCode\dist\LocalCode.exe`. Desktop status returned version `6.4.4`, `editing_engine:"native"` and selected model `qwen2.5-coder:14b`; the served Desktop HTML contains `engineSelect`, `value="claw"` and `changeEditingEngine(e.target.value)`.
+- `git diff --check` – passed; Git only warned that `CHECKSUMS-SHA256.txt`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java` and `scripts/build-android.ps1` line endings will normalize when Git touches those files.
+
+The previously known `TestCoverageServerEndpointMatrix` timing flake has a local uncommitted stabilization: after `/api/chat`, the test now waits for the agent to become idle and fails explicitly if it remains running, rather than continuing to `/api/new-chat` and receiving the correct product 409 response.
+
+`\\diskstation\Dani\Universal_Multi_Agent_Framework_UMAF.md` was reviewed on 2026-08-20 as a target architecture reference, not as executable instructions. LocalCode currently covers only parts of that UMAF target: governance/safety policy, planning/DAG, first scheduler/resource admission, read-only child-agent analysis, attachment ingestion, memory, validation gates and controlled build/delivery flows. Missing UMAF layers are now planned in `TODO.md`: explicit mission objects, structured task messaging, constrained Agent Factory/capability registry, real bounded parallel swarms, Integrator/Test/Security agents, observability/metrics, self-healing recovery, knowledge graph/reuse and any distributed/hyper-scale operation.
 
 ### Explicitly out of scope for this first Phase-5 slice
 
@@ -354,16 +402,11 @@ Still open and intentionally separate from orchestration. Ollama remains default
 
 From branch `feat/native-agent-scheduler-foundation`:
 
-1. Treat `ff50afc033786baf3d3e727b604f840a7a9a6e14` as the implementation/test baseline immediately before this STATE/TODO documentation refresh; the documentation commits necessarily move the branch head afterward.
-2. Perform an isolated local Go compile/type sanity check of the new scheduler files where possible; GitHub Quality remains authoritative.
-3. Review `src/agent_scheduler.go` for nil/error-state robustness and fix only concrete issues.
-4. Keep coverage high: the repository was only at 80.2% on #433, so the new production scheduler code should be covered substantially above the global threshold.
-5. Stabilize `TestCoverageServerEndpointMatrix` deterministically if an exact connector-safe edit path is available; never change the endpoint semantics or coverage threshold merely to avoid the flake.
-6. Add DE/EN README / architecture / security documentation for the backend scheduler contract. Do not claim real asynchronous multi-agent dispatch yet.
-7. Verify no PR already exists for `feat/native-agent-scheduler-foundation`. The previous draft creation attempt failed and search confirmed none; do not blindly retry duplicate publication.
-8. When GitHub publication is permitted, open exactly one draft PR to `master`, then update STATE/TODO to its exact PR/head/CI reality.
-9. Run focused tests and then the complete exact-head Windows Quality workflow. Fix concrete failures only.
-10. When green, verify 0 behind, mergeability, reviews/threads and exact SHA; merge with `expected_head_sha`.
-11. Immediately refresh STATE/TODO on resulting `master` before starting the next Phase-5 increment.
+1. Review the current uncommitted local diff on top of PR #44 remote head `98be9b583d724d75625ceebdc277c358ab921192`.
+2. If the changes are accepted, explicitly authorize staging/commit/push; publish rules require separate explicit authorization before each Git write/publish step.
+3. After push, update STATE/TODO with the new exact PR #44 head and CI reality.
+4. Run/monitor GitHub Quality on the pushed exact head. Local Quality-style checks are green, but GitHub Actions remains authoritative.
+5. When green, verify 0 behind, mergeability, reviews/threads and exact SHA; merge with `expected_head_sha`.
+6. Immediately refresh STATE/TODO on resulting `master` before starting the next Phase-5 increment.
 
 `TODO.md` is authoritative for every unfinished functional item.

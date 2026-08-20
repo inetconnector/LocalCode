@@ -104,6 +104,7 @@ func TestPreparePinnedClawSourceRejectsUnexpectedGitOriginWithoutNetwork(t *test
 
 func TestInstallClawCodeHonorsDisabledDownloads(t *testing.T) {
 	isolateClawManagedHome(t)
+	isolateClawExecutableSearch(t)
 	cfg := defaultConfig()
 	cfg.SetupDownloadsEnabled = false
 	_, _, detail, err := installClawCode(context.Background(), t.TempDir(), cfg)
