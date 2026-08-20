@@ -346,3 +346,8 @@ Project path boundaries and approvals for changes, commands, and network actions
 ### License
 
 Apache License 2.0. See `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
+## Native Agent Task DAG / Native-Agent-Aufgabengraph
+
+**DE:** LocalCode Native kann Planner-Vorschläge jetzt als deterministischen, maschinenlesbaren Task-DAG modellieren. Jede vorgeschlagene Aufgabe besitzt eine stabile ID; doppelte/fehlende/zyklische Abhängigkeiten werden verworfen. Dynamische Rollenbezeichnungen und angeforderte Capabilities sind ausschließlich Planungsdaten und gewähren weder Ausführungsrechte noch neue Tools. Dieser Schritt plant und bewertet Readiness; er startet noch keine mutierenden Builder, Worktrees oder parallelen Scheduler-Jobs.
+
+**EN:** LocalCode Native can now model Planner proposals as a deterministic machine-readable task DAG. Every proposed task has a stable ID; duplicate, missing, self-referential, or cyclic dependencies are rejected. Dynamic role labels and requested capabilities are planning data only and never grant execution authority or new tools. This phase models planning/readiness only; it does not yet start mutating Builders, worktrees, or parallel scheduler jobs.
