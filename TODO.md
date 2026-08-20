@@ -2,15 +2,14 @@
 
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
-**Current functional master:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
+**Current functional master before bootstrap carrier #41:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
 **Last merged feature:** PR #40 `feat: add bounded native agent team roles`  
 **Final tested PR #40 head:** `9c3b25b1b070d80c075e9b697a9fffe86f0d3184`  
 **Quality on final PR #40 head:** #406 – success  
-**Current documentation PR:** #41 `docs: refresh bootstrap state and TODO after native agent teams`  
-**Documentation content baseline before PR-metadata sync:** `143bd1abfba147434d42820f7f39b1fb0b58d81a`  
+**Bootstrap refresh carrier:** PR #41, branch `docs/state-todo-after-native-agent-teams`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-This file is the authoritative exhaustive list of unfinished LocalCode work. `STATE.md` describes current reality and is the self-contained AI bootstrap. `TODO.md` contains only work that is still unfinished, its dependencies and acceptance gates. They must never contradict each other.
+This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current reality and is the self-contained AI bootstrap. Documentation-only carrier mechanics are not functional backlog; when this content is read from `master`, carrier #41 is already merged by definition. Always verify GitHub reality before resuming.
 
 ---
 
@@ -18,43 +17,30 @@ This file is the authoritative exhaustive list of unfinished LocalCode work. `ST
 
 `STATE.md` and `TODO.md` MUST remain completely current together.
 
-`STATE.md` is the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory or prior context must be able to understand the complete project state and resume implementation immediately. `TODO.md` is the exhaustive unfinished-work ledger; `STATE.md` must summarize enough of this roadmap and the exact next action to make continuation possible on its own.
+`STATE.md` is the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory or prior context must be able to understand the complete project state and resume implementation immediately. `TODO.md` is the exhaustive unfinished functional-work ledger; `STATE.md` must summarize enough of this roadmap and the exact next functional action to make continuation possible on its own.
 
 Blocking rules:
 
 1. Read both files before material work.
-2. Verify `master`, active branch/PR, open issues, reviews and latest required Quality against GitHub reality before resuming.
-3. After every material branch/base/head change, PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
-4. Remove or rewrite completed/superseded TODO items; history belongs in Git and closed issues/PRs.
-5. Replace stale facts instead of appending contradictory snapshots.
-6. A feature/fix is not operationally complete until both files reflect the new reality.
-7. Before merge, ensure changed remaining work is represented here; immediately after merge refresh both files for resulting `master`.
+2. Verify current `master`, active implementation branch/PR, open issues, reviews and latest required Quality against GitHub reality before resuming.
+3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
+4. Documentation-only carrier PRs may use the self-resolving convention documented in `STATE.md`; do not create an infinite chain of documentation PRs solely to record the previous carrier as merged.
+5. Remove/rewrite completed or superseded TODO items; history belongs in Git and closed issues/PRs.
+6. Replace stale facts instead of appending contradictory snapshots.
+7. A functional feature/fix is not operationally complete until both files reflect the new reality.
 8. Never invent self-commit/merge SHAs.
 
 ---
 
-## 1. Immediate work after PR #40
+## 1. Immediate functional work
 
-Priority: **P0 / current**
+Priority: **P0 / next**
 
-PR #40 is complete and merged. Its former merge checklist is no longer TODO work.
+PR #40 is complete and merged; no #40 merge work remains.
 
-Current documentation workstream:
-
-- [x] Create post-#40 branch `docs/state-todo-after-native-agent-teams` from merge `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`.
-- [x] Rewrite `STATE.md` as a self-contained restart/bootstrap document with architecture, key files, safety/Quality baseline, #40 outcome and exact next steps.
-- [x] Rewrite `TODO.md` so completed #40 tasks are removed and Phase 4 DAG work is next.
-- [x] Open documentation PR #41.
-- [x] Record PR #41 in `STATE.md` and `TODO.md` using the self-referential baseline convention.
-- [ ] Full required Quality must pass on the exact final PR #41 head.
-- [ ] Verify #41 branch is 0 behind current `master`.
-- [ ] Verify #41 mergeability on the exact final head.
-- [ ] Verify no unresolved review threads or blocking review submissions.
-- [ ] Mark #41 ready only after all exact-head checks are green.
-- [ ] Merge #41 with `expected_head_sha`.
-- [ ] Verify resulting `master`; if the merged documents still contain an open-PR fact that became stale because of the merge itself, perform the minimal current-state refresh required by the self-SHA convention before starting feature work.
-- [ ] Verify issue #23 acceptance against merged PR #40 and close #23 as completed if fully satisfied.
-- [ ] Start #32 Phase 4 on a fresh branch from the then-current `master`.
+- [ ] Verify issue #23 against merged PR #40 and close it as completed if it is still open. Current evidence strongly indicates full satisfaction: model-backed `subagent_model.go`, tests, read-only list/read/search/LSP/finish boundary, deterministic `LOCALCODE_DETERMINISTIC_PREFLIGHT`, Explorer max 8 model calls, fallback and UI trace all exist on master.
+- [ ] Start #32 Phase 4 on a fresh branch from the then-current `master` after the bootstrap carrier is merged.
+- [ ] Implement the Task-DAG/dependency-validation slice described below; do not add mutation/worktrees in the same PR.
 
 ---
 
@@ -72,20 +58,27 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 
 ### Phase 4 – Task DAG and dependency model — NEXT FEATURE SLICE
 
-- [ ] Add mission ID, parent task ID, dependency IDs and explicit task-state semantics adjacent to merged `AgentTask` without breaking existing single-agent/read-only-child paths.
-- [ ] Define task states: proposed, blocked, ready, running, succeeded, failed, cancelled, retryable.
+- [ ] Add/normalize mission ID, parent task ID, dependency IDs and explicit graph task states adjacent to merged `AgentTask` without breaking existing single-agent/read-only-child paths.
+- [ ] Preserve legacy standalone child states where compatibility matters; graph logic should add explicit proposed/blocked/ready/running/succeeded/failed/cancelled/retryable semantics without silently corrupting old serialized values.
+- [ ] Require Planner `SuggestedTasks` to contain stable machine-readable task IDs.
+- [ ] Dependencies must reference task IDs, never prose labels.
+- [ ] Keep requested/planned capabilities separate from capabilities actually granted to executable agents; a Planner proposal must never grant authority.
 - [ ] Implement deterministic DAG validation.
 - [ ] Reject duplicate task IDs.
-- [ ] Reject missing dependency IDs.
-- [ ] Reject cycles deterministically/fail closed.
-- [ ] Convert Planner `SuggestedTasks` into validated machine-readable DAG proposals; no prose parsing.
-- [ ] Add only the structured task input/output/dependency handoff data needed for this slice.
-- [ ] Release dependents deterministically when prerequisites succeed.
-- [ ] Propagate failed-dependency/blocked state deterministically.
+- [ ] Reject empty/invalid task IDs and dependency IDs.
+- [ ] Reject missing dependency targets.
+- [ ] Reject self-dependencies.
+- [ ] Reject dependency cycles deterministically/fail closed.
+- [ ] Build graph nodes from validated Planner proposals without prose parsing.
+- [ ] Deterministically compute ready vs blocked tasks from dependency state.
+- [ ] Release dependents when prerequisites succeed.
+- [ ] Propagate failed/cancelled dependency blocking.
 - [ ] Represent multiple independent ready tasks as logical readiness without broad asynchronous execution yet.
-- [ ] Add tests for duplicate IDs, missing dependencies, cycles, dependency release, failure propagation and independent ready tasks.
+- [ ] Add deterministic allowed state-transition checks; blocked tasks must not jump directly into running.
+- [ ] Add tests for proposal validation, dynamic role labels as inert data, requested-vs-granted capabilities, duplicate IDs, missing dependencies, self-dependency, cycles, readiness, success release, failure blocking, retry flow and multiple independent ready tasks.
 - [ ] Preserve project-root/sandbox/no-privilege-escalation invariants.
 - [ ] Keep first DAG slice free of Builder mutation, Git worktrees and mission persistence.
+- [ ] Update DE/EN README/architecture/security docs to state that DAG proposals are validated data only and do not execute/grant capabilities.
 - [ ] Full exact-head Quality + review/behind/mergeability gates before merge.
 - [ ] Immediately refresh `STATE.md` + `TODO.md` after merge.
 
@@ -135,7 +128,7 @@ Do not create a rigid hierarchy of many hard-coded Go agent classes. Orchestrati
 
 ### Phase 9 – Dynamic agent spawning and replanning
 
-- [ ] Allow Planner/Mission Manager to request validated dynamic roles from data, not Go class proliferation.
+- [ ] Allow Planner/Mission Manager to request validated dynamic role labels from data rather than Go class proliferation.
 - [ ] Constrained Agent Factory: role/objective/capabilities/budget/workspace/model/parent.
 - [ ] Cap team size, nesting depth, model calls, tool calls and mission duration.
 - [ ] Prevent children self-granting capabilities or spawning mutation descendants outside governance policy.
@@ -213,9 +206,9 @@ Priority: **P1 after main #32 foundation**
 
 ## 5. Repository hygiene / stale issue reconciliation
 
-Priority: **P1; #23 immediately after PR #41**
+Priority: **P1; #23 before Phase 4 branch**
 
-- [ ] Verify issue #23 against merged #40; close if all bounded model-backed read-only subagent requirements are satisfied.
+- [ ] Verify/close issue #23 against merged #40.
 - [ ] Verify issue #22 against merged #36/session-wide doom-loop guard; close if fully satisfied.
 - [ ] Verify issue #25 against #26/#33/#38; close if reversible quarantine + Desktop/Mobile UX acceptance is fully satisfied.
 - [ ] Keep #32 open until orchestration/benchmark acceptance complete.
@@ -256,6 +249,6 @@ Every relevant PR remains blocked until exact final head passes:
 - [ ] native Windows builds including GUI path
 - [ ] `git diff --check`
 - [ ] exact-head, mergeability, behind/master and review-thread checks before merge
-- [ ] `STATE.md` + `TODO.md` refresh after material result/merge
+- [ ] `STATE.md` + `TODO.md` refresh after material functional result/merge
 
 Never lower the 80% gate or weaken sandbox, approvals, atomic writes, path/symlink protections, Mobile restrictions, process cancellation, secret handling or no-progress guards to make CI pass.
