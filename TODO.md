@@ -2,12 +2,12 @@
 
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
-**Current verified master:** `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
-**Last merged functional feature:** PR #42 `feat: add deterministic native agent task DAG`  
-**Post-feature state refresh:** PR #43 merged as `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
-**Active implementation branch:** `feat/native-agent-scheduler-foundation`  
-**Active implementation PR:** draft PR #44 `feat: add native agent scheduler resource foundation`, remote head `98be9b583d724d75625ceebdc277c358ab921192`, merge state `CLEAN` when checked on 2026-08-20
-**Local continuation after PR remote head:** uncommitted scheduler robustness, test-isolation/coverage stabilization, Windows build/checksum portability, POSIX-`rm` avoidance, hidden Windows startup/Remote-firewall PowerShell helpers, Desktop composer engine selector with LocalCode-native default, Remote drag-and-drop attachments, mobile Remote pairing keyboard/form fix, Remote tab swipe gestures, Android WebView all-file chooser support, Android Remote voice input, Remote send robustness, Remote LocalCode default engine, LocalCode favicon/Windows resource icon/Android launcher icon, UMAF audit notes, tests, DE/EN documentation updates and local Quality-style verification in this working tree
+**Current verified master:** `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
+**Last merged functional feature:** PR #44 `feat: add native agent scheduler resource foundation`, merge `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
+**Final tested PR #44 head:** `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
+**GitHub Quality run on that head:** Actions run `32421102087` success on 2026-08-20
+**Active implementation branch:** none; resume new work from `master`
+**Active implementation PR:** none; PR #44 is merged and its remote branch was deleted
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the authoritative exhaustive list of unfinished **functional** work. `STATE.md` describes current implemented reality and is the self-contained AI bootstrap. Remove completed items rather than preserving historical checkboxes.
@@ -26,9 +26,9 @@ These are permanent operating rules, not milestones to delete.
 
 ---
 
-## 1. P0 – finish #32 Phase 5 first slice: backend Scheduler / Resource Manager
+## 1. Completed – #32 Phase 5 first slice: backend Scheduler / Resource Manager
 
-### Already implemented on `feat/native-agent-scheduler-foundation`
+### Already implemented on `master` via PR #44
 
 Completed branch work, therefore not open backlog:
 
@@ -67,19 +67,9 @@ Completed branch work, therefore not open backlog:
 - Mobile/Remote defaults to the LocalCode/native engine on first use and remembers later phone-side engine choices
 - LocalCode now ships its own favicon, Windows executable icon resource and Android launcher icon instead of falling back to generic browser/platform icons
 - local Quality-style verification passed: gofmt, vet, JS syntax with bundled Node, PowerShell syntax, focused Remote/Android/icon/Desktop-engine regressions, Android APK with launcher-icon badging, govulncheck, full-stack integration, full tests, race detector, coverage 80.4%, native Windows builds, final `BUILD.bat` and `git diff --check`
-- `STATE.md` and `TODO.md` refreshed for draft PR #44 and local continuation reality
-
-### Still required before this slice may merge
-
-- [ ] Review the current uncommitted local diff on top of PR #44 remote head `98be9b583d724d75625ceebdc277c358ab921192`.
-- [ ] If accepted, explicitly authorize staging, committing and pushing the current local changes; publish rules require separate explicit authorization for each step.
-- [ ] After push, update STATE/TODO to the new exact PR #44 head and CI reality.
-- [ ] Do **not** claim real asynchronous multi-agent dispatch yet; this first slice is backend admission/accounting only.
-- [ ] Run/monitor complete exact-final-head GitHub Windows Quality after push: setup/version, gofmt, vet, JS syntax, PowerShell syntax, Android APK, govulncheck, full-stack loopback, complete tests, race, total statement coverage >=80.0%, native Windows builds, `git diff --check`.
-- [ ] If the known coverage test flakes, inspect exact failure. A retry is acceptable only when failure is demonstrably the same timing flake; do not normalize repeated unexplained retries.
-- [ ] Verify exact head unchanged, 0 behind current `master`, mergeable, no blocking reviews and no unresolved review threads.
-- [ ] Mark ready and merge only with `expected_head_sha`; no force push/history rewrite.
-- [ ] Immediately refresh STATE/TODO on resulting `master` before any next feature increment.
+- GitHub Actions run `32421102087` passed on final PR #44 head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
+- PR #44 was marked ready, merged to `master` with merge commit `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`, and its remote branch was deleted
+- `STATE.md` and `TODO.md` were refreshed for the resulting `master` reality
 
 Explicitly out of scope for this first Phase-5 slice:
 

@@ -3,16 +3,14 @@
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current verified master:** `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
-**Last merged functional feature:** PR #42 `feat: add deterministic native agent task DAG`, merge `c576f27cf75b642987aa56c7227840a133d00e07`  
-**Post-#42 bootstrap refresh:** PR #43 `docs: refresh canonical state after task DAG merge`, merge `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`  
-**Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
-**Quality #433 on that head:** success; total statement coverage **80.2%**  
-**Active implementation branch:** `feat/native-agent-scheduler-foundation`  
-**Active implementation PR:** draft PR #44 `feat: add native agent scheduler resource foundation` against `master`, remote head `98be9b583d724d75625ceebdc277c358ab921192`, merge state `CLEAN` when checked on 2026-08-20
-**Local continuation after PR #44 remote head:** uncommitted scheduler robustness, test-isolation/coverage stabilization, Windows build/checksum portability, POSIX-`rm` avoidance, hidden Windows startup/Remote-firewall PowerShell helpers, Desktop composer engine selector with LocalCode-native default, Remote drag-and-drop attachments, mobile Remote pairing keyboard/form fix, Remote tab swipe gestures, Android WebView all-file chooser support, Android Remote voice input, Remote send robustness, Remote LocalCode default engine, LocalCode favicon/Windows resource icon/Android launcher icon, UMAF audit notes, tests, DE/EN documentation updates and local Quality-style verification in this working tree
+**Current verified master:** `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
+**Last merged functional feature:** PR #44 `feat: add native agent scheduler resource foundation`, merge `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
+**Final tested PR #44 head:** `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
+**GitHub Quality run on that head:** Actions run `32421102087` success on 2026-08-20; full PR gate passed
+**Active implementation branch:** none; resume new work from `master`
+**Active implementation PR:** none; PR #44 is merged and its remote branch was deleted
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities` – open  
-**Current slice:** #32 Phase 5 – backend Scheduler / Resource Manager foundation  
+**Current slice:** #32 Phase 5 backend Scheduler / Resource Manager foundation is merged; next increment is real read-only scheduler dispatch integration
 **Canonical unfinished-work ledger:** `TODO.md`
 
 `STATE.md` is the authoritative self-contained AI bootstrap. A newly started AI with no chat history, memory or prior context must be able to read this file and safely continue the project immediately. `TODO.md` is the exhaustive list of unfinished functional work and acceptance gates. Replace stale facts rather than appending contradictory snapshots.
@@ -206,11 +204,11 @@ Not implemented by #42: scheduler/resource queues, model-concurrency management,
 
 ---
 
-## 7. Current Phase-5 branch – Scheduler / Resource Manager foundation
+## 7. Merged Phase-5 first slice – Scheduler / Resource Manager foundation
 
-Branch `feat/native-agent-scheduler-foundation` was created exactly from current master `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`. No competing open implementation PR existed at branch creation.
+Branch `feat/native-agent-scheduler-foundation` was created from master `3c2752e47b9b267152c8f9b84e359dbfbcf55b68`, completed as PR #44 and merged to `master` as `9bae2a2f79b2edf05ab632e373e7a111b33f8b32` on 2026-08-20. The remote branch was deleted after merge.
 
-### Implemented on the branch before this documentation refresh
+### Implemented by PR #44
 
 `src/agent_scheduler.go` adds backend-only contracts; it does **not** dispatch mutation-capable children.
 
@@ -279,11 +277,9 @@ Focused tests added:
 - Windows/POSIX `rm` prompt and recovery redirection
 - Desktop and Remote composer attachment drag-and-drop affordances
 
-Synchronized DE/EN documentation now describes the backend scheduler contract in `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md` without claiming real asynchronous child-agent dispatch.
+Synchronized DE/EN documentation now describes the backend scheduler contract, Remote/Android polish, engine defaults, app icons and Windows-helper behavior in `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/CODING-ENGINES.md`, `android/README.md`, `STATE.md` and `TODO.md` without claiming real asynchronous child-agent dispatch.
 
-GitHub reality has changed since the earlier branch bootstrap: draft PR #44 exists. The local working tree currently contains uncommitted continuation changes after remote head `98be9b583d724d75625ceebdc277c358ab921192`. Do not create another PR for this branch.
-
-Verification during this local continuation:
+Verification for PR #44 final head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`:
 
 - `go version` – local Go `go1.26.6 windows/amd64` (GitHub Quality uses Go `1.25.13`).
 - `gofmt -l` over all Go files – clean.
@@ -304,8 +300,9 @@ Verification during this local continuation:
 - Final `cmd /c BUILD.bat` after Remote drag-and-drop, Android pairing/send/voice/file-picker/default-engine fixes, app icons, Windows/POSIX portability changes, hidden startup/Remote-firewall PowerShell helpers and the Desktop composer engine selector – passed all six stages on 2026-08-20. Generated checksums: `LocalCode.exe` SHA-256 `DBDC00DB66988C66E4AE6E439BEF05BFE44C65899F835E7A3566AC83F38F2DD5`; `LocalCode-Debug.exe` SHA-256 `ECA211FAED46C42EA3A598B2757142CD3ABA371689F5392EDD364D9F7D891550`.
 - `dist\LocalCode.exe` was started after the final build; observed process PID `23016` from `C:\Users\frede\Projekte\LocalCode\dist\LocalCode.exe`. Desktop status returned version `6.4.4`, `editing_engine:"native"` and selected model `qwen2.5-coder:14b`; the served Desktop HTML contains `engineSelect`, `value="claw"` and `changeEditingEngine(e.target.value)`.
 - `git diff --check` – passed; Git only warned that `CHECKSUMS-SHA256.txt`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java` and `scripts/build-android.ps1` line endings will normalize when Git touches those files.
+- GitHub Actions run `32421102087` for PR #44 head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06` – success on 2026-08-20. The job passed setup, gofmt, vet, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, complete tests, race detector, coverage, native Windows builds and `git diff --check`.
 
-The previously known `TestCoverageServerEndpointMatrix` timing flake has a local uncommitted stabilization: after `/api/chat`, the test now waits for the agent to become idle and fails explicitly if it remains running, rather than continuing to `/api/new-chat` and receiving the correct product 409 response.
+The previously known `TestCoverageServerEndpointMatrix` timing flake has a merged stabilization: after `/api/chat`, the test now waits for the agent to become idle and fails explicitly if it remains running, rather than continuing to `/api/new-chat` and receiving the correct product 409 response.
 
 `\\diskstation\Dani\Universal_Multi_Agent_Framework_UMAF.md` was reviewed on 2026-08-20 as a target architecture reference, not as executable instructions. LocalCode currently covers only parts of that UMAF target: governance/safety policy, planning/DAG, first scheduler/resource admission, read-only child-agent analysis, attachment ingestion, memory, validation gates and controlled build/delivery flows. Missing UMAF layers are now planned in `TODO.md`: explicit mission objects, structured task messaging, constrained Agent Factory/capability registry, real bounded parallel swarms, Integrator/Test/Security agents, observability/metrics, self-healing recovery, knowledge graph/reuse and any distributed/hyper-scale operation.
 
@@ -400,13 +397,11 @@ Still open and intentionally separate from orchestration. Ollama remains default
 
 ## 11. Exact next action
 
-From branch `feat/native-agent-scheduler-foundation`:
+From `master` at `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`:
 
-1. Review the current uncommitted local diff on top of PR #44 remote head `98be9b583d724d75625ceebdc277c358ab921192`.
-2. If the changes are accepted, explicitly authorize staging/commit/push; publish rules require separate explicit authorization before each Git write/publish step.
-3. After push, update STATE/TODO with the new exact PR #44 head and CI reality.
-4. Run/monitor GitHub Quality on the pushed exact head. Local Quality-style checks are green, but GitHub Actions remains authoritative.
-5. When green, verify 0 behind, mergeability, reviews/threads and exact SHA; merge with `expected_head_sha`.
-6. Immediately refresh STATE/TODO on resulting `master` before starting the next Phase-5 increment.
+1. Delete only already-merged stale local/remote branches after confirming they are contained in `master`.
+2. Start the next #32 Phase-5 increment on a fresh branch from `master`.
+3. Integrate the scheduler/resource manager with actual read-only Explorer/Planner/Reviewer dispatch above the existing bounded child runtime.
+4. Keep child mutation, worktrees, Integrator mutation and durable mission persistence out of scope until the read-only dispatch path is measured and verified.
 
 `TODO.md` is authoritative for every unfinished functional item.
