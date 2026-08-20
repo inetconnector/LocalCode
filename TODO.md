@@ -2,14 +2,14 @@
 
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
-**Current functional master:** `5872f7b9d9fe91d8d0c82d6cce29cbbc2cfdbf8f`  
-**Active implementation branch:** `feat/native-agent-task-dag`  
-**Active draft PR:** #42 `feat: add deterministic native agent task DAG`  
-**PR head before this TODO refresh:** `bd7cd85b11bd0193faece982c56bc2cb6e263544`  
-**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
-**Issue #23:** completed
+**Current verified functional master before this documentation-only refresh:** `c576f27cf75b642987aa56c7227840a133d00e07`  
+**Last merged feature:** PR #42 `feat: add deterministic native agent task DAG`  
+**Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
+**Quality #433:** success; total statement coverage **80.2%**  
+**Documentation refresh branch:** `docs/state-after-task-dag`  
+**Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current reality and is the self-contained AI bootstrap. Keep both files mutually current; completed implementation details belong in `STATE.md`, Git history and merged PRs rather than remaining as open TODO items here.
+This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current verified reality and is the self-contained AI bootstrap. Completed Phase-4 implementation is no longer backlog; the next functional work is Phase 5.
 
 ---
 
@@ -19,71 +19,73 @@ This file is the authoritative exhaustive list of unfinished **functional** Loca
 
 1. Read both before material work.
 2. Verify current `master`, active implementation branch/PR, open issues, reviews and latest required Quality against GitHub reality before resuming.
-3. After every material branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
-4. `TODO.md` contains only unfinished functional work, dependencies and acceptance gates; history belongs in `STATE.md`, Git and closed issues/PRs.
-5. A functional change is not operationally complete until both files reflect the new reality.
+3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, update both files in the same workstream or immediately afterward.
+4. Documentation-only carrier PRs may use the self-resolving convention documented in `STATE.md`; do not create an infinite chain merely to record the preceding docs-only merge.
+5. `TODO.md` contains only unfinished functional work, dependencies and acceptance gates; completed work belongs in `STATE.md`, Git and closed PRs/issues.
 6. Never invent self-commit/merge SHAs.
+7. Never weaken the 80% Quality gate or safety boundaries to complete a task.
 
 ---
 
-## 1. Immediate work – finish PR #42 / #32 Phase 4
+## 1. Immediate functional work – #32 Phase 5 Scheduler / Resource Manager
 
-Priority: **P0 / current**
+Priority: **P0 / NEXT FEATURE**
 
-Phase-4 implementation is complete on `feat/native-agent-task-dag`: stable task IDs, deterministic DAG/dependency validation, ready/blocked/state-transition semantics, requested-vs-granted capability separation, inert dynamic roles, Planner schema integration, invalid-graph correction inside the bounded child loop, machine-readable `task_graph` output, focused regression tests, DE/EN documentation, and removal of all temporary integration helpers are already present. Focused DAG/Planner tests passed before the permanent integration commit.
+Phase 4 Task DAG is merged via PR #42. Start Phase 5 only from the current docs-refreshed `master` on a fresh branch.
 
-Only these merge-gate tasks remain:
+### First Phase-5 slice – backend scheduler/resource foundation
 
-- [ ] Run the complete standard Windows Quality workflow on the exact post-STATE/TODO PR head.
-- [ ] Require green Go setup/version, `gofmt`, `go vet ./...`, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, `govulncheck`, full-stack loopback integration, complete Go tests, race detector, statement coverage >=80.0%, native Windows builds and `git diff --check`.
-- [ ] If Quality fails, fix only the concrete failure; do not weaken safety or the 80% gate.
-- [ ] Verify the final tested head is unchanged, PR #42 is 0 behind current `master`, mergeable, has no blocking review submissions and no unresolved review threads.
-- [ ] Mark PR #42 ready for review only after the exact-head Quality gate is fully green.
-- [ ] Merge PR #42 only with `expected_head_sha`; no force-push/history rewrite.
-- [ ] Immediately refresh `STATE.md` + `TODO.md` on resulting `master` using the functional-baseline/self-SHA convention.
-- [ ] Start Phase 5 on a fresh branch from the then-current `master`; do not continue new feature work on the merged Phase-4 branch.
+- [ ] Read current orchestration/safety files before code changes: `src/agent_task_graph.go`, `src/agent_team_types.go`, `src/subagent_model.go`, `src/types.go`, cancellation/process helpers and current config/budget logic.
+- [ ] Add focused scheduler/resource-manager types in new files rather than expanding `agent.go`.
+- [ ] Separate **logical task readiness/queueing** from **actual resource admission/execution**.
+- [ ] Allow multiple DAG nodes to be logically ready without implying simultaneous local-model contexts.
+- [ ] Add deterministic bounded ready queues over `AgentTaskGraph`.
+- [ ] Add explicit resource classes at minimum for model inference and cheap CPU/read/search work; model future build/linker and exclusive integration/test resources without activating mutation orchestration yet.
+- [ ] Default local model-inference concurrency conservatively to **one active slot** unless a later explicit configuration changes it.
+- [ ] Resource requests must never grant capabilities; `RequestedCapabilities` remains inert planning data and granted `Capabilities` remain governance-controlled.
+- [ ] Blocked/failed/cancelled tasks must consume no executor resource until legitimately ready/retried.
+- [ ] Add deterministic task admission/release semantics and resource accounting.
+- [ ] Add mission/task model-call, tool-call, estimated-token and elapsed-time budget snapshots with visible remaining values.
+- [ ] Add structured hard-stop / `budget_exhausted` outcomes when a budget is depleted; never silently continue.
+- [ ] Add cancellation propagation from mission/scheduler to queued and running child tasks using existing context/process cancellation semantics where applicable.
+- [ ] Add deterministic ordering and fairness/starvation protection; avoid an unbounded queue or starvation by one resource class.
+- [ ] Preserve current single-agent and bounded read-only Explorer/Planner/Reviewer execution as compatibility paths.
+- [ ] Do **not** add Builder mutation, Git worktrees, Integrator mutation, persistent mission storage or Mobile permission expansion in this first scheduler slice.
+- [ ] Add focused tests for multiple logically ready tasks, one-slot model admission, independent cheap-resource admission, release/re-admission, blocked tasks, cancellation, budget exhaustion, deterministic ordering and fairness.
+- [ ] Update DE/EN README/architecture/security docs for the implemented backend contract only; do not claim asynchronous multi-agent mutation support.
+- [ ] Update `STATE.md` + `TODO.md` to exact branch/PR reality.
+- [ ] Full exact-head Windows Quality and pre-merge head/behind/mergeability/review checks.
+- [ ] Merge with `expected_head_sha`, then immediately refresh STATE/TODO before the next increment.
 
-Explicitly out of scope for PR #42 and still unfinished: scheduler/resource queues, model-inference concurrency management, persistent missions, Builder mutation, Git worktrees, Integrator/Test-Agent mutation orchestration, Mobile permission expansion and QEMU/OS execution.
+### Later Phase-5 increments
+
+- [ ] Integrate the resource manager with real read-only child-agent dispatch above the existing bounded child runtime.
+- [ ] Surface queued/running/blocked/resource/budget state in Desktop UI after backend contracts stabilize.
+- [ ] Surface a narrower read-only view in Mobile Remote without widening Mobile permissions.
+- [ ] Add resource health/diagnostics for model backend availability and queue saturation.
+- [ ] Extend scheduler tests for larger DAGs and cancellation races.
+- [ ] Benchmark logical parallelism vs actual model concurrency before making performance claims.
 
 ---
 
-## 2. Issue #32 – remaining UMAF-LC / Native Agent Teams roadmap
+## 2. Phase 6 – Persistent missions and recovery
 
-Priority: **P0/P1 after PR #42 merge**
-
-Architecture principle:
-
-`Agent = Runtime + Role + Mission + Context + Capabilities + Budget + Workspace + Parent`
-
-Do not create a rigid hierarchy of hard-coded Go agent classes. Orchestration must remain backend-independent and preserve LocalCode approval, sandbox, atomic-write, recovery and verification boundaries. Logical task parallelism must remain separate from actual local-model inference parallelism.
-
-### Phase 5 – Scheduler and resource manager — NEXT FEATURE
-
-- [ ] Separate logical task parallelism from model inference parallelism.
-- [ ] Add deterministic bounded logical queues over the Phase-4 `AgentTaskGraph` without enabling mutation-capable children yet.
-- [ ] Add resource classes/limits for model inference, CPU/read/search work, builds/linkers and future exclusive integration/test resources.
-- [ ] Use conservative local-GPU/model concurrency defaults; logical task count must not imply equal simultaneous model contexts.
-- [ ] Add mission/task model-call, tool-call, estimated-token and elapsed-time budget accounting with visible remaining budget.
-- [ ] Produce structured budget-exhausted results and hard stops rather than silent continuation.
-- [ ] Add cancellation propagation from mission -> queued/running child tasks.
-- [ ] Add deterministic queue ordering plus fairness/starvation regression tests.
-- [ ] Ensure failed/cancelled dependencies never consume executor resources until legitimately ready/retried.
-- [ ] Preserve existing single-agent and read-only child compatibility paths.
-- [ ] Surface queued/running/blocked/budget state in Desktop/Remote only after backend contracts are stable; do not widen Mobile permissions.
-- [ ] Add focused scheduler/resource tests first, then full exact-head Quality.
-- [ ] Keep Builder mutation/worktrees out of this Phase-5 foundation PR.
-
-### Phase 6 – Persistent missions and recovery
+Priority: **P0/P1 after stable scheduler foundation**
 
 - [ ] Introduce durable mission metadata separate from chat prose.
-- [ ] Persist graph, task states, structured results, attempts, usage, timestamps and verification state.
-- [ ] Integrate with the existing durable run journal instead of creating a competing recovery authority.
-- [ ] Reconcile project/Git/postconditions before restart/resume; never blindly replay mutation.
+- [ ] Persist DAG, queued/ready/running/terminal task states, structured results, attempts, model/tool/resource usage, timestamps and verification state.
+- [ ] Integrate with existing `run_journal.go`; do not create a competing recovery authority.
+- [ ] On restart reconcile project/Git/postconditions before resuming; never blindly replay mutation.
 - [ ] Support mission/task pause, resume, cancel and retry.
-- [ ] Add bounded mission knowledge for architecture decisions, interfaces/contracts, known failures and test results.
+- [ ] Persist bounded mission knowledge for architecture decisions, interfaces/contracts, known failures and test results.
 - [ ] Add crash/restart tests for queued, ready, running, failed and partially completed tasks.
+- [ ] Preserve resource accounting and cancellation semantics across recovery.
 
-### Phase 7 – Git-worktree mutation agents
+---
+
+## 3. Phase 7 – Git-worktree mutation agents
+
+Priority: **P1 after scheduler + persistence**
 
 - [ ] Add optional isolated worktree workspace type for mutation-capable child agents.
 - [ ] Create worktrees only under LocalCode-managed validated paths with symlink/path protections.
@@ -93,7 +95,9 @@ Do not create a rigid hierarchy of hard-coded Go agent classes. Orchestration mu
 - [ ] Safe cleanup/cancellation/orphan recovery; no destructive global reset/clean shortcuts.
 - [ ] Add stale-base, collision, symlink/path-escape, cancellation and Windows worktree tests.
 
-### Phase 8 – Integrator, Test Agent and independent Reviewer
+---
+
+## 4. Phase 8 – Integrator, Test Agent and independent Reviewer
 
 - [ ] Integrator is the only component allowed to combine mutation-agent results into the integration target.
 - [ ] Require diff inspection and interface/dependency compatibility before integration.
@@ -104,14 +108,20 @@ Do not create a rigid hierarchy of hard-coded Go agent classes. Orchestration mu
 - [ ] Require suitable verification after the last integrated code/tool/app change.
 - [ ] Preserve approval-bound SHA/file preconditions during integration.
 
-### Phase 9 – Dynamic agent spawning and replanning
+---
+
+## 5. Phase 9 – Dynamic Agent Factory and replanning
 
 - [ ] Allow Planner/Mission Manager to request validated dynamic role labels from data rather than Go class proliferation.
 - [ ] Constrained Agent Factory: role/objective/requested capabilities/budget/workspace/model/parent; governance grants actual capabilities separately.
-- [ ] Cap team size, nesting depth, model calls, tool calls and mission duration.
+- [ ] Cap team size, nesting depth, model calls, tool calls, resource consumption and mission duration.
 - [ ] Prevent children self-granting capabilities or spawning mutation descendants outside governance policy.
 - [ ] Add structured replanning after failed dependencies, changed evidence or integration conflicts.
 - [ ] Add mission-wide stagnation detection across task cycles.
+
+---
+
+## 6. Additional #32 orchestration work
 
 ### Deferred tool discovery / context economy
 
@@ -135,20 +145,20 @@ Do not create a rigid hierarchy of hard-coded Go agent classes. Orchestration mu
 ### Doctor / health diagnostics
 
 - [ ] Add structured Doctor diagnostics for Native and each external engine.
-- [ ] Report model backend health, Git/worktree availability, LSP, MCP, build/test/QEMU tools and security-policy blockers.
+- [ ] Report model backend health, scheduler/resource saturation, Git/worktree availability, LSP, MCP, build/test/QEMU tools and security-policy blockers.
 - [ ] Do not auto-install or expose secrets outside current controlled setup/approval flows.
 
 ### Benchmarks for #32
 
 - [ ] Extend cross-engine harness with subagent/multi-agent tasks.
-- [ ] Add repository-exploration, large-tool-registry, recovery and integration-conflict benchmarks.
+- [ ] Add repository-exploration, scheduler/resource-concurrency, large-tool-registry, recovery and integration-conflict benchmarks.
 - [ ] Compare Native/Aider/OpenCode/Claw using the same repo commit, model, quantization, context limit, task and hidden tests where supported.
-- [ ] Measure success, model calls, tool calls, token/context estimates, wall time, unnecessary diff and recovery behavior.
+- [ ] Measure success, model calls, tool calls, token/context estimates, queue time, wall time, unnecessary diff and recovery behavior.
 - [ ] No parity/superiority claims without reproducible measured evidence.
 
 ---
 
-## 3. OS-scale Mission Controller / LocalCode OS Challenge
+## 7. OS-scale Mission Controller / LocalCode OS Challenge
 
 Priority: **P1 only after stable DAG + scheduler + worktrees + integrator/reviewer/test loop**
 
@@ -164,7 +174,7 @@ Priority: **P1 only after stable DAG + scheduler + worktrees + integrator/review
 
 ---
 
-## 4. Issue #30 – benchmarked llama.cpp / DMC backend
+## 8. Issue #30 – benchmarked llama.cpp / DMC backend
 
 Priority: **P1 after main #32 foundation**
 
@@ -182,9 +192,9 @@ Priority: **P1 after main #32 foundation**
 
 ---
 
-## 5. Repository hygiene
+## 9. Repository hygiene
 
-Priority: **P1; interleave after PR #42**
+Priority: **P1; interleave after current orchestration slice**
 
 - [ ] Verify issue #22 against merged #36/session-wide doom-loop guard; close only if all acceptance criteria are satisfied.
 - [ ] Verify issue #25 against #26/#33/#38; close only if reversible quarantine + Desktop/Mobile UX acceptance is fully satisfied.
@@ -193,7 +203,7 @@ Priority: **P1; interleave after PR #42**
 
 ---
 
-## 6. Competitive/reliability work after core orchestration
+## 10. Competitive/reliability work after core orchestration
 
 Priority: **P2**
 
@@ -202,11 +212,11 @@ Priority: **P2**
 - [ ] Git diff/undo/commit UX without weakening SHA/precondition protection.
 - [ ] Provider breadth only below LocalCode supervisor/safety layer.
 - [ ] Structural/fuzzy patch-drift recovery without bypassing approved SHA semantics.
-- [ ] Desktop/Android transparency for mission plan, task state, agents, budgets, tools, approvals, verification, recovery and integration.
+- [ ] Desktop/Android transparency for mission plan, task state, agents, budgets, resources, tools, approvals, verification, recovery and integration.
 - [ ] Benchmark large repos, large registries, subagents and crash recovery.
 
 ---
 
-## 7. Permanent Quality and safety gate
+## 11. Permanent Quality and safety gate
 
-Every material implementation PR remains blocked until its exact final head passes the repository's standard Windows Quality workflow and pre-merge checks. Never lower the 80% coverage gate or weaken sandbox, approvals, atomic writes, path/symlink protections, Mobile restrictions, process cancellation, secret handling or no-progress guards to make CI pass.
+Every material implementation PR remains blocked until its exact final head passes the standard Windows Quality workflow: Go setup/version, gofmt, vet, frontend JS syntax, PowerShell syntax, Android Remote APK, govulncheck, full-stack integration, full tests, race, statement coverage >=80.0%, Windows builds and `git diff --check`, followed by exact-head/0-behind/mergeability/review-thread checks. Never lower the 80% gate or weaken sandbox, approvals, atomic writes, path/symlink protections, Mobile restrictions, process cancellation, secret handling, budget hard stops or no-progress guards to make CI pass.
