@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -125,5 +126,68 @@ func TestMobileRemoteRejectsGlobalApprovalPersistence(t *testing.T) {
 	case decision := <-pending.Result:
 		t.Fatalf("blocked global approval reached pending action: %#v", decision)
 	default:
+	}
+}
+
+func TestMobileEditingEngineSelectionIsAuthenticatedBoundedAndIdleOnly(t *testing.T) {
+	state := newRemoteTestState(t)
+	handler, token := pairedMobileHandler(t, state)
+
+	unauth := serveHTTP(handler, http.MethodPost, "/remote/api/editing-engine", `{"engine":"claw"}`, "")
+	if unauth.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated engine selection = %d", unauth.Code)
+	}
+
+	state.mu.RLock()
+	before := state.Config.EditingEngine
+	state.mu.RUnlock()
+	unknown := serveHTTP(handler, http.MethodPost, "/remote/api/editing-engine", `{"engine":"not-an-engine"}`, token)
+	if unknown.Code != http.StatusBadRequest {
+		t.Fatalf("unknown engine selection = %d body=%s", unknown.Code, unknown.Body.String())
+	}
+	state.mu.RLock()
+	afterUnknown := state.Config.EditingEngine
+	state.mu.RUnlock()
+	if afterUnknown != before {
+		t.Fatalf("unknown engine changed config from %q to %q", before, afterUnknown)
+	}
+
+	selectClaw := serveHTTP(handler, http.MethodPost, "/remote/api/editing-engine", `{"engine":"claw"}`, token)
+	if selectClaw.Code != http.StatusOK {
+		t.Fatalf("Claw selection = %d body=%s", selectClaw.Code, selectClaw.Body.String())
+	}
+	state.mu.Lock()
+	selected := state.Config.EditingEngine
+	state.Running = true
+	state.mu.Unlock()
+	if selected != editingEngineClaw {
+		t.Fatalf("mobile selected engine = %q; want %q", selected, editingEngineClaw)
+	}
+
+	whileRunning := serveHTTP(handler, http.MethodPost, "/remote/api/editing-engine", `{"engine":"native"}`, token)
+	if whileRunning.Code != http.StatusConflict {
+		t.Fatalf("engine change while running = %d body=%s", whileRunning.Code, whileRunning.Body.String())
+	}
+	state.mu.Lock()
+	stillSelected := state.Config.EditingEngine
+	state.Running = false
+	state.mu.Unlock()
+	if stillSelected != editingEngineClaw {
+		t.Fatalf("running engine change mutated config to %q", stillSelected)
+	}
+}
+
+func TestMobileRemotePageOffersClawEngineSelection(t *testing.T) {
+	state := newRemoteTestState(t)
+	handler, _ := pairedMobileHandler(t, state)
+	rr := serveHTTP(handler, http.MethodGet, "/remote", "", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("mobile remote page = %d body=%s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	for _, marker := range []string{`id="engineSelect"`, `value="claw"`, `/remote/api/editing-engine`} {
+		if !strings.Contains(page, marker) {
+			t.Fatalf("mobile remote page missing engine selection marker %q", marker)
+		}
 	}
 }
