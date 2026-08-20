@@ -3,20 +3,21 @@
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current functional master:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
+**Current functional master before this documentation refresh:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
 **Last merged feature:** PR #40 `feat: add bounded native agent team roles`  
 **PR #40 merge:** `97bdd80e8d068bcc6622ba8296b43ea7c8ea1bc8`  
 **Final tested PR #40 head:** `9c3b25b1b070d80c075e9b697a9fffe86f0d3184`  
 **Quality on final PR #40 head:** #406 – success  
-**Current documentation refresh branch:** `docs/state-todo-after-native-agent-teams`  
-**Active documentation PR:** #41 `docs: refresh bootstrap state and TODO after native agent teams`  
-**Documentation content baseline before this PR-metadata sync:** `143bd1abfba147434d42820f7f39b1fb0b58d81a`  
+**Bootstrap refresh carrier:** PR #41 `docs: refresh bootstrap state and TODO after native agent teams`, branch `docs/state-todo-after-native-agent-teams`  
+**Carrier content baseline before this self-resolving metadata update:** `16589c2a1578317e079c90e45ca8424fef10c096`  
 **Open implementation PR:** none at this snapshot  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
-**Immediate implementation priority after this documentation refresh:** #32 Phase 4 – Task DAG + dependency validation/scheduling foundation  
+**Immediate functional priority after this bootstrap refresh reaches `master`:** verify/close issue #23, then #32 Phase 4 – Task DAG + dependency validation foundation  
 **Canonical unfinished-work ledger:** `TODO.md`
 
-`STATE.md` is the authoritative self-contained bootstrap description of what is true now. `TODO.md` is the exhaustive list of unfinished work. Git history and closed PRs/issues are history; neither file may accumulate contradictory snapshots.
+**Self-resolving carrier rule:** when this file is read on `docs/state-todo-after-native-agent-teams`, PR #41 is the active documentation carrier. When this exact content is read from `master` after PR #41, the carrier PR is already merged by definition. Do not create another documentation PR merely to change “#41 open” to “#41 merged”; always verify current GitHub reality before resuming. Functional branch/PR/CI changes still require normal STATE/TODO refreshes.
+
+`STATE.md` is the authoritative self-contained bootstrap description of what is true now. `TODO.md` is the exhaustive list of unfinished functional work. Git history and closed PRs/issues are history; neither file may accumulate contradictory snapshots.
 
 ---
 
@@ -24,17 +25,18 @@
 
 `STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.
 
-**Self-contained AI bootstrap invariant:** a newly started AI with no chat history, no memory and no prior context must be able to read `STATE.md` and understand the project well enough to resume implementation immediately, safely and correctly. `STATE.md` must therefore contain the current master/branch/PR/head/CI/review reality, product goal, architecture, important files/entrypoints, safety/Quality invariants, relevant implemented capabilities, active work, known problems/failed approaches, open decisions and the exact next implementation step. Important facts from other files must be summarized here with those source files named; bare links are not a substitute for continuation context.
+**Self-contained AI bootstrap invariant:** a newly started AI with no chat history, no memory and no prior context must be able to read `STATE.md` and understand the project well enough to resume implementation immediately, safely and correctly. `STATE.md` must therefore contain the current functional master baseline, relevant active implementation work, CI/review state, product goal, architecture, important files/entrypoints, safety/Quality invariants, relevant implemented capabilities, known problems/failed approaches, open decisions and the exact next functional implementation step. Important facts from other files must be summarized here with those source files named; bare links are not a substitute for continuation context.
 
 Blocking rules:
 
 1. Before material work read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md`.
-2. Verify GitHub reality before resuming: `master`, active branch/PR, open issues, exact head, reviews/threads and latest required Quality run.
-3. After every material branch/base/head change, PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, refresh `STATE.md` and `TODO.md` in the same workstream or immediately afterward.
-4. `STATE.md` describes current implemented/verified reality; `TODO.md` contains only unfinished work, dependencies and acceptance gates.
-5. Replace stale facts instead of appending contradictory snapshots.
-6. A change is not operationally complete while either file describes the previous repository reality.
-7. Exact self-commit/merge SHAs cannot be predicted from inside the commit that records them. Record verified baselines honestly and update resulting SHAs in the next current-state refresh; never invent a SHA.
+2. Verify GitHub reality before resuming: current `master`, active implementation branch/PR, open issues, exact head, reviews/threads and latest required Quality run.
+3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, refresh `STATE.md` and `TODO.md` in the same workstream or immediately afterward.
+4. Documentation-only carrier PRs may use the self-resolving carrier convention above to avoid an infinite chain of PRs whose only purpose is to record the preceding documentation PR as merged.
+5. `STATE.md` describes current implemented/verified reality; `TODO.md` contains only unfinished functional work, dependencies and acceptance gates.
+6. Replace stale facts instead of appending contradictory snapshots.
+7. A material functional change is not operationally complete while either file describes the previous repository reality.
+8. Exact self-commit/merge SHAs cannot be predicted from inside the commit that records them. Record verified baselines honestly; never invent a SHA.
 
 ---
 
@@ -42,7 +44,7 @@ Blocking rules:
 
 LocalCode is a Windows-first local coding-agent/development platform centered on local models and controlled tool execution. Ollama is the default local inference path. LocalCode is the supervisor and safety boundary even when external coding engines are selected.
 
-Selectable coding engines on current `master`:
+Selectable coding engines on current functional master:
 
 - LocalCode Native
 - Aider
@@ -60,19 +62,19 @@ The application is a Go program with embedded web UI, local HTTP/SSE backend, Ol
 
 ### Important continuation files / code map
 
-- `AGENTS.md` – repository-wide coding, safety, localization and STATE/TODO maintenance rules.
+- `AGENTS.md` – repository-wide coding, safety, localization and STATE/TODO rules.
 - `STATE.md` – this self-contained current-state bootstrap.
-- `TODO.md` – exhaustive unfinished work and acceptance gates.
+- `TODO.md` – exhaustive unfinished functional work and acceptance gates.
 - `README.md` – user-facing feature/usage contract in German and English.
 - `docs/ARCHITECTURE.md` – architecture boundaries and component behavior.
 - `docs/SECURITY.md` – security model and privilege boundaries.
-- `src/agent.go` – main Native agent action schema/tool loop and dispatch integration.
+- `src/agent.go` – main Native action schema/tool loop and dispatch integration.
 - `src/agent_supervisor.go` – intent/supervisor action eligibility and control logic.
 - `src/edit_reliability.go` – deterministic edit preflight/reliability path.
-- `src/subagent.go` – existing deterministic read-only repository handoff/fallback path.
+- `src/subagent.go` – deterministic read-only repository handoff/fallback path.
 - `src/agent_team_types.go` – merged #40 AgentTask/role/capability/budget/result contracts; primary starting point for Task-DAG work.
 - `src/subagent_model.go` – merged #40 isolated model-backed read-only Explorer/Planner/Reviewer runtime.
-- `src/subagent_model_test.go` – regression tests for child roles, budgets, fallback and structured results.
+- `src/subagent_model_test.go` – child-role/budget/fallback/structured-result regression tests.
 - `src/server.go` and project/remote API files – Desktop/local HTTP and Mobile Remote routing/security boundaries.
 - `src/static/ui_polish.js` – Desktop UI behavior/polish and project UX.
 - `src/static/remote.html` – narrow Mobile Remote UI.
@@ -86,7 +88,7 @@ When adding Task-DAG/scheduler code, prefer new focused files rather than expand
 
 ### Safety / mutation correctness
 
-Current master preserves:
+Current functional master preserves:
 
 - project-root containment and symlink/path-escape protections
 - SHA-256 file-version preconditions
@@ -106,13 +108,13 @@ Never bypass these through orchestration or worktrees.
 
 ### Repository intelligence / navigation
 
-Current master includes import-aware repository intelligence, typed/weighted graph relations, Go AST plus Tree-sitter-backed parsing where supported, deterministic fallback, task-ranked context, bounded parallel independent reads, native read-only LSP navigation and persistent/recovering LSP sessions.
+Current functional master includes import-aware repository intelligence, typed/weighted graph relations, Go AST plus Tree-sitter-backed parsing where supported, deterministic fallback, task-ranked context, bounded parallel independent reads, native read-only LSP navigation and persistent/recovering LSP sessions.
 
 LSP is navigation/diagnostic authority only; it is not mutation permission.
 
 ### Reliability / recovery
 
-Current master includes:
+Current functional master includes:
 
 - durable redacted active-run journal under LocalCode app data
 - atomic/mutex-protected journal persistence
@@ -127,7 +129,7 @@ Future mission persistence must extend/integrate with this recovery authority ra
 
 ### Project lifecycle / Mobile Remote
 
-Current master has safe project creation/folder creation, reversible same-volume quarantine for confirmed non-empty project deletion, server-generated delete previews, exact confirmations, Desktop/Mobile Trash + Restore, permanent purge with exact `PURGE <project>`, occupied-destination refusal, symlink/path protections, deterministic thread restore, and a Mobile API narrower than Desktop.
+Current functional master has safe project/folder creation, reversible same-volume quarantine for confirmed non-empty project deletion, server-generated delete previews, exact confirmations, Desktop/Mobile Trash + Restore, permanent purge with exact `PURGE <project>`, occupied-destination refusal, symlink/path protections, deterministic thread restore, and a Mobile API narrower than Desktop.
 
 PR #38 merge: `f84a38f25a09231fb973022867e9177e8de04974`.
 
@@ -135,7 +137,7 @@ PR #38 merge: `f84a38f25a09231fb973022867e9177e8de04974`.
 
 Claw Code is a managed optional engine (PR #28 merge `92ac486f1abe0a42eca4d4b3d8a997f31ba4b42c`) with pinned/version-verified executable, process-scoped Ollama host, cloud credential stripping, read-only/workspace-write boundaries and no default danger-full-access.
 
-The repository also contains a cross-engine benchmark harness that isolates runs in fresh worktrees and records timings/checks/diff metrics. Same commit/model/task/context/hidden tests are required for fair comparisons.
+The repository has a cross-engine benchmark harness that isolates runs in fresh worktrees and records timings/checks/diff metrics. Same commit/model/task/context/hidden tests are required for fair comparisons.
 
 ---
 
@@ -154,15 +156,15 @@ Merged capability:
 - separate curated child model contexts
 - hard model-call/tool-call/time/estimated-token budgets
 - child action schema limited to `list_files`, `read_file`, `search_text`, approval-free `lsp`, `finish`
-- mutation, shell, Git, network/web, MCP, installation, memory, approval requests and recursive spawning absent from the child schema
-- Planner may emit structured follow-up task proposals but cannot execute mutation-capable roles
-- Reviewer is independent and intended to receive explicit task/evidence, not builder self-justification
+- mutation, shell, Git, network/web, MCP, installation, memory, approval requests and recursive spawning absent from child schema
+- Planner may emit structured follow-up proposals but cannot execute mutation-capable roles
+- Reviewer is independent and receives explicit task/evidence rather than builder self-justification
 - deterministic read-only fallback when model unavailable/fails or budget exhausted
 - mandatory edit-reliability preflight remains deterministic and consumes no child-model calls
 - child tool steps surface as `subagent:<role>:<action>` events
 - DE/EN README, architecture and security documentation updated
 
-Intentionally not implemented yet: Task DAG validation/state machine/scheduling, mission persistence, resource manager, mutation-capable Builder agents, Git-worktree isolation, Integrator/Test-Agent orchestration, dynamic Agent Factory/replanning, OS/QEMU mission execution.
+Intentionally not implemented yet: Task-DAG validation/state machine/scheduling, mission persistence, resource manager, mutation-capable Builder agents, Git-worktree isolation, Integrator/Test-Agent orchestration, dynamic Agent Factory/replanning, OS/QEMU mission execution.
 
 Historical PR/branch #14 was not stale-merged wholesale; only useful current-compatible read-only model-subagent design was ported.
 
@@ -213,27 +215,26 @@ Issue #30 remains open and follows the main orchestration foundation. Ollama sta
 
 ### Repository hygiene
 
-Open issues #22, #23 and #25 are likely superseded by merged work and must be reconciled/closed only after their acceptance criteria are verified. #23 should be checked first after this state refresh because #40 appears to cover its bounded model-backed read-only subagent request.
+Open issues #22, #23 and #25 are likely superseded by merged work and must be reconciled/closed only after their acceptance criteria are verified. #23 is first: #40 now contains `src/subagent_model.go`, regression tests, `LOCALCODE_DETERMINISTIC_PREFLIGHT`, read-only list/read/search/LSP/finish schema, deterministic fallback, UI trace and Explorer default model-call cap 8; close #23 after verifying GitHub state once this bootstrap refresh is on master.
 
 ---
 
-## 6. Exact next implementation step
+## 6. Exact next functional implementation step
 
-Current workstream: finish documentation PR #41 on exact-head Quality and merge it into `master`.
+Once this bootstrap content is present on `master`:
 
-After #41 is merged:
-
-1. Verify/close issue #23 if every acceptance item is satisfied by #40.
-2. Start a fresh branch from then-current `master` for #32 Phase 4; do not continue on `feat/native-agent-teams`.
+1. Verify and close issue #23 if it is still open; #40 satisfies its requested port and Quality requirements.
+2. Start a fresh branch from the then-current `master` for #32 Phase 4; do not continue on `feat/native-agent-teams`.
 3. First Phase-4 slice is **Task DAG + dependency validation only**, with no mutation/worktrees yet.
 4. Extend `AgentTask`/adjacent focused types with mission/parent/dependency/task-state semantics while preserving existing single-agent/read-only-child paths.
-5. Deterministically reject duplicate IDs, missing dependencies and cycles.
+5. Deterministically reject duplicate task IDs, missing dependencies and cycles.
 6. Add task states such as proposed/blocked/ready/running/succeeded/failed/cancelled/retryable plus dependency release/failure propagation.
-7. Convert Planner `SuggestedTasks` into validated machine-readable DAG proposals; do not parse prose.
-8. Add focused tests for duplicate IDs, missing dependencies, cycles, dependency release, failure propagation and multiple independent ready tasks.
-9. Do not add Builder mutation, worktrees, asynchronous persistence or broad scheduler concurrency in this first slice.
-10. Full Quality on exact head; merge only after 0-behind/mergeability/review checks; immediately refresh STATE/TODO again.
+7. Require Planner `SuggestedTasks` to carry stable machine-readable IDs and dependencies that reference IDs; do not parse prose.
+8. Keep proposed/requested capabilities distinct from actually granted executable capabilities.
+9. Add focused tests for proposal validation, duplicate IDs, missing dependencies, cycles, dependency release, failure propagation and multiple independent ready tasks.
+10. Do not add Builder mutation, worktrees, asynchronous mission persistence or broad scheduler concurrency in this first slice.
+11. Full Quality on exact head; merge only after 0-behind/mergeability/review checks; immediately refresh STATE/TODO for the functional result.
 
-Then proceed to scheduler/resource manager separation of logical queues from model-inference concurrency and mission/task budgets.
+Then proceed to scheduler/resource-manager separation of logical queues from model-inference concurrency and mission/task budgets.
 
-`TODO.md` contains the exhaustive remaining roadmap and acceptance criteria.
+`TODO.md` contains the exhaustive remaining functional roadmap and acceptance criteria.
