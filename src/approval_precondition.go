@@ -30,6 +30,23 @@ func captureApprovedFilePrecondition(project string, action AgentAction) (*appro
 		if err != nil {
 			return nil, err
 		}
+		if version.Exists {
+			data, readErr := os.ReadFile(full)
+			if readErr != nil {
+				return nil, readErr
+			}
+			switch action.Action {
+			case "write_file":
+				if string(data) == action.Content {
+					return nil, noObservableProjectChanges("file already has the requested content")
+				}
+			case "replace_text":
+				original := string(data)
+				if strings.Count(original, action.OldText) == 1 && strings.Replace(original, action.OldText, action.NewText, 1) == original {
+					return nil, noObservableProjectChanges("replacement leaves the file unchanged")
+				}
+			}
+		}
 		return &approvedFilePrecondition{FullPath: full, Version: version}, nil
 	default:
 		return nil, nil
