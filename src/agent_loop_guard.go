@@ -146,6 +146,26 @@ func loopGuardControlAction(action AgentAction) bool {
 	return action.Action == "finish" || action.Action == "ask_user"
 }
 
+func agentImmediateRepeatMessage(cfg Config) string {
+	return localizeConfigText(cfg, "Identische Werkzeugaktion blockiert", "Identical tool action blocked")
+}
+
+func agentImmediateRepeatDetail(cfg Config, action AgentAction) string {
+	return localizeConfigText(cfg,
+		action.Action+" wurde unmittelbar zuvor bereits ohne neue Information angefordert.",
+		action.Action+" was already requested immediately before without new information.")
+}
+
+func agentImmediateRepeatHint(cfg Config, repeatBlocks int) string {
+	de := "SYSTEMHINWEIS: Die identische Aktion wurde blockiert. Wähle eine andere Diagnose, ändere Argumente oder Vorgehen und werte die bereits vorhandene Ausgabe aus."
+	en := "SYSTEM NOTICE: The identical action was blocked. Choose a different diagnosis, change the arguments or approach, and use the output already available."
+	if repeatBlocks >= 2 {
+		de += " Stelle keine weitere gleichartige Rückfrage; schließe mit einer präzisen Fehlerdiagnose ab, falls keine sichere Alternative existiert."
+		en += " Do not ask another equivalent question; finish with a precise failure diagnosis if no safe alternative exists."
+	}
+	return localizeConfigText(cfg, de, en)
+}
+
 func agentLoopBlockDetail(cfg Config, reason agentLoopBlockReason, action AgentAction) string {
 	var de, en string
 	switch reason {
