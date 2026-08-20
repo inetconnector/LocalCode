@@ -3,9 +3,10 @@
 **Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current verified functional master before this documentation-only state update:** `b12e4d4664200f9eae0f114690cb925e0b5598e1`  
-**Last verified functional merge:** PR #36 `feat: block stagnant agent tool loops`  
+**Current verified functional master before this documentation-only state update:** `f84a38f25a09231fb973022867e9177e8de04974`  
+**Last verified functional merge:** PR #38 `feat: finish safe project UX across desktop and mobile`  
 **Open implementation PR:** none at this snapshot  
+**Immediate implementation priority:** issue #32 `feat: exceed Claw Code native orchestration capabilities`  
 
 This file is the authoritative continuation document for LocalCode. Historical snapshots belong in Git history and closed PRs, not as contradictory appended sections here.
 
@@ -125,8 +126,8 @@ Master includes:
 Current master implements:
 
 - `create_folder` intentionally bare
-- `create_project` always creates `README.md`, `AGENTS.md` and `STATE.md`, independent of the old automatic-doc preference
-- confirmed non-empty delete moves the project into LocalCode-managed same-volume quarantine rather than immediate permanent `RemoveAll`
+- `create_project` always creates `README.md`, `AGENTS.md` and `STATE.md`
+- confirmed non-empty delete moves the project into LocalCode-managed same-volume quarantine rather than immediate permanent deletion
 - minimal atomic quarantine metadata
 - validated list/restore/permanent-purge primitives
 - restore refuses an occupied original destination
@@ -160,7 +161,6 @@ Implemented contract includes:
 - process-scoped `OLLAMA_HOST`
 - ambient OpenAI/Anthropic/xAI/DashScope credential/provider variables stripped from Claw subprocesses
 - `read-only` for analysis and `workspace-write` for mutation; no default/permanent `danger-full-access`
-- Windows Authenticode/MSVC preparation and safe temporary batch invocation
 - safe authenticated mobile engine selection, blocked while an agent is running
 - explicit isolated Claw benchmark adapter
 - no Claw Studio installation/launch; LocalCode remains the shell
@@ -183,7 +183,6 @@ Current Mobile Remote exposes the reversible quarantine backend through a delibe
 - no user-controlled filesystem path is accepted by these endpoints
 - routes exist only on the mobile-safe Remote server
 - existing authenticated `/remote/api/editing-engine` route remains intact
-- tests prove unauthenticated list/action requests are rejected and authenticated requests work
 
 ### Session-wide stagnant-loop/no-op guard – PR #36 merged
 
@@ -191,34 +190,69 @@ Merge commit:
 
 `b12e4d4664200f9eae0f114690cb925e0b5598e1`
 
+LocalCode Native has a session-scoped deterministic no-progress guard in addition to the immediate-identical-action block:
+
+- structured action fingerprint covers complete action payload/arguments while ignoring only human explanation text
+- normalized result fingerprint tracks whether repeated diagnostics return the same evidence
+- repeated unchanged structured actions/read-tool outcomes and short cycles are detected and blocked
+- changed output is treated as new evidence
+- successful real mutation or project verification resets stagnation history
+- `finish` and `ask_user` are excluded from session-loop blocking
+- feedback exists in DE and EN
+
+Native edit no-op handling is explicit:
+
+- `write_file` rejects existing identical bytes
+- `replace_text` rejects unchanged output
+- approval/version-bound mutation paths enforce the same rule
+- no-op rejection occurs before pointless approval and before backup/atomic write
+- real writes retain path locks, SHA/version preconditions, backups and atomic conflict-safe replacement
+
+### Safe project UX across Desktop and Mobile – PR #38 merged
+
+Merge commit:
+
+`f84a38f25a09231fb973022867e9177e8de04974`
+
 Final tested PR head:
 
-`f89b0f55cfb6a0cbc57c2978374023b630d8d3b4`
+`cb2f18cae0259106350e2aa69fd0f0a9a00fb55b`
 
-LocalCode Native now has a session-scoped deterministic no-progress guard in addition to the older immediate-identical-action block:
+Issue #31 is closed as completed.
 
-- structured action fingerprint covers the complete action payload/arguments while deliberately ignoring only human explanation text
-- normalized result fingerprint tracks whether repeated diagnostics return the same evidence
-- a third unchanged structured action is blocked after two matching failures
-- a third unchanged read/tool action is blocked after two identical no-progress outcomes
-- repeated A/B, A/B/C and short period-4 action/result cycles are detected and blocked
-- changed output from the same diagnostic is treated as new evidence and clears stale history
-- successful real project mutation resets stagnation history
-- successful project verification resets stagnation history
-- `finish` and `ask_user` are excluded from session-loop blocking
-- immediate-identical-action feedback and session-loop feedback are available in DE and EN
+Current project UX now matches the reversible backend semantics:
 
-Native edit no-op handling is now also explicit:
+- Desktop and Mobile clearly distinguish **New project** from **New folder**
+- `create_project` always creates `README.md`, `AGENTS.md` and `STATE.md`
+- `create_folder` remains intentionally empty; Desktop no longer auto-selects it in a way that scaffolds project docs
+- empty folders can be deleted after a simple confirmation
+- non-empty deletion uses a server-generated preview with file/directory/byte counts
+- non-empty project-name confirmation is exact and case-sensitive
+- non-empty deletion wording states that the project moves to LocalCode Trash/Quarantine and can be restored; it is not described as permanent deletion
+- Desktop and Mobile both expose a visible Trash/Quarantine view with **Restore**
+- permanent purge is visually separate and requires exact `PURGE <project>` confirmation
+- restore reactivates the preserved project threads that were archived during quarantine
+- Restore continues to refuse occupied original destinations
+- quarantine/path/symlink protections remain inherited from the backend
+- Mobile Remote remains narrower than Desktop; the only added project action is the already-safe `create_folder`, with no arbitrary filesystem/shell/admin API
+- DE/EN UI semantics were updated together
 
-- `write_file` rejects an existing file whose bytes already equal the requested content
-- `replace_text` rejects a replacement that leaves content unchanged
-- approval/version-bound mutation paths enforce the same rule
-- known no-ops are rejected while capturing approval preconditions, before showing a pointless approval prompt
-- defensive no-op checks remain directly before backup/atomic write
-- no-op rejection occurs without creating a backup or fake mutation
-- real writes still retain path locks, SHA/version preconditions, backups and atomic conflict-safe replacement
+Quality #384 passed on the exact final head and completed the full Windows pipeline:
 
-PR #36 was ported as a small current-master feature delta rather than merging stale historical PR #7. The final PR diff contained only six functional files; temporary branch-local patch/format workflows were removed before merge. Quality #379 passed the full required Windows pipeline on the exact final head: format, vet, JS/PowerShell syntax, Android APK, vulnerability scan, full-stack loopback, complete Go tests, race detector, coverage >=80%, native Windows builds and diff check. The branch was 0 commits behind master, mergeable and had no unresolved review threads before merge.
+- format
+- vet
+- frontend JavaScript syntax
+- PowerShell syntax
+- native Android Remote APK
+- vulnerability scan
+- full-stack loopback HTTP integration
+- complete Go tests
+- race detector
+- statement coverage >=80.0%
+- native Windows builds including GUI path
+- final Git diff check
+
+Before merge the branch was 0 commits behind `master`, mergeable, and had no review submissions or unresolved review threads.
 
 ---
 
@@ -259,36 +293,11 @@ Never lower the 80% threshold to rescue a PR.
 
 ---
 
-## 4. Immediate next feature – issue #31 project UX across Desktop and Mobile
+## 4. Immediate next feature – issue #32 Native orchestration/subagents
 
-There is no open implementation PR at this snapshot. Start from current master after this STATE update.
+Issue #32 is open. There is no open implementation PR at this snapshot. Start from current `master` after this STATE refresh.
 
-Backend quarantine semantics and the narrow Mobile API are already merged. The remaining gap is coherent, non-technical user-facing project creation/deletion/recovery UX.
-
-Required end state from issue #31:
-
-- Desktop and Mobile clearly distinguish `New project` from `New folder`
-- `New project` uses the already-merged `create_project` backend and therefore always creates `README.md`, `AGENTS.md` and `STATE.md`
-- `New folder` remains intentionally empty
-- empty-folder deletion remains simple and safe
-- non-empty delete preview displays server-derived file/directory/byte information
-- non-empty deletion wording explicitly says the project moves to recoverable LocalCode quarantine; do not call the quarantine action permanent deletion
-- visible Quarantine/Trash view on Desktop and Mobile
-- `Restore` is simple and visible
-- permanent purge is visually separate and requires exact `PURGE <project>` confirmation
-- Desktop and Mobile wording remains semantically correct in DE and EN
-- restore refuses occupied destinations
-- no symlink/path escape
-- project/chat references remain consistent across quarantine/restore
-- Mobile UI must use the already-merged PR #33 narrow API; do not add arbitrary filesystem/shell/admin endpoints
-
-Implementation should be split into a current-master feature PR small enough to review. Full Windows Quality is required on the exact final head.
-
----
-
-## 5. Open issue #32 – make LocalCode Native match/exceed Claw orchestration
-
-Running Claw externally is implemented. Native still needs the useful architectural capabilities internally.
+Goal: port useful architectural ideas identified from Claw Code into LocalCode Native while keeping LocalCode's stricter safety/reliability model.
 
 Target capabilities:
 
@@ -300,6 +309,7 @@ Target capabilities:
 6. broader MCP transports only if LocalCode auth/timeout/approval/SSRF/path protections remain intact
 7. structured machine-readable child-agent results rather than prose parsing
 8. health/doctor diagnostics for external engines and Native capabilities
+9. benchmark tasks that exercise subagents, repository exploration, large tool registries and recovery
 
 Safety requirements remain stronger than orchestration convenience:
 
@@ -308,12 +318,18 @@ Safety requirements remain stronger than orchestration convenience:
 - no concurrent unsupervised same-workspace mutation
 - durable crash journal remains authoritative
 - child mutation must be diff-reviewable and verified before success
+- no default/silent `danger-full-access` equivalent
+- Mobile remains narrower than Desktop
 
 Historical closed PR #14 may contain useful read-only model-subagent design ideas; port feature delta only, never merge a stale branch wholesale.
 
+Implementation should be split into current-master reviewable increments rather than one large orchestration rewrite.
+
 ---
 
-## 6. Open issue #30 – benchmarked llama.cpp / DMC backend
+## 5. Open issue #30 – benchmarked llama.cpp / DMC backend
+
+Issue #30 remains open.
 
 Goal: introduce an inference-backend abstraction below the Native agent loop while keeping Ollama default and behavior stable.
 
@@ -333,9 +349,9 @@ Do not confuse DMC with RAG or replace LocalCode semantic repository intelligenc
 
 ---
 
-## 7. Additional competitive work
+## 6. Additional competitive work
 
-After issue #31 and the main Native orchestration work:
+After the main Native orchestration work:
 
 - prompt/context cache stability and deterministic prefix ordering
 - context/token economy benchmarks against Aider/OpenCode/Claw with identical inputs
@@ -347,16 +363,15 @@ After issue #31 and the main Native orchestration work:
 
 ---
 
-## 8. Immediate execution order
+## 7. Immediate execution order
 
 Unless a new verified blocker changes priority:
 
-1. merge this post-#36 STATE refresh
-2. implement/finish project Trash/Quarantine UX (#31) on fresh master
-3. refresh `STATE.md` immediately after that merge
-4. build Native orchestration/subagents (#32) in current-master reviewable increments
-5. refresh `STATE.md` after each material merge
-6. add/benchmark inference backend and DMC path (#30)
-7. refresh `STATE.md`
+1. merge this post-#38 STATE refresh
+2. implement issue #32 in small current-master increments, beginning with the safest useful Native orchestration/subagent foundation
+3. refresh `STATE.md` after every material #32 merge
+4. extend benchmark coverage for the newly implemented Native orchestration capability before claiming parity/superiority
+5. implement and benchmark issue #30 inference-backend / llama.cpp / DMC path
+6. refresh `STATE.md` after each material merge
 
 Every material step ends with a fully current `STATE.md`. A future agent must never have to infer present repository reality from stale or contradictory historical sections.
