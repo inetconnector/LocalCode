@@ -8,11 +8,14 @@
 **PR #42 merge:** `c576f27cf75b642987aa56c7227840a133d00e07`  
 **Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
 **Quality on final PR #42 head:** #433 – success; total statement coverage **80.2%**  
-**Documentation refresh branch:** `docs/state-after-task-dag`  
+**Documentation refresh carrier:** PR #43 `docs: refresh canonical state after task DAG merge`, branch `docs/state-after-task-dag`  
+**Carrier content baseline before this self-resolving metadata update:** `47123d2a16e779ff3c4e13d97d0d4118d24d5707`  
 **Open implementation PR:** none at this functional snapshot  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`  
 **Immediate functional priority after this documentation refresh reaches `master`:** #32 Phase 5 – Scheduler / Resource Manager foundation  
 **Canonical unfinished-work ledger:** `TODO.md`
+
+**Self-resolving carrier rule:** when this file is read on `docs/state-after-task-dag`, PR #43 is the active documentation carrier. When this exact content is read from `master` after PR #43, the carrier is already merged by definition. Do not create another documentation PR merely to change “#43 carrier” into “#43 merged”. Always verify current GitHub reality before resuming. Functional branch/PR/CI changes still require normal STATE/TODO refreshes.
 
 `STATE.md` is the authoritative self-contained bootstrap description of what is true now. `TODO.md` is the exhaustive list of unfinished functional work. Git history and closed PRs/issues are history; neither file may accumulate contradictory snapshots.
 
@@ -29,7 +32,7 @@ Blocking rules:
 1. Before material work read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md`.
 2. Verify GitHub reality before resuming: current `master`, active implementation branch/PR, open issues, exact head, reviews/threads and latest required Quality run.
 3. After every material functional branch/base/head change, implementation PR/merge, CI result, roadmap/scope decision, completed milestone or safety/architecture change, refresh `STATE.md` and `TODO.md` in the same workstream or immediately afterward.
-4. Documentation-only carrier PRs may use the self-resolving carrier convention: record the verified functional master before the docs-only update and do not create an infinite chain solely to record the docs PR's own merge SHA.
+4. Documentation-only carrier PRs may use the self-resolving carrier convention above: record the verified functional master before the docs-only update and do not create an infinite chain solely to record the docs PR's own merge SHA.
 5. `STATE.md` describes current implemented/verified reality; `TODO.md` contains only unfinished functional work, dependencies and acceptance gates.
 6. Replace stale facts instead of appending contradictory snapshots.
 7. A material functional change is not operationally complete while either file describes the previous repository reality.
@@ -253,7 +256,7 @@ Issue #23 is completed. Issues #22 and #25 still require reconciliation against 
 
 After this documentation refresh is merged to `master`:
 
-1. Verify current `master` still contains #42 merge `c576f27cf75b642987aa56c7227840a133d00e07` plus this docs-only refresh and that no competing implementation PR appeared.
+1. Verify current `master` contains #42 merge `c576f27cf75b642987aa56c7227840a133d00e07` plus the self-resolving PR #43 docs carrier and that no competing implementation PR appeared.
 2. Read current `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, then inspect `src/agent_task_graph.go`, `src/agent_team_types.go`, `src/subagent_model.go`, `src/types.go` and existing cancellation/budget helpers.
 3. Create a fresh branch from the then-current `master` for #32 Phase 5; do not reuse `feat/native-agent-task-dag`.
 4. Implement the smallest safe scheduler/resource-manager foundation in focused new files. Start backend-only; do not add worktrees/mutation.
