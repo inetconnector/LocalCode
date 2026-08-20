@@ -6,8 +6,8 @@
 **Last merged functional feature:** PR #44 `feat: add native agent scheduler resource foundation`, merge `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
 **Final tested PR #44 head:** `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
 **GitHub Quality run on that head:** Actions run `32421102087` success on 2026-08-20
-**Active implementation branch:** none; resume new work from `master`
-**Active implementation PR:** none; PR #44 is merged and its remote branch was deleted
+**Active implementation branch:** none; resume new feature work from `master`
+**Transient documentation/test carrier:** PR #45 `docs: refresh state after scheduler merge` from `codex/docs-refresh-after-scheduler-merge` carries the post-PR #44 status refresh plus a race-aware test wait fix required by the PR #45 GitHub gate. This line is self-resolving: when this file is read from `master` after PR #45 is merged, treat PR #45 as closed and no active implementation PR as present.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the authoritative exhaustive list of unfinished **functional** work. `STATE.md` describes current implemented reality and is the self-contained AI bootstrap. Remove completed items rather than preserving historical checkboxes.
@@ -70,6 +70,7 @@ Completed branch work, therefore not open backlog:
 - GitHub Actions run `32421102087` passed on final PR #44 head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
 - PR #44 was marked ready, merged to `master` with merge commit `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`, and its remote branch was deleted
 - `STATE.md` and `TODO.md` were refreshed for the resulting `master` reality
+- PR #45 initially exposed race-detector-only wall-clock timeouts in agent-stop tests; the shared test helper now scales its timeout only when Go's `race` build tag is active
 
 Explicitly out of scope for this first Phase-5 slice:
 

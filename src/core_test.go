@@ -2553,6 +2553,9 @@ func TestAgentCompactsLargeContextAndContinues(t *testing.T) {
 
 func waitForAgentStop(t *testing.T, state *AppState, timeout time.Duration) {
 	t.Helper()
+	if raceDetectorEnabled {
+		timeout *= 4
+	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		state.mu.RLock()

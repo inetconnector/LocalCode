@@ -7,8 +7,8 @@
 **Last merged functional feature:** PR #44 `feat: add native agent scheduler resource foundation`, merge `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`
 **Final tested PR #44 head:** `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`
 **GitHub Quality run on that head:** Actions run `32421102087` success on 2026-08-20; full PR gate passed
-**Active implementation branch:** none; resume new work from `master`
-**Active implementation PR:** none; PR #44 is merged and its remote branch was deleted
+**Active implementation branch:** none; resume new feature work from `master`
+**Transient documentation/test carrier:** PR #45 `docs: refresh state after scheduler merge` from `codex/docs-refresh-after-scheduler-merge` carries this post-PR #44 status refresh plus a race-aware test wait fix required by the PR #45 GitHub gate. This line is self-resolving: when this file is read from `master` after PR #45 is merged, treat PR #45 as closed and no active implementation PR as present.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities` – open  
 **Current slice:** #32 Phase 5 backend Scheduler / Resource Manager foundation is merged; next increment is real read-only scheduler dispatch integration
 **Canonical unfinished-work ledger:** `TODO.md`
@@ -301,6 +301,7 @@ Verification for PR #44 final head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06`:
 - `dist\LocalCode.exe` was started after the final build; observed process PID `23016` from `C:\Users\frede\Projekte\LocalCode\dist\LocalCode.exe`. Desktop status returned version `6.4.4`, `editing_engine:"native"` and selected model `qwen2.5-coder:14b`; the served Desktop HTML contains `engineSelect`, `value="claw"` and `changeEditingEngine(e.target.value)`.
 - `git diff --check` – passed; Git only warned that `CHECKSUMS-SHA256.txt`, `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/java/com/inetconnector/localcode/remote/MainActivity.java` and `scripts/build-android.ps1` line endings will normalize when Git touches those files.
 - GitHub Actions run `32421102087` for PR #44 head `83ac6df8bbd3cb806030047bfb729eb84fdf9a06` – success on 2026-08-20. The job passed setup, gofmt, vet, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, complete tests, race detector, coverage, native Windows builds and `git diff --check`.
+- PR #45 initially exposed that several agent-stop tests used tight wall-clock timeouts that can expire under Go's race detector even though the normal tests pass. The shared `waitForAgentStop` test helper now scales its timeout only when the `race` build tag is active.
 
 The previously known `TestCoverageServerEndpointMatrix` timing flake has a merged stabilization: after `/api/chat`, the test now waits for the agent to become idle and fails explicitly if it remains running, rather than continuing to `/api/new-chat` and receiving the correct product 409 response.
 
@@ -399,9 +400,10 @@ Still open and intentionally separate from orchestration. Ollama remains default
 
 From `master` at `9bae2a2f79b2edf05ab632e373e7a111b33f8b32`:
 
-1. Delete only already-merged stale local/remote branches after confirming they are contained in `master`.
-2. Start the next #32 Phase-5 increment on a fresh branch from `master`.
-3. Integrate the scheduler/resource manager with actual read-only Explorer/Planner/Reviewer dispatch above the existing bounded child runtime.
-4. Keep child mutation, worktrees, Integrator mutation and durable mission persistence out of scope until the read-only dispatch path is measured and verified.
+1. Finish/merge transient PR #45 if it is still open; after merge, delete its branch.
+2. Delete only already-merged stale local/remote branches after confirming they are contained in `master`.
+3. Start the next #32 Phase-5 increment on a fresh branch from `master`.
+4. Integrate the scheduler/resource manager with actual read-only Explorer/Planner/Reviewer dispatch above the existing bounded child runtime.
+5. Keep child mutation, worktrees, Integrator mutation and durable mission persistence out of scope until the read-only dispatch path is measured and verified.
 
 `TODO.md` is authoritative for every unfinished functional item.
