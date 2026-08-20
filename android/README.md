@@ -12,6 +12,15 @@ This directory contains the native Android shell for LocalCode Remote.
 - The existing eight-digit LocalCode pairing code is still entered in the Remote web UI after the transport endpoint has been discovered.
 - WebView file inputs are handed to Android's native file chooser through `onShowFileChooser`; selected URIs stay inside Android's normal picker grants and are passed back to the Remote web app as browser file attachments.
 - Voice input uses Android's `RecognizerIntent` through a narrow `LocalCodeAndroid` JavaScript bridge. The bridge only starts speech recognition and returns recognized text to the prompt field.
+- The bridge checks that a speech-recognition activity is available before launching it. File-picker and speech-launch failures are shown in the visible Remote WebView rather than in the hidden discovery panel.
+- Pending WebView file-chooser callbacks are cancelled before a replacement chooser starts and during Activity teardown so the attachment control cannot remain stuck behind an orphaned callback.
+- Native discovery/status controls follow the Android display language: German on a German device, English otherwise. The Remote web app keeps its own matching German/English catalog.
+
+## Mobile composer contract
+
+The Remote composer keeps all editing on the Windows LocalCode instance while the phone supplies input. The attachment button opens the native Android picker, multiple selected files are passed through the Remote attachment validation, and choosing the same file again is supported because the browser file input is reset after each selection. The microphone appends recognized text to the current prompt without sending it automatically. The send path is guarded against duplicate submissions, forwards the current project/thread/model and attachments together, clears the prompt and attachments only after the chat request succeeds, and leaves them intact when the request fails.
+
+The Remote UI also wires pairing, all navigation tabs, project/task selection, project-management actions, approval buttons, engine selection, stop, attachment removal, voice input and send controls through explicit handlers. Go regression tests keep these central mobile-control bindings and Android bridge invariants from silently disappearing.
 
 ## QR / deep-link handoff
 
