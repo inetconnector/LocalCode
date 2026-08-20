@@ -53,7 +53,7 @@ func (s *RemoteServer) handleRemoteProjectAction(w http.ResponseWriter, r *http.
 	}
 	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
 	switch req.Action {
-	case "create_project", "delete_empty", "delete_recursive":
+	case "create_folder", "create_project", "delete_empty", "delete_recursive":
 	default:
 		http.Error(w, "remote project action is not allowed", http.StatusForbidden)
 		return

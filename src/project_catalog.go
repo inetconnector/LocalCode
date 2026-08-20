@@ -380,8 +380,8 @@ func (s *AppState) ProjectAction(path, action, value string) (ProjectSummary, er
 		if preview.Empty {
 			return ProjectSummary{}, errors.New("folder is empty; use delete_empty")
 		}
-		if value == "" || !strings.EqualFold(value, preview.Confirmation) {
-			return ProjectSummary{}, errors.New("recursive delete confirmation must match the folder name")
+		if value == "" || value != preview.Confirmation {
+			return ProjectSummary{}, errors.New("quarantine confirmation must exactly match the folder name")
 		}
 		entry, err := quarantineProject(root, full)
 		if err != nil {

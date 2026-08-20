@@ -7,9 +7,36 @@ import (
 	"strings"
 )
 
-const remoteProjectQuarantineMaxBody = 16 << 10
+const desktopProjectTrashMaxBody = 16 << 10
 
-func (s *RemoteServer) handleRemoteProjectQuarantineList(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleProjectDeletePreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		http.Error(w, "project path is required", http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	root := s.state.Config.RootProjectDir
+	running := s.state.Running
+	s.state.mu.RUnlock()
+	if running {
+		http.Error(w, "agent is running", http.StatusConflict)
+		return
+	}
+	preview, err := inspectProjectDelete(root, path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, preview)
+}
+
+func (s *Server) handleProjectQuarantineList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -23,12 +50,12 @@ func (s *RemoteServer) handleRemoteProjectQuarantineList(w http.ResponseWriter, 
 	_ = writeJSON(w, map[string]any{"quarantine": entries})
 }
 
-func (s *RemoteServer) handleRemoteProjectQuarantineAction(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleProjectQuarantineAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, remoteProjectQuarantineMaxBody)
+	r.Body = http.MaxBytesReader(w, r.Body, desktopProjectTrashMaxBody)
 	var req struct {
 		Action       string `json:"action"`
 		ID           string `json:"id"`
@@ -45,16 +72,14 @@ func (s *RemoteServer) handleRemoteProjectQuarantineAction(w http.ResponseWriter
 		return
 	}
 	if req.Action != "restore" && req.Action != "purge" {
-		http.Error(w, "remote quarantine action is not allowed", http.StatusForbidden)
+		http.Error(w, "quarantine action is not allowed", http.StatusForbidden)
 		return
 	}
-
 	entry, err := s.state.ProjectQuarantineAction(req.Action, req.ID, req.Confirmation)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-
 	message := "project restored from quarantine"
 	if req.Action == "purge" {
 		message = "project permanently purged from quarantine"

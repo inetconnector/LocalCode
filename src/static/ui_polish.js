@@ -5,49 +5,77 @@
   const i18n = window.LocalCodeI18n;
   if (i18n?.dictionaries) {
     Object.assign(i18n.dictionaries.de, {
+      'Neues Projekt':'Neues Projekt',
       'Neuer Ordner':'Neuer Ordner',
-      'Ordner umbenennen':'Ordner umbenennen',
-      'Leeren Ordner löschen':'Leeren Ordner löschen',
-      'Ordner rekursiv löschen…':'Ordner rekursiv löschen…',
+      'Papierkorb':'Papierkorb',
+      'Neues Projekt anlegen':'Neues Projekt anlegen',
+      'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.':'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.',
+      'Projekt anlegen':'Projekt anlegen',
+      'Projekt wurde angelegt.':'Projekt wurde angelegt.',
       'Neuen Ordner anlegen':'Neuen Ordner anlegen',
-      'Legt einen neuen Projektordner direkt unter der aktuellen Projektwurzel an.':'Legt einen neuen Projektordner direkt unter der aktuellen Projektwurzel an.',
+      'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.':'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.',
       'Ordner anlegen':'Ordner anlegen',
-      'Ordner wurde angelegt.':'Ordner wurde angelegt.',
+      'Ordner wurde leer angelegt.':'Ordner wurde leer angelegt.',
+      'Ordner umbenennen':'Ordner umbenennen',
       'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.':'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.',
       'Umbenennen':'Umbenennen',
       'Ordner wurde umbenannt.':'Ordner wurde umbenannt.',
+      'Löschen…':'Löschen…',
       'Leeren Ordner löschen?':'Leeren Ordner löschen?',
-      'Der Ordner wird nur gelöscht, wenn er wirklich leer ist.':'Der Ordner wird nur gelöscht, wenn er wirklich leer ist.',
+      'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.':'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.',
+      'Leeren Ordner löschen':'Leeren Ordner löschen',
       'Leerer Ordner wurde gelöscht.':'Leerer Ordner wurde gelöscht.',
-      'Ordner rekursiv löschen?':'Ordner rekursiv löschen?',
-      'Dauerhaft löschen':'Dauerhaft löschen',
-      'Bestätigung stimmt nicht mit dem Ordnernamen überein.':'Bestätigung stimmt nicht mit dem Ordnernamen überein.',
-      'Ordner wurde rekursiv gelöscht.':'Ordner wurde rekursiv gelöscht.',
+      'Projekt in den Papierkorb verschieben?':'Projekt in den Papierkorb verschieben?',
+      'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.':'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.',
+      'In Papierkorb verschieben':'In Papierkorb verschieben',
+      'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.':'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.',
+      'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.':'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',
+      'Papierkorb ist leer.':'Papierkorb ist leer.',
+      'Wiederherstellen':'Wiederherstellen',
+      'Dauerhaft löschen…':'Dauerhaft löschen…',
+      'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.':'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.',
+      'Projekt wurde wiederhergestellt.':'Projekt wurde wiederhergestellt.',
+      'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.':'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',
+      'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}',
+      'Schließen':'Schließen',
       'Anzeigenamen bearbeiten':'Anzeigenamen bearbeiten',
-      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.',
       'Claw Code (experimentell)':'Claw Code (experimentell)'
     });
     Object.assign(i18n.dictionaries.en, {
+      'Neues Projekt':'New project',
       'Neuer Ordner':'New folder',
-      'Ordner umbenennen':'Rename folder',
-      'Leeren Ordner löschen':'Delete empty folder',
-      'Ordner rekursiv löschen…':'Delete folder recursively…',
+      'Papierkorb':'Trash',
+      'Neues Projekt anlegen':'Create new project',
+      'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.':'Creates a LocalCode project with README.md, AGENTS.md and STATE.md.',
+      'Projekt anlegen':'Create project',
+      'Projekt wurde angelegt.':'Project created.',
       'Neuen Ordner anlegen':'Create new folder',
-      'Legt einen neuen Projektordner direkt unter der aktuellen Projektwurzel an.':'Creates a new project folder directly below the current project root.',
+      'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.':'Creates an intentionally empty folder directly below the current project root.',
       'Ordner anlegen':'Create folder',
-      'Ordner wurde angelegt.':'Folder created.',
+      'Ordner wurde leer angelegt.':'Empty folder created.',
+      'Ordner umbenennen':'Rename folder',
       'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.':'Renames the actual folder on disk. LocalCode updates project and chat references.',
       'Umbenennen':'Rename',
       'Ordner wurde umbenannt.':'Folder renamed.',
+      'Löschen…':'Delete…',
       'Leeren Ordner löschen?':'Delete empty folder?',
-      'Der Ordner wird nur gelöscht, wenn er wirklich leer ist.':'The folder is deleted only if it is actually empty.',
+      'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.':'The folder is empty and will be deleted directly after this confirmation.',
+      'Leeren Ordner löschen':'Delete empty folder',
       'Leerer Ordner wurde gelöscht.':'Empty folder deleted.',
-      'Ordner rekursiv löschen?':'Delete folder recursively?',
-      'Dauerhaft löschen':'Delete permanently',
-      'Bestätigung stimmt nicht mit dem Ordnernamen überein.':'Confirmation does not match the folder name.',
-      'Ordner wurde rekursiv gelöscht.':'Folder deleted recursively.',
+      'Projekt in den Papierkorb verschieben?':'Move project to Trash?',
+      'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.':'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored.',
+      'In Papierkorb verschieben':'Move to Trash',
+      'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.':'Confirmation does not exactly match the project name.',
+      'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.':'Project moved to Trash and can be restored.',
+      'Papierkorb ist leer.':'Trash is empty.',
+      'Wiederherstellen':'Restore',
+      'Dauerhaft löschen…':'Permanently purge…',
+      'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.':'Permanent purge cannot be undone. Type exactly “PURGE {project}”.',
+      'Projekt wurde wiederhergestellt.':'Project restored.',
+      'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.':'Project permanently purged from Trash.',
+      'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Files: {files} · Folders: {dirs} · Bytes: {bytes}',
+      'Schließen':'Close',
       'Anzeigenamen bearbeiten':'Edit display name',
-      'Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.':'Files and subfolders are permanently deleted. Local chat history is preserved in the archive.',
       'Claw Code (experimentell)':'Claw Code (experimental)'
     });
   }
@@ -56,8 +84,10 @@
     :root{--rightW:280px}
     .sidebar{background:#182126}
     .section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-right:9px}
-    .section-title-action{width:27px;height:27px;flex:0 0 27px;border:1px solid #36434a;border-radius:7px;background:#202b30;color:#b8c3c9;display:grid;place-items:center;font-size:18px;line-height:1;padding:0}
+    .section-title-action{width:27px;height:27px;flex:0 0 auto;border:1px solid #36434a;border-radius:7px;background:#202b30;color:#b8c3c9;display:grid;place-items:center;font-size:18px;line-height:1;padding:0}
+    .section-title-action.text{width:auto;padding:0 6px;font-size:10px;font-weight:700;white-space:nowrap}
     .section-title-action:hover{background:#2b3940;color:#fff;border-color:#4a5a62}
+    .project-header-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
     .project-row.active{background:#263b4d;box-shadow:inset 2px 0 0 var(--accent)}
     .context-menu{background:#1e2529;border-color:#3c494f;box-shadow:0 18px 60px rgba(0,0,0,.6)}
     .context-menu-item:hover,.context-menu-item:focus,.context-menu-item.open{background:#2c383e}
@@ -85,7 +115,11 @@
     body.has-approval .composer-zone{padding-bottom:18px}
     .modal-card{background:#1e2428;border-color:#3b464c}
     .action-modal-danger{background:#b64b4b!important;border-color:#c65a5a!important}
-    @media(max-width:1100px){:root{--rightW:250px}.approval-dock{width:min(630px,calc(100vw - 40px));bottom:88px}}
+    .project-trash-overlay{position:fixed;inset:0;z-index:650;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:24px}
+    .project-trash-dialog{width:min(680px,calc(100vw - 40px));max-height:min(720px,calc(100vh - 48px));overflow:auto;background:#1e2529;border:1px solid #445159;border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.66);padding:16px}
+    .project-trash-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}.project-trash-head h3{margin:0;flex:1;font-size:17px}.project-trash-close{border:1px solid #46535a;background:#273137;border-radius:7px;padding:6px 10px}
+    .project-trash-row{border:1px solid #354249;background:#182025;border-radius:10px;padding:11px;margin:8px 0}.project-trash-name{font-weight:700}.project-trash-meta{color:#9ba7ad;font-size:11px;margin:4px 0 10px;overflow-wrap:anywhere}.project-trash-actions{display:flex;gap:8px;flex-wrap:wrap}.project-trash-actions button{border:1px solid #42515a;background:#27343a;border-radius:7px;padding:7px 10px}.project-trash-actions .project-trash-purge{margin-left:auto;background:#382426;border-color:#6d3d41;color:#ffdede}
+    @media(max-width:1100px){:root{--rightW:250px}.approval-dock{width:min(630px,calc(100vw - 40px));bottom:88px}.section-title-action.text{font-size:9px;padding:0 4px}}
     @media(max-width:760px){.approval-dock{left:12px;right:12px;bottom:82px;transform:none;width:auto;max-height:48vh}.approval-dock-actions{justify-content:stretch}.approval-dock-actions button{flex:1 1 150px}}
   `;
 
@@ -96,6 +130,12 @@
 
   function tr(text) {
     return window.LocalCodeI18n?.t ? window.LocalCodeI18n.t(text) : text;
+  }
+
+  function trf(text, values = {}) {
+    let result = tr(text);
+    for (const [key, value] of Object.entries(values)) result = result.replaceAll(`{${key}}`, String(value));
+    return result;
   }
 
   function folderBase(path) {
@@ -137,23 +177,54 @@
 
   function installProjectHeaderAction() {
     const section = document.querySelector('#leftPane .section-title');
-    if (!section || section.querySelector('#newFolderBtn')) return;
+    if (!section || section.querySelector('#newProjectBtn')) return;
     const label = document.createElement('span');
     label.textContent = tr('Projekte');
     section.textContent = '';
     section.appendChild(label);
-    const button = document.createElement('button');
-    button.id = 'newFolderBtn';
-    button.className = 'section-title-action';
-    button.type = 'button';
-    button.textContent = '+';
-    button.title = tr('Neuer Ordner');
-    button.setAttribute('aria-label', tr('Neuer Ordner'));
-    button.addEventListener('click', event => {
-      event.stopPropagation();
-      createProjectFolder();
+    const actions = document.createElement('span');
+    actions.className = 'project-header-actions';
+    const addButton = (id, labelKey, handler, compact = false) => {
+      const button = document.createElement('button');
+      button.id = id;
+      button.className = 'section-title-action' + (compact ? '' : ' text');
+      button.type = 'button';
+      button.dataset.projectHeaderLabel = labelKey;
+      button.textContent = compact ? '♲' : `+ ${tr(labelKey)}`;
+      button.title = tr(labelKey);
+      button.setAttribute('aria-label', tr(labelKey));
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        handler();
+      });
+      actions.appendChild(button);
+    };
+    addButton('newProjectBtn', 'Neues Projekt', createLocalCodeProject);
+    addButton('newFolderBtn', 'Neuer Ordner', createProjectFolder);
+    addButton('projectTrashBtn', 'Papierkorb', openProjectTrash, true);
+    section.appendChild(actions);
+  }
+
+  async function createLocalCodeProject() {
+    const root = state?.status?.root_dir || document.querySelector('#rootPath')?.textContent || '';
+    if (!root) {
+      toast(tr('Keine Projektordner gefunden.'), true);
+      return;
+    }
+    const name = await openActionModal({
+      title: 'Neues Projekt anlegen',
+      help: 'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.',
+      value: '',
+      confirm: 'Projekt anlegen'
     });
-    section.appendChild(button);
+    if (name === null || !name.trim()) return;
+    try {
+      const result = await projectAction(root, 'create_project', name.trim());
+      toast(tr('Projekt wurde angelegt.'));
+      if (result?.project?.path) await selectProject(result.project.path);
+    } catch (error) {
+      toast(error.message, true);
+    }
   }
 
   async function createProjectFolder() {
@@ -164,15 +235,14 @@
     }
     const name = await openActionModal({
       title: 'Neuen Ordner anlegen',
-      help: 'Legt einen neuen Projektordner direkt unter der aktuellen Projektwurzel an.',
+      help: 'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.',
       value: '',
       confirm: 'Ordner anlegen'
     });
-    if (name === null) return;
+    if (name === null || !name.trim()) return;
     try {
-      const result = await projectAction(root, 'create_folder', name);
-      toast(tr('Ordner wurde angelegt.'));
-      if (result?.project?.path) await selectProject(result.project.path);
+      await projectAction(root, 'create_folder', name.trim());
+      toast(tr('Ordner wurde leer angelegt.'));
     } catch (error) {
       toast(error.message, true);
     }
@@ -195,43 +265,143 @@
     }
   }
 
-  async function deleteEmptyProjectFolder(path) {
-    const ok = await openActionModal({
-      title: 'Leeren Ordner löschen?',
-      help: 'Der Ordner wird nur gelöscht, wenn er wirklich leer ist.',
-      confirm: 'Leeren Ordner löschen',
-      danger: true,
-      input: false
-    });
-    if (!ok) return;
+  async function deleteProjectFolder(path) {
     try {
-      await projectAction(path, 'delete_empty');
-      toast(tr('Leerer Ordner wurde gelöscht.'));
+      const preview = await api(`/api/project-delete-preview?path=${encodeURIComponent(path)}`);
+      if (preview.empty) {
+        const ok = await openActionModal({
+          title: 'Leeren Ordner löschen?',
+          help: 'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.',
+          confirm: 'Leeren Ordner löschen',
+          danger: true,
+          input: false
+        });
+        if (!ok) return;
+        await projectAction(path, 'delete_empty');
+        toast(tr('Leerer Ordner wurde gelöscht.'));
+        return;
+      }
+      const help = `${trf('Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.', {files: preview.files, dirs: preview.directories, bytes: preview.bytes})} ${tr('Bestätigen')}: “${preview.confirmation}”`;
+      const typed = await openActionModal({
+        title: 'Projekt in den Papierkorb verschieben?',
+        help,
+        value: '',
+        confirm: 'In Papierkorb verschieben',
+        danger: true,
+        input: true
+      });
+      if (typed === null) return;
+      if (typed.trim() !== String(preview.confirmation)) {
+        toast(tr('Bestätigung stimmt nicht exakt mit dem Projektnamen überein.'), true);
+        return;
+      }
+      await projectAction(path, 'delete_recursive', typed.trim());
+      toast(tr('Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.'));
     } catch (error) {
       toast(error.message, true);
     }
   }
 
-  async function deleteProjectFolderRecursive(path) {
-    const name = folderBase(path);
-    const typed = await openActionModal({
-      title: 'Ordner rekursiv löschen?',
-      help: `${tr('Dateien und Unterordner werden dauerhaft gelöscht. Der lokale Chatverlauf bleibt archiviert erhalten.')} ${tr('Bestätigen')}: “${name}”`,
-      value: '',
-      confirm: 'Dauerhaft löschen',
-      danger: true,
-      input: true
+  function ensureProjectTrashOverlay() {
+    let overlay = document.querySelector('#projectTrashOverlay');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'projectTrashOverlay';
+    overlay.className = 'project-trash-overlay hidden';
+    const dialog = document.createElement('div');
+    dialog.className = 'project-trash-dialog';
+    const head = document.createElement('div');
+    head.className = 'project-trash-head';
+    const title = document.createElement('h3');
+    title.dataset.trashTitle = '1';
+    title.textContent = tr('Papierkorb');
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'project-trash-close';
+    close.textContent = tr('Schließen');
+    close.onclick = () => overlay.classList.add('hidden');
+    head.append(title, close);
+    const list = document.createElement('div');
+    list.dataset.trashList = '1';
+    dialog.append(head, list);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) overlay.classList.add('hidden');
     });
-    if (typed === null) return;
-    if (typed.toLocaleLowerCase() !== name.toLocaleLowerCase()) {
-      toast(tr('Bestätigung stimmt nicht mit dem Ordnernamen überein.'), true);
-      return;
-    }
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  async function openProjectTrash() {
+    const overlay = ensureProjectTrashOverlay();
+    const list = overlay.querySelector('[data-trash-list]');
+    overlay.querySelector('[data-trash-title]').textContent = tr('Papierkorb');
+    overlay.querySelector('.project-trash-close').textContent = tr('Schließen');
+    list.textContent = '';
+    overlay.classList.remove('hidden');
     try {
-      await projectAction(path, 'delete_recursive', typed);
-      toast(tr('Ordner wurde rekursiv gelöscht.'));
+      const result = await api('/api/project-quarantine');
+      const entries = result?.quarantine || [];
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = tr('Papierkorb ist leer.');
+        list.appendChild(empty);
+        return;
+      }
+      for (const entry of entries) {
+        const row = document.createElement('div');
+        row.className = 'project-trash-row';
+        const name = document.createElement('div');
+        name.className = 'project-trash-name';
+        name.textContent = entry.name;
+        const meta = document.createElement('div');
+        meta.className = 'project-trash-meta';
+        meta.textContent = trf('Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}', {files: entry.files, dirs: entry.directories, bytes: entry.bytes});
+        const actions = document.createElement('div');
+        actions.className = 'project-trash-actions';
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.textContent = tr('Wiederherstellen');
+        restore.onclick = async () => {
+          try {
+            await api('/api/project-quarantine-action', {method: 'POST', body: JSON.stringify({action: 'restore', id: entry.id})});
+            await loadProjects();
+            await loadThreads();
+            await loadSnapshot();
+            renderAll();
+            toast(tr('Projekt wurde wiederhergestellt.'));
+            await openProjectTrash();
+          } catch (error) {
+            toast(error.message, true);
+          }
+        };
+        const purge = document.createElement('button');
+        purge.type = 'button';
+        purge.className = 'project-trash-purge';
+        purge.textContent = tr('Dauerhaft löschen…');
+        purge.onclick = async () => {
+          const expected = `PURGE ${entry.name}`;
+          const typed = window.prompt(trf('Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.', {project: entry.name}), '');
+          if (typed === null) return;
+          if (typed !== expected) {
+            toast(tr('Bestätigung stimmt nicht exakt mit dem Projektnamen überein.'), true);
+            return;
+          }
+          try {
+            await api('/api/project-quarantine-action', {method: 'POST', body: JSON.stringify({action: 'purge', id: entry.id, confirmation: typed})});
+            toast(tr('Projekt wurde dauerhaft aus dem Papierkorb gelöscht.'));
+            await openProjectTrash();
+          } catch (error) {
+            toast(error.message, true);
+          }
+        };
+        actions.append(restore, purge);
+        row.append(name, meta, actions);
+        list.appendChild(row);
+      }
     } catch (error) {
-      toast(error.message, true);
+      list.textContent = error.message;
     }
   }
 
@@ -239,6 +409,7 @@
     const p = state.projectMeta[path] || {path, name: projectDisplay(path), pinned: false};
     showContextMenu([
       {label:'Neue Aufgabe', action:'project-new-task', icon:'＋'},
+      {label:'Neues Projekt', action:'project-create-project', icon:'P+'},
       {label:'Neuer Ordner', action:'project-create-folder', icon:'▣+'},
       {label:'Ordner umbenennen', action:'project-rename-folder', icon:'✎'},
       {label:'Anzeigenamen bearbeiten', action:'project-rename', icon:'Aa'},
@@ -254,8 +425,8 @@
       {label:p.pinned?'Projekt lösen':'Projekt anheften', action:p.pinned?'project-unpin':'project-pin', icon:'⌖'},
       {label:'Projekt entfernen', action:'project-remove', icon:'−'},
       {separator:true},
-      {label:'Leeren Ordner löschen', action:'project-delete-empty', icon:'⌫', danger:true},
-      {label:'Ordner rekursiv löschen…', action:'project-delete-recursive', icon:'⚠', danger:true}
+      {label:'Papierkorb', action:'project-trash', icon:'♲'},
+      {label:'Löschen…', action:'project-delete', icon:'⌫', danger:true}
     ], x, y, {kind:'project', path});
   }
 
@@ -264,10 +435,11 @@
     showProjectMenu = polishedProjectMenu;
     handleContextAction = async function(action, target) {
       switch (action) {
+        case 'project-create-project': return createLocalCodeProject();
         case 'project-create-folder': return createProjectFolder();
         case 'project-rename-folder': return renameProjectFolder(target.path);
-        case 'project-delete-empty': return deleteEmptyProjectFolder(target.path);
-        case 'project-delete-recursive': return deleteProjectFolderRecursive(target.path);
+        case 'project-trash': return openProjectTrash();
+        case 'project-delete': return deleteProjectFolder(target.path);
         default: return originalContextAction(action, target);
       }
     };
@@ -329,11 +501,15 @@
   function refreshLocalizedControls() {
     const section = document.querySelector('#leftPane .section-title > span');
     if (section) section.textContent = tr('Projekte');
-    const button = document.querySelector('#newFolderBtn');
-    if (button) {
-      button.title = tr('Neuer Ordner');
-      button.setAttribute('aria-label', tr('Neuer Ordner'));
-    }
+    document.querySelectorAll('[data-project-header-label]').forEach(button => {
+      const key = button.dataset.projectHeaderLabel;
+      const compact = button.id === 'projectTrashBtn';
+      button.textContent = compact ? '♲' : `+ ${tr(key)}`;
+      button.title = tr(key);
+      button.setAttribute('aria-label', tr(key));
+    });
+    const trash = document.querySelector('#projectTrashOverlay');
+    if (trash && !trash.classList.contains('hidden')) openProjectTrash();
     const claw = document.querySelector('#setEditingEngine option[value="claw"]');
     if (claw) claw.textContent = tr('Claw Code (experimentell)');
   }

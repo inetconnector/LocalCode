@@ -8,21 +8,25 @@ import (
 	"testing"
 )
 
-func TestUIPolishLayerContainsFolderManagementAndApprovalLayout(t *testing.T) {
+func TestUIPolishLayerContainsSafeProjectManagementAndApprovalLayout(t *testing.T) {
 	data, err := fs.ReadFile(staticFS, "static/ui_polish.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(data)
 	for _, fragment := range []string{
+		"project-create-project",
 		"project-create-folder",
 		"project-rename-folder",
-		"project-delete-empty",
-		"project-delete-recursive",
+		"/api/project-delete-preview",
+		"/api/project-quarantine",
+		"/api/project-quarantine-action",
+		"create_project",
 		"create_folder",
 		"rename_folder",
 		"delete_empty",
 		"delete_recursive",
+		"PURGE ${entry.name}",
 		"--rightW:280px",
 		"max-height:46vh",
 		"overflow-wrap:anywhere",
