@@ -52,6 +52,34 @@ func quarantineActionRequest(t *testing.T, remote *RemoteServer, body map[string
 	return rr
 }
 
+func TestRemoteProjectQuarantineRoutesRequireAuth(t *testing.T) {
+	state, root := newRemoteQuarantineTestState(t)
+	entry := makeRemoteQuarantineEntry(t, root, "AuthProtected")
+	handler, token := pairedMobileHandler(t, state)
+
+	unauthList := serveHTTP(handler, http.MethodGet, "/remote/api/project-quarantine", "", "")
+	if unauthList.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated quarantine list = %d body=%s", unauthList.Code, unauthList.Body.String())
+	}
+	actionData, err := json.Marshal(map[string]string{"action": "restore", "id": entry.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthAction := serveHTTP(handler, http.MethodPost, "/remote/api/project-quarantine-action", string(actionData), "")
+	if unauthAction.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated quarantine action = %d body=%s", unauthAction.Code, unauthAction.Body.String())
+	}
+
+	authList := serveHTTP(handler, http.MethodGet, "/remote/api/project-quarantine", "", token)
+	if authList.Code != http.StatusOK || !strings.Contains(authList.Body.String(), entry.ID) {
+		t.Fatalf("authenticated quarantine list = %d body=%s", authList.Code, authList.Body.String())
+	}
+	authRestore := serveHTTP(handler, http.MethodPost, "/remote/api/project-quarantine-action", string(actionData), token)
+	if authRestore.Code != http.StatusOK {
+		t.Fatalf("authenticated quarantine restore = %d body=%s", authRestore.Code, authRestore.Body.String())
+	}
+}
+
 func TestRemoteProjectQuarantineListAndRestore(t *testing.T) {
 	state, root := newRemoteQuarantineTestState(t)
 	entry := makeRemoteQuarantineEntry(t, root, "RestoreMe")
