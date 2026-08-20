@@ -143,7 +143,7 @@ Arbeitsweise:
 - Rate nicht über vorhandenen Code. Lies relevante Dateien und suche gezielt.
 - Nutze lsp(name,path,line,character,query) für semantische Navigation, wenn ein passender lokaler Language Server verfügbar ist. Unterstützt werden definition, references, hover, documentSymbol, workspaceSymbol, implementation, prepareCallHierarchy, incomingCalls und outgoingCalls. LSP ist unverändernd; wenn kein Server verfügbar ist, falle auf Repository-Intelligence, search_text und read_file zurück.
 - Verwende relative Projektpfade. Externe Pfade nur, wenn Sandbox und Nutzerfreigabe dies erlauben.
-- Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code oder OpenCode) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
+- Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code, OpenCode oder Claw Code) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
 - Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
@@ -654,6 +654,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	supervisorBlocks := 0
 	invalidActionBlocks := 0
 	blockedFinishCounts := map[string]int{}
+	loopGuard := newAgentLoopGuard()
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -753,12 +754,14 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		signature := actionSignature(action)
 		if signature == lastSignature && action.Action != "finish" {
 			repeatBlocks++
-			s.AddEvent(UIEvent{Type: "warning", Message: "Identische Werkzeugaktion blockiert", Detail: action.Action + " wurde unmittelbar zuvor bereits ohne neue Information angefordert."})
-			hint := "SYSTEMHINWEIS: Die identische Aktion wurde blockiert. Wähle eine andere Diagnose. Entdecke das Werkzeug, verwende einen absoluten Pfad, werte die vollständige Ausgabe aus oder recherchiere offizielle Dokumentation."
-			if repeatBlocks >= 2 {
-				hint += " Stelle keine weitere gleichartige Rückfrage; schließe mit einer präzisen Fehlerdiagnose ab, falls keine sichere Alternative existiert."
-			}
-			messages = append(messages, OllamaMessage{Role: "user", Content: hint})
+			s.AddEvent(UIEvent{Type: "warning", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})
+			messages = append(messages, OllamaMessage{Role: "user", Content: agentImmediateRepeatHint(cfg, repeatBlocks)})
+			continue
+		}
+		if reason := loopGuard.ShouldBlock(action); reason != agentLoopBlockNone {
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Stagnierende Werkzeugschleife blockiert", "Stagnant tool loop blocked"), Detail: agentLoopBlockDetail(cfg, reason, action), Action: action.Action})
+			messages = append(messages, OllamaMessage{Role: "user", Content: agentLoopBlockHint(cfg, repeatBlocks)})
 			continue
 		}
 		lastSignature = signature
@@ -848,6 +851,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if actionVerifiesProject(action, originalTask) && !toolFailed {
 			changedSinceVerification = false
 		}
+		loopGuard.Observe(action, result, toolFailed, originalTask)
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, contextToolResultLimit(cfg))
 		if toolFailed {
 			failedActions[actionSignature(action)]++
