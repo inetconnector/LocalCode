@@ -1,17 +1,15 @@
 name: Temporary STATE bootstrap patch
 
 on:
-  push:
-    branches:
-      - feat/native-agent-teams
-    paths:
-      - .github/workflows/temp-state-bootstrap-patch.yml
+  pull_request:
+    branches: [master]
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.head_ref == 'feat/native-agent-teams'
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
