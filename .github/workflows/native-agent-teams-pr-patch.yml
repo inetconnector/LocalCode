@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: src/go.mod
       - name: Apply assertions-guarded integration patch
         shell: pwsh
-        run: ./scripts/temp-native-agent-teams-patch.ps1
+        run: ./scripts/temp-native-agent-teams-run.ps1
       - name: Targeted child-agent tests
         shell: pwsh
         working-directory: src
