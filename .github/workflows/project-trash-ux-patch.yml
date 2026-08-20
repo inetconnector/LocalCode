@@ -1,0 +1,915 @@
+name: Project trash UX patch
+
+on:
+  push:
+    branches: [feat/project-trash-ux]
+    paths: [.github/workflows/project-trash-ux-patch.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/project-trash-ux
+          fetch-depth: 0
+      - name: Apply exact issue 31 patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old[:120]!r}')
+              write(path, text.replace(old, new, 1))
+
+          # Desktop routes reuse the existing reversible quarantine backend.
+          replace_once(
+              'src/server.go',
+              '\ts.mux.HandleFunc("/api/project-action", s.handleProjectAction)\n',
+              '\ts.mux.HandleFunc("/api/project-action", s.handleProjectAction)\n'
+              '\ts.mux.HandleFunc("/api/project-delete-preview", s.handleProjectDeletePreview)\n'
+              '\ts.mux.HandleFunc("/api/project-quarantine", s.handleProjectQuarantineList)\n'
+              '\ts.mux.HandleFunc("/api/project-quarantine-action", s.handleProjectQuarantineAction)\n'
+          )
+
+          # Exact project-name confirmation means exact, including case.
+          replace_once(
+              'src/project_catalog.go',
+              '\t\tif value == "" || !strings.EqualFold(value, preview.Confirmation) {\n\t\t\treturn ProjectSummary{}, errors.New("recursive delete confirmation must match the folder name")\n\t\t}\n',
+              '\t\tif value == "" || value != preview.Confirmation {\n\t\t\treturn ProjectSummary{}, errors.New("quarantine confirmation must exactly match the folder name")\n\t\t}\n'
+          )
+
+          # Mobile remains allowlisted, but issue #31 requires the narrow create_folder action too.
+          replace_once(
+              'src/remote_project_api.go',
+              '\tcase "create_project", "delete_empty", "delete_recursive":\n',
+              '\tcase "create_folder", "create_project", "delete_empty", "delete_recursive":\n'
+          )
+
+          write('src/project_quarantine_state.go', r'''// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+    "errors"
+    "path/filepath"
+    "strings"
+)
+
+func (s *AppState) ListProjectQuarantine() ([]QuarantinedProject, error) {
+    s.mu.RLock()
+    root := s.Config.RootProjectDir
+    s.mu.RUnlock()
+    return listQuarantinedProjects(root)
+}
+
+func (s *AppState) ProjectQuarantineAction(action, id, confirmation string) (QuarantinedProject, error) {
+    action = strings.ToLower(strings.TrimSpace(action))
+    id = strings.TrimSpace(id)
+    if !validQuarantineID(id) {
+        return QuarantinedProject{}, errors.New("invalid quarantine id")
+    }
+
+    s.mu.RLock()
+    root := s.Config.RootProjectDir
+    running := s.Running
+    s.mu.RUnlock()
+    if running {
+        return QuarantinedProject{}, errors.New("agent is running")
+    }
+
+    switch action {
+    case "restore":
+        entry, err := restoreQuarantinedProject(root, id)
+        if err != nil {
+            return QuarantinedProject{}, err
+        }
+        s.restoreProjectThreadReferences(entry.OriginalPath)
+        return entry, nil
+    case "purge":
+        return purgeQuarantinedProject(root, id, confirmation)
+    default:
+        return QuarantinedProject{}, errors.New("quarantine action is not allowed")
+    }
+}
+
+func (s *AppState) restoreProjectThreadReferences(project string) {
+    project = filepath.Clean(project)
+    changed := false
+    var snapshot map[string]*ChatThread
+
+    s.mu.Lock()
+    for _, thread := range s.Threads {
+        if thread == nil || !strings.EqualFold(filepath.Clean(thread.Project), project) {
+            continue
+        }
+        if thread.Archived {
+            thread.Archived = false
+            changed = true
+        }
+    }
+    if changed {
+        snapshot = cloneThreadSnapshotLocked(s.Threads)
+    }
+    s.mu.Unlock()
+
+    if changed {
+        s.queueThreadSave(snapshot)
+    }
+}
+''')
+
+          write('src/project_trash_desktop_api.go', r'''// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+    "net/http"
+    "strings"
+)
+
+const desktopProjectTrashMaxBody = 16 << 10
+
+func (s *Server) handleProjectDeletePreview(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    path := strings.TrimSpace(r.URL.Query().Get("path"))
+    if path == "" {
+        http.Error(w, "project path is required", http.StatusBadRequest)
+        return
+    }
+    s.state.mu.RLock()
+    root := s.state.Config.RootProjectDir
+    running := s.state.Running
+    s.state.mu.RUnlock()
+    if running {
+        http.Error(w, "agent is running", http.StatusConflict)
+        return
+    }
+    preview, err := inspectProjectDelete(root, path)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    _ = writeJSON(w, preview)
+}
+
+func (s *Server) handleProjectQuarantineList(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    entries, err := s.state.ListProjectQuarantine()
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    _ = writeJSON(w, map[string]any{"quarantine": entries})
+}
+
+func (s *Server) handleProjectQuarantineAction(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    r.Body = http.MaxBytesReader(w, r.Body, desktopProjectTrashMaxBody)
+    var req struct {
+        Action       string `json:"action"`
+        ID           string `json:"id"`
+        Confirmation string `json:"confirmation"`
+    }
+    if err := readJSON(r.Body, &req); err != nil {
+        http.Error(w, "invalid quarantine request", http.StatusBadRequest)
+        return
+    }
+    req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+    req.ID = strings.TrimSpace(req.ID)
+    if !validQuarantineID(req.ID) {
+        http.Error(w, "invalid quarantine id", http.StatusBadRequest)
+        return
+    }
+    if req.Action != "restore" && req.Action != "purge" {
+        http.Error(w, "quarantine action is not allowed", http.StatusForbidden)
+        return
+    }
+    entry, err := s.state.ProjectQuarantineAction(req.Action, req.ID, req.Confirmation)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusConflict)
+        return
+    }
+    message := "project restored from quarantine"
+    if req.Action == "purge" {
+        message = "project permanently purged from quarantine"
+    }
+    s.state.AddEvent(UIEvent{Type: "action_done", Message: message, Detail: entry.Name, Action: "project_quarantine_" + req.Action})
+    w.Header().Set("Content-Type", "application/json")
+    _ = writeJSON(w, map[string]any{"ok": true, "action": req.Action, "project": entry})
+}
+''')
+
+          write('src/remote_project_quarantine_api.go', r'''// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+    "net/http"
+    "strings"
+)
+
+const remoteProjectQuarantineMaxBody = 16 << 10
+
+func (s *RemoteServer) handleRemoteProjectQuarantineList(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    entries, err := s.state.ListProjectQuarantine()
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    _ = writeJSON(w, map[string]any{"quarantine": entries})
+}
+
+func (s *RemoteServer) handleRemoteProjectQuarantineAction(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    r.Body = http.MaxBytesReader(w, r.Body, remoteProjectQuarantineMaxBody)
+    var req struct {
+        Action       string `json:"action"`
+        ID           string `json:"id"`
+        Confirmation string `json:"confirmation"`
+    }
+    if err := readJSON(r.Body, &req); err != nil {
+        http.Error(w, "invalid quarantine request", http.StatusBadRequest)
+        return
+    }
+    req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+    req.ID = strings.TrimSpace(req.ID)
+    if !validQuarantineID(req.ID) {
+        http.Error(w, "invalid quarantine id", http.StatusBadRequest)
+        return
+    }
+    if req.Action != "restore" && req.Action != "purge" {
+        http.Error(w, "remote quarantine action is not allowed", http.StatusForbidden)
+        return
+    }
+
+    entry, err := s.state.ProjectQuarantineAction(req.Action, req.ID, req.Confirmation)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusConflict)
+        return
+    }
+
+    message := "project restored from quarantine"
+    if req.Action == "purge" {
+        message = "project permanently purged from quarantine"
+    }
+    s.state.AddEvent(UIEvent{Type: "action_done", Message: message, Detail: entry.Name, Action: "project_quarantine_" + req.Action})
+    w.Header().Set("Content-Type", "application/json")
+    _ = writeJSON(w, map[string]any{"ok": true, "action": req.Action, "project": entry})
+}
+''')
+
+          # Desktop UI: replace stale destructive wording and add project/folder/trash controls.
+          p = Path('src/static/ui_polish.js')
+          text = p.read_text(encoding='utf-8')
+          start = text.index('  const i18n = window.LocalCodeI18n;')
+          end = text.index('  const css = `', start)
+          i18n = r'''  const i18n = window.LocalCodeI18n;
+  if (i18n?.dictionaries) {
+    Object.assign(i18n.dictionaries.de, {
+      'Neues Projekt':'Neues Projekt',
+      'Neuer Ordner':'Neuer Ordner',
+      'Papierkorb':'Papierkorb',
+      'Neues Projekt anlegen':'Neues Projekt anlegen',
+      'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.':'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.',
+      'Projekt anlegen':'Projekt anlegen',
+      'Projekt wurde angelegt.':'Projekt wurde angelegt.',
+      'Neuen Ordner anlegen':'Neuen Ordner anlegen',
+      'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.':'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.',
+      'Ordner anlegen':'Ordner anlegen',
+      'Ordner wurde leer angelegt.':'Ordner wurde leer angelegt.',
+      'Ordner umbenennen':'Ordner umbenennen',
+      'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.':'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.',
+      'Umbenennen':'Umbenennen',
+      'Ordner wurde umbenannt.':'Ordner wurde umbenannt.',
+      'Löschen…':'Löschen…',
+      'Leeren Ordner löschen?':'Leeren Ordner löschen?',
+      'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.':'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.',
+      'Leeren Ordner löschen':'Leeren Ordner löschen',
+      'Leerer Ordner wurde gelöscht.':'Leerer Ordner wurde gelöscht.',
+      'Projekt in den Papierkorb verschieben?':'Projekt in den Papierkorb verschieben?',
+      'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.':'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.',
+      'In Papierkorb verschieben':'In Papierkorb verschieben',
+      'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.':'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.',
+      'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.':'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',
+      'Papierkorb ist leer.':'Papierkorb ist leer.',
+      'Wiederherstellen':'Wiederherstellen',
+      'Dauerhaft löschen…':'Dauerhaft löschen…',
+      'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.':'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.',
+      'Projekt wurde wiederhergestellt.':'Projekt wurde wiederhergestellt.',
+      'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.':'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',
+      'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}',
+      'Schließen':'Schließen',
+      'Anzeigenamen bearbeiten':'Anzeigenamen bearbeiten',
+      'Claw Code (experimentell)':'Claw Code (experimentell)'
+    });
+    Object.assign(i18n.dictionaries.en, {
+      'Neues Projekt':'New project',
+      'Neuer Ordner':'New folder',
+      'Papierkorb':'Trash',
+      'Neues Projekt anlegen':'Create new project',
+      'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.':'Creates a LocalCode project with README.md, AGENTS.md and STATE.md.',
+      'Projekt anlegen':'Create project',
+      'Projekt wurde angelegt.':'Project created.',
+      'Neuen Ordner anlegen':'Create new folder',
+      'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.':'Creates an intentionally empty folder directly below the current project root.',
+      'Ordner anlegen':'Create folder',
+      'Ordner wurde leer angelegt.':'Empty folder created.',
+      'Ordner umbenennen':'Rename folder',
+      'Ändert den tatsächlichen Ordnernamen auf der Festplatte. LocalCode aktualisiert Projekt- und Chatverweise.':'Renames the actual folder on disk. LocalCode updates project and chat references.',
+      'Umbenennen':'Rename',
+      'Ordner wurde umbenannt.':'Folder renamed.',
+      'Löschen…':'Delete…',
+      'Leeren Ordner löschen?':'Delete empty folder?',
+      'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.':'The folder is empty and will be deleted directly after this confirmation.',
+      'Leeren Ordner löschen':'Delete empty folder',
+      'Leerer Ordner wurde gelöscht.':'Empty folder deleted.',
+      'Projekt in den Papierkorb verschieben?':'Move project to Trash?',
+      'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.':'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored.',
+      'In Papierkorb verschieben':'Move to Trash',
+      'Bestätigung stimmt nicht exakt mit dem Projektnamen überein.':'Confirmation does not exactly match the project name.',
+      'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.':'Project moved to Trash and can be restored.',
+      'Papierkorb ist leer.':'Trash is empty.',
+      'Wiederherstellen':'Restore',
+      'Dauerhaft löschen…':'Permanently purge…',
+      'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.':'Permanent purge cannot be undone. Type exactly “PURGE {project}”.',
+      'Projekt wurde wiederhergestellt.':'Project restored.',
+      'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.':'Project permanently purged from Trash.',
+      'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Files: {files} · Folders: {dirs} · Bytes: {bytes}',
+      'Schließen':'Close',
+      'Anzeigenamen bearbeiten':'Edit display name',
+      'Claw Code (experimentell)':'Claw Code (experimental)'
+    });
+  }
+
+'''
+          text = text[:start] + i18n + text[end:]
+          css_anchor = '    .section-title-action:hover{background:#2b3940;color:#fff;border-color:#4a5a62}\n'
+          if text.count(css_anchor) != 1:
+              raise SystemExit('ui_polish css anchor mismatch')
+          css_extra = r'''    .section-title-action.text{width:auto;min-width:0;padding:0 6px;font-size:11px;font-weight:700}
+    .project-header-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
+    .project-trash-overlay{position:fixed;inset:0;z-index:650;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:24px}
+    .project-trash-dialog{width:min(680px,calc(100vw - 40px));max-height:min(720px,calc(100vh - 48px));overflow:auto;background:#1e2529;border:1px solid #445159;border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.66);padding:16px}
+    .project-trash-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}.project-trash-head h3{margin:0;flex:1;font-size:17px}.project-trash-close{border:1px solid #46535a;background:#273137;border-radius:7px;padding:6px 10px}
+    .project-trash-row{border:1px solid #354249;background:#182025;border-radius:10px;padding:11px;margin:8px 0}.project-trash-name{font-weight:700}.project-trash-meta{color:#9ba7ad;font-size:11px;margin:4px 0 10px;overflow-wrap:anywhere}.project-trash-actions{display:flex;gap:8px;flex-wrap:wrap}.project-trash-actions button{border:1px solid #42515a;background:#27343a;border-radius:7px;padding:7px 10px}.project-trash-actions .project-trash-purge{margin-left:auto;background:#382426;border-color:#6d3d41;color:#ffdede}
+'''
+          text = text.replace(css_anchor, css_anchor + css_extra, 1)
+          tr_anchor = '''  function tr(text) {\n    return window.LocalCodeI18n?.t ? window.LocalCodeI18n.t(text) : text;\n  }\n'''
+          tr_new = tr_anchor + '''\n  function trf(text, values = {}) {\n    let result = tr(text);\n    for (const [key, value] of Object.entries(values)) result = result.replaceAll(`{${key}}`, String(value));\n    return result;\n  }\n'''
+          if text.count(tr_anchor) != 1:
+              raise SystemExit('ui_polish tr anchor mismatch')
+          text = text.replace(tr_anchor, tr_new, 1)
+
+          start = text.index('  function installProjectHeaderAction() {')
+          end = text.index('  async function renameProjectFolder(path) {', start)
+          header_block = r'''  function installProjectHeaderAction() {
+    const section = document.querySelector('#leftPane .section-title');
+    if (!section || section.querySelector('#newProjectBtn')) return;
+    const label = document.createElement('span');
+    label.textContent = tr('Projekte');
+    section.textContent = '';
+    section.appendChild(label);
+    const actions = document.createElement('span');
+    actions.className = 'project-header-actions';
+    const addButton = (id, labelKey, handler, compact = false) => {
+      const button = document.createElement('button');
+      button.id = id;
+      button.className = 'section-title-action' + (compact ? '' : ' text');
+      button.type = 'button';
+      button.dataset.projectHeaderLabel = labelKey;
+      button.textContent = compact ? '♲' : `+ ${tr(labelKey)}`;
+      button.title = tr(labelKey);
+      button.setAttribute('aria-label', tr(labelKey));
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        handler();
+      });
+      actions.appendChild(button);
+    };
+    addButton('newProjectBtn', 'Neues Projekt', createLocalCodeProject);
+    addButton('newFolderBtn', 'Neuer Ordner', createProjectFolder);
+    addButton('projectTrashBtn', 'Papierkorb', openProjectTrash, true);
+    section.appendChild(actions);
+  }
+
+  async function createLocalCodeProject() {
+    const root = state?.status?.root_dir || document.querySelector('#rootPath')?.textContent || '';
+    if (!root) {
+      toast(tr('Keine Projektordner gefunden.'), true);
+      return;
+    }
+    const name = await openActionModal({
+      title: 'Neues Projekt anlegen',
+      help: 'Erstellt ein LocalCode-Projekt mit README.md, AGENTS.md und STATE.md.',
+      value: '',
+      confirm: 'Projekt anlegen'
+    });
+    if (name === null || !name.trim()) return;
+    try {
+      const result = await projectAction(root, 'create_project', name.trim());
+      toast(tr('Projekt wurde angelegt.'));
+      if (result?.project?.path) await selectProject(result.project.path);
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }
+
+  async function createProjectFolder() {
+    const root = state?.status?.root_dir || document.querySelector('#rootPath')?.textContent || '';
+    if (!root) {
+      toast(tr('Keine Projektordner gefunden.'), true);
+      return;
+    }
+    const name = await openActionModal({
+      title: 'Neuen Ordner anlegen',
+      help: 'Legt einen absichtlich leeren Ordner direkt unter der aktuellen Projektwurzel an.',
+      value: '',
+      confirm: 'Ordner anlegen'
+    });
+    if (name === null || !name.trim()) return;
+    try {
+      await projectAction(root, 'create_folder', name.trim());
+      toast(tr('Ordner wurde leer angelegt.'));
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }
+
+'''
+          text = text[:start] + header_block + text[end:]
+
+          start = text.index('  async function deleteEmptyProjectFolder(path) {')
+          end = text.index('  function polishedProjectMenu(path, x, y) {', start)
+          delete_block = r'''  async function deleteProjectFolder(path) {
+    try {
+      const preview = await api(`/api/project-delete-preview?path=${encodeURIComponent(path)}`);
+      if (preview.empty) {
+        const ok = await openActionModal({
+          title: 'Leeren Ordner löschen?',
+          help: 'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht.',
+          confirm: 'Leeren Ordner löschen',
+          danger: true,
+          input: false
+        });
+        if (!ok) return;
+        await projectAction(path, 'delete_empty');
+        toast(tr('Leerer Ordner wurde gelöscht.'));
+        return;
+      }
+      const help = `${trf('Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden.', {files: preview.files, dirs: preview.directories, bytes: preview.bytes})} ${tr('Bestätigen')}: “${preview.confirmation}”`;
+      const typed = await openActionModal({
+        title: 'Projekt in den Papierkorb verschieben?',
+        help,
+        value: '',
+        confirm: 'In Papierkorb verschieben',
+        danger: true,
+        input: true
+      });
+      if (typed === null) return;
+      if (typed.trim() !== String(preview.confirmation)) {
+        toast(tr('Bestätigung stimmt nicht exakt mit dem Projektnamen überein.'), true);
+        return;
+      }
+      await projectAction(path, 'delete_recursive', typed.trim());
+      toast(tr('Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.'));
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }
+
+  function ensureProjectTrashOverlay() {
+    let overlay = document.querySelector('#projectTrashOverlay');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'projectTrashOverlay';
+    overlay.className = 'project-trash-overlay hidden';
+    const dialog = document.createElement('div');
+    dialog.className = 'project-trash-dialog';
+    const head = document.createElement('div');
+    head.className = 'project-trash-head';
+    const title = document.createElement('h3');
+    title.dataset.trashTitle = '1';
+    title.textContent = tr('Papierkorb');
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'project-trash-close';
+    close.textContent = tr('Schließen');
+    close.onclick = () => overlay.classList.add('hidden');
+    head.append(title, close);
+    const list = document.createElement('div');
+    list.dataset.trashList = '1';
+    dialog.append(head, list);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) overlay.classList.add('hidden');
+    });
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  async function openProjectTrash() {
+    const overlay = ensureProjectTrashOverlay();
+    const list = overlay.querySelector('[data-trash-list]');
+    overlay.querySelector('[data-trash-title]').textContent = tr('Papierkorb');
+    overlay.querySelector('.project-trash-close').textContent = tr('Schließen');
+    list.textContent = '';
+    overlay.classList.remove('hidden');
+    try {
+      const result = await api('/api/project-quarantine');
+      const entries = result?.quarantine || [];
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = tr('Papierkorb ist leer.');
+        list.appendChild(empty);
+        return;
+      }
+      for (const entry of entries) {
+        const row = document.createElement('div');
+        row.className = 'project-trash-row';
+        const name = document.createElement('div');
+        name.className = 'project-trash-name';
+        name.textContent = entry.name;
+        const meta = document.createElement('div');
+        meta.className = 'project-trash-meta';
+        meta.textContent = trf('Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}', {files: entry.files, dirs: entry.directories, bytes: entry.bytes});
+        const actions = document.createElement('div');
+        actions.className = 'project-trash-actions';
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.textContent = tr('Wiederherstellen');
+        restore.onclick = async () => {
+          try {
+            await api('/api/project-quarantine-action', {method: 'POST', body: JSON.stringify({action: 'restore', id: entry.id})});
+            await loadProjects();
+            await loadThreads();
+            await loadSnapshot();
+            renderAll();
+            toast(tr('Projekt wurde wiederhergestellt.'));
+            await openProjectTrash();
+          } catch (error) {
+            toast(error.message, true);
+          }
+        };
+        const purge = document.createElement('button');
+        purge.type = 'button';
+        purge.className = 'project-trash-purge';
+        purge.textContent = tr('Dauerhaft löschen…');
+        purge.onclick = async () => {
+          const expected = `PURGE ${entry.name}`;
+          const typed = window.prompt(trf('Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt “PURGE {project}” ein.', {project: entry.name}), '');
+          if (typed === null) return;
+          if (typed !== expected) {
+            toast(tr('Bestätigung stimmt nicht exakt mit dem Projektnamen überein.'), true);
+            return;
+          }
+          try {
+            await api('/api/project-quarantine-action', {method: 'POST', body: JSON.stringify({action: 'purge', id: entry.id, confirmation: typed})});
+            toast(tr('Projekt wurde dauerhaft aus dem Papierkorb gelöscht.'));
+            await openProjectTrash();
+          } catch (error) {
+            toast(error.message, true);
+          }
+        };
+        actions.append(restore, purge);
+        row.append(name, meta, actions);
+        list.appendChild(row);
+      }
+    } catch (error) {
+      list.textContent = error.message;
+    }
+  }
+
+'''
+          text = text[:start] + delete_block + text[end:]
+
+          text = text.replace(
+              "      {label:'Neue Aufgabe', action:'project-new-task', icon:'＋'},\n      {label:'Neuer Ordner', action:'project-create-folder', icon:'▣+'},\n",
+              "      {label:'Neue Aufgabe', action:'project-new-task', icon:'＋'},\n      {label:'Neues Projekt', action:'project-create-project', icon:'P+'},\n      {label:'Neuer Ordner', action:'project-create-folder', icon:'▣+'},\n",
+              1
+          )
+          text = text.replace(
+              "      {separator:true},\n      {label:'Leeren Ordner löschen', action:'project-delete-empty', icon:'⌫', danger:true},\n      {label:'Ordner rekursiv löschen…', action:'project-delete-recursive', icon:'⚠', danger:true}\n",
+              "      {separator:true},\n      {label:'Papierkorb', action:'project-trash', icon:'♲'},\n      {label:'Löschen…', action:'project-delete', icon:'⌫', danger:true}\n",
+              1
+          )
+          text = text.replace(
+              "        case 'project-create-folder': return createProjectFolder();\n        case 'project-rename-folder': return renameProjectFolder(target.path);\n        case 'project-delete-empty': return deleteEmptyProjectFolder(target.path);\n        case 'project-delete-recursive': return deleteProjectFolderRecursive(target.path);\n",
+              "        case 'project-create-project': return createLocalCodeProject();\n        case 'project-create-folder': return createProjectFolder();\n        case 'project-rename-folder': return renameProjectFolder(target.path);\n        case 'project-trash': return openProjectTrash();\n        case 'project-delete': return deleteProjectFolder(target.path);\n",
+              1
+          )
+
+          start = text.index('  function refreshLocalizedControls() {')
+          end = text.index('\n\n  installClawEngineUI();', start)
+          refresh_block = r'''  function refreshLocalizedControls() {
+    const section = document.querySelector('#leftPane .section-title > span');
+    if (section) section.textContent = tr('Projekte');
+    document.querySelectorAll('[data-project-header-label]').forEach(button => {
+      const key = button.dataset.projectHeaderLabel;
+      const compact = button.id === 'projectTrashBtn';
+      button.textContent = compact ? '♲' : `+ ${tr(key)}`;
+      button.title = tr(key);
+      button.setAttribute('aria-label', tr(key));
+    });
+    const trash = document.querySelector('#projectTrashOverlay');
+    if (trash && !trash.classList.contains('hidden')) openProjectTrash();
+    const claw = document.querySelector('#setEditingEngine option[value="claw"]');
+    if (claw) claw.textContent = tr('Claw Code (experimentell)');
+  }'''
+          text = text[:start] + refresh_block + text[end:]
+          p.write_text(text, encoding='utf-8')
+
+          # Mobile Remote: preserve the narrow API, expose explicit project/folder actions and Trash UI.
+          p = Path('src/static/remote.html')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              '.action-grid .store{grid-column:1/-1;background:#235f9f;color:#fff}.selected-project',
+              '.action-grid .store{grid-column:1/-1;background:#235f9f;color:#fff}.action-grid .trash{grid-column:1/-1;background:#293746;color:#dce7ef}.trash-card{background:#171f2e;border:1px solid #2b3547;border-radius:16px;padding:13px;margin:10px 0}.trash-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.trash-actions button{min-height:42px;border:1px solid #405063;border-radius:11px;background:#293746;font-weight:750}.trash-actions .purge{background:#4a2527;border-color:#744044;color:#ffd8d8}.selected-project',
+              1
+          )
+          text = text.replace(
+              '<button class="tab" data-view="projects" data-i18n="projects">Projekte</button><button class="tab" data-view="approve"',
+              '<button class="tab" data-view="projects" data-i18n="projects">Projekte</button><button class="tab" data-view="trash" data-i18n="trash">Papierkorb</button><button class="tab" data-view="approve"',
+              1
+          )
+          text = text.replace(
+              '<div id="tasksView" class="view"></div><div id="projectsView" class="view hidden"></div><div id="approveView"',
+              '<div id="tasksView" class="view"></div><div id="projectsView" class="view hidden"></div><div id="trashView" class="view hidden"></div><div id="approveView"',
+              1
+          )
+          dstart = text.index('const dict={')
+          dend = text.index('\n};', dstart) + len('\n};')
+          dict_block = r'''const dict={
+de:{pair_title:'LocalCode koppeln',pair_help:'Gib den Pairing-Code vom verbundenen Windows-Rechner ein.',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht eingeben...',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Einmal genehmigen',approve_project:'Immer für dieses Projekt',reject:'Ablehnen',running:'Läuft',ready:'Bereit',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.'},
+en:{pair_title:'Pair LocalCode',pair_help:'Enter the pairing code from the connected Windows computer.',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Enter message...',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve once',approve_project:'Always for this project',reject:'Deny',running:'Running',ready:'Ready',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.'}
+};'''
+          text = text[:dstart] + dict_block + text[dend:]
+          text = text.replace(
+              "const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'tasks',es:null};",
+              "const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'tasks',es:null};",
+              1
+          )
+          old_refresh = "async function refresh(){try{state.status=await api('/remote/api/status');const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';const th=await api('/remote/api/threads');"
+          new_refresh = "async function refresh(){try{state.status=await api('/remote/api/status');const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';const q=await api('/remote/api/project-quarantine');state.quarantine=q.quarantine||[];const th=await api('/remote/api/threads');"
+          if text.count(old_refresh) != 1:
+              raise SystemExit('remote refresh anchor mismatch')
+          text = text.replace(old_refresh, new_refresh, 1)
+          text = text.replace('renderProjectTools();renderEvents();', 'renderProjectTools();renderTrash();renderEvents();', 1)
+
+          start = text.index('function renderProjectTools(){')
+          end = text.index('\nfunction projectName(path)', start)
+          project_tools = r'''function renderProjectTools(){const host=$('#projectsView');const selected=state.projects.find(p=>p.path===state.project);host.innerHTML=`<div class="action-card"><h2>${t('project_tools')}</h2><p>${t('project_help')}</p><div class="action-grid"><button class="primary" id="createProjectBtn">＋ ${t('create_project')}</button><button id="createFolderBtn">▣＋ ${t('create_folder')}</button><button class="danger" id="deleteProjectBtn">⌫ ${t('delete_project')}</button><button class="trash" id="trashBtn">♲ ${t('trash')}</button><button class="store" id="playStoreBtn">▶ ${t('play_store')}</button></div><div class="selected-project">${selected?esc(selected.name+'\n'+selected.path):esc(t('nothing_selected'))}</div></div><div class="section-title">${t('projects')}</div>`+state.projects.map(p=>`<button class="row" data-manage-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div>${p.path===state.project?'<div class="row-meta">✓</div>':''}</button>`).join('');$('#createProjectBtn').onclick=createProject;$('#createFolderBtn').onclick=createFolder;$('#deleteProjectBtn').onclick=deleteSelectedProject;$('#trashBtn').onclick=()=>showView('trash');$('#playStoreBtn').onclick=playStoreBuild;host.querySelectorAll('[data-manage-project]').forEach(b=>b.onclick=()=>{state.project=b.dataset.manageProject;render()})}'''
+          text = text[:start] + project_tools + text[end:]
+
+          create_anchor = "async function createProject(){if(state.status?.running)return;const name=window.prompt(t('project_name'),'');if(!name||!name.trim())return;try{const r=await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path:state.projectsRoot,action:'create_project',value:name.trim()})});state.project=r.project?.path||'';await refresh();showView('projects')}catch(e){window.alert(e.message)}}"
+          create_new = create_anchor + "\nasync function createFolder(){if(state.status?.running)return;const name=window.prompt(t('folder_name'),'');if(!name||!name.trim())return;try{await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path:state.projectsRoot,action:'create_folder',value:name.trim()})});await refresh();showView('projects')}catch(e){window.alert(e.message)}}"
+          if text.count(create_anchor) != 1:
+              raise SystemExit('remote createProject anchor mismatch')
+          text = text.replace(create_anchor, create_new, 1)
+
+          start = text.index('async function deleteSelectedProject(){')
+          end = text.index('\nfunction playStoreTask()', start)
+          delete_mobile = r'''async function deleteSelectedProject(){if(state.status?.running)return;const path=state.project||$('#projectSelect').value;if(!path){window.alert(t('nothing_selected'));return}try{const preview=await api('/remote/api/project-delete-preview?path='+encodeURIComponent(path));if(preview.empty){if(!window.confirm(t('delete_empty')))return;await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_empty',value:''})})}else{const message=t('delete_full',{files:preview.files,dirs:preview.directories,bytes:preview.bytes})+'\n\n'+preview.confirmation;const typed=window.prompt(message,'');if(typed===null)return;if(typed.trim()!==String(preview.confirmation)){window.alert(t('delete_mismatch'));return}await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_recursive',value:typed.trim()})});window.alert(t('quarantine_done'))}state.project='';state.currentThread='';await refresh();showView('projects')}catch(e){window.alert(e.message)}}'''
+          text = text[:start] + delete_mobile + text[end:]
+
+          insert_at = text.index('function renderEvents(){')
+          trash_mobile = r'''function renderTrash(){const host=$('#trashView');if(!state.quarantine.length){host.innerHTML=`<div class="empty"><div><h1>${t('trash')}</h1><p>${t('trash_empty')}</p></div></div>`;return}host.innerHTML=`<div class="section-title">${t('trash')}</div>`+state.quarantine.map(entry=>`<div class="trash-card"><div class="row-title">${esc(entry.name)}</div><div class="row-sub">${esc(t('trash_meta',{files:entry.files,dirs:entry.directories,bytes:entry.bytes}))}</div><div class="trash-actions"><button data-restore="${esc(entry.id)}">${t('restore')}</button><button class="purge" data-purge="${esc(entry.id)}" data-name="${esc(entry.name)}">${t('purge')}</button></div></div>`).join('');host.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreTrashProject(b.dataset.restore));host.querySelectorAll('[data-purge]').forEach(b=>b.onclick=()=>purgeTrashProject(b.dataset.purge,b.dataset.name))}
+async function restoreTrashProject(id){if(state.status?.running)return;try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'restore',id})});await refresh();window.alert(t('restore_done'));showView('trash')}catch(e){window.alert(e.message)}}
+async function purgeTrashProject(id,name){if(state.status?.running)return;const expected='PURGE '+name;const typed=window.prompt(t('purge_prompt',{project:name})+'\n\n'+expected,'');if(typed===null)return;if(typed!==expected){window.alert(t('delete_mismatch'));return}try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'purge',id,confirmation:typed})});await refresh();window.alert(t('purge_done'));showView('trash')}catch(e){window.alert(e.message)}}
+'''
+          text = text[:insert_at] + trash_mobile + text[insert_at:]
+          text = text.replace("for(const v of ['tasks','projects','approve','review','new'])", "for(const v of ['tasks','projects','trash','approve','review','new'])", 1)
+          p.write_text(text, encoding='utf-8')
+
+          write('src/project_ux_issue31_test.go', r'''// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "net/http/httptest"
+    "net/url"
+    "os"
+    "path/filepath"
+    "strings"
+    "testing"
+)
+
+func TestProjectQuarantineConfirmationIsExactCaseSensitive(t *testing.T) {
+    state, root := newFolderActionTestState(t)
+    project := filepath.Join(root, "CaseProject")
+    if err := os.Mkdir(project, 0o755); err != nil {
+        t.Fatal(err)
+    }
+    if err := os.WriteFile(filepath.Join(project, "keep.txt"), []byte("keep"), 0o644); err != nil {
+        t.Fatal(err)
+    }
+    if _, err := state.ProjectAction(project, "delete_recursive", "caseproject"); err == nil || !strings.Contains(strings.ToLower(err.Error()), "exactly") {
+        t.Fatalf("case-mismatched confirmation should fail closed, got %v", err)
+    }
+    if _, err := os.Stat(project); err != nil {
+        t.Fatalf("project changed after case-mismatched confirmation: %v", err)
+    }
+}
+
+func TestProjectQuarantineRestoreUnarchivesProjectThreads(t *testing.T) {
+    state, root := newFolderActionTestState(t)
+    project := filepath.Join(root, "RestoredProject")
+    if err := os.Mkdir(project, 0o755); err != nil {
+        t.Fatal(err)
+    }
+    if err := os.WriteFile(filepath.Join(project, "keep.txt"), []byte("keep"), 0o644); err != nil {
+        t.Fatal(err)
+    }
+    state.Threads["thread-restore"] = &ChatThread{ID: "thread-restore", Project: project, Title: "Restore me"}
+    if _, err := state.ProjectAction(project, "delete_recursive", "RestoredProject"); err != nil {
+        t.Fatal(err)
+    }
+    if !state.Threads["thread-restore"].Archived {
+        t.Fatal("quarantine should archive project threads")
+    }
+    entries, err := state.ListProjectQuarantine()
+    if err != nil || len(entries) != 1 {
+        t.Fatalf("quarantine entries = %#v err=%v", entries, err)
+    }
+    restored, err := state.ProjectQuarantineAction("restore", entries[0].ID, "")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if restored.OriginalPath != project {
+        t.Fatalf("restored path = %q, want %q", restored.OriginalPath, project)
+    }
+    if state.Threads["thread-restore"].Archived {
+        t.Fatal("restoring a project should unarchive its preserved project threads")
+    }
+    if _, err := os.Stat(filepath.Join(project, "keep.txt")); err != nil {
+        t.Fatalf("restored project content missing: %v", err)
+    }
+}
+
+func desktopRequest(t *testing.T, server *Server, method, target string, body any) *httptest.ResponseRecorder {
+    t.Helper()
+    var reader *bytes.Reader
+    if body == nil {
+        reader = bytes.NewReader(nil)
+    } else {
+        data, err := json.Marshal(body)
+        if err != nil {
+            t.Fatal(err)
+        }
+        reader = bytes.NewReader(data)
+    }
+    req := httptest.NewRequest(method, "http://127.0.0.1"+target, reader)
+    req.Host = "127.0.0.1"
+    if body != nil {
+        req.Header.Set("Content-Type", "application/json")
+    }
+    rr := httptest.NewRecorder()
+    server.ServeHTTP(rr, req)
+    return rr
+}
+
+func TestDesktopProjectTrashRoutesExposePreviewListAndRestore(t *testing.T) {
+    state, root := newFolderActionTestState(t)
+    server := NewServer(state)
+    project := filepath.Join(root, "DesktopTrash")
+    if err := os.MkdirAll(filepath.Join(project, "nested"), 0o755); err != nil {
+        t.Fatal(err)
+    }
+    if err := os.WriteFile(filepath.Join(project, "nested", "data.txt"), []byte("desktop"), 0o644); err != nil {
+        t.Fatal(err)
+    }
+    state.Threads["desktop-thread"] = &ChatThread{ID: "desktop-thread", Project: project, Title: "Desktop"}
+
+    previewRR := desktopRequest(t, server, http.MethodGet, "/api/project-delete-preview?path="+url.QueryEscape(project), nil)
+    if previewRR.Code != http.StatusOK {
+        t.Fatalf("desktop preview = %d body=%s", previewRR.Code, previewRR.Body.String())
+    }
+    var preview ProjectDeletePreview
+    if err := json.Unmarshal(previewRR.Body.Bytes(), &preview); err != nil {
+        t.Fatal(err)
+    }
+    if preview.Empty || preview.Files != 1 || preview.Directories != 1 || preview.Bytes != int64(len("desktop")) || preview.Confirmation != "DesktopTrash" {
+        t.Fatalf("unexpected desktop preview: %#v", preview)
+    }
+
+    if _, err := state.ProjectAction(project, "delete_recursive", preview.Confirmation); err != nil {
+        t.Fatal(err)
+    }
+    listRR := desktopRequest(t, server, http.MethodGet, "/api/project-quarantine", nil)
+    if listRR.Code != http.StatusOK {
+        t.Fatalf("desktop trash list = %d body=%s", listRR.Code, listRR.Body.String())
+    }
+    var list struct {
+        Quarantine []QuarantinedProject `json:"quarantine"`
+    }
+    if err := json.Unmarshal(listRR.Body.Bytes(), &list); err != nil {
+        t.Fatal(err)
+    }
+    if len(list.Quarantine) != 1 || list.Quarantine[0].Name != "DesktopTrash" {
+        t.Fatalf("unexpected desktop trash list: %#v", list.Quarantine)
+    }
+
+    restoreRR := desktopRequest(t, server, http.MethodPost, "/api/project-quarantine-action", map[string]string{"action": "restore", "id": list.Quarantine[0].ID})
+    if restoreRR.Code != http.StatusOK {
+        t.Fatalf("desktop restore = %d body=%s", restoreRR.Code, restoreRR.Body.String())
+    }
+    if state.Threads["desktop-thread"].Archived {
+        t.Fatal("desktop restore should restore archived project-thread visibility")
+    }
+}
+
+func TestMobileProjectUXSupportsBareFolderAndTrashControls(t *testing.T) {
+    state := newRemoteTestState(t)
+    handler, token := pairedMobileHandler(t, state)
+    state.mu.RLock()
+    root := state.Config.RootProjectDir
+    state.mu.RUnlock()
+
+    create := serveHTTP(handler, http.MethodPost, "/remote/api/project-action", mobileProjectActionBody(t, root, "create_folder", "PhoneFolder"), token)
+    if create.Code != http.StatusOK {
+        t.Fatalf("mobile create_folder = %d body=%s", create.Code, create.Body.String())
+    }
+    entries, err := os.ReadDir(filepath.Join(root, "PhoneFolder"))
+    if err != nil {
+        t.Fatal(err)
+    }
+    if len(entries) != 0 {
+        t.Fatalf("mobile create_folder must stay intentionally empty, got %d entries", len(entries))
+    }
+
+    page := serveHTTP(handler, http.MethodGet, "/remote", "", "")
+    if page.Code != http.StatusOK {
+        t.Fatalf("mobile remote page = %d body=%s", page.Code, page.Body.String())
+    }
+    content := page.Body.String()
+    for _, marker := range []string{`data-view="trash"`, `action:'create_folder'`, `/remote/api/project-quarantine`, `/remote/api/project-quarantine-action`, `PURGE `} {
+        if !strings.Contains(content, marker) {
+            t.Fatalf("mobile project UX missing marker %q", marker)
+        }
+    }
+}
+
+func TestDesktopProjectPolishUsesReversibleTrashWording(t *testing.T) {
+    data, err := staticFS.ReadFile("static/ui_polish.js")
+    if err != nil {
+        t.Fatal(err)
+    }
+    content := string(data)
+    for _, marker := range []string{"create_project", "create_folder", "/api/project-delete-preview", "/api/project-quarantine-action", "PURGE ${entry.name}"} {
+        if !strings.Contains(content, marker) {
+            t.Fatalf("desktop project UX missing marker %q", marker)
+        }
+    }
+    if strings.Contains(content, "Dateien und Unterordner werden dauerhaft gelöscht") {
+        t.Fatal("desktop quarantine action still claims that files are permanently deleted")
+    }
+}
+''')
+          PY
+          gofmt -w src/project_catalog.go src/remote_project_api.go src/project_quarantine_state.go src/project_trash_desktop_api.go src/remote_project_quarantine_api.go src/project_ux_issue31_test.go
+          git diff --check
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/server.go src/project_catalog.go src/remote_project_api.go src/project_quarantine_state.go src/project_trash_desktop_api.go src/remote_project_quarantine_api.go src/static/ui_polish.js src/static/remote.html src/project_ux_issue31_test.go
+          git diff --cached --check
+          git commit -m "feat: finish safe project trash UX"
+          git push origin HEAD:feat/project-trash-ux
