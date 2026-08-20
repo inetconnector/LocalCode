@@ -17,8 +17,8 @@ type AgentScheduledTaskResult struct {
 type AgentScheduledRun struct {
 	MissionID   string                     `json:"mission_id"`
 	Results     []AgentScheduledTaskResult `json:"results"`
-	UsageByTask map[string]AgentUsage       `json:"usage_by_task"`
-	Snapshot    AgentSchedulerSnapshot      `json:"snapshot"`
+	UsageByTask map[string]AgentUsage      `json:"usage_by_task"`
+	Snapshot    AgentSchedulerSnapshot     `json:"snapshot"`
 }
 
 func scheduledAgentTaskTerminalState(result AgentResult, runErr error) AgentTaskState {
