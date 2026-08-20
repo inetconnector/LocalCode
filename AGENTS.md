@@ -2,8 +2,9 @@
 
 ## Deutsch
 
-- Lies vor Änderungen `README.md`, `STATE.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`.
-- Halte `STATE.md` nach jeder abgeschlossenen Änderung vollständig aktuell.
+- Lies vor Änderungen `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`.
+- Halte `STATE.md` und `TODO.md` nach jeder materiellen Änderung vollständig und widerspruchsfrei aktuell. `STATE.md` beschreibt die gegenwärtig implementierte Realität; `TODO.md` enthält ausschließlich noch offene Arbeit, Abhängigkeiten und Abnahmekriterien. Nach Branch-/PR-/CI-/Merge-/Roadmap-/Scope-Änderungen müssen beide Dateien im selben Workstream oder unmittelbar danach aktualisiert werden.
+- **`STATE.md` ist der vollständige KI-Bootstrap:** Eine neu gestartete KI ohne Chat-Historie, Memory oder Vorwissen muss allein aus `STATE.md` das Projekt vollständig genug verstehen, um sicher und korrekt weiterprogrammieren zu können. `STATE.md` muss deshalb mindestens aktuellen Master/Branch/PR/Head/CI-/Review-Stand, Produktziel, Architektur und zentrale Komponenten, Sicherheits-/Quality-Invarianten, wichtige Dateien/Entrypoints, relevante bereits implementierte Fähigkeiten, aktive Änderungen, bekannte Probleme/Fehlversuche, offene Entscheidungen, exakte nächste Schritte sowie den kanonischen Verweis auf `TODO.md` enthalten. Wenn dafür Details aus anderen Dokumenten wesentlich sind, müssen sie in `STATE.md` ausreichend zusammengefasst und die Quelldateien benannt werden; ein bloßer Verweis ohne arbeitsfähigen Kontext reicht nicht.
 - **Sprachpflege ist verpflichtend:** Jede neue oder geänderte sichtbare Zeichenfolge muss gleichzeitig auf Deutsch und Englisch gepflegt werden. Alle Sprachkataloge müssen identische Schlüssel besitzen. Neue Sprachen müssen in Tests, Dokumentation, Systemerkennung und manueller Auswahl vollständig ergänzt werden.
 - Standardverhalten: Windows-Anzeigesprache verwenden; Deutsch bei deutschem Windows, sonst Englisch. Die manuelle Auswahl muss diese Automatik überschreiben können.
 - Bezeichne externe Programme erst nach vollständiger Werkzeugerkennung als fehlend. Dokumentiere Pfad, Exitcode, STDOUT, STDERR und durchsuchte Orte.
@@ -19,8 +20,9 @@
 
 ## English
 
-- Read `README.md`, `STATE.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` before changing code.
-- Keep `STATE.md` fully current after every completed change.
+- Read `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` before changing code.
+- Keep `STATE.md` and `TODO.md` fully current and mutually consistent after every material change. `STATE.md` describes current implemented reality; `TODO.md` contains only unfinished work, dependencies, and acceptance criteria. Branch/PR/CI/merge/roadmap/scope changes require both files to be refreshed in the same workstream or immediately afterward.
+- **`STATE.md` is the complete AI bootstrap:** A newly started AI with no chat history, memory, or prior context must be able to understand the project from `STATE.md` well enough to resume implementation safely and correctly. `STATE.md` must therefore contain at least the current master/branch/PR/head/CI/review state, product objective, architecture and core components, safety/Quality invariants, important files/entrypoints, relevant implemented capabilities, active changes, known problems/failed attempts, open decisions, exact next steps, and the canonical pointer to `TODO.md`. When details from other documents are material, `STATE.md` must summarize them sufficiently and name the source files; a bare link without working context is not enough.
 - **Localization maintenance is mandatory:** every new or changed user-visible string must be maintained in German and English at the same time. All language catalogs must contain identical keys. New languages must be added completely to tests, documentation, system detection, and manual selection.
 - Default behavior: follow the Windows display language; use German on German Windows and English otherwise. Manual selection must override automatic detection.
 - Do not declare an external tool missing before full tool discovery. Record path, exit code, STDOUT, STDERR, and searched locations.
