@@ -9,19 +9,12 @@ import (
 
 const remoteProjectQuarantineMaxBody = 16 << 10
 
-func (s *RemoteServer) projectQuarantineRootAndRunning() (string, bool) {
-	s.state.mu.RLock()
-	defer s.state.mu.RUnlock()
-	return s.state.Config.RootProjectDir, s.state.Running
-}
-
 func (s *RemoteServer) handleRemoteProjectQuarantineList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	root, _ := s.projectQuarantineRootAndRunning()
-	entries, err := listQuarantinedProjects(root)
+	entries, err := s.state.ListProjectQuarantine()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -51,25 +44,12 @@ func (s *RemoteServer) handleRemoteProjectQuarantineAction(w http.ResponseWriter
 		http.Error(w, "invalid quarantine id", http.StatusBadRequest)
 		return
 	}
-	root, running := s.projectQuarantineRootAndRunning()
-	if running {
-		http.Error(w, "agent is running", http.StatusConflict)
-		return
-	}
-
-	var (
-		entry QuarantinedProject
-		err   error
-	)
-	switch req.Action {
-	case "restore":
-		entry, err = restoreQuarantinedProject(root, req.ID)
-	case "purge":
-		entry, err = purgeQuarantinedProject(root, req.ID, req.Confirmation)
-	default:
+	if req.Action != "restore" && req.Action != "purge" {
 		http.Error(w, "remote quarantine action is not allowed", http.StatusForbidden)
 		return
 	}
+
+	entry, err := s.state.ProjectQuarantineAction(req.Action, req.ID, req.Confirmation)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
