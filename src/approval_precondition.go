@@ -62,6 +62,9 @@ func replaceTextAtVersion(projectRoot, path, oldText, newText string, expected f
 		return "", fmt.Errorf("old_text must occur exactly once; found %d occurrences", count)
 	}
 	updated := strings.Replace(original, oldText, newText, 1)
+	if updated == original {
+		return "", noObservableProjectChanges("replacement leaves the file unchanged")
+	}
 	if err := backupFile(projectRoot, full); err != nil {
 		return "", err
 	}
@@ -106,6 +109,9 @@ func writeProjectFileAtVersion(projectRoot, path, content string, expected fileV
 			return "", fmt.Errorf("refusing to overwrite binary or non-UTF-8 file: %s", path)
 		}
 		old = string(data)
+		if old == content {
+			return "", noObservableProjectChanges("file already has the requested content")
+		}
 		if info, statErr := os.Stat(full); statErr == nil {
 			mode = info.Mode().Perm()
 		}
