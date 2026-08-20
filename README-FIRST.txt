@@ -21,8 +21,9 @@ DEUTSCH
    LocalCode nativ.
 7. Aider und OpenCode können lokale Ollama-Modelle verwenden. Claude Code
    benötigt eine Anmeldung bei Anthropic oder eine unterstützte Provider-
-   Konfiguration. Claw Code bleibt eine experimentelle externe Engine unter
-   der LocalCode-Genehmigungsgrenze.
+   Konfiguration. OpenCode kann alternativ über `opencode auth login` mit einem
+   Cloud-Provider verbunden werden. Claw Code bleibt eine experimentelle externe
+   Engine unter der LocalCode-Genehmigungsgrenze.
 8. Große Modell-Downloads können beim ersten Start dauern. Details stehen in
    %LOCALAPPDATA%\LocalCode\localcode.log.
 9. Für die Handy-Fernsteuerung im selben Netzwerk: LocalCode starten, im Menü
@@ -52,7 +53,8 @@ ENGLISH
    Claude Code, OpenCode and Claw Code. Fresh installs start with LocalCode
    native.
 7. Aider and OpenCode can use local Ollama models. Claude Code requires an
-   Anthropic sign-in or a supported provider configuration. Claw Code remains
+   Anthropic sign-in or a supported provider configuration. OpenCode can also
+   connect to a cloud provider through `opencode auth login`. Claw Code remains
    an experimental external engine behind LocalCode's approval boundary.
 8. Large model downloads can take time on first startup. Details are written to
    %LOCALAPPDATA%\LocalCode\localcode.log.
