@@ -6,10 +6,13 @@
 **Last merged feature:** PR #42 `feat: add deterministic native agent task DAG`  
 **Final tested PR #42 head:** `9bbd616d054c767030a6f6e7f0c89b8da005c545`  
 **Quality #433:** success; total statement coverage **80.2%**  
-**Documentation refresh branch:** `docs/state-after-task-dag`  
+**Documentation refresh carrier:** PR #43 `docs: refresh canonical state after task DAG merge`, branch `docs/state-after-task-dag`  
+**Carrier baseline before this metadata refresh:** `47123d2a16e779ff3c4e13d97d0d4118d24d5707`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the authoritative exhaustive list of unfinished **functional** LocalCode work. `STATE.md` describes current verified reality and is the self-contained AI bootstrap. Completed Phase-4 implementation is no longer backlog; the next functional work is Phase 5.
+
+**Self-resolving carrier rule:** when this content is read from `master`, PR #43 is already merged by definition. Do not create another documentation PR merely to record #43's own merge SHA/status; verify GitHub reality before resuming.
 
 ---
 
@@ -41,12 +44,12 @@ Phase 4 Task DAG is merged via PR #42. Start Phase 5 only from the current docs-
 - [ ] Allow multiple DAG nodes to be logically ready without implying simultaneous local-model contexts.
 - [ ] Add deterministic bounded ready queues over `AgentTaskGraph`.
 - [ ] Add explicit resource classes at minimum for model inference and cheap CPU/read/search work; model future build/linker and exclusive integration/test resources without activating mutation orchestration yet.
-- [ ] Default local model-inference concurrency conservatively to **one active slot** unless a later explicit configuration changes it.
+- [ ] Use a conservative local model-inference default of **one active slot** unless a later explicit configuration changes it.
 - [ ] Resource requests must never grant capabilities; `RequestedCapabilities` remains inert planning data and granted `Capabilities` remain governance-controlled.
 - [ ] Blocked/failed/cancelled tasks must consume no executor resource until legitimately ready/retried.
 - [ ] Add deterministic task admission/release semantics and resource accounting.
 - [ ] Add mission/task model-call, tool-call, estimated-token and elapsed-time budget snapshots with visible remaining values.
-- [ ] Add structured hard-stop / `budget_exhausted` outcomes when a budget is depleted; never silently continue.
+- [ ] Produce structured hard-stop / `budget_exhausted` outcomes when a budget is depleted; never silently continue.
 - [ ] Add cancellation propagation from mission/scheduler to queued and running child tasks using existing context/process cancellation semantics where applicable.
 - [ ] Add deterministic ordering and fairness/starvation protection; avoid an unbounded queue or starvation by one resource class.
 - [ ] Preserve current single-agent and bounded read-only Explorer/Planner/Reviewer execution as compatibility paths.
