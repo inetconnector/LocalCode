@@ -22,38 +22,22 @@ jobs:
           $ErrorActionPreference = 'Stop'
           function Replace-Exact([string]$path, [string]$old, [string]$new) {
             $text = [IO.File]::ReadAllText($path)
+            if ($text.Contains($new)) {
+              Write-Host "Already patched: $path"
+              return
+            }
             $count = ([regex]::Matches($text, [regex]::Escape($old))).Count
             if ($count -ne 1) { throw "Expected exactly one anchor in $path, found $count" }
             $text = $text.Replace($old, $new)
             [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
           }
 
-          $stateOld = @'
-          `STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.
-
-          This is a blocking repository invariant:
-          '@.Trim()
-          $stateNew = @'
-          `STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.
-
-          **Self-contained AI bootstrap invariant:** `STATE.md` must be sufficient for a newly started AI with no chat history, memory, or prior context to understand the complete project state well enough to resume implementation immediately, safely, and correctly. It must therefore carry the current master/branch/PR/head/CI/review reality, product objective, architecture and core components, safety/Quality invariants, important files and entrypoints, relevant implemented capabilities, active changes, known problems and failed approaches, open decisions, exact next implementation steps, and the canonical relationship to `TODO.md`. Material facts that live in other documents must be summarized here with those source files named; bare links are not a substitute for working continuation context.
-
-          This is a blocking repository invariant:
-          '@.Trim()
+          $stateOld = '`STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.'
+          $stateNew = $stateOld + "`r`n`r`n**Self-contained AI bootstrap invariant:** `STATE.md` must be sufficient for a newly started AI with no chat history, memory, or prior context to understand the complete project state well enough to resume implementation immediately, safely, and correctly. It must therefore carry the current master/branch/PR/head/CI/review reality, product objective, architecture and core components, safety/Quality invariants, important files and entrypoints, relevant implemented capabilities, active changes, known problems and failed approaches, open decisions, exact next implementation steps, and the canonical relationship to `TODO.md`. Material facts that live in other documents must be summarized here with those source files named; bare links are not a substitute for working continuation context."
           Replace-Exact 'STATE.md' $stateOld $stateNew
 
-          $todoOld = @'
-          `STATE.md` and `TODO.md` MUST remain completely current together.
-
-          This is a blocking repository invariant:
-          '@.Trim()
-          $todoNew = @'
-          `STATE.md` and `TODO.md` MUST remain completely current together.
-
-          `STATE.md` is also the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory, or prior context must be able to understand the complete project state and resume implementation from it immediately. `TODO.md` remains the exhaustive unfinished-work ledger, while `STATE.md` must summarize enough of the roadmap and exact next action to make continuation possible on its own.
-
-          This is a blocking repository invariant:
-          '@.Trim()
+          $todoOld = '`STATE.md` and `TODO.md` MUST remain completely current together.'
+          $todoNew = $todoOld + "`r`n`r`n`STATE.md` is also the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory, or prior context must be able to understand the complete project state and resume implementation from it immediately. `TODO.md` remains the exhaustive unfinished-work ledger, while `STATE.md` must summarize enough of the roadmap and exact next action to make continuation possible on its own."
           Replace-Exact 'TODO.md' $todoOld $todoNew
 
           git diff --check
