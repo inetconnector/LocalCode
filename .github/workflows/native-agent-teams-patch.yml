@@ -1,0 +1,115 @@
+name: Native Agent Teams Patch
+
+on:
+  push:
+    branches:
+      - feat/native-agent-teams
+    paths:
+      - .github/workflows/native-agent-teams-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/native-agent-teams
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: src/go.mod
+      - name: Patch current-master integration points
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Replace-Exact([string]$path, [string]$old, [string]$new) {
+            $text = [IO.File]::ReadAllText($path)
+            $count = ([regex]::Matches($text, [regex]::Escape($old))).Count
+            if ($count -ne 1) { throw "Expected exactly one anchor in $path, found $count`nANCHOR:`n$old" }
+            $text = $text.Replace($old, $new)
+            [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+          }
+
+          Replace-Exact 'src/agent.go' `
+            '- Nutze subagent_analyze(task), wenn eine getrennte, unverändernde Exploration oder Testlog-Analyse sinnvoll ist. Diese Aktion liest nur Projektkontext, ausdrücklich erwähnte Dateien und Suchtreffer und liefert einen strukturierten Handoff; sie darf keine Dateien ändern, keine Befehle ausführen, keine Netzwerkzugriffe starten und keine MCP-Tools aufrufen.' `
+            '- Nutze subagent_analyze(task,name) für isolierte read-only Child-Agents. name ist optional und darf explorer, planner oder reviewer sein; ohne name wird explorer verwendet. Child-Agents haben eigenen Modellkontext und harte Modell-/Tool-/Zeit-/geschätzte-Token-Budgets, dürfen aber nur list_files/read_file/search_text/LSP/finish verwenden und niemals mutieren, Shell/Git/Netzwerk/MCP/Installationen/Genehmigungen/Rekursion starten.'
+
+          Replace-Exact 'src/agent.go' `
+            'result, err = runReadOnlySubagent(project, cfg, a.Task)' `
+            'result, err = s.runReadOnlyModelSubagent(ctx, project, cfg, a.Task, a.Name)'
+
+          Replace-Exact 'src/agent_supervisor.go' `
+            'case "project_info", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "lsp", "command_list", "command_read", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "memory_list", "finish", "ask_user":' `
+            'case "project_info", "subagent_analyze", "tool_inventory", "discover_tool", "list_files", "read_file", "search_text", "lsp", "command_list", "command_read", "engine_repo_map", "aider_repo_map", "web_search", "web_fetch", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "memory_list", "finish", "ask_user":'
+
+          Replace-Exact 'src/edit_reliability.go' `
+            'Task:    "Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: " + intent.OriginalTask,' `
+            "Task: deterministicSubagentTaskPrefix +`n`t`t`t`t\"Analyze the requested change before any edit. Build a repository intelligence map, identify the most relevant implementation and test files, architecture invariants, likely failure modes, and the narrowest reliable verification plan. Do not modify anything. User task: \" + intent.OriginalTask,"
+
+          $readmeDEOld = @'
+          Für getrennte Exploration besitzt die native Werkzeugschleife `subagent_analyze`. Diese read-only Aktion erstellt einen strukturierten Handoff aus Projektinfo, Projektbaum, ausdrücklich erwähnten Dateien und Suchtreffern. Sie kann keine Dateien ändern, keine Shell- oder Netzwerkbefehle ausführen, keine MCP-Werkzeuge starten und keine Genehmigungen umgehen. Damit kann ein Hauptlauf vor einer Änderung eine zweite, unverändernde Analyse- oder Test-Log-Sicht anfordern.
+          '@.Trim()
+          $readmeDENew = @'
+          Für getrennte Exploration besitzt die native Werkzeugschleife `subagent_analyze`. Die Aktion kann jetzt einen isolierten modellgestützten **Explorer**, **Planner** oder **Reviewer** mit eigenem Kontext starten; ohne Rollenangabe wird Explorer verwendet. Jeder Child-Agent hat harte Modell-, Tool-, Zeit- und als Schätzung ausgewiesene Tokenbudgets und darf ausschließlich Projektbaum, Dateien, Textsuche und freigabefreies LSP lesen, bevor er mit einem strukturierten `AgentResult` endet. Schreib-/Lösch-/Move-Aktionen, Shell, Git, Netzwerk/Web, MCP, Installationen, Memory, Genehmigungen und rekursives Subagent-Spawning sind technisch nicht Teil seines Action-Schemas. Wenn kein Modell verfügbar ist, der Child-Lauf fehlschlägt oder ein Budget endet, fällt LocalCode auf den bestehenden deterministischen read-only Repository-Handoff zurück. Der obligatorische Reliability-Preflight vor Edits bleibt absichtlich deterministisch und verbraucht keine zusätzlichen Child-Modellaufrufe.
+          '@.Trim()
+          Replace-Exact 'src/README.md' $readmeDEOld $readmeDENew
+
+          $readmeENOld = @'
+          For separate exploration, the native tool loop provides `subagent_analyze`. This read-only action creates a structured handoff from project info, the project tree, explicitly mentioned files, and search hits. It cannot change files, run shell or network commands, start MCP tools, or bypass approvals. This lets a main run request a second immutable analysis or test-log view before editing.
+          '@.Trim()
+          $readmeENNew = @'
+          For separate exploration, the native tool loop provides `subagent_analyze`. The action can now start an isolated model-backed **Explorer**, **Planner**, or **Reviewer** with its own context; Explorer is the default role. Every child has hard model-call, tool-call, time, and explicitly estimated token budgets and may only inspect the project tree, files, text search, and approval-free LSP before finishing with a structured `AgentResult`. Write/delete/move actions, shell, Git, network/web, MCP, installation, memory, approvals, and recursive subagent spawning are technically absent from its action schema. If the model is unavailable, the child fails, or a budget is exhausted, LocalCode falls back to the existing deterministic read-only repository handoff. The mandatory edit-reliability preflight intentionally remains deterministic and consumes no extra child-model calls.
+          '@.Trim()
+          Replace-Exact 'src/README.md' $readmeENOld $readmeENNew
+
+          $archDEOld = @'
+          `subagent_analyze` ist die erste getrennte Subagent-Stufe. Sie ist deterministisch read-only und sammelt einen strukturierten Handoff aus Projektinfo, Projektbaum, erwähnten Dateien und begrenzten Suchtreffern. Die Implementierung ruft keine Shell-, Netzwerk-, MCP- oder Schreibwerkzeuge auf; spätere modellgetriebene Subagent- oder Review-Phasen müssen diese Handoff-Grenze beibehalten oder explizit über normale Genehmigungs- und Mutationspfade laufen.
+          '@.Trim()
+          $archDENew = @'
+          `subagent_analyze` ist die erste modellgestützte Native-Agent-Team-Stufe. Ein Child-Task besitzt Rolle, Objective, Capabilities, Budget und einen strukturierten `AgentResult`; ausführbare Rollen sind zunächst Explorer, Planner und Reviewer. Jeder Child erhält einen eigenen Modellkontext und darf über ein separates Action-Schema ausschließlich `list_files`, `read_file`, `search_text`, freigabefreies `lsp` und `finish` verwenden. Modellaufrufe, Toolaufrufe, Gesamtdauer und als Schätzung gekennzeichnetes Kontext-/Antwort-Tokenvolumen sind hart begrenzt; Child-Toolschritte werden als `subagent:<role>:<action>` sichtbar protokolliert. Planner dürfen strukturierte Folgeaufgaben vorschlagen, führen diese aber nicht aus. Reviewer bleiben von Builder-Argumentationen getrennt und erhalten nur den explizit übergebenen Task-/Evidenzkontext. Mutation, Shell, Git, Netzwerk, MCP, Installationen, Memory, Approval-Requests und rekursives Spawning existieren im Child-Schema nicht. Modellfehler und Budgetende fallen deterministisch auf den bisherigen read-only Repository-Handoff zurück. Der obligatorische Edit-Preflight nutzt einen internen deterministischen Prefix und startet bewusst keinen Child-Modelllauf. Task-DAG, Scheduler und Worktree-Mutation sind darauf aufbauende, noch getrennt zu implementierende Stufen.
+          '@.Trim()
+          Replace-Exact 'docs/ARCHITECTURE.md' $archDEOld $archDENew
+
+          $archENOld = @'
+          `subagent_analyze` is the first separated subagent stage. It is deterministically read-only and gathers a structured handoff from project info, the project tree, mentioned files, and bounded search hits. The implementation calls no shell, network, MCP, or write tools; later model-driven subagent or review phases must preserve that handoff boundary or explicitly pass through the normal approval and mutation paths.
+          '@.Trim()
+          $archENNew = @'
+          `subagent_analyze` is the first model-backed Native Agent Teams stage. A child task carries a role, objective, capabilities, budget, and structured `AgentResult`; executable roles initially are Explorer, Planner, and Reviewer. Each child receives its own model context and a separate action schema containing only `list_files`, `read_file`, `search_text`, approval-free `lsp`, and `finish`. Model calls, tool calls, total elapsed time, and explicitly estimated context/response token volume are hard-bounded; child tool steps are exposed as `subagent:<role>:<action>` events. Planners may return structured follow-up task proposals but cannot execute them. Reviewers stay independent of builder reasoning and receive only the task/evidence explicitly handed to them. Mutation, shell, Git, networking, MCP, installation, memory, approval requests, and recursive spawning are absent from the child schema. Model failures and budget exhaustion deterministically fall back to the existing read-only repository handoff. The mandatory edit preflight uses an internal deterministic prefix and deliberately starts no child-model run. Task DAGs, scheduling, and worktree mutation remain separate follow-up stages on top of this runtime.
+          '@.Trim()
+          Replace-Exact 'docs/ARCHITECTURE.md' $archENOld $archENNew
+
+          $secDEOld = @'
+          `subagent_analyze` ist eine read-only Werkzeugaktion. Sie verwendet dieselbe Projektpfadgrenze wie Datei-Lese- und Suchwerkzeuge, begrenzt gelesene Inhalte und erzeugt nur Text für den nächsten Agentenschritt. Sie führt keine externen Programme aus, startet keine Browser- oder MCP-Sitzungen, verwendet keine Netzwerkfunktion und verändert keine Projekt- oder Konfigurationsdateien.
+          '@.Trim()
+          $secDENew = @'
+          `subagent_analyze` startet optional einen isolierten modellgestützten read-only Child-Agenten. Sein JSON-Schema enthält ausschließlich `list_files`, `read_file`, `search_text`, freigabefreies `lsp` und `finish`; Datei-Mutation, Shell, Git, Netzwerk/Web, MCP, Installation, Memory, Genehmigungsanforderungen und rekursives Spawning können vom Child daher nicht angefordert werden. LSP wird zusätzlich abgewiesen, wenn die aktuelle Approval-Policy eine interaktive Bestätigung verlangen würde. Modell-, Tool-, Zeit- und geschätzte Tokenbudgets begrenzen jeden Child-Lauf. Modellfehler oder Budgetende führen nur zu deterministischer read-only Analyse und erweitern keine Berechtigung. Builder-/Worktree-Mutation ist in dieser Stufe ausdrücklich nicht implementiert.
+          '@.Trim()
+          Replace-Exact 'docs/SECURITY.md' $secDEOld $secDENew
+
+          $secENOld = @'
+          `subagent_analyze` is a read-only tool action. It uses the same project path boundary as file-read and search tools, caps read content, and only produces text for the next agent step. It does not execute external programs, start browser or MCP sessions, use networking, or modify project or configuration files.
+          '@.Trim()
+          $secENNew = @'
+          `subagent_analyze` can start an isolated model-backed read-only child agent. Its JSON schema contains only `list_files`, `read_file`, `search_text`, approval-free `lsp`, and `finish`; file mutation, shell, Git, network/web, MCP, installation, memory, approval requests, and recursive spawning therefore cannot be requested by the child. LSP is additionally rejected whenever the current approval policy would require interactive confirmation. Hard model-call, tool-call, time, and estimated-token budgets bound each child run. Model failures or budget exhaustion fall back only to deterministic read-only analysis and grant no additional capability. Builder/worktree mutation is explicitly not implemented at this stage.
+          '@.Trim()
+          Replace-Exact 'docs/SECURITY.md' $secENOld $secENNew
+
+          gofmt -w src/agent_team_types.go src/subagent_model.go src/subagent_model_test.go src/agent.go src/agent_supervisor.go src/edit_reliability.go
+          git diff --check
+      - name: Targeted native child-agent tests
+        shell: pwsh
+        working-directory: src
+        run: go test ./... -run 'Test(NativeChild|AgentRoles|ExecuteNativeChild|MandatoryReliabilityPreflight|ModelExplorer|PlannerCan)' -count=1 -timeout=8m
+      - name: Commit patched integration
+        shell: pwsh
+        run: |
+          git config user.name 'LocalCode CI'
+          git config user.email 'localcode-ci@users.noreply.github.com'
+          git add -- src/agent.go src/agent_supervisor.go src/edit_reliability.go src/agent_team_types.go src/subagent_model.go src/subagent_model_test.go src/README.md docs/ARCHITECTURE.md docs/SECURITY.md
+          git diff --cached --check
+          git commit -m 'feat: add bounded native child-agent roles'
+          git push origin HEAD:feat/native-agent-teams
