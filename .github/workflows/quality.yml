@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -23,6 +23,13 @@ jobs:
         working-directory: src
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Temporary branch-only DAG documentation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/native-agent-task-dag'
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: ./scripts/temp-dag-docs.ps1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.25.13'
