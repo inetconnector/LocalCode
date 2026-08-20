@@ -19,11 +19,21 @@ const (
 type AgentTaskState string
 
 const (
+	// Legacy standalone child-agent states remain valid for compatibility with
+	// the first Native Agent Teams runtime merged in PR #40.
 	AgentTaskPending   AgentTaskState = "pending"
 	AgentTaskRunning   AgentTaskState = "running"
 	AgentTaskCompleted AgentTaskState = "completed"
 	AgentTaskBlocked   AgentTaskState = "blocked"
 	AgentTaskFailed    AgentTaskState = "failed"
+
+	// Graph-specific states add explicit planning/readiness semantics without
+	// changing the existing standalone child-agent execution contract.
+	AgentTaskProposed  AgentTaskState = "proposed"
+	AgentTaskReady     AgentTaskState = "ready"
+	AgentTaskSucceeded AgentTaskState = "succeeded"
+	AgentTaskCancelled AgentTaskState = "cancelled"
+	AgentTaskRetryable AgentTaskState = "retryable"
 )
 
 type AgentResultStatus string
@@ -79,6 +89,7 @@ type Risk struct {
 }
 
 type AgentTaskProposal struct {
+	ID           string            `json:"id"`
 	Role         string            `json:"role"`
 	Objective    string            `json:"objective"`
 	Dependencies []string          `json:"dependencies,omitempty"`
@@ -98,19 +109,21 @@ type AgentResult struct {
 }
 
 type AgentTask struct {
-	ID           string            `json:"id"`
-	ParentID     string            `json:"parent_id,omitempty"`
-	MissionID    string            `json:"mission_id,omitempty"`
-	Role         AgentRole         `json:"role"`
-	Objective    string            `json:"objective"`
-	Dependencies []string          `json:"dependencies,omitempty"`
-	State        AgentTaskState    `json:"state"`
-	Workspace    string            `json:"workspace,omitempty"`
-	Worktree     string            `json:"worktree,omitempty"`
-	Capabilities []AgentCapability `json:"capabilities"`
-	Model        string            `json:"model,omitempty"`
-	Budget       AgentBudget       `json:"budget"`
-	Result       AgentResult       `json:"result,omitempty"`
+	ID                    string            `json:"id"`
+	ParentID              string            `json:"parent_id,omitempty"`
+	MissionID             string            `json:"mission_id,omitempty"`
+	Role                  AgentRole         `json:"role"`
+	Objective             string            `json:"objective"`
+	Dependencies          []string          `json:"dependencies,omitempty"`
+	State                 AgentTaskState    `json:"state"`
+	StateReason           string            `json:"state_reason,omitempty"`
+	Workspace             string            `json:"workspace,omitempty"`
+	Worktree              string            `json:"worktree,omitempty"`
+	RequestedCapabilities []AgentCapability `json:"requested_capabilities,omitempty"`
+	Capabilities          []AgentCapability `json:"capabilities"`
+	Model                 string            `json:"model,omitempty"`
+	Budget                AgentBudget       `json:"budget"`
+	Result                AgentResult       `json:"result,omitempty"`
 }
 
 func normalizeAgentRole(raw string) (AgentRole, error) {

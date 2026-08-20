@@ -197,7 +197,7 @@ func TestPlannerCanReturnStructuredTaskProposalsWithoutExecutingThem(t *testing.
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		action := `{"action":"finish","message":"Plan ready","result":{"summary":"Split implementation and verification.","suggested_tasks":[{"role":"builder","objective":"Implement the narrow code change","dependencies":[],"capabilities":["repository-read"]},{"role":"reviewer","objective":"Review the resulting diff","dependencies":["builder"]}]}}`
+		action := `{"action":"finish","message":"Plan ready","result":{"summary":"Split implementation and verification.","suggested_tasks":[{"id":"build","role":"builder","objective":"Implement the narrow code change","dependencies":[],"capabilities":["repository-read"]},{"id":"review","role":"reviewer","objective":"Review the resulting diff","dependencies":["build"]}]}}`
 		_ = json.NewEncoder(w).Encode(OllamaChatResponse{Message: OllamaMessage{Role: "assistant", Content: action}, Done: true})
 	}))
 	defer server.Close()
@@ -213,7 +213,7 @@ func TestPlannerCanReturnStructuredTaskProposalsWithoutExecutingThem(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, marker := range []string{`"role": "planner"`, `"suggested_tasks"`, `"role": "builder"`, "Review the resulting diff"} {
+	for _, marker := range []string{`"role": "planner"`, `"suggested_tasks"`, `"id": "build"`, `"task_graph"`, `"state": "ready"`, `"requested_capabilities"`, "Review the resulting diff"} {
 		if !strings.Contains(result, marker) {
 			t.Fatalf("planner result missing %q:\n%s", marker, result)
 		}
@@ -256,5 +256,40 @@ func TestNativeChildHardModelBudgetStopsFurtherInference(t *testing.T) {
 	}
 	if len(result.Findings) == 0 || result.Findings[0].Category != "deterministic-fallback" {
 		t.Fatalf("budget exhaustion must return deterministic evidence: %#v", result)
+	}
+}
+func TestPlannerRejectsInvalidTaskGraphAndRequestsCorrection(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step := calls.Add(1)
+		action := `{"action":"finish","message":"Plan ready","result":{"summary":"Plan.","suggested_tasks":[{"id":"a","role":"builder","objective":"A","dependencies":["missing"]}]}}`
+		if step > 1 {
+			action = `{"action":"finish","message":"Corrected plan","result":{"summary":"Plan.","suggested_tasks":[{"id":"a","role":"builder","objective":"A"},{"id":"b","role":"reviewer","objective":"B","dependencies":["a"]}]}}`
+		}
+		_ = json.NewEncoder(w).Encode(OllamaChatResponse{Message: OllamaMessage{Role: "assistant", Content: action}, Done: true})
+	}))
+	defer server.Close()
+	cfg := defaultConfig()
+	ollama := &OllamaClient{BaseURL: server.URL, HTTP: server.Client(), ContextLength: 8192}
+	state := NewAppState(cfg, ollama)
+	t.Cleanup(state.Close)
+	state.mu.Lock()
+	state.Model = "fake-local-model"
+	state.mu.Unlock()
+	result, err := state.runReadOnlyModelSubagent(context.Background(), root, cfg, "plan a safe change", "planner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("model calls=%d want 2 after invalid graph correction", calls.Load())
+	}
+	for _, marker := range []string{`"task_graph"`, `"id": "a"`, `"id": "b"`, `"dependencies": [`, `"a"`} {
+		if !strings.Contains(result, marker) {
+			t.Fatalf("corrected planner handoff missing %q:\n%s", marker, result)
+		}
 	}
 }

@@ -79,12 +79,13 @@ var nativeChildResultSchema = map[string]any{
 			"items": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"id":           map[string]any{"type": "string", "minLength": 1},
 					"role":         map[string]any{"type": "string", "minLength": 1},
 					"objective":    map[string]any{"type": "string", "minLength": 1},
 					"dependencies": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"capabilities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
-				"required":             []string{"role", "objective"},
+				"required":             []string{"id", "role", "objective"},
 				"additionalProperties": false,
 			},
 		},
@@ -125,7 +126,7 @@ Finish with a structured result. Do not claim code was changed, built, tested, c
 	switch role {
 	case AgentRolePlanner:
 		return base + `
-ROLE: PLANNER. Convert evidence into a small dependency-aware implementation plan. Use suggested_tasks for separable follow-up work. Proposals are data only and do not execute or grant capabilities.`
+ROLE: PLANNER. Convert evidence into a small dependency-aware implementation plan. Every suggested task requires a stable safe id plus role/objective; dependencies refer only to those ids. Proposals are data only and do not execute or grant capabilities.`
 	case AgentRoleReviewer:
 		return base + `
 ROLE: REVIEWER. Review the stated task/current evidence independently. Focus on requirement gaps, unsafe assumptions, interface regressions, missing verification, and integration risks. Do not inherit or defend the builder's reasoning.`
@@ -238,6 +239,12 @@ func (s *AppState) runNativeReadOnlyAgentTask(ctx context.Context, project strin
 
 		if action.Action == "finish" {
 			result := normalizeNativeChildResult(action.Result, task.Role)
+			if task.Role == AgentRolePlanner && len(result.SuggestedTasks) > 0 {
+				if _, err := buildPlannerTaskGraph(task, result); err != nil {
+					messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEM: Planner task graph rejected: " + err.Error() + ". Return a corrected finish result with stable task ids and an acyclic dependency graph."})
+					continue
+				}
+			}
 			result.Status = AgentResultCompleted
 			result.Usage = finishUsage()
 			return result, nil
@@ -326,6 +333,7 @@ func normalizeNativeChildResult(result *AgentResult, role AgentRole) AgentResult
 		out.Findings[i].Summary = strings.TrimSpace(out.Findings[i].Summary)
 	}
 	for i := range out.SuggestedTasks {
+		out.SuggestedTasks[i].ID = strings.TrimSpace(out.SuggestedTasks[i].ID)
 		out.SuggestedTasks[i].Role = strings.TrimSpace(out.SuggestedTasks[i].Role)
 		out.SuggestedTasks[i].Objective = strings.TrimSpace(out.SuggestedTasks[i].Objective)
 	}
@@ -395,6 +403,13 @@ func formatAgentResult(task AgentTask, result AgentResult) string {
 		"task_id": task.ID,
 		"role":    task.Role,
 		"result":  result,
+	}
+	if task.Role == AgentRolePlanner && len(result.SuggestedTasks) > 0 {
+		if graph, err := buildPlannerTaskGraph(task, result); err == nil {
+			payload["task_graph"] = graph
+		} else {
+			payload["task_graph_error"] = err.Error()
+		}
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
