@@ -30,6 +30,23 @@ func captureApprovedFilePrecondition(project string, action AgentAction) (*appro
 		if err != nil {
 			return nil, err
 		}
+		if version.Exists {
+			data, readErr := os.ReadFile(full)
+			if readErr != nil {
+				return nil, readErr
+			}
+			switch action.Action {
+			case "write_file":
+				if string(data) == action.Content {
+					return nil, noObservableProjectChanges("file already has the requested content")
+				}
+			case "replace_text":
+				original := string(data)
+				if strings.Count(original, action.OldText) == 1 && strings.Replace(original, action.OldText, action.NewText, 1) == original {
+					return nil, noObservableProjectChanges("replacement leaves the file unchanged")
+				}
+			}
+		}
 		return &approvedFilePrecondition{FullPath: full, Version: version}, nil
 	default:
 		return nil, nil
@@ -62,6 +79,9 @@ func replaceTextAtVersion(projectRoot, path, oldText, newText string, expected f
 		return "", fmt.Errorf("old_text must occur exactly once; found %d occurrences", count)
 	}
 	updated := strings.Replace(original, oldText, newText, 1)
+	if updated == original {
+		return "", noObservableProjectChanges("replacement leaves the file unchanged")
+	}
 	if err := backupFile(projectRoot, full); err != nil {
 		return "", err
 	}
@@ -106,6 +126,9 @@ func writeProjectFileAtVersion(projectRoot, path, content string, expected fileV
 			return "", fmt.Errorf("refusing to overwrite binary or non-UTF-8 file: %s", path)
 		}
 		old = string(data)
+		if old == content {
+			return "", noObservableProjectChanges("file already has the requested content")
+		}
 		if info, statErr := os.Stat(full); statErr == nil {
 			mode = info.Mode().Perm()
 		}
