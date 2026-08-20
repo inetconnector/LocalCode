@@ -1,11 +1,11 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-08-20 08:56 Europe/Berlin  
+**Verified:** 2026-08-20 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Verified functional master before this documentation-only state update:** `92ac486f1abe0a42eca4d4b3d8a997f31ba4b42c`  
-**Last verified functional merge:** PR #28 `feat: add Claw Code as managed engine`  
-**Open implementation PR:** #33 `feat: add safe mobile project quarantine controls`  
+**Current verified functional master before this documentation-only state update:** `743cf5b9b70d73f4b66a7d59761c7a489204dd7b`  
+**Last verified functional merge:** PR #33 `feat: add safe mobile project quarantine controls`  
+**Open implementation PR:** none at this snapshot  
 
 This file is the authoritative continuation document for LocalCode. Historical snapshots belong in Git history and closed PRs, not as contradictory appended sections here.
 
@@ -39,7 +39,7 @@ Current selectable coding engines:
 - OpenCode
 - Claw Code
 
-LocalCode is the UI/supervisor shell even when an external coding engine performs a delegated operation.
+LocalCode remains the UI/supervisor shell even when an external engine performs a delegated operation.
 
 Long-term objective: make LocalCode Native objectively stronger than Aider/OpenCode/Claw across repository intelligence, edit reliability, safety, recovery, orchestration, context efficiency, verification and measurable benchmark success. Do not claim superiority without implementation plus reproducible evidence.
 
@@ -49,7 +49,7 @@ Long-term objective: make LocalCode Native objectively stronger than Aider/OpenC
 
 ### Conflict-safe and approval-bound mutation
 
-Merged foundations include:
+Current master preserves:
 
 - SHA-256 file-version preconditions
 - per-path locking
@@ -57,7 +57,7 @@ Merged foundations include:
 - atomic replacement/move behavior, including Windows-native replacement paths
 - conflict instead of silent overwrite after external change
 - approval bound to the exact file version used for preview
-- checked delete/write/replace postconditions
+- checked mutation postconditions
 - backup/Git recovery paths
 - process-tree cancellation for owned external processes
 
@@ -69,15 +69,15 @@ Current master includes:
 
 - import-aware repository graph
 - Go compiler AST path
-- Tree-sitter-backed JavaScript/JSX, TypeScript/TSX, Python, Rust, C and C++ where CGO/provider support is available
+- Tree-sitter-backed JavaScript/JSX, TypeScript/TSX, Python, Rust, C and C++ where provider support is available
 - deterministic lexical/import fallback
-- weighted typed graph relations such as imports, references, calls, inherits, implements and test-of
+- weighted typed graph relations
 - task-ranked source context and graph relevance
 - bounded parallel independent read-only exploration
 - native read-only LSP navigation
 - persistent/recovering LSP session pool with project/server isolation
 
-LSP remains a navigation/diagnostic channel; server-originated mutation does not grant write authority.
+LSP is navigation/diagnostic authority, not an implicit mutation permission.
 
 ### Durable agent recovery
 
@@ -87,7 +87,7 @@ Current master has crash-safe active-run recovery:
 - atomic/mutex-protected journal updates
 - no second full transcript or secret-bearing command-output archive
 - interrupted-run detection
-- recovery handoff that explicitly forbids blind replay
+- recovery handoff that forbids blind mutation replay
 - project/Git/postconditions must be re-read before continuing
 - unrelated new tasks do not inherit stale interrupted context
 
@@ -120,23 +120,21 @@ Master includes:
 - no automatic keystore generation/rotation, secret disclosure, Play Console upload or publication
 - Quality includes PowerShell syntax checking
 
-### Reversible project quarantine – PR #26 merged
+### Reversible project quarantine backend – PR #26 merged
 
-This supersedes older STATE text that described reversible deletion as future work.
-
-Current master now implements:
+Current master implements:
 
 - `create_folder` intentionally bare
 - `create_project` always creates `README.md`, `AGENTS.md` and `STATE.md`, independent of the old automatic-doc preference
-- confirmed non-empty delete moves the project into LocalCode-managed same-volume quarantine instead of immediate permanent `RemoveAll`
+- confirmed non-empty delete moves the project into LocalCode-managed same-volume quarantine rather than immediate permanent `RemoveAll`
 - minimal atomic quarantine metadata
 - validated list/restore/permanent-purge primitives
 - restore refuses an occupied original destination
 - permanent purge requires exact `PURGE <project>` confirmation
-- quarantine root and symlink escape targets are rejected
+- quarantine-root and symlink escape targets are rejected
 - symlink targets are not followed by preview/quarantine/purge
 - no risky cross-volume copy-then-delete fallback
-- chat/project references are handled deterministically and affected history is archived/preserved as designed
+- project/chat references are handled deterministically
 
 ### Quality coverage strengthening – PR #29 merged
 
@@ -152,25 +150,47 @@ Merge commit:
 
 `92ac486f1abe0a42eca4d4b3d8a997f31ba4b42c`
 
-Claw is now an optional fifth coding engine and is not the default.
+Claw is an optional fifth coding engine and is not the default.
 
-Implemented contract:
+Implemented contract includes:
 
 - central coding-engine router/status/setup integration
 - settings/UI engine selection
-- edit/repository-map/lint/test routed through LocalCode reliability, backup/undo, timeout and cancellation paths
+- edit/repository-map/lint/test through LocalCode reliability, backup/undo, timeout and cancellation paths
 - managed Windows/MSVC Rust build preparation
-- exact pinned upstream Claw source revision verification
-- fail-closed existing-binary version verification using structured `claw version --output-format json` / `git_sha`
+- exact pinned upstream revision and structured executable-version verification
 - process-scoped `OLLAMA_HOST`
 - ambient OpenAI/Anthropic/xAI/DashScope credential/provider variables stripped from Claw subprocesses
 - `read-only` for analysis and `workspace-write` for mutation; no default/permanent `danger-full-access`
 - Windows Authenticode/MSVC preparation and safe temporary batch invocation
 - safe authenticated mobile engine selection, blocked while an agent is running
-- explicit Claw benchmark adapter using an isolated benchmark worktree
+- explicit isolated Claw benchmark adapter
 - no Claw Studio installation/launch; LocalCode remains the shell
 
-PR #28 final Quality run passed format, vet, JavaScript/PowerShell syntax, Android APK, vulnerability scan, full-stack loopback, complete Go tests, race detector, coverage >=80%, native Windows builds and diff check before merge.
+PR #28 passed the complete Windows Quality contract before merge.
+
+### Mobile quarantine controls – PR #33 merged
+
+Merge commit:
+
+`743cf5b9b70d73f4b66a7d59761c7a489204dd7b`
+
+Current Mobile Remote now exposes the already-merged reversible quarantine backend through a deliberately narrow authenticated API:
+
+- authenticated `GET /remote/api/project-quarantine`
+- authenticated `POST /remote/api/project-quarantine-action`
+- list returns server-derived quarantine entries
+- restore accepts only an opaque validated quarantine ID
+- purge accepts only an opaque validated ID plus exact server-checked `PURGE <project>` confirmation
+- restore/purge reject requests while an agent is marked running
+- invalid IDs and unsupported actions fail closed
+- no user-controlled filesystem path is accepted by these endpoints
+- routes exist only on the mobile-safe Remote server
+- existing authenticated `/remote/api/editing-engine` route remains intact
+- regression tests prove unauthenticated list/action requests return Unauthorized and authenticated requests work
+- regression tests also cover list/restore, exact purge confirmation, running-agent block, invalid IDs and forbidden actions
+
+PR #33 was synchronized onto the post-Claw/post-STATE master without force push, was 0 commits behind master, had no unresolved review threads, and passed the complete Windows Quality workflow on exact head `49821752857da147bb7fdd4122f733e6bd0d5564` before merge.
 
 ---
 
@@ -210,44 +230,44 @@ Never lower the 80% threshold to rescue a PR.
 
 ---
 
-## 4. Current open PR – #33 mobile quarantine controls
+## 4. Immediate next reliability feature – session-wide doom-loop/no-op guard
 
-PR #33: `feat: add safe mobile project quarantine controls`
+There is no active implementation PR for this feature at this snapshot. Start from the latest master after this STATE update.
 
-Current verified state before this STATE update:
+Do NOT merge stale historical PR #7 or its branch wholesale. Port only the useful feature delta onto current code.
 
-- state: open
-- draft: yes
-- head branch: `feat/project-quarantine-ux`
-- head SHA: `e86bef82b9f50048e201f397cb287defe29c7792`
-- recorded PR base SHA is stale: `159a454a6344993f942cb22216a548cf119eb48e`
-- current functional master is newer: `92ac486f1abe0a42eca4d4b3d8a997f31ba4b42c`
-- GitHub currently reports the PR as not mergeable in its stale state
+Historical source branch actually available in GitHub:
 
-Intended PR #33 scope:
+`agent/session-doom-loop-guard`
 
-- authenticated read-only quarantine listing on Mobile Remote
-- restore by opaque quarantine ID
-- permanent purge with exact server-side `PURGE <project>` confirmation
-- restore/purge blocked while an agent is running
-- invalid IDs/actions fail closed
-- no user-controlled filesystem path accepted by quarantine endpoints
-- mobile-safe routes only; no install/login/global-approval/admin expansion
-- regression tests for auth, restore/list, exact purge confirmation, running-agent block, invalid IDs and forbidden actions
+Required behavior:
 
-Immediate required action:
+- reject `write_file` when requested bytes are already identical
+- reject `replace_text` when replacement produces no actual change
+- preserve current path locks, SHA/version preconditions, atomic writes and backups for real edits
+- structured action fingerprint includes tool/edit payload and arguments but ignores human explanation text
+- structured outcome/progress fingerprint
+- block a third unchanged action after two matching failures
+- block a third unchanged read/tool action after two identical no-progress outcomes
+- detect short repeated A/B and A/B/C cycles; period-4 detection is acceptable if tested and not over-broad
+- changed tool output counts as new evidence and clears stale history
+- successful real project mutation resets stagnation history
+- successful project verification resets stagnation history
+- `finish` and `ask_user` are excluded
+- preserve the existing immediate identical-action block as a complementary first layer
+- user-visible loop warnings/hints must remain correct in DE and EN; do not port German-only UI strings blindly
 
-1. synchronize/port #33 onto current `master` after the current STATE update lands
-2. resolve overlap with mobile files changed by Claw without dropping either feature
-3. inspect current patch and review threads
-4. run full current Windows Quality pipeline
-5. merge only if the exact current head is green, mergeable and 0 commits behind master
+Useful historical tests cover payload-sensitive fingerprints, repeated failures across intervening actions, same outcomes, changed outcomes, mutation reset, 2/3/4-step cycles, control actions and no-op edits.
+
+Suggested PR theme:
+
+`feat: block stagnant agent tool loops`
 
 ---
 
 ## 5. Open issue #31 – finish project UX across Desktop and Mobile
 
-Backend quarantine semantics are already merged; remaining work is primarily coherent user-facing UX and consistency.
+Backend quarantine semantics and the narrow Mobile API are now merged. Remaining work is primarily coherent visual UX and consistency.
 
 Required end state:
 
@@ -261,43 +281,13 @@ Required end state:
 - DE/EN wording matches backend semantics
 - restore occupied-destination and symlink/path boundaries remain enforced
 - project/chat references stay consistent across quarantine/restore
-
-PR #33 provides the narrow mobile API contract but does not by itself finish the visual UX.
-
----
-
-## 6. Next reliability feature – session-wide doom-loop/no-op guard
-
-This remains the highest-priority native reliability item after #33/state cleanup.
-
-Do NOT merge stale historical loop-guard branches wholesale. Port the useful behavior onto current master.
-
-Required behavior:
-
-- reject `write_file` when requested bytes are already identical
-- reject `replace_text` when replacement produces no actual change
-- structured action fingerprint includes tool/edit payload but ignores human explanation text
-- structured outcome/progress fingerprint
-- block repeated identical failed actions
-- block repeated same-result no-progress read/tool loops
-- detect short A/B and A/B/C cycles
-- changed tool output counts as new evidence
-- successful real project mutation resets mutation-stagnation history
-- successful verification resets stagnation history
-- `finish` and `ask_user` excluded from loop-action blocking
-- preserve existing immediate repeated-action guard where complementary
-
-Useful historical branch for feature-delta porting: `reliability/session-doom-loop-guard`; it is stale and must not be merged wholesale.
-
-Suggested commit/PR theme:
-
-`feat: block stagnant agent tool loops`
+- Mobile UI must call the PR #33 narrow quarantine API; do not add direct filesystem operations
 
 ---
 
-## 7. Open issue #32 – make LocalCode Native match/exceed Claw orchestration
+## 6. Open issue #32 – make LocalCode Native match/exceed Claw orchestration
 
-Running Claw externally is now implemented. Native still needs the useful architectural capabilities internally.
+Running Claw externally is implemented. Native still needs the useful architectural capabilities internally.
 
 Target capabilities:
 
@@ -318,23 +308,23 @@ Safety requirements remain stronger than orchestration convenience:
 - durable crash journal remains authoritative
 - child mutation must be diff-reviewable and verified before success
 
-Historical closed PR #14 contains a useful read-only model-subagent design; port feature delta only, never merge the stale branch wholesale.
+Historical closed PR #14 may contain useful read-only model-subagent design ideas; port feature delta only, never merge a stale branch wholesale.
 
 ---
 
-## 8. Open issue #30 – benchmarked llama.cpp / DMC backend
+## 7. Open issue #30 – benchmarked llama.cpp / DMC backend
 
 Goal: introduce an inference-backend abstraction below the Native agent loop while keeping Ollama default and behavior stable.
 
 Planned path:
 
-- Ollama backend remains default
+- Ollama remains default
 - optional loopback-only OpenAI-compatible llama.cpp backend
 - backend-specific health/model discovery/process lifecycle
 - no silent provider fallback/drift
 - explicit UI status/selection without exposing secrets
 - exact runtime provenance before any DMC label
-- Windows must not be called DMC-enabled unless the DMC KV selection/rehydration path is actually active and self-tested
+- Windows must not be called DMC-enabled unless DMC KV selection/rehydration is actually active and self-tested
 - benchmark Ollama vs dense llama.cpp vs real DMC-enabled runtime only where available
 - measure correctness, retained context, latency, runtime, memory/VRAM and long-context recall
 
@@ -342,7 +332,9 @@ Do not confuse DMC with RAG or replace LocalCode semantic repository intelligenc
 
 ---
 
-## 9. Additional competitive work after the above
+## 8. Additional competitive work
+
+After the immediate loop guard and project UX:
 
 - prompt/context cache stability and deterministic prefix ordering
 - context/token economy benchmarks against Aider/OpenCode/Claw with identical inputs
@@ -354,17 +346,17 @@ Do not confuse DMC with RAG or replace LocalCode semantic repository intelligenc
 
 ---
 
-## 10. Immediate execution order
+## 9. Immediate execution order
 
 Unless a new blocker changes priority:
 
-1. land this current `STATE.md` repair and enforce the permanent maintenance rule
-2. synchronize/fix/test/merge PR #33
-3. immediately refresh `STATE.md` again to record the #33 merge and remove stale PR facts
-4. implement the session-wide doom-loop/no-op guard on fresh master
-5. update `STATE.md` again after that merge
-6. finish project Trash/Quarantine UX (#31)
-7. build Native orchestration/subagents (#32)
+1. merge this post-#33 STATE refresh
+2. implement the session-wide doom-loop/no-op guard on fresh master
+3. refresh `STATE.md` immediately after that merge
+4. finish project Trash/Quarantine UX (#31)
+5. refresh `STATE.md`
+6. build Native orchestration/subagents (#32)
+7. refresh `STATE.md`
 8. add/benchmark inference backend and DMC path (#30)
 
-Every step ends with a fully current `STATE.md`. A future agent must never have to infer the present state from contradictory historical sections.
+Every material step ends with a fully current `STATE.md`. A future agent must never have to infer the present state from contradictory historical sections.
