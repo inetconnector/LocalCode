@@ -15,6 +15,8 @@ This file is the authoritative list of unfinished LocalCode work. `STATE.md` des
 
 `STATE.md` and `TODO.md` MUST remain completely current together.
 
+STATE.md is also the mandatory self-contained AI bootstrap: a newly started AI without chat history, memory, or prior context must be able to understand the complete project state and resume implementation from it immediately. TODO.md remains the exhaustive unfinished-work ledger, while STATE.md must summarize enough of the roadmap and exact next action to make continuation possible on its own.
+
 This is a blocking repository invariant:
 
 1. Read both files before material work.

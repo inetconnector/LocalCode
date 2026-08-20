@@ -21,6 +21,8 @@
 
 `STATE.md` and `TODO.md` MUST remain completely current and mutually consistent.
 
+**Self-contained AI bootstrap invariant:** STATE.md must be sufficient for a newly started AI with no chat history, memory, or prior context to understand the complete project state well enough to resume implementation immediately, safely, and correctly. It must therefore carry the current master/branch/PR/head/CI/review reality, product objective, architecture and core components, safety/Quality invariants, important files and entrypoints, relevant implemented capabilities, active changes, known problems and failed approaches, open decisions, exact next implementation steps, and the canonical relationship to TODO.md. Material facts that live in other documents must be summarized here with those source files named; bare links are not a substitute for working continuation context.
+
 This is a blocking repository invariant:
 
 1. Read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md` before material work.
