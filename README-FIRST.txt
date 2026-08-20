@@ -15,18 +15,20 @@ DEUTSCH
 5. Danach werden Ollama, das Standardmodell qwen2.5-coder:14b und die in den
    Einstellungen ausgewählte Coding-Agent-Engine geprüft. Fehlende unterstützte
    Komponenten werden automatisch benutzerlokal installiert und verifiziert.
-6. Unter Einstellungen -> Konfiguration -> Coding-Agent-Engine kann zwischen
-   Aider, Claude Code und OpenCode umgeschaltet werden. LocalCode nativ bleibt
-   zusätzlich als interne Werkzeugschleife verfügbar.
+6. Die aktive Engine kann direkt in der Eingabeleiste oder unter Einstellungen
+   -> Konfiguration -> Coding-Agent-Engine gewählt werden: LocalCode nativ,
+   Aider, Claude Code, OpenCode und Claw Code. Neue Installationen starten mit
+   LocalCode nativ.
 7. Aider und OpenCode können lokale Ollama-Modelle verwenden. Claude Code
    benötigt eine Anmeldung bei Anthropic oder eine unterstützte Provider-
-   Konfiguration. OpenCode kann alternativ über opencode auth login mit einem
-   Cloud-Provider verbunden werden.
+   Konfiguration. Claw Code bleibt eine experimentelle externe Engine unter
+   der LocalCode-Genehmigungsgrenze.
 8. Große Modell-Downloads können beim ersten Start dauern. Details stehen in
    %LOCALAPPDATA%\LocalCode\localcode.log.
 9. Für die Handy-Fernsteuerung im selben Netzwerk: LocalCode starten, im Menü
-   Hilfe -> Remote koppeln wählen, die angezeigte LAN-Adresse auf dem Handy
-   öffnen und den Pairing-Code eingeben.
+   Hilfe -> Remote koppeln wählen und den Pair-/QR-Link verwenden. Die native
+   Android-Hülle kann LocalCode per mDNS finden, prüft den TLS-Fingerprint,
+   öffnet Anhänge über die Android-Dateiauswahl und unterstützt Spracheingabe.
 
 Für einen vollständigen Neuaufbau: BUILD-AND-RUN.bat
 Für Diagnoseausgabe: DIAGNOSE.bat
@@ -45,17 +47,19 @@ ENGLISH
 5. Ollama, the default qwen2.5-coder:14b model, and the coding-agent engine
    selected in Settings are then verified. Missing supported components are
    installed for the current user automatically and verified afterwards.
-6. Settings -> Configuration -> Coding-agent engine switches between Aider,
-   Claude Code, and OpenCode. LocalCode native remains available as the
-   internal tool loop.
+6. The active engine can be selected directly in the composer or under
+   Settings -> Configuration -> Coding-agent engine: LocalCode native, Aider,
+   Claude Code, OpenCode and Claw Code. Fresh installs start with LocalCode
+   native.
 7. Aider and OpenCode can use local Ollama models. Claude Code requires an
-   Anthropic sign-in or a supported provider configuration. OpenCode can also
-   connect to a cloud provider through opencode auth login.
+   Anthropic sign-in or a supported provider configuration. Claw Code remains
+   an experimental external engine behind LocalCode's approval boundary.
 8. Large model downloads can take time on first startup. Details are written to
    %LOCALAPPDATA%\LocalCode\localcode.log.
 9. For phone remote control on the same network: start LocalCode, choose Help
-   -> Pair Remote, open the shown LAN address on the phone, and enter the
-   pairing code.
+   -> Pair Remote, and use the pair/QR link. The native Android shell can find
+   LocalCode via mDNS, pins the TLS fingerprint, opens attachments with the
+   Android file picker, and supports voice input.
 
 For a complete rebuild: BUILD-AND-RUN.bat
 For diagnostics: DIAGNOSE.bat
