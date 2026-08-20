@@ -2,8 +2,8 @@
 
 ## Deutsch
 
-- Lies vor Änderungen `README.md`, `STATE.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`.
-- Halte `STATE.md` nach jeder abgeschlossenen Änderung vollständig aktuell.
+- Lies vor Änderungen `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`.
+- Halte `STATE.md` und `TODO.md` nach jeder materiellen Änderung vollständig und widerspruchsfrei aktuell. `STATE.md` beschreibt die gegenwärtig implementierte Realität; `TODO.md` enthält ausschließlich noch offene Arbeit, Abhängigkeiten und Abnahmekriterien. Nach Branch-/PR-/CI-/Merge-/Roadmap-/Scope-Änderungen müssen beide Dateien im selben Workstream oder unmittelbar danach aktualisiert werden.
 - **Sprachpflege ist verpflichtend:** Jede neue oder geänderte sichtbare Zeichenfolge muss gleichzeitig auf Deutsch und Englisch gepflegt werden. Alle Sprachkataloge müssen identische Schlüssel besitzen. Neue Sprachen müssen in Tests, Dokumentation, Systemerkennung und manueller Auswahl vollständig ergänzt werden.
 - Standardverhalten: Windows-Anzeigesprache verwenden; Deutsch bei deutschem Windows, sonst Englisch. Die manuelle Auswahl muss diese Automatik überschreiben können.
 - Bezeichne externe Programme erst nach vollständiger Werkzeugerkennung als fehlend. Dokumentiere Pfad, Exitcode, STDOUT, STDERR und durchsuchte Orte.
@@ -19,8 +19,8 @@
 
 ## English
 
-- Read `README.md`, `STATE.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` before changing code.
-- Keep `STATE.md` fully current after every completed change.
+- Read `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` before changing code.
+- Keep `STATE.md` and `TODO.md` fully current and mutually consistent after every material change. `STATE.md` describes current implemented reality; `TODO.md` contains only unfinished work, dependencies, and acceptance criteria. Branch/PR/CI/merge/roadmap/scope changes require both files to be refreshed in the same workstream or immediately afterward.
 - **Localization maintenance is mandatory:** every new or changed user-visible string must be maintained in German and English at the same time. All language catalogs must contain identical keys. New languages must be added completely to tests, documentation, system detection, and manual selection.
 - Default behavior: follow the Windows display language; use German on German Windows and English otherwise. Manual selection must override automatic detection.
 - Do not declare an external tool missing before full tool discovery. Record path, exit code, STDOUT, STDERR, and searched locations.
