@@ -37,6 +37,16 @@ var ignoredExt = map[string]bool{
 	".class": true, ".jar": true, ".pyc": true, ".o": true, ".a": true,
 }
 
+var errNoObservableProjectChanges = errors.New("no observable project changes")
+
+func noObservableProjectChanges(detail string) error {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return errNoObservableProjectChanges
+	}
+	return fmt.Errorf("%w: %s", errNoObservableProjectChanges, detail)
+}
+
 func projectTree(root, sub string, maxDepth, maxEntries int) (string, error) {
 	if maxDepth <= 0 {
 		maxDepth = 3
@@ -259,6 +269,9 @@ func replaceText(projectRoot, path, oldText, newText string) (string, error) {
 		return "", fmt.Errorf("old_text must occur exactly once; found %d occurrences", count)
 	}
 	updated := strings.Replace(original, oldText, newText, 1)
+	if updated == original {
+		return "", noObservableProjectChanges("replacement leaves the file unchanged")
+	}
 	if err := backupFile(projectRoot, full); err != nil {
 		return "", err
 	}
@@ -289,6 +302,9 @@ func writeProjectFile(projectRoot, path, content string) (string, error) {
 			return "", fmt.Errorf("refusing to overwrite binary or non-UTF-8 file: %s", path)
 		}
 		old = string(data)
+		if old == content {
+			return "", noObservableProjectChanges("file already has the requested content")
+		}
 		expected = versionForBytes(data)
 		if info, err := os.Stat(full); err == nil {
 			mode = info.Mode().Perm()
