@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version-file: go.mod
+          go-version-file: src/go.mod
       - name: Integrate planner DAG handoff
         shell: pwsh
         run: |
@@ -195,7 +195,9 @@ jobs:
 
           gofmt -w src/agent_team_types.go src/agent_task_graph.go src/agent_task_graph_test.go src/subagent_model.go src/subagent_model_test.go
           git diff --check
+          Push-Location src
           go test ./... -run 'TestAgentTask|TestBuildAgentTaskGraph|TestLegacyCompletedState|TestPlanner'
+          Pop-Location
 
           git config user.name 'LocalCode CI'
           git config user.email 'localcode-ci@users.noreply.github.com'
