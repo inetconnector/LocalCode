@@ -65,6 +65,15 @@ func TestReadOnlyMissionPersistsStructuredTerminalJournal(t *testing.T) {
 		if task.Usage.ModelCalls != 1 {
 			t.Fatalf("task %s durable usage=%+v", task.ID, task.Usage)
 		}
+		if task.ResourceClass != AgentResourceModelInference {
+			t.Fatalf("task %s lost durable resource class: %+v", task.ID, task)
+		}
+		if task.Running {
+			t.Fatalf("terminal task %s remained marked running: %+v", task.ID, task)
+		}
+		if task.BudgetSnapshot == nil || task.BudgetSnapshot.Usage.ModelCalls != 1 {
+			t.Fatalf("task %s lost terminal budget snapshot: %+v", task.ID, task.BudgetSnapshot)
+		}
 	}
 	if mission.Accounting == nil || mission.Accounting.Usage.ModelCalls != len(req.Tasks) {
 		t.Fatalf("mission accounting missing or wrong: %#v", mission.Accounting)
@@ -137,7 +146,7 @@ func TestInterruptedMissionIsRecoverableButNotNormalChatResume(t *testing.T) {
 	if recovered.Mission.State != missionRecoveryRunning || len(recovered.Mission.Tasks) != 1 {
 		t.Fatalf("unexpected durable Mission snapshot: %#v", recovered.Mission)
 	}
-	if recovered.Mission.Tasks[0].State != AgentTaskRunning || recovered.Mission.Tasks[0].ResourceClass != AgentResourceModelInference {
+	if recovered.Mission.Tasks[0].State != AgentTaskRunning || recovered.Mission.Tasks[0].ResourceClass != AgentResourceModelInference || !recovered.Mission.Tasks[0].Running {
 		t.Fatalf("scheduler checkpoint was not persisted: %#v", recovered.Mission.Tasks[0])
 	}
 
