@@ -22,6 +22,7 @@ type AgentScheduledRun struct {
 }
 
 type scheduledReadOnlyAgentExecutor func(context.Context, string, Config, AgentTask) (AgentResult, error)
+type scheduledReadOnlyAgentCheckpoint func(AgentSchedulerSnapshot)
 
 func scheduledAgentTaskTerminalState(result AgentResult, runErr error) AgentTaskState {
 	if runErr != nil {
@@ -54,6 +55,13 @@ func (s *AppState) runScheduledReadOnlyAgentGraph(project string, cfg Config, gr
 // scheduler; the executor receives a detached task value and never mutates the
 // shared graph directly.
 func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutor(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor) (AgentScheduledRun, error) {
+	return s.runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(project, cfg, graph, scheduler, execute, nil)
+}
+
+// runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint publishes scheduler
+// snapshots only after scheduler-owned state transitions. The callback is
+// observation-only: it cannot affect admission, capabilities or task state.
+func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor, checkpoint scheduledReadOnlyAgentCheckpoint) (AgentScheduledRun, error) {
 	run := AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}
 	if s == nil {
 		return run, fmt.Errorf("app state is nil")
@@ -71,37 +79,46 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutor(project string, cf
 		return run, err
 	}
 	run.MissionID = graph.MissionID
-	if snapshot := scheduler.Snapshot(graph, run.UsageByTask); snapshot.Running != 0 {
+	publishCheckpoint := func() AgentSchedulerSnapshot {
+		snapshot := scheduler.Snapshot(graph, run.UsageByTask)
 		run.Snapshot = snapshot
+		if checkpoint != nil {
+			checkpoint(snapshot)
+		}
+		return snapshot
+	}
+	if snapshot := publishCheckpoint(); snapshot.Running != 0 {
 		return run, fmt.Errorf("agent scheduler already has %d active task(s)", snapshot.Running)
 	}
 
 	for {
 		if err := scheduler.QueueReady(graph, nil); err != nil {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			publishCheckpoint()
 			return run, err
 		}
+		publishCheckpoint()
 		lease, admitted, err := scheduler.AdmitNext(graph)
 		if err != nil {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			publishCheckpoint()
 			if err == context.Canceled {
 				return run, context.Canceled
 			}
 			return run, err
 		}
 		if !admitted {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			publishCheckpoint()
 			return run, nil
 		}
 
 		executionTask, err := scheduler.prepareScheduledAgentTask(graph, lease, cfg)
 		if err != nil {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			publishCheckpoint()
 			if lease.Context.Err() != nil {
 				return run, context.Canceled
 			}
 			return run, err
 		}
+		publishCheckpoint()
 
 		result, runErr := execute(lease.Context, project, cfg, executionTask)
 		if runErr != nil {
@@ -118,15 +135,15 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutor(project string, cf
 
 		finalized, finalizeErr := scheduler.finalizeScheduledAgentTask(graph, lease, result, next)
 		if finalizeErr != nil {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			publishCheckpoint()
 			return run, finalizeErr
 		}
 		if finalized.Applied {
 			run.UsageByTask[executionTask.ID] = result.Usage
 			run.Results = append(run.Results, AgentScheduledTaskResult{TaskID: executionTask.ID, Role: executionTask.Role, Result: result})
 		}
+		publishCheckpoint()
 		if finalized.State == AgentTaskCancelled {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
 			return run, context.Canceled
 		}
 	}

@@ -16,12 +16,15 @@ const maxReadOnlyMissionTasks = 64
 var errAgentMissionBusy = errors.New("agent is already running")
 
 type AgentReadOnlyMissionRequest struct {
-	MissionID    string              `json:"mission_id"`
-	ParentTaskID string              `json:"parent_task_id,omitempty"`
-	Project      string              `json:"project"`
-	Model        string              `json:"model,omitempty"`
-	Budget       AgentBudget         `json:"budget,omitempty"`
-	Tasks        []AgentTaskProposal `json:"tasks"`
+	MissionID       string              `json:"mission_id"`
+	ParentTaskID    string              `json:"parent_task_id,omitempty"`
+	Objective       string              `json:"objective,omitempty"`
+	Project         string              `json:"project"`
+	Model           string              `json:"model,omitempty"`
+	Constraints     []string            `json:"constraints,omitempty"`
+	SuccessCriteria []string            `json:"success_criteria,omitempty"`
+	Budget          AgentBudget         `json:"budget,omitempty"`
+	Tasks           []AgentTaskProposal `json:"tasks"`
 }
 
 type AgentReadOnlyMissionResult struct {
@@ -146,6 +149,8 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	s.Model = model
 	s.mu.Unlock()
 
+	s.beginMissionRunJournal(executionRunID, req, graph, project, model, started)
+
 	defer func() {
 		cancel()
 		s.mu.Lock()
@@ -177,11 +182,15 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	scheduler := NewAgentScheduler(missionCtx, AgentResourceLimits{})
 	defer scheduler.missionCancel()
 	stopMissionStatus := startAgentMissionDesktopStatusMonitor(executionRunID, missionID, project, model, started, scheduler, &graph, tracker)
-	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, &graph, scheduler, budgetedExecute)
+	checkpoint := func(snapshot AgentSchedulerSnapshot) {
+		s.journalMissionSchedulerSnapshot(executionRunID, snapshot)
+	}
+	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(project, cfg, &graph, scheduler, budgetedExecute, checkpoint)
 	stopMissionStatus()
 	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 		cancelUnfinishedReadOnlyMissionTasks(&graph)
 		run.Snapshot = scheduler.Snapshot(&graph, run.UsageByTask)
+		s.journalMissionSchedulerSnapshot(executionRunID, run.Snapshot)
 	}
 	finished := time.Now()
 	accounting := agentMissionAccounting(req.Budget, run.UsageByTask, started, finished)
@@ -199,6 +208,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		Run:               run,
 	}
 	publishFinalAgentMissionDesktopStatus(executionRunID, result, started, finished)
+	s.finishMissionRunJournal(executionRunID, result, fmt.Sprintf("%s:%s", state, reason))
 	return result, runErr
 }
 

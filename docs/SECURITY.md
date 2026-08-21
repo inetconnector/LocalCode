@@ -55,7 +55,22 @@ Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
 - Das Anzeigen eines Planner-/Task-Status kann keine `RequestedCapabilities` in ausführbare Rechte umwandeln.
 - Mobile/Remote erhält durch diese Desktop-Erweiterung keine neue API oder Authority.
 
-Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
+Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Durable Mission-Recovery-Metadaten sind davon getrennt und laufen ausschließlich über `run_journal.go`. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
+
+### Durable Mission-Metadaten und Recovery-Grenze
+
+`run_journal.go` bleibt die **einzige** dauerhafte Recovery-Autorität. Der vorhandene `RunRecoveryState` erhält für read-only Missions einen optionalen, begrenzten strukturierten Mission-Checkpoint; es wird kein zweites Mission-Journal erzeugt.
+
+Persistiert werden nur recovery-relevante strukturierte Fakten: Mission-ID, Objective, direkte Projekt-/Scope-Identität, Modell, begrenzte Constraints/Success Criteria, Mission-Budget, DAG-/Task-Identität und -Zustand, Requested-/Granted-Capabilities, Task-Budgets, Scheduler-Ressourcen-/Queue-/Running-/Budget-Snapshots sowie finaler Mission-State/-Reason, Accounting und ausschließlich scheduler-akzeptierte Usage.
+
+- Freitext läuft durch die bestehende Secret-Redaction und harte Längen-/Mengenbegrenzungen.
+- Rohe Child-/Modellantworten, Findings und Tool-Transcripts werden nicht als zweites Transcript in Mission-Metadaten kopiert.
+- Durable Checkpoints vergeben keine Capabilities und verändern weder Scheduler-Limits noch Admission.
+- Persistierte Requested-/Granted-Capabilities dokumentieren Zustand; aus dem Journal entsteht keine ausführbare Authority.
+- Unterbrochene Missionen werden erkannt, aber in diesem Slice **nicht** automatisch resumed, retried oder replayed.
+- Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale ausdrücklich, damit eine strukturierte Mission nicht als normaler Prompt blind erneut ausgeführt wird.
+- Eine spätere Wiederaufnahme muss zuerst aktuelle Projekt-/Git-/Task-Postconditions rekonstruieren und gegen den Journal-Checkpoint abgleichen.
+- Späte/stale Child-Resultate bleiben nicht autoritativ; finale Usage wird nur aus scheduler-akzeptierten Resultaten abgeleitet.
 
 ### Orchestrierungsdiagnostik
 
@@ -118,9 +133,11 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 ### Recovery
 
-`run_journal.go` ist die Recovery-Autorität für aktive Runs. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
+`run_journal.go` ist die Recovery-Autorität für aktive Runs und read-only Missions. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
 
-Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
+Mission-Persistenz ist in diese bestehende Recovery-Autorität integriert. Ein konkurrierendes zweites Journal bleibt unzulässig. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind weiterhin nicht autoritative Beobachtungsflächen und dürfen nicht als Recovery-Ersatz verwendet werden.
+
+Automatisches Mission-Resume ist noch nicht implementiert. Restart-Reconciliation muss vor jeder späteren Wiederaufnahme aktuelle Projekt-/Git-/Task-Postconditions prüfen; blindes Replay ist unzulässig.
 
 ### Zukünftige Mutation-Agenten
 
@@ -177,7 +194,22 @@ The Desktop Mission display is an **observation-only boundary**:
 - Displaying Planner/task status cannot convert `RequestedCapabilities` into executable authority.
 - This Desktop extension grants no new Mobile/Remote API or authority.
 
-Status observation therefore cannot start new work or bypass existing safety boundaries. Any future Mission-control surface must be a separate, reviewed governance boundary.
+Status observation therefore cannot start new work or bypass existing safety boundaries. Durable Mission recovery metadata is separate and flows only through `run_journal.go`. Any future Mission-control surface must be a separate, reviewed governance boundary.
+
+### Durable Mission metadata and recovery boundary
+
+`run_journal.go` remains the **sole** durable recovery authority. The existing `RunRecoveryState` gains an optional bounded structured Mission checkpoint for read-only Missions; no second Mission journal is introduced.
+
+Persisted data is limited to recovery-relevant structured facts: Mission identity/objective/direct project scope/model/bounded constraints and success criteria, Mission budget, DAG/task identity and state, requested/granted capabilities, task budgets, Scheduler resource/queue/running/budget snapshots, final Mission state/reason/accounting and scheduler-accepted usage.
+
+- Free text passes through existing secret redaction and strict count/length bounds.
+- Raw Child/model responses, findings and tool transcripts are not copied into Mission recovery metadata.
+- Durable checkpoints cannot grant capabilities or change Scheduler limits/admission.
+- Persisted requested/granted capabilities describe state only and do not become executable authority by themselves.
+- Interrupted Missions are detected but are **not** automatically resumed, retried or replayed in this slice.
+- Normal chat `Continue` recovery explicitly rejects Mission journal entries so structured Mission work cannot be blindly replayed as an ordinary prompt.
+- Future resume must first reconstruct current project/Git/task postconditions and reconcile them against the checkpoint.
+- Late/stale Child results remain non-authoritative; terminal usage is based only on Scheduler-accepted results.
 
 ### Orchestration diagnostics
 
@@ -241,9 +273,11 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 ### Recovery
 
-`run_journal.go` is the recovery authority for active runs. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
+`run_journal.go` is the recovery authority for active runs and read-only Missions. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
 
-Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator are explicitly non-durable and must not be used as recovery substitutes.
+Mission persistence is integrated with this existing recovery authority. A competing second journal remains forbidden. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator remain non-authoritative observation surfaces and must not be used as recovery substitutes.
+
+Automatic Mission resume is not implemented yet. Restart reconciliation must verify current project/Git/task postconditions before any later resume; blind replay is forbidden.
 
 ### Future mutation agents
 

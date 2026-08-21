@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `5f6dac0b1f29ab7bb8ba45656fd58a512685f095`  
-**Active work:** PR #59 `test: benchmark orchestration parallelism`  
+**Authoritative merged base for this slice:** master `c140dfbf9b02d9e3533382c877732a6fd3403064`  
+**Active work:** PR #60 `feat: persist durable Mission metadata in run journal`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -17,14 +17,12 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P0/P1 – Phase 6: durable Missions and recovery
 
-- [ ] Introduce durable Mission metadata separate from chat prose: objective, project/scope, constraints, success criteria, graph and current state.
-- [ ] Integrate Mission persistence into `run_journal.go`; do not create a competing recovery authority.
-- [ ] Persist DAG/task state, attempts, structured results, model/tool/resource usage, timestamps and verification state.
-- [ ] Reconcile project/Git/postconditions on restart before resuming; never blindly replay a mutation.
-- [ ] Support mission/task pause, resume, cancel and controlled retry.
-- [ ] Preserve mission/task resource and budget accounting across recovery.
+- [ ] Reconcile interrupted Mission project/Git/postconditions on restart before resuming; never blindly replay work.
+- [ ] Persist remaining recovery semantics: task attempts/retry counters, bounded structured result evidence, timestamps and verification state.
+- [ ] Support Mission/task pause, resume and controlled retry on top of reconciled durable state; preserve existing cancel semantics.
+- [ ] Preserve Mission/task resource and budget accounting across restart/resume and prevent double-counting accepted usage.
+- [ ] Add crash/restart tests for queued, ready, running, failed and partially completed Mission work.
 - [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
-- [ ] Add crash/restart tests for queued, ready, running, failed and partially completed work.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
 
