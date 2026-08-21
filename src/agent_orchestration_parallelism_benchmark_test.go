@@ -26,17 +26,17 @@ const (
 )
 
 type ollamaConcurrencyBenchmarkResult struct {
-	Model                  string  `json:"model"`
-	BaseURL                string  `json:"base_url"`
-	ContextLength          int     `json:"context_length"`
-	Concurrency            int     `json:"concurrency"`
-	Requests               int     `json:"requests"`
-	WallMillis             int64   `json:"wall_millis"`
-	MeanLatencyMillis      float64 `json:"mean_latency_millis"`
-	P95LatencyMillis       int64   `json:"p95_latency_millis"`
-	RequestsPerSecond      float64 `json:"requests_per_second"`
-	ClientOverlapFactor    float64 `json:"client_overlap_factor"`
-	SpeedupVsSequential    float64 `json:"speedup_vs_sequential"`
+	Model               string  `json:"model"`
+	BaseURL             string  `json:"base_url"`
+	ContextLength       int     `json:"context_length"`
+	Concurrency         int     `json:"concurrency"`
+	Requests            int     `json:"requests"`
+	WallMillis          int64   `json:"wall_millis"`
+	MeanLatencyMillis   float64 `json:"mean_latency_millis"`
+	P95LatencyMillis    int64   `json:"p95_latency_millis"`
+	RequestsPerSecond   float64 `json:"requests_per_second"`
+	ClientOverlapFactor float64 `json:"client_overlap_factor"`
+	SpeedupVsSequential float64 `json:"speedup_vs_sequential"`
 }
 
 func buildOrchestrationBenchmarkGraph(taskCount int) (AgentTaskGraph, error) {
