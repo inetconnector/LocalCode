@@ -35,6 +35,7 @@ func TestMissionRestartReconciliationMatchedNeverTreatsRunningAsSuccess(t *testi
 		Tasks: []MissionRecoveryTaskState{
 			{ID: "done", State: AgentTaskSucceeded},
 			{ID: "running", State: AgentTaskRunning, Running: true},
+			{ID: "stale-running-flag", State: AgentTaskReady, Running: true},
 			{ID: "ready", State: AgentTaskReady},
 			{ID: "failed", State: AgentTaskFailed},
 		},
@@ -45,8 +46,8 @@ func TestMissionRestartReconciliationMatchedNeverTreatsRunningAsSuccess(t *testi
 	if reconciliation.State != missionReconcileMatched {
 		t.Fatalf("state=%q reason=%q want=%q", reconciliation.State, reconciliation.Reason, missionReconcileMatched)
 	}
-	if len(reconciliation.Tasks) != 4 {
-		t.Fatalf("task reconciliations=%d want=4", len(reconciliation.Tasks))
+	if len(reconciliation.Tasks) != 5 {
+		t.Fatalf("task reconciliations=%d want=5", len(reconciliation.Tasks))
 	}
 	byID := make(map[string]MissionRecoveryTaskReconciliation, len(reconciliation.Tasks))
 	for _, task := range reconciliation.Tasks {
@@ -60,6 +61,9 @@ func TestMissionRestartReconciliationMatchedNeverTreatsRunningAsSuccess(t *testi
 	}
 	if got := byID["running"].Reason; got != "running_at_interruption_is_not_success" {
 		t.Fatalf("running reason=%q", got)
+	}
+	if got := byID["stale-running-flag"].Disposition; got != missionTaskDispositionInterruptedUnknown {
+		t.Fatalf("stale running flag disposition=%q", got)
 	}
 	if got := byID["ready"].Disposition; got != missionTaskDispositionPending {
 		t.Fatalf("ready disposition=%q", got)
