@@ -57,6 +57,19 @@ Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
 
 Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
 
+### Orchestrierungsdiagnostik
+
+Die Desktop-Orchestrierungsdiagnostik ist ebenfalls ausschließlich **Beobachtung** und keine Steuerungsgrenze:
+
+- `/api/status` ergänzt maschinenlesbare Backend-, Queue-, logische Task- und Ressourceninformationen, ohne Scheduler-Konfiguration zu verändern.
+- `at_capacity` bedeutet nur, dass das jeweilige Ressourcenlimit vollständig belegt ist. `saturated` wird erst gemeldet, wenn die Ressource voll ist und passende Arbeit tatsächlich darauf wartet.
+- Die Diagnostik kann Ollama offline, kein gewähltes Modell, ein lokal fehlendes gewähltes Modell, Queue-Limit und Ressourcenwartedruck unterscheiden.
+- Angezeigte Limits stammen während einer Mission aus den tatsächlich normalisierten Scheduler-Limits; die Anzeige darf sie weder erhöhen noch automatisch auf Hardware vermeintlich „optimieren“.
+- Diagnostikdaten sind nicht persistent, kein Recovery-Speicher, keine Capability-Quelle und kein Mission-Control-Pfad.
+- Die Desktop-Diagnoseoberfläche besitzt keinen Chat-, Approval-, Projektmutations-, Terminal- oder Scheduler-Policy-Endpunkt.
+- Mobile Remote erhält durch diese Diagnostik keinen erweiterten Payload und keine zusätzliche Authority.
+- Ein beobachteter Sättigungszustand ist **keine** Benchmark- oder Performance-Evidenz und rechtfertigt für sich keine Änderung der Modellparallelität. Reproduzierbare Benchmarks bleiben eine separate Abnahmebedingung.
+
 ### Mobile Remote / Android
 
 Desktop und Mobile sind getrennte Servergrenzen. Die Desktop-API bleibt Loopback-orientiert. Remote besitzt eine schmalere API und erweitert keine Werkzeugrechte.
@@ -95,7 +108,7 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 `run_journal.go` ist die Recovery-Autorität für aktive Runs. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
 
-Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry und die Mobile-Mission-Anzeige sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
+Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
 
 ### Zukünftige Mutation-Agenten
 
@@ -154,6 +167,19 @@ The Desktop Mission display is an **observation-only boundary**:
 
 Status observation therefore cannot start new work or bypass existing safety boundaries. Any future Mission-control surface must be a separate, reviewed governance boundary.
 
+### Orchestration diagnostics
+
+Desktop orchestration diagnostics are likewise an **observation-only** surface, not a control boundary:
+
+- `/api/status` adds machine-readable backend, queue, logical-task and resource facts without changing Scheduler configuration.
+- `at_capacity` only means a resource limit is fully occupied. `saturated` is reported only when that resource is full and matching work is actually waiting for it.
+- Diagnostics distinguish Ollama offline, no selected model, selected model missing locally, queue-limit pressure and resource waiting pressure.
+- During a Mission, reported limits come from the actually normalized Scheduler limits; the display must not widen them or automatically “optimize” them from hardware guesses.
+- Diagnostic data is non-durable, not a recovery store, not a capability source and not a Mission-control path.
+- The Desktop diagnostics UI contains no chat, approval, project-mutation, terminal or Scheduler-policy endpoint.
+- Mobile Remote receives no broader payload or authority from this feature.
+- Observed saturation is **not** benchmark or performance evidence and by itself does not justify changing model concurrency. Reproducible benchmarks remain a separate acceptance requirement.
+
 ### Mobile Remote / Android
 
 Desktop and Mobile are separate server boundaries. The Desktop API remains loopback-oriented. Remote exposes a narrower API and grants no additional tool authority.
@@ -193,7 +219,7 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 `run_journal.go` is the recovery authority for active runs. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
 
-Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry and Mobile Mission indicator are explicitly non-durable and must not be used as recovery substitutes.
+Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator are explicitly non-durable and must not be used as recovery substitutes.
 
 ### Future mutation agents
 
