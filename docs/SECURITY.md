@@ -57,19 +57,44 @@ Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
 
 Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Durable Mission-Recovery-Metadaten sind davon getrennt und laufen ausschließlich über `run_journal.go`. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
 
-### Durable Mission-Metadaten und Recovery-Grenze
+### Durable Mission-Metadaten und Restart-Reconciliation
 
-`run_journal.go` bleibt die **einzige** dauerhafte Recovery-Autorität. Der vorhandene `RunRecoveryState` erhält für read-only Missions einen optionalen, begrenzten strukturierten Mission-Checkpoint; es wird kein zweites Mission-Journal erzeugt.
+`run_journal.go` bleibt die **einzige** dauerhafte Recovery-Autorität. Der vorhandene `RunRecoveryState` enthält für read-only Missions einen optionalen, begrenzten strukturierten Mission-Checkpoint; es wird kein zweites Mission-Journal erzeugt.
 
 Persistiert werden nur recovery-relevante strukturierte Fakten: Mission-ID, Objective, direkte Projekt-/Scope-Identität, Modell, begrenzte Constraints/Success Criteria, Mission-Budget, DAG-/Task-Identität und -Zustand, Requested-/Granted-Capabilities, Task-Budgets, Scheduler-Ressourcen-/Queue-/Running-/Budget-Snapshots sowie finaler Mission-State/-Reason, Accounting und ausschließlich scheduler-akzeptierte Usage.
 
+Zusätzlich wird beim Missionsstart eine begrenzte Projekt-/Git-Baseline gespeichert:
+
+- SHA-256 der kanonischen Projektidentität,
+- Git-Beobachtungszustand,
+- SHA-256 der Git-Root-Identität statt eines zusätzlichen rohen Repository-Pfads,
+- exaktes Git `HEAD`,
+- SHA-256 der Bytes von `git status --porcelain=v1 -z --untracked-files=all`,
+- Erfassungszeitpunkt.
+
+Die rohe Porcelain-Ausgabe und damit Dateipfade werden **nicht** dauerhaft gespeichert. Die Baseline ist Evidenz, keine Berechtigungsquelle.
+
+Der Reconciliation-Git-Observer ist absichtlich enger als ein allgemeiner Shell-/Git-Toolpfad. Er akzeptiert keinen frei formulierten Befehl und führt ausschließlich die fest kodierten read-only Aufrufe `rev-parse --show-toplevel`, `rev-parse --verify HEAD` und `status --porcelain=v1 -z --untracked-files=all` aus. Der Beobachtungspfad ist mit einem Drei-Sekunden-Timeout begrenzt und besitzt keine Mutationsoperation.
+
+Beim nächsten Start einer unterbrochenen, nicht-terminalen Mission wird die aktuelle Projekt-/Git-Sicht gegen die Baseline klassifiziert als `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` oder `insufficient_evidence`. Ältere Mission-Journale ohne Baseline und nicht ausreichend beobachtbare/non-Git Baselines werden konservativ `insufficient_evidence`; fehlende Evidenz wird nie als Übereinstimmung interpretiert.
+
+Task-Reconciliation bleibt ebenfalls konservativ:
+
+- Ein beim Prozessabbruch `running` markierter Task wird immer `interrupted_unknown`; ein laufender Zustand ist **niemals** Erfolgsbeweis.
+- Durable `succeeded`-/legacy-`completed`-Tasks werden auch bei `matched` nur als `verify_postconditions` klassifiziert.
+- Noch nicht gestartete/nicht-terminale Arbeit wird nur bei vollständigem Projekt-/Git-Match als `pending` klassifiziert.
+- Bei Drift, fehlender oder unzureichender Evidenz bleibt potenziell wiederverwendbare Arbeit `blocked_reconciliation`.
+- Bereits `failed`/`cancelled` bleibt terminal.
+
+Weitere Grenzen:
+
 - Freitext läuft durch die bestehende Secret-Redaction und harte Längen-/Mengenbegrenzungen.
 - Rohe Child-/Modellantworten, Findings und Tool-Transcripts werden nicht als zweites Transcript in Mission-Metadaten kopiert.
-- Durable Checkpoints vergeben keine Capabilities und verändern weder Scheduler-Limits noch Admission.
+- Durable Checkpoints und Reconciliation vergeben keine Capabilities und verändern weder Scheduler-Limits noch Admission.
 - Persistierte Requested-/Granted-Capabilities dokumentieren Zustand; aus dem Journal entsteht keine ausführbare Authority.
-- Unterbrochene Missionen werden erkannt, aber in diesem Slice **nicht** automatisch resumed, retried oder replayed.
+- Unterbrochene Missionen werden erkannt und reconciliert, aber **nicht** automatisch resumed, retried oder replayed.
 - Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale ausdrücklich, damit eine strukturierte Mission nicht als normaler Prompt blind erneut ausgeführt wird.
-- Eine spätere Wiederaufnahme muss zuerst aktuelle Projekt-/Git-/Task-Postconditions rekonstruieren und gegen den Journal-Checkpoint abgleichen.
+- Eine unterbrochene Mission bleibt als Recovery-Evidenz sichtbar, wenn das Projektverzeichnis fehlt; diese Situation wird blockierend als `project_unavailable` klassifiziert und erweitert keine Dateirechte.
 - Späte/stale Child-Resultate bleiben nicht autoritativ; finale Usage wird nur aus scheduler-akzeptierten Resultaten abgeleitet.
 
 ### Orchestrierungsdiagnostik
@@ -135,9 +160,9 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 `run_journal.go` ist die Recovery-Autorität für aktive Runs und read-only Missions. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
 
-Mission-Persistenz ist in diese bestehende Recovery-Autorität integriert. Ein konkurrierendes zweites Journal bleibt unzulässig. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind weiterhin nicht autoritative Beobachtungsflächen und dürfen nicht als Recovery-Ersatz verwendet werden.
+Mission-Persistenz und die Projekt-/Git-Baseline sind in diese bestehende Recovery-Autorität integriert. Ein konkurrierendes zweites Journal bleibt unzulässig. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind weiterhin nicht autoritative Beobachtungsflächen und dürfen nicht als Recovery-Ersatz verwendet werden.
 
-Automatisches Mission-Resume ist noch nicht implementiert. Restart-Reconciliation muss vor jeder späteren Wiederaufnahme aktuelle Projekt-/Git-/Task-Postconditions prüfen; blindes Replay ist unzulässig.
+Restart-Reconciliation ist als read-only Evidenzschicht implementiert. Automatisches Mission-Resume/Retry/Replay ist weiterhin nicht implementiert. Vor einer späteren Wiederaufnahme müssen insbesondere durable Erfolgszustände anhand begrenzter Postcondition-Evidenz verifiziert werden; blindes Replay bleibt unzulässig.
 
 ### Zukünftige Mutation-Agenten
 
@@ -196,19 +221,44 @@ The Desktop Mission display is an **observation-only boundary**:
 
 Status observation therefore cannot start new work or bypass existing safety boundaries. Durable Mission recovery metadata is separate and flows only through `run_journal.go`. Any future Mission-control surface must be a separate, reviewed governance boundary.
 
-### Durable Mission metadata and recovery boundary
+### Durable Mission metadata and restart reconciliation
 
-`run_journal.go` remains the **sole** durable recovery authority. The existing `RunRecoveryState` gains an optional bounded structured Mission checkpoint for read-only Missions; no second Mission journal is introduced.
+`run_journal.go` remains the **sole** durable recovery authority. The existing `RunRecoveryState` contains an optional bounded structured Mission checkpoint for read-only Missions; no second Mission journal is introduced.
 
 Persisted data is limited to recovery-relevant structured facts: Mission identity/objective/direct project scope/model/bounded constraints and success criteria, Mission budget, DAG/task identity and state, requested/granted capabilities, task budgets, Scheduler resource/queue/running/budget snapshots, final Mission state/reason/accounting and scheduler-accepted usage.
 
+Mission start also persists a bounded project/Git baseline:
+
+- SHA-256 of canonical project identity,
+- Git observation state,
+- SHA-256 of Git-root identity instead of another raw repository path,
+- exact Git `HEAD`,
+- SHA-256 of the bytes from `git status --porcelain=v1 -z --untracked-files=all`,
+- capture timestamp.
+
+Raw porcelain output and therefore file paths are **not** durably stored. The baseline is evidence, not an authorization source.
+
+The reconciliation Git observer is deliberately narrower than a general shell/Git tool path. It accepts no arbitrary command text and runs only the hard-coded read-only calls `rev-parse --show-toplevel`, `rev-parse --verify HEAD`, and `status --porcelain=v1 -z --untracked-files=all`. The observer is bounded by a three-second timeout and has no mutation operation.
+
+On the next startup after an interrupted non-terminal Mission, current project/Git observation is classified against the baseline as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable`, or `insufficient_evidence`. Older Mission journals without a baseline and insufficiently observable/non-Git baselines conservatively become `insufficient_evidence`; missing evidence is never treated as a match.
+
+Task reconciliation is equally conservative:
+
+- A task marked `running` at process interruption always becomes `interrupted_unknown`; running state is **never** evidence of success.
+- Durable `succeeded`/legacy `completed` tasks become only `verify_postconditions` even when project/Git state is `matched`.
+- Not-started/non-terminal work becomes `pending` only after a complete project/Git match.
+- Drift, unavailable or insufficient evidence leaves potentially reusable/pending work as `blocked_reconciliation`.
+- Existing `failed`/`cancelled` work remains terminal.
+
+Additional boundaries:
+
 - Free text passes through existing secret redaction and strict count/length bounds.
 - Raw Child/model responses, findings and tool transcripts are not copied into Mission recovery metadata.
-- Durable checkpoints cannot grant capabilities or change Scheduler limits/admission.
+- Durable checkpoints and reconciliation cannot grant capabilities or change Scheduler limits/admission.
 - Persisted requested/granted capabilities describe state only and do not become executable authority by themselves.
-- Interrupted Missions are detected but are **not** automatically resumed, retried or replayed in this slice.
+- Interrupted Missions are detected and reconciled but are **not** automatically resumed, retried or replayed.
 - Normal chat `Continue` recovery explicitly rejects Mission journal entries so structured Mission work cannot be blindly replayed as an ordinary prompt.
-- Future resume must first reconstruct current project/Git/task postconditions and reconcile them against the checkpoint.
+- An interrupted Mission remains visible as recovery evidence if the project directory disappeared; that case is blocking `project_unavailable` and grants no new filesystem authority.
 - Late/stale Child results remain non-authoritative; terminal usage is based only on Scheduler-accepted results.
 
 ### Orchestration diagnostics
@@ -275,9 +325,9 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 `run_journal.go` is the recovery authority for active runs and read-only Missions. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
 
-Mission persistence is integrated with this existing recovery authority. A competing second journal remains forbidden. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator remain non-authoritative observation surfaces and must not be used as recovery substitutes.
+Mission persistence and the project/Git baseline are integrated with this existing recovery authority. A competing second journal remains forbidden. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator remain non-authoritative observation surfaces and must not be used as recovery substitutes.
 
-Automatic Mission resume is not implemented yet. Restart reconciliation must verify current project/Git/task postconditions before any later resume; blind replay is forbidden.
+Restart reconciliation is implemented as a read-only evidence layer. Automatic Mission resume/retry/replay is still not implemented. Before any later continuation, durable success states in particular must be checked against bounded postcondition evidence; blind replay remains forbidden.
 
 ### Future mutation agents
 
