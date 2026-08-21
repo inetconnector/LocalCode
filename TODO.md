@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `a4453534aa513b48d41ae2f754c4c05d6c04358a`  
-**Active work:** PR #54 `fix: terminalize cancelled mission graphs`  
+**Authoritative merged base for this slice:** master `f822518e3ca0a7bba171113d9dd30b4cb09524c7`  
+**Active work:** PR #55 `test: cover scheduler saturation and fairness at scale`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -17,7 +17,6 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P0 – Finish Phase 5: product-level read-only orchestration
 
-- [ ] Add larger DAG resource-saturation/fairness tests beyond the existing linear and fan-out/fan-in dispatch tests.
 - [ ] Surface stable mission/scheduler state in Desktop: queued/running/blocked/cancelled/succeeded, resource class and budget state.
 - [ ] Add a narrower read-only Mobile Remote mission view without adding Mobile tool authority.
 - [ ] Add model-backend/resource saturation diagnostics.
