@@ -2,7 +2,10 @@
 
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func diagnosticResource(t *testing.T, diagnostics AgentOrchestrationDiagnostics, class AgentResourceClass) AgentResourceDiagnostics {
 	t.Helper()
@@ -132,5 +135,27 @@ func TestAgentOrchestrationDiagnosticsReadyWhenIdle(t *testing.T) {
 	resource := diagnosticResource(t, diagnostics, AgentResourceModelInference)
 	if resource.Limit != defaultAgentResourceLimits().ModelInference || resource.InUse != 0 || resource.AtCapacity || resource.Saturated {
 		t.Fatalf("idle model resource diagnostics = %#v", resource)
+	}
+}
+
+func TestStatusJSONAlwaysIncludesMachineReadableOrchestrationDiagnostics(t *testing.T) {
+	status := readyDiagnosticStatus()
+	status.RunID = "diagnostics-no-mission"
+	raw, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Orchestration AgentOrchestrationDiagnostics `json:"orchestration"`
+		Mission       json.RawMessage                `json:"mission"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Orchestration.State != AgentOrchestrationReady || payload.Orchestration.Reason != AgentOrchestrationReasonIdle {
+		t.Fatalf("status orchestration diagnostics = %#v", payload.Orchestration)
+	}
+	if len(payload.Mission) != 0 {
+		t.Fatalf("unrelated status unexpectedly included mission payload: %s", payload.Mission)
 	}
 }
