@@ -91,11 +91,16 @@ func loadRecoverableRun() *RunRecoveryState {
 		return nil
 	}
 	if info, statErr := os.Stat(state.Project); statErr != nil || !info.IsDir() {
-		return nil
+		if state.Mission == nil {
+			return nil
+		}
 	}
 	copy := *state
 	copy.Mission = cloneMissionRecoveryState(state.Mission)
 	copy.Events = append([]RunJournalEvent(nil), state.Events...)
+	if copy.Mission != nil {
+		return reconcileRecoverableMission(&copy)
+	}
 	return &copy
 }
 
@@ -291,16 +296,21 @@ func recoveryStartupEvent(cfg Config, recovery *RunRecoveryState) UIEvent {
 		return UIEvent{}
 	}
 	if recovery.Mission != nil {
+		reconciliationState := missionReconcileInsufficientEvidence
+		if recovery.Mission.Reconciliation != nil && strings.TrimSpace(recovery.Mission.Reconciliation.State) != "" {
+			reconciliationState = recovery.Mission.Reconciliation.State
+		}
 		return UIEvent{
 			ID:      newID(),
 			Type:    "recovery_available",
 			Message: localizeConfigText(cfg, "Unterbrochene Mission erkannt", "Interrupted Mission detected"),
 			Detail: fmt.Sprintf(localizeConfigText(cfg,
-				"Mission: %s · Zustand: %s · Projekt: %s\nDie Mission wurde im Run-Journal erkannt, wird aber nicht automatisch fortgesetzt. Vor einer späteren Wiederaufnahme müssen Projektzustand und Task-Postconditions abgeglichen werden.",
-				"Mission: %s · State: %s · Project: %s\nThe Mission was detected in the run journal but is not resumed automatically. Project state and task postconditions must be reconciled before any future resume."),
+				"Mission: %s · Zustand: %s · Projekt: %s · Abgleich: %s\nDie Mission wurde nur beobachtet und wird nicht automatisch fortgesetzt. Ein beim Absturz laufender Task gilt niemals als erfolgreich; abgeschlossene Arbeit muss vor einer späteren Wiederaufnahme anhand von Postconditions verifiziert werden.",
+				"Mission: %s · State: %s · Project: %s · Reconciliation: %s\nThe Mission was observed only and is not resumed automatically. A task that was running at the crash is never treated as successful; completed work must be verified against postconditions before any future resume."),
 				sanitizeRunJournalText(recovery.Mission.MissionID, 160),
 				sanitizeRunJournalText(recovery.Mission.State, 80),
-				filepath.Clean(recovery.Mission.Project)),
+				filepath.Clean(recovery.Mission.Project),
+				sanitizeRunJournalText(reconciliationState, 80)),
 			Timestamp: time.Now(),
 		}
 	}
