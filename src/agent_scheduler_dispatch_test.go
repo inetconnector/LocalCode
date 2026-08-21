@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,6 +49,70 @@ func TestScheduledReadOnlyGraphDispatchesAndReconcilesDependencies(t *testing.T)
 	}
 	if run.Snapshot.Queued != 0 || run.Snapshot.Running != 0 {
 		t.Fatalf("scheduler did not drain: %+v", run.Snapshot)
+	}
+}
+
+func TestScheduledReadOnlyGraphHandlesFanOutAndFanIn(t *testing.T) {
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "README.md"), []byte("# DAG fixture\n\nfan out then fan in\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	graph := schedulerTestGraph(t, []AgentTaskProposal{
+		{ID: "root", Role: "explorer", Objective: "Inspect the root fixture."},
+		{ID: "left", Role: "explorer", Objective: "Inspect the left branch.", Dependencies: []string{"root"}},
+		{ID: "right", Role: "reviewer", Objective: "Inspect the right branch.", Dependencies: []string{"root"}},
+		{ID: "join", Role: "reviewer", Objective: "Review both branch results.", Dependencies: []string{"left", "right"}},
+	})
+	grantSchedulerTestCapabilities(t, &graph, "root", "left", "right", "join")
+	scheduler := NewAgentScheduler(context.Background(), AgentResourceLimits{})
+	defer scheduler.missionCancel()
+
+	run, err := (&AppState{}).runScheduledReadOnlyAgentGraph(project, Config{}, &graph, scheduler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOrder := []string{"root", "left", "right", "join"}
+	if len(run.Results) != len(wantOrder) {
+		t.Fatalf("results=%d want=%d: %+v", len(run.Results), len(wantOrder), run.Results)
+	}
+	for i, want := range wantOrder {
+		if got := run.Results[i].TaskID; got != want {
+			t.Fatalf("result[%d]=%q want=%q: %+v", i, got, want, run.Results)
+		}
+		task := agentTaskByID(&graph, want)
+		if task == nil || task.State != AgentTaskSucceeded {
+			t.Fatalf("task %s state=%+v want succeeded", want, task)
+		}
+	}
+	if run.Snapshot.Queued != 0 || run.Snapshot.Running != 0 {
+		t.Fatalf("fan-out/fan-in scheduler did not drain: %+v", run.Snapshot)
+	}
+}
+
+func TestScheduledReadOnlyGraphHonorsCancelledMissionBeforeDispatch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	graph := schedulerTestGraph(t, []AgentTaskProposal{{
+		ID:        "never-run",
+		Role:      "explorer",
+		Objective: "This task must not execute after mission cancellation.",
+	}})
+	grantSchedulerTestCapabilities(t, &graph, "never-run")
+	scheduler := NewAgentScheduler(ctx, AgentResourceLimits{})
+	defer scheduler.missionCancel()
+
+	run, err := (&AppState{}).runScheduledReadOnlyAgentGraph(t.TempDir(), Config{}, &graph, scheduler)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v want context canceled", err)
+	}
+	if len(run.Results) != 0 {
+		t.Fatalf("cancelled mission executed child work: %+v", run.Results)
+	}
+	if task := agentTaskByID(&graph, "never-run"); task == nil || task.State != AgentTaskReady {
+		t.Fatalf("pre-dispatch cancellation mutated graph task unexpectedly: %+v", task)
+	}
+	if run.Snapshot.Running != 0 || run.Snapshot.Queued != 0 {
+		t.Fatalf("cancelled scheduler retained resources: %+v", run.Snapshot)
 	}
 }
 
