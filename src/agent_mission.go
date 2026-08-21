@@ -16,15 +16,15 @@ const maxReadOnlyMissionTasks = 64
 var errAgentMissionBusy = errors.New("agent is already running")
 
 type AgentReadOnlyMissionRequest struct {
-	MissionID      string              `json:"mission_id"`
-	ParentTaskID   string              `json:"parent_task_id,omitempty"`
-	Objective      string              `json:"objective,omitempty"`
-	Project        string              `json:"project"`
-	Model          string              `json:"model,omitempty"`
-	Constraints    []string            `json:"constraints,omitempty"`
-	SuccessCriteria []string           `json:"success_criteria,omitempty"`
-	Budget         AgentBudget         `json:"budget,omitempty"`
-	Tasks          []AgentTaskProposal `json:"tasks"`
+	MissionID       string              `json:"mission_id"`
+	ParentTaskID    string              `json:"parent_task_id,omitempty"`
+	Objective       string              `json:"objective,omitempty"`
+	Project         string              `json:"project"`
+	Model           string              `json:"model,omitempty"`
+	Constraints     []string            `json:"constraints,omitempty"`
+	SuccessCriteria []string            `json:"success_criteria,omitempty"`
+	Budget          AgentBudget         `json:"budget,omitempty"`
+	Tasks           []AgentTaskProposal `json:"tasks"`
 }
 
 type AgentReadOnlyMissionResult struct {
