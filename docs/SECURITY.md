@@ -68,7 +68,19 @@ Die Desktop-Orchestrierungsdiagnostik ist ebenfalls ausschließlich **Beobachtun
 - Diagnostikdaten sind nicht persistent, kein Recovery-Speicher, keine Capability-Quelle und kein Mission-Control-Pfad.
 - Die Desktop-Diagnoseoberfläche besitzt keinen Chat-, Approval-, Projektmutations-, Terminal- oder Scheduler-Policy-Endpunkt.
 - Mobile Remote erhält durch diese Diagnostik keinen erweiterten Payload und keine zusätzliche Authority.
-- Ein beobachteter Sättigungszustand ist **keine** Benchmark- oder Performance-Evidenz und rechtfertigt für sich keine Änderung der Modellparallelität. Reproduzierbare Benchmarks bleiben eine separate Abnahmebedingung.
+- Ein beobachteter Sättigungszustand ist **keine** Benchmark- oder Performance-Evidenz und rechtfertigt für sich keine Änderung der Modellparallelität. Der dedizierte Benchmark-Pfad liefert Messdaten, ändert aber ebenfalls niemals automatisch Scheduler-Policy oder Capabilities.
+
+### Sicherheit der Orchestrierungs-Benchmarks
+
+Die Benchmark-Pfade sind Messgrenzen, keine neuen Laufzeitrechte:
+
+- Der synthetische Dispatcher-Benchmark verwendet ausschließlich bereits autorisierte read-only Child-Tasks und einen lokalen synthetischen Executor. Er verändert keine Scheduler-Defaults oder Produktkonfiguration.
+- Der reale Ollama-Benchmark ist standardmäßig deaktiviert und läuft nur bei explizitem `LOCALCODE_BENCH_OLLAMA=1`.
+- Er akzeptiert ausschließlich Loopback-Ollama-Endpunkte und verlangt den exakten Namen eines bereits installierten Modells.
+- Er ruft weder `EnsureRunning` noch `Pull` oder einen Installer auf und startet, lädt oder installiert daher nichts.
+- Benchmarkresultate können keine Capabilities vergeben, keine Admission-Grenze umgehen und kein Ressourcenlimit selbst erhöhen.
+- Gemessene Client-Request-Überlappung oder höherer Durchsatz beweisen keine gleichzeitige GPU-Kernel- oder Token-Inferenz; Hardware-/Backend-Parallelität darf daraus nicht ungeprüft abgeleitet werden.
+- Änderungen an Model-Slot-Limits oder Scheduler-Policy benötigen einen separaten Review mit VRAM-/RAM-Druck, Fairness, Cancellation und Stabilität als Abnahmekriterien.
 
 ### Mobile Remote / Android
 
@@ -178,7 +190,19 @@ Desktop orchestration diagnostics are likewise an **observation-only** surface, 
 - Diagnostic data is non-durable, not a recovery store, not a capability source and not a Mission-control path.
 - The Desktop diagnostics UI contains no chat, approval, project-mutation, terminal or Scheduler-policy endpoint.
 - Mobile Remote receives no broader payload or authority from this feature.
-- Observed saturation is **not** benchmark or performance evidence and by itself does not justify changing model concurrency. Reproducible benchmarks remain a separate acceptance requirement.
+- Observed saturation is **not** benchmark or performance evidence and by itself does not justify changing model concurrency. The dedicated benchmark path provides measurement data but likewise never changes Scheduler policy or capabilities automatically.
+
+### Orchestration benchmark safety
+
+The benchmark paths are measurement boundaries, not new runtime authority:
+
+- The synthetic dispatcher benchmark uses only already-authorized read-only child tasks plus a local synthetic executor. It changes no Scheduler default or product configuration.
+- The real Ollama benchmark is disabled by default and runs only with explicit `LOCALCODE_BENCH_OLLAMA=1` opt-in.
+- It accepts loopback Ollama endpoints only and requires the exact name of an already-installed model.
+- It never calls `EnsureRunning`, `Pull` or an installer, so it starts, downloads and installs nothing.
+- Benchmark output cannot grant capabilities, bypass admission boundaries or widen a resource limit by itself.
+- Measured client-request overlap or increased throughput does not prove simultaneous GPU-kernel execution or token inference; hardware/backend parallelism must not be inferred without separate evidence.
+- Any change to model-slot limits or Scheduler policy requires a separate review with VRAM/RAM pressure, fairness, cancellation and stability as acceptance criteria.
 
 ### Mobile Remote / Android
 
