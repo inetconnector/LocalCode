@@ -12,103 +12,64 @@ und für Mobilgeräte:
 
 `Android/Browser Remote -> separater token-geschützter Remote-Server -> dieselben AppState-Operationen mit engerer Berechtigungsoberfläche`
 
-Die Anwendung trennt bewusst **logische Agentenparallelität** von **tatsächlicher Modellinferenzparallelität**. Viele DAG-Tasks können bereit sein; der Scheduler begrenzt lokale Inferenz standardmäßig auf einen aktiven Model-Slot.
+Für Native Agent Teams gilt:
+
+`Governance -> Mission Manager -> Task DAG -> Scheduler/Resource Manager -> read-only Child Runtime`
+
+LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher Modellinferenzparallelität**. Viele DAG-Tasks können bereit sein; lokale Modellinferenz bleibt standardmäßig auf einen aktiven Model-Slot begrenzt.
 
 ### Zentrale Komponenten
 
 - `src/types.go` – `Config`, `AppState`, gemeinsame Laufzeittypen.
 - `src/server.go` – Desktop Loopback HTTP/SSE API.
-- `src/remote_server.go` – separater Mobile-Remote-Server, Pairing/Token/SSE/Remote-Aktionen.
+- `src/remote_server.go` – separater Mobile-Remote-Server.
 - `src/agent.go` – Hauptschleife von LocalCode Native und Werkzeugdispatch.
-- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministische Steuerung, Edit-Preflight, Abschluss-/No-Progress-Schutz.
-- `src/subagent.go` – deterministischer read-only Repository-Handoff/Fallback.
-- `src/subagent_model.go` – modellgestützte read-only Explorer/Planner/Reviewer-Child-Runtime.
-- `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Task und strukturierter `AgentResult`.
-- `src/agent_task_graph.go` – Task-DAG-Validierung, Dependencies, Readiness und Zustandspropagation.
-- `src/agent_scheduler.go` – Queue, Ressourcenlimits, Admission, Cancellation und Scheduler-Snapshots.
-- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung von autorisierten read-only Child-Tasks.
+- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministische Steuerung und Reliability-Grenzen.
+- `src/subagent_model.go` – modellgestützte read-only Explorer/Planner/Reviewer-Runtime.
+- `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Task und `AgentResult`.
+- `src/agent_task_graph.go` – DAG-Validierung, Dependencies und Zustandspropagation.
+- `src/agent_scheduler.go` – Queue, Ressourcenlimits, Admission, Cancellation und Snapshots.
+- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung autorisierter read-only Tasks.
 - `src/agent_scheduler_finalize.go` – serialisierte Vorbereitung/Finalisierung gegen Cancel-Races.
+- `src/agent_mission.go` – explizite Governance-/Mission-Einstiegsgrenze.
+- `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
+- `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
 - `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
-- `src/path_tools.go` und Dateiwerkzeuge – kanonische Pfad-/Mutation-Grenzen.
-- `src/mcp*.go`, `src/web_tools.go`, `src/tool_*` – externe Werkzeug-/Netzwerkgrenzen.
 - `src/static/*` – Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
-- `android/app/.../MainActivity.java` – native Android-Hülle mit Discovery, TLS-Pinning, WebView, Datei- und Speech-Brücke.
-
-### Desktop und externe Engines
-
-Die Desktop-Oberfläche spricht ausschließlich die lokale Loopback-API an. LocalCode hält Projekt, Thread, Modell, Engine, laufenden Run, Genehmigungen und Events im zentralen Zustand. Externe Engines Aider, Claude Code, OpenCode und Claw Code werden als kontrollierte Unterprozesse/Integrationen unter LocalCode gestartet; LocalCode Native nutzt die eigene strukturierte Werkzeugschleife.
-
-### Mobile Remote und Android
-
-Remote ist ein eigener Server mit schmaler API. Pairing erzeugt ein Gerätetoken; LocalCode persistiert nur dessen Hash. Der langlebige Token wird nicht als SSE-URL-Parameter verwendet; Streams werden über kurzlebige Tickets autorisiert.
-
-Die native Android-Hülle ist bereits implementiert. Sie:
-
-- entdeckt LocalCode per mDNS,
-- kann Pair-/QR-/Deep-Link-Daten übernehmen,
-- akzeptiert nur private HTTPS-Ziele mit erwartetem TLS-SHA-256-Fingerprint,
-- verbindet WebView-Dateiinputs mit Androids Dateipicker,
-- stellt eine enge Speech-Brücke zu `RecognizerIntent` bereit,
-- räumt WebView-/Chooser-Ressourcen beim Activity-Abbau auf.
-
-Die Android-Brücke führt keine LocalCode-Werkzeuge aus. Sie liefert nur Dateien bzw. erkannten Text an die bereits geladene Remote-Web-App. Werkzeugrechte bleiben auf dem Windows-Host.
+- `android/app/.../MainActivity.java` – native Android-Hülle.
 
 ### Native Agent Teams
 
-#### Child Runtime
+Aktuell ausführbare Child-Rollen sind ausschließlich **Explorer**, **Planner** und **Reviewer**. Ihr Action-Schema ist read-only: Projektbaum, Dateien, Textsuche, genehmigungsfreies LSP und strukturiertes `finish`. Mutation, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Approval-Requests und rekursives Spawning fehlen absichtlich.
 
-Aktuell ausführbare Rollen:
+`AgentTaskGraph` enthält eine stabile Mission-ID und stabile Task-IDs. Dependencies, Zyklen und Zustände werden validiert. Der `AgentScheduler` hält eine begrenzte Ready-Queue und Ressourcenklassen; read-only Child-Tasks verwenden derzeit standardmäßig `model-inference`, dessen Default-Limit eins ist.
 
-- Explorer
-- Planner
-- Reviewer
+### Governed Mission Manager
 
-Ein Child-Task besitzt Objective, Role, Capabilities, Budget und strukturiertes Resultat. Das Child-Schema erlaubt nur:
+Der produktseitige read-only Mission-Einstieg ist implementiert. Eine Mission wird **nicht** allein deshalb ausgeführt, weil ein Planner Tasks vorgeschlagen hat. Ein expliziter Mission-Request wird zuerst auf Mission-/Task-IDs, direkte Projektgrenze, DAG, ausführbare Rollen und Requested-Capability-Envelope geprüft. Erst diese vertrauenswürdige Grenze vergibt die festen read-only Runtime-Capabilities.
 
-- Projektbaum lesen,
-- Datei lesen,
-- Textsuche,
-- genehmigungsfreies read-only LSP,
-- strukturiertes `finish`.
+`MissionID` ist stabile Produktidentität. Der gemeinsame `AppState.RunID` ist dagegen ein frischer execution-scoped Token für Stop-/Journal-Hooks. Dadurch kann eine vom Aufrufer gewählte Mission-ID nicht mit einem älteren Run-Journal-Identifier kollidieren.
 
-Mutation, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Approval-Requests und rekursives Spawning sind nicht Teil des Child-Schemas.
+Missionweite Usage wird ausschließlich aus vom Scheduler akzeptiertem `UsageByTask` aggregiert. Model-/Tool-Calls und geschätzte Tokens sind additiv; echte Mission-Wall-Time wird getrennt von aufsummierter Child-Arbeitszeit geführt. Optionale Mission-Budgets dürfen normalisierte Child-Budgets nur weiter einschränken, niemals erhöhen.
 
-#### Task DAG
+### Dispatch und Cancellation
 
-`AgentTaskGraph` enthält eine Mission-ID und stabile Task-IDs. Dependencies werden validiert; Zyklen, fehlende/self/duplizierte Abhängigkeiten und inkonsistente Zustände werden abgewiesen. Readiness und Blockierung werden deterministisch aus Dependency-Zuständen abgeleitet.
+`runScheduledReadOnlyAgentGraph` verbindet DAG und Scheduler mit der bestehenden Child-Runtime:
 
-#### Scheduler / Resource Manager
-
-`AgentScheduler` trennt die logische Ready-Queue von Ressourcenadmission. Ressourcenklassen sind derzeit unter anderem:
-
-- `model-inference`
-- `read-cpu`
-- `build`
-- `exclusive-integration`
-
-Noch werden read-only Child-Tasks standardmäßig als Model-Inference klassifiziert. Default ist ein aktiver Model-Slot. Planner-`RequestedCapabilities` werden niemals selbst zu ausführbaren `Capabilities`; Admission verlangt eine bekannte Runtime-Rolle und tatsächlich gewährte Capabilities.
-
-#### Actual read-only dispatch
-
-`runScheduledReadOnlyAgentGraph` verbindet DAG und Scheduler mit der bestehenden Child-Runtime. Ablauf:
-
-1. Ready-Tasks werden in die begrenzte Queue aufgenommen.
-2. Scheduler wählt einen zulässigen Lease.
-3. `prepareScheduledAgentTask` prüft den aktiven Lease unter Scheduler-Lock, normalisiert das Task-Budget und erstellt eine **abgetrennte Kopie** für den Child.
+1. Ready-Tasks werden gequeue-t.
+2. Der Scheduler vergibt einen zulässigen Lease.
+3. `prepareScheduledAgentTask` erstellt unter Scheduler-Lock eine abgetrennte Task-Kopie.
 4. Der Child läuft außerhalb des Locks.
-5. `finalizeScheduledAgentTask` konkurriert mit `CancelTask`/`CancelMission` wieder unter demselben Scheduler-Lock.
-6. Nur der terminale Gewinner darf Resultat und Zustand festschreiben; der Lease wird exakt einmal freigegeben.
-7. Danach werden Dependencies reconciled und der nächste Task kann admitted werden.
+5. `finalizeScheduledAgentTask`, `CancelTask` und `CancelMission` konkurrieren wieder an derselben Lock-Grenze.
+6. Nur der terminale Gewinner darf Resultat/Usage festschreiben und den Lease freigeben.
 
-Damit greift ein Child während der Modellarbeit nicht auf den gemeinsam mutierbaren Graph-Pointer zu. Ein Cancel, der zuerst gewinnt, verwirft verspätete Child-Ergebnisse. Ein bereits erfolgreich finalisierter Task bleibt erfolgreich.
+Cancellation-first verwirft verspätete Child-Resultate. Completion-first bleibt erfolgreich. Wenn eine komplette Mission über Parent-Context bzw. `StopAgent` abgebrochen wird, terminalisiert die Mission-Grenze nach Ende des synchronen Dispatches zusätzlich alle noch unfertigen `ready`/`blocked`/sonst nicht terminalen Tasks als `cancelled`; bereits terminale erfolgreiche oder fehlgeschlagene Tasks bleiben unverändert.
 
-### Recovery
+### Recovery und nächste Stufen
 
-`run_journal.go` ist die bestehende Recovery-Autorität für aktive Hauptläufe. Zukünftige dauerhafte Mission-Persistenz muss diesen Pfad erweitern oder integrieren; ein zweites konkurrierendes Journal ist architektonisch nicht zulässig.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen.
 
-### Nächste Architekturstufe
-
-Noch fehlt der **produktseitige Mission Manager** zwischen Main-Agent/Planner und Task-DAG/Scheduler. Diese Ebene muss explizit validieren, welche Planner-Vorschläge tatsächlich als Mission ausgeführt werden dürfen. Danach folgen Mission-Budgets, UI/Remote-Status, dauerhafte Mission-Recovery und erst später mutation-capable Builder in isolierten Git-Worktrees.
+Als Nächstes folgen größere DAG-Saturation/Fairness-Tests, ein stabiler Desktop-Mission-Status, danach eine engere read-only Mobile-Ansicht, Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
 
 ---
 
@@ -124,85 +85,61 @@ and for phones:
 
 `Android/browser Remote -> separate token-protected Remote server -> the same AppState operations through a narrower permission surface`
 
-The design deliberately separates **logical agent parallelism** from **actual model-inference parallelism**. Many DAG tasks may be ready while the Scheduler defaults to a single active local model-inference slot.
+For Native Agent Teams the current path is:
+
+`Governance -> Mission Manager -> Task DAG -> Scheduler/Resource Manager -> read-only Child Runtime`
+
+LocalCode deliberately separates **logical agent parallelism** from **actual model-inference parallelism**. Many DAG tasks may be ready while local inference defaults to one active model slot.
 
 ### Core components
 
 - `src/types.go` – `Config`, `AppState`, shared runtime types.
 - `src/server.go` – Desktop loopback HTTP/SSE API.
-- `src/remote_server.go` – separate Mobile Remote server for pairing/token/SSE/Remote actions.
+- `src/remote_server.go` – separate Mobile Remote server.
 - `src/agent.go` – LocalCode Native main loop and tool dispatch.
-- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministic supervision, edit preflight, completion/no-progress controls.
-- `src/subagent.go` – deterministic read-only repository handoff/fallback.
+- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministic supervision and reliability boundaries.
 - `src/subagent_model.go` – model-backed read-only Explorer/Planner/Reviewer runtime.
-- `src/agent_team_types.go` – roles, capabilities, budgets, usage, tasks and structured `AgentResult`.
-- `src/agent_task_graph.go` – DAG validation, dependencies, readiness and state propagation.
-- `src/agent_scheduler.go` – queue, resource limits, admission, cancellation and scheduler snapshots.
-- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only children.
+- `src/agent_team_types.go` – roles, capabilities, budgets, usage, tasks and `AgentResult`.
+- `src/agent_task_graph.go` – DAG validation, dependencies and state propagation.
+- `src/agent_scheduler.go` – queue, resource limits, admission, cancellation and snapshots.
+- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only tasks.
 - `src/agent_scheduler_finalize.go` – serialized preparation/finalization against cancellation races.
+- `src/agent_mission.go` – explicit governance/Mission entry boundary.
+- `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
+- `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
 - `src/run_journal.go` – durable active-run recovery authority.
-- `src/path_tools.go` and file tools – canonical path/mutation boundaries.
-- `src/mcp*.go`, `src/web_tools.go`, `src/tool_*` – external tool/network boundaries.
-- `src/static/*` – Desktop/Remote web UIs and DE/EN catalogs.
-- `android/app/.../MainActivity.java` – native Android shell with discovery, TLS pinning, WebView, file and speech bridge.
-
-### Desktop and external engines
-
-The Desktop UI talks only to the local loopback API. LocalCode owns project, thread, model, engine, active run, approvals and events. Aider, Claude Code, OpenCode and Claw Code run as controlled external integrations; LocalCode Native uses the built-in structured tool loop.
-
-### Mobile Remote and Android
-
-Remote is a separate server with a narrow API. Pairing creates a device token while LocalCode persists only its hash. The long-lived token is not placed in SSE URLs; streams use short-lived tickets.
-
-The native Android shell is already implemented. It:
-
-- discovers LocalCode via mDNS,
-- consumes pair/QR/deep-link data,
-- accepts only private HTTPS endpoints with the expected TLS SHA-256 fingerprint,
-- connects WebView file inputs to Android's file picker,
-- exposes a narrow `RecognizerIntent` speech bridge,
-- cleans up WebView/file-chooser resources during Activity teardown.
-
-The Android bridge does not execute LocalCode tools. It only returns files or recognized text to the loaded Remote web app. Tool authority remains on the Windows host.
+- `src/static/*` – Desktop/Remote UIs and DE/EN catalogs.
+- `android/app/.../MainActivity.java` – native Android shell.
 
 ### Native Agent Teams
 
-#### Child runtime
+The only executable child roles are **Explorer**, **Planner** and **Reviewer**. Their action schema is read-only: project tree, file reads, text search, approval-free LSP and structured `finish`. Mutation, shell, Git, web/network, MCP tool calls, installation, memory, approval requests and recursive spawning are intentionally absent.
 
-Currently executable roles:
+`AgentTaskGraph` contains a stable Mission ID and stable task IDs. Dependencies, cycles and states are validated. `AgentScheduler` owns a bounded ready queue and resource classes; read-only children currently default to `model-inference`, whose default limit is one.
 
-- Explorer
-- Planner
-- Reviewer
+### Governed Mission Manager
 
-A child task has an objective, role, capabilities, budget and structured result. Its schema permits only project-tree reads, file reads, text search, approval-free read-only LSP and structured finish. Mutation, shell, Git, web/network, MCP tool calls, installation, memory, approval requests and recursive spawning are absent.
+The product-level read-only Mission entry is implemented. A Mission is **not** executed merely because a Planner proposed tasks. An explicit Mission request is first validated for Mission/task IDs, direct project boundary, DAG, executable roles and requested-capability envelope. Only this trusted boundary grants the fixed read-only runtime capabilities.
 
-#### Task DAG
+`MissionID` is stable product identity. The shared `AppState.RunID` is instead a fresh execution-scoped token used by stop/journal hooks, preventing a caller-selected Mission ID from colliding with an older run-journal identifier.
 
-`AgentTaskGraph` contains a Mission ID and stable task IDs. Dependencies are validated; cycles, missing/self/duplicate dependencies and inconsistent states are rejected. Readiness/blocking is deterministically derived from dependency state.
+Mission-wide usage is aggregated only from scheduler-accepted `UsageByTask`. Model/tool calls and estimated tokens are additive; actual Mission wall time is kept separate from summed child-work time. Optional Mission budgets may only further constrain normalized child budgets and can never widen them.
 
-#### Scheduler / Resource Manager
+### Dispatch and cancellation
 
-`AgentScheduler` separates the logical ready queue from resource admission. Resource classes currently include `model-inference`, `read-cpu`, `build` and `exclusive-integration`. Read-only children currently default to model inference, with one active model slot by default. Planner `RequestedCapabilities` never self-grant executable `Capabilities`; admission requires a known executable role plus actually granted capabilities.
+`runScheduledReadOnlyAgentGraph` connects DAG/Scheduler to the existing child runtime:
 
-#### Actual read-only dispatch
-
-`runScheduledReadOnlyAgentGraph` connects the DAG/Scheduler to the child runtime:
-
-1. ready tasks enter the bounded queue;
-2. the scheduler chooses an admissible lease;
-3. `prepareScheduledAgentTask` validates the lease under the scheduler lock, normalizes budget and creates a **detached task copy**;
+1. ready tasks enter the queue;
+2. the scheduler grants an admissible lease;
+3. `prepareScheduledAgentTask` creates a detached task copy under the scheduler lock;
 4. the child executes outside the lock;
-5. `finalizeScheduledAgentTask` competes with `CancelTask`/`CancelMission` under the same scheduler lock;
-6. only the terminal winner may persist result/state and the lease is released exactly once;
-7. dependencies are reconciled and the next task may be admitted.
+5. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete again at the same lock boundary;
+6. only the terminal winner may persist result/usage and release the lease.
 
-The child therefore does not retain a pointer into the shared mutable graph during model execution. Cancellation-first discards late child results; completion-first remains successful.
+Cancellation-first discards late child results. Completion-first remains successful. When a whole Mission is cancelled through its parent context or `StopAgent`, the Mission boundary also terminalizes every still-unfinished `ready`/`blocked`/other non-terminal task as `cancelled` after synchronous dispatch has stopped; already-terminal successful or failed work is preserved.
 
-### Recovery
+### Recovery and next layers
 
-`run_journal.go` is the existing recovery authority for active main-agent runs. Future durable Mission storage must integrate with this authority rather than creating a competing journal.
+`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal.
 
-### Next architecture layer
-
-The missing layer is a **product-level Mission Manager** between the main agent/Planner and DAG/Scheduler. It must explicitly validate which Planner proposals are allowed to execute. Mission budgets, UI/Remote state and durable Mission recovery come next; mutation-capable Builders in isolated Git worktrees come later.
+Next come larger DAG saturation/fairness tests, a stable Desktop Mission status surface, then a narrower read-only Mobile view, resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
