@@ -147,7 +147,7 @@ func TestStatusJSONAlwaysIncludesMachineReadableOrchestrationDiagnostics(t *test
 	}
 	var payload struct {
 		Orchestration AgentOrchestrationDiagnostics `json:"orchestration"`
-		Mission       json.RawMessage                `json:"mission"`
+		Mission       json.RawMessage               `json:"mission"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatal(err)
