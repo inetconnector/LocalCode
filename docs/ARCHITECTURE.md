@@ -36,10 +36,12 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
 - `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
 - `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
+- `src/agent_orchestration_parallelism_benchmark_test.go` – synthetischer Dispatcher- und opt-in Ollama-Parallelitätsbenchmark.
 - `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
 - `src/static/mission_status.js` – read-only Mission- und Orchestrierungsdiagnostik im Desktop-Output-Inspector.
 - `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
 - `src/remote_mission_status_contract.md` – Source-Level-Vertrag für die schmale Mobile-Mission-Anzeige.
+- `docs/ORCHESTRATION_BENCHMARKS.md` – reproduzierbare Benchmark-Kommandos, Messwerte und Interpretationsgrenzen.
 - `android/app/.../MainActivity.java` – native Android-Hülle.
 
 ### Native Agent Teams
@@ -94,7 +96,15 @@ Die Diagnose unterscheidet `ready`, `active`, `saturated`, `backend_unavailable`
 
 Pro Ressourcenklasse werden Limit, Belegung, freie Slots und wartende Tasks ausgewiesen. **`at_capacity` und `saturated` sind absichtlich verschieden:** `at_capacity` bedeutet nur, dass alle Slots belegt sind; `saturated` gilt erst, wenn zusätzlich passende Arbeit auf diese volle Ressource wartet. Queue-Auslastung sowie logische Ready-/Running-/Blocked-Zahlen werden separat ausgewiesen. Tatsächliche normalisierte Mission-Ressourcenlimits werden im ephemeren Mission-Status mitgeführt, damit die Diagnose während einer Mission nicht still Standardlimits annimmt.
 
-Die Diagnose verändert weder Queue-Limits noch Admission noch Modellparallelität. Sie startet keine Arbeit und ist keine Performance-Evidenz. Aussagen über sinnvolle lokale Modellkonkurrenz müssen weiterhin durch reproduzierbare Benchmarks auf definierter Hardware und Workload belegt werden. `src/static/mission_status.js` rendert die Diagnose read-only im bestehenden Desktop-Output-Inspector; Mobile erhält diesen Desktop-Payload nicht.
+Die Diagnose verändert weder Queue-Limits noch Admission noch Modellparallelität. Sie startet keine Arbeit und ist keine Performance-Evidenz. Benchmark-Messung erfolgt separat über die nachfolgend beschriebene Benchmark-Grenze. `src/static/mission_status.js` rendert die Diagnose read-only im bestehenden Desktop-Output-Inspector; Mobile erhält diesen Desktop-Payload nicht.
+
+### Orchestrierungs-Benchmarks
+
+`BenchmarkScheduledReadOnlyDispatcherParallelism` trennt bewusst drei Ebenen: vier gleichzeitig logisch bereite read-only Tasks, konfigurierte `model-inference`-Slot-Kapazität und tatsächlich beobachtete Executor-Überlappung. Die aktuelle `runScheduledReadOnlyAgentGraphWithExecutor`-Schleife ruft den Executor synchron auf. Ein Model-Inference-Limit größer eins ist deshalb heute allein kein Beleg paralleler Child-Modellaufrufe. Der synthetische Executor enthält eine feste kurze Verzögerung, sodass eine spätere echte Überlappung im selben Messformat sichtbar würde.
+
+`TestOllamaConcurrencyBenchmarkOptIn` misst zusätzlich ein festes reales Ollama-Arbeitsvolumen bei Client-Konkurrenz 1/2/4 über denselben produktiven `OllamaClient.Chat`-Pfad. Dieser Lauf ist explizit opt-in, akzeptiert nur Loopback, verlangt ein bereits installiertes exaktes Modell und ruft weder `EnsureRunning` noch `Pull` auf. Er misst End-to-End-Wall-Time, Latenzen, Requests/Sekunde und Client-Overlap. Daraus wird **keine** gleichzeitige GPU-Kernel- oder Token-Inferenz abgeleitet, da Ollama intern queuen oder batchen kann.
+
+Benchmarkresultate sind Evidenz, aber keine Scheduler-Policy. Eine spätere Änderung von Model-Slots ist ein separater, reviewpflichtiger Change. Befehle, Parametergrenzen und Interpretationsregeln stehen in `docs/ORCHESTRATION_BENCHMARKS.md`.
 
 ### Mobile Mission-Status
 
@@ -106,7 +116,7 @@ Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-
 
 `run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go`, die Orchestrierungsdiagnostik und die Mobile-Anzeige sind ausdrücklich keine Recovery-Speicher.
 
-Als Nächstes folgen reproduzierbare Benchmarks für logische Task-Parallelität versus tatsächliche lokale Modellkonkurrenz und danach dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
+Als Nächstes folgt dauerhafte Mission-Metadaten-/Recovery-Integration in `run_journal.go` mit Restart-Reconciliation. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
 
 ---
 
@@ -146,10 +156,12 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
 - `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
 - `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
+- `src/agent_orchestration_parallelism_benchmark_test.go` – synthetic dispatcher and opt-in Ollama parallelism benchmark.
 - `src/run_journal.go` – durable active-run recovery authority.
 - `src/static/mission_status.js` – read-only Mission and orchestration diagnostics in the Desktop Output inspector.
 - `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
 - `src/remote_mission_status_contract.md` – source-level contract for the narrow Mobile Mission display.
+- `docs/ORCHESTRATION_BENCHMARKS.md` – reproducible benchmark commands, measurements and interpretation boundaries.
 - `android/app/.../MainActivity.java` – native Android shell.
 
 ### Native Agent Teams
@@ -204,7 +216,15 @@ Diagnostics distinguish `ready`, `active`, `saturated`, `backend_unavailable` an
 
 For each resource class, diagnostics report limit, in-use, available and waiting work. **`at_capacity` intentionally differs from `saturated`:** `at_capacity` only means every slot is occupied; `saturated` requires both a full resource and compatible work waiting for it. Queue utilization and logical ready/running/blocked counts are reported separately. Actual normalized Mission resource limits are retained in ephemeral Mission status so active-Mission diagnostics do not silently assume defaults.
 
-Diagnostics do not alter queue limits, admission or model concurrency. They cannot start work and are not performance evidence. Any claim about useful local model concurrency still requires reproducible benchmarks on defined hardware and workloads. `src/static/mission_status.js` renders these diagnostics read-only in the existing Desktop Output inspector; Mobile does not receive this Desktop payload.
+Diagnostics do not alter queue limits, admission or model concurrency. They cannot start work and are not performance evidence. Benchmark measurement is handled separately by the benchmark boundary below. `src/static/mission_status.js` renders these diagnostics read-only in the existing Desktop Output inspector; Mobile does not receive this Desktop payload.
+
+### Orchestration benchmarks
+
+`BenchmarkScheduledReadOnlyDispatcherParallelism` deliberately separates three layers: four simultaneously logically-ready read-only tasks, configured `model-inference` slot capacity and actually observed executor overlap. The current `runScheduledReadOnlyAgentGraphWithExecutor` loop invokes the executor synchronously. A model-inference limit greater than one therefore is not by itself evidence of parallel child-model calls. The synthetic executor has a fixed short delay so future real overlap becomes visible in the same measurement format.
+
+`TestOllamaConcurrencyBenchmarkOptIn` additionally measures a fixed real Ollama workload at client concurrency 1/2/4 through the same production `OllamaClient.Chat` path. This run is explicitly opt-in, accepts loopback only, requires an exact already-installed model and calls neither `EnsureRunning` nor `Pull`. It measures end-to-end wall time, latency, requests/second and client overlap. It does **not** infer simultaneous GPU-kernel or token inference because Ollama may queue or batch internally.
+
+Benchmark results are evidence, not Scheduler policy. A later model-slot change is a separate reviewed change. Commands, parameter bounds and interpretation rules are documented in `docs/ORCHESTRATION_BENCHMARKS.md`.
 
 ### Mobile Mission status
 
@@ -216,4 +236,4 @@ When `running == true && run_phase == "mission-read-only"`, Remote only indicate
 
 `run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry, orchestration diagnostics and the Mobile indicator are explicitly not recovery stores.
 
-Next come reproducible benchmarks for logical task parallelism versus actual local model concurrency, followed by durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
+Next is durable Mission metadata/recovery integration with `run_journal.go` plus restart reconciliation. Mutation-capable Builders in isolated Git worktrees come later.
