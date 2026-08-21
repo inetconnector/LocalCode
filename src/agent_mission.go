@@ -181,6 +181,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	stopMissionStatus()
 	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 		cancelUnfinishedReadOnlyMissionTasks(&graph)
+		run.Snapshot = scheduler.Snapshot(&graph, run.UsageByTask)
 	}
 	finished := time.Now()
 	accounting := agentMissionAccounting(req.Budget, run.UsageByTask, started, finished)
