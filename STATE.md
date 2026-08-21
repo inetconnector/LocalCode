@@ -6,7 +6,7 @@
 **Current authoritative merged master:** `d72d2d1b14dc50bb6e5fce4f3d2fe1174d51c5ed`  
 **Last merged functional PR:** #60 `feat: persist durable Mission metadata in run journal`  
 **Active work:** PR #61 `feat: reconcile interrupted missions on restart`, branch `feat/mission-restart-reconciliation`  
-**Active head at this update:** `146543ebc0d4a0b9a20953dfec0027189642b243`; Quality run `32519376805` in progress  
+**Active head:** the commit containing this `STATE.md` refresh; its immediate parent/head before this self-referential refresh was `2f08cf9846246390c0b8b2f9cdbce8f5dafa5d36`. The exact resulting PR head is verified from GitHub immediately before Quality/merge.  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -85,6 +85,8 @@ Interrupted Mission recovery remains visible even if the project path disappeare
 
 Focused tests cover exact task dispositions, Git drift, legacy/missing baseline, privacy of raw porcelain paths, the fixed read-only Git command set, and missing-project recovery visibility.
 
+Canonical documentation has been synchronized in `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and `TODO.md`. The final PR head must pass the complete Quality workflow before Ready/merge.
+
 ## 5. Safety and correctness invariants
 
 - Canonical project/workspace containment including symlink/junction escape protection where applicable.
@@ -122,7 +124,7 @@ Mobile contract: `src/static/remote.html`, `src/remote_mission_status_test.go`, 
 
 ## 7. Exact next development direction
 
-1. Finish PR #61 on one exact head: synchronize canonical docs, require complete Quality success, inspect reviews/threads, mark Ready and merge automatically.
+1. Finish PR #61 on this frozen source/documentation scope: require complete Quality success for the exact final GitHub head, inspect reviews/threads, mark Ready and merge automatically.
 2. Persist remaining recovery semantics needed for safe continuation: bounded task result/postcondition evidence, attempts/retry counters, verification state and relevant timestamps.
 3. Add controlled Mission/task pause, resume and retry only on top of reconciled state; preserve cancel semantics, resource limits and usage accounting without double-counting.
 4. Expand crash/restart cases for queued, ready, running, failed and partially completed Mission work.
