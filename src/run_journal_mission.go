@@ -18,22 +18,23 @@ const (
 )
 
 type MissionRecoveryTaskState struct {
-	ID                     string               `json:"id"`
-	ParentID               string               `json:"parent_id,omitempty"`
-	Role                   AgentRole            `json:"role"`
-	Objective              string               `json:"objective"`
-	Dependencies           []string             `json:"dependencies,omitempty"`
-	RequestedCapabilities  []AgentCapability    `json:"requested_capabilities,omitempty"`
-	Capabilities           []AgentCapability    `json:"capabilities,omitempty"`
-	Model                  string               `json:"model,omitempty"`
-	Budget                 AgentBudget          `json:"budget"`
-	State                  AgentTaskState       `json:"state"`
-	ResourceClass          AgentResourceClass   `json:"resource_class,omitempty"`
-	QueuePosition          int                  `json:"queue_position,omitempty"`
-	Running                bool                 `json:"running,omitempty"`
-	AdmissionBlockedReason string               `json:"admission_blocked_reason,omitempty"`
-	BudgetSnapshot         *AgentBudgetSnapshot `json:"budget_snapshot,omitempty"`
-	Usage                  AgentUsage           `json:"usage,omitempty"`
+	ID                     string                         `json:"id"`
+	ParentID               string                         `json:"parent_id,omitempty"`
+	Role                   AgentRole                      `json:"role"`
+	Objective              string                         `json:"objective"`
+	Dependencies           []string                       `json:"dependencies,omitempty"`
+	RequestedCapabilities  []AgentCapability              `json:"requested_capabilities,omitempty"`
+	Capabilities           []AgentCapability              `json:"capabilities,omitempty"`
+	Model                  string                         `json:"model,omitempty"`
+	Budget                 AgentBudget                    `json:"budget"`
+	State                  AgentTaskState                 `json:"state"`
+	ResourceClass          AgentResourceClass             `json:"resource_class,omitempty"`
+	QueuePosition          int                            `json:"queue_position,omitempty"`
+	Running                bool                           `json:"running,omitempty"`
+	AdmissionBlockedReason string                         `json:"admission_blocked_reason,omitempty"`
+	BudgetSnapshot         *AgentBudgetSnapshot           `json:"budget_snapshot,omitempty"`
+	CompletionEvidence     *MissionTaskCompletionEvidence `json:"completion_evidence,omitempty"`
+	Usage                  AgentUsage                     `json:"usage,omitempty"`
 }
 
 type MissionRecoveryState struct {
@@ -87,6 +88,10 @@ func cloneMissionRecoveryState(state *MissionRecoveryState) *MissionRecoveryStat
 		if state.Tasks[index].BudgetSnapshot != nil {
 			budgetCopy := *state.Tasks[index].BudgetSnapshot
 			copyState.Tasks[index].BudgetSnapshot = &budgetCopy
+		}
+		if state.Tasks[index].CompletionEvidence != nil {
+			evidenceCopy := *state.Tasks[index].CompletionEvidence
+			copyState.Tasks[index].CompletionEvidence = &evidenceCopy
 		}
 	}
 	if state.Baseline != nil {
@@ -206,6 +211,13 @@ func (s *AppState) journalMissionSchedulerSnapshot(runID string, snapshot AgentS
 	})
 }
 
+func (s *AppState) journalMissionSchedulerCheckpoint(runID string, snapshot AgentSchedulerSnapshot, graph *AgentTaskGraph) {
+	s.updateRunJournal(runID, func(state *RunRecoveryState) {
+		applyMissionSchedulerSnapshot(state.Mission, snapshot)
+		applyMissionCompletionEvidence(state.Mission, graph, time.Now())
+	})
+}
+
 func (s *AppState) finishMissionRunJournal(runID string, result AgentReadOnlyMissionResult, outcome string) {
 	if strings.TrimSpace(runID) == "" {
 		return
@@ -235,10 +247,15 @@ func (s *AppState) finishMissionRunJournal(runID string, result AgentReadOnlyMis
 					budgetCopy := *previous.BudgetSnapshot
 					state.Mission.Tasks[index].BudgetSnapshot = &budgetCopy
 				}
+				if previous.CompletionEvidence != nil {
+					evidenceCopy := *previous.CompletionEvidence
+					state.Mission.Tasks[index].CompletionEvidence = &evidenceCopy
+				}
 			}
 			state.Mission.Tasks[index].Usage = result.Run.UsageByTask[state.Mission.Tasks[index].ID]
 		}
 		applyMissionSchedulerSnapshot(state.Mission, result.Run.Snapshot)
+		applyMissionCompletionEvidence(state.Mission, &result.Graph, time.Now())
 		accountingCopy := result.Accounting
 		state.Mission.Accounting = &accountingCopy
 		state.Mission.UpdatedAt = time.Now()
