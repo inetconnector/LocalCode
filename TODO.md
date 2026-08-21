@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `c140dfbf9b02d9e3533382c877732a6fd3403064`  
-**Active work:** PR #60 `feat: persist durable Mission metadata in run journal`  
+**Authoritative merged base for this slice:** master `d72d2d1b14dc50bb6e5fce4f3d2fe1174d51c5ed`  
+**Active work:** PR #61 `feat: reconcile interrupted missions on restart`, branch `feat/mission-restart-reconciliation`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -15,13 +15,22 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
 
-## P0/P1 – Phase 6: durable Missions and recovery
+## P0 – finish current restart-reconciliation slice
 
-- [ ] Reconcile interrupted Mission project/Git/postconditions on restart before resuming; never blindly replay work.
-- [ ] Persist remaining recovery semantics: task attempts/retry counters, bounded structured result evidence, timestamps and verification state.
-- [ ] Support Mission/task pause, resume and controlled retry on top of reconciled durable state; preserve existing cancel semantics.
+- [ ] Finish PR #61 on one exact head: keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
+- [ ] Preserve the safety boundary: reconciliation is observation/classification only. Do not add automatic Mission resume, retry or replay in #61.
+- [ ] Keep crash-running tasks `interrupted_unknown`; never infer success from a durable `running` flag.
+- [ ] Keep raw Git porcelain paths out of durable recovery data; only bounded identity hashes/HEAD evidence may be stored.
+
+## P0/P1 – Phase 6: safe Mission continuation after reconciliation
+
+- [ ] Persist bounded task result/postcondition evidence sufficient to verify previously completed read-only work without copying raw Child/model transcripts.
+- [ ] Persist task attempt/retry counters, verification state and relevant transition timestamps.
+- [ ] Define explicit recovery transitions for queued, ready, blocked, running-at-crash, failed, cancelled, succeeded-but-unverified and verified work.
+- [ ] Support Mission/task pause and controlled resume only after reconciliation and required postcondition verification pass.
+- [ ] Add controlled retry with per-task/per-mission attempt limits; preserve existing cancel semantics.
 - [ ] Preserve Mission/task resource and budget accounting across restart/resume and prevent double-counting accepted usage.
-- [ ] Add crash/restart tests for queued, ready, running, failed and partially completed Mission work.
+- [ ] Add crash/restart tests for queued, ready, running, failed and partially completed Mission work, including Git drift between process death and restart.
 - [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
