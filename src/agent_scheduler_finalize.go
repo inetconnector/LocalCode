@@ -47,7 +47,9 @@ func (s *AgentScheduler) prepareScheduledAgentTask(graph *AgentTaskGraph, lease 
 // deterministic at one lock boundary. If cancellation wins first, its terminal
 // graph state is preserved and the late child result is not written. If child
 // completion wins first, the result/state transition and resource release are
-// committed before a later cancellation can inspect the task.
+// committed before a later cancellation can inspect the task. A cancellation
+// finalized from the lease context also discards the child result rather than
+// presenting partial/late work as a normal completed result.
 func (s *AgentScheduler) finalizeScheduledAgentTask(graph *AgentTaskGraph, lease AgentResourceLease, result AgentResult, next AgentTaskState) (agentScheduledFinalizeOutcome, error) {
 	outcome := agentScheduledFinalizeOutcome{}
 	if s == nil {
@@ -94,9 +96,11 @@ func (s *AgentScheduler) finalizeScheduledAgentTask(graph *AgentTaskGraph, lease
 	if task == nil {
 		return outcome, fmt.Errorf("scheduled task %q disappeared during finalization", lease.TaskID)
 	}
-	task.Result = result
+	if next != AgentTaskCancelled {
+		task.Result = result
+		outcome.Applied = true
+	}
 	s.releaseActiveLeaseLocked(lease.TaskID, active)
 	outcome.State = next
-	outcome.Applied = true
 	return outcome, nil
 }
