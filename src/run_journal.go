@@ -34,18 +34,19 @@ type RunJournalEvent struct {
 }
 
 type RunRecoveryState struct {
-	SchemaVersion int               `json:"schema_version"`
-	RunID         string            `json:"run_id"`
-	ThreadID      string            `json:"thread_id,omitempty"`
-	Project       string            `json:"project"`
-	Model         string            `json:"model,omitempty"`
-	Task          string            `json:"task,omitempty"`
-	Phase         string            `json:"phase"`
-	StartedAt     time.Time         `json:"started_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
-	Terminal      bool              `json:"terminal"`
-	Outcome       string            `json:"outcome,omitempty"`
-	Events        []RunJournalEvent `json:"events,omitempty"`
+	SchemaVersion int                   `json:"schema_version"`
+	RunID         string                `json:"run_id"`
+	ThreadID      string                `json:"thread_id,omitempty"`
+	Project       string                `json:"project"`
+	Model         string                `json:"model,omitempty"`
+	Task          string                `json:"task,omitempty"`
+	Phase         string                `json:"phase"`
+	StartedAt     time.Time             `json:"started_at"`
+	UpdatedAt     time.Time             `json:"updated_at"`
+	Terminal      bool                  `json:"terminal"`
+	Outcome       string                `json:"outcome,omitempty"`
+	Mission       *MissionRecoveryState `json:"mission,omitempty"`
+	Events        []RunJournalEvent     `json:"events,omitempty"`
 }
 
 func runJournalPath() string {
@@ -93,6 +94,7 @@ func loadRecoverableRun() *RunRecoveryState {
 		return nil
 	}
 	copy := *state
+	copy.Mission = cloneMissionRecoveryState(state.Mission)
 	copy.Events = append([]RunJournalEvent(nil), state.Events...)
 	return &copy
 }
@@ -239,7 +241,7 @@ func (s *AppState) recoveryContextForTask(project, currentTask string) (string, 
 	s.mu.RLock()
 	recovery := s.Recovery
 	s.mu.RUnlock()
-	if recovery == nil || !strings.EqualFold(filepath.Clean(recovery.Project), filepath.Clean(project)) {
+	if recovery == nil || recovery.Mission != nil || !strings.EqualFold(filepath.Clean(recovery.Project), filepath.Clean(project)) {
 		return "", ""
 	}
 	current := normalizedQuestion(currentTask)
@@ -277,7 +279,7 @@ func (s *AppState) consumeRecoveryContextForTask(project, currentTask string) (s
 		return "", ""
 	}
 	s.mu.Lock()
-	if s.Recovery != nil && strings.EqualFold(filepath.Clean(s.Recovery.Project), filepath.Clean(project)) {
+	if s.Recovery != nil && s.Recovery.Mission == nil && strings.EqualFold(filepath.Clean(s.Recovery.Project), filepath.Clean(project)) {
 		s.Recovery = nil
 	}
 	s.mu.Unlock()
@@ -287,6 +289,20 @@ func (s *AppState) consumeRecoveryContextForTask(project, currentTask string) (s
 func recoveryStartupEvent(cfg Config, recovery *RunRecoveryState) UIEvent {
 	if recovery == nil {
 		return UIEvent{}
+	}
+	if recovery.Mission != nil {
+		return UIEvent{
+			ID:      newID(),
+			Type:    "recovery_available",
+			Message: localizeConfigText(cfg, "Unterbrochene Mission erkannt", "Interrupted Mission detected"),
+			Detail: fmt.Sprintf(localizeConfigText(cfg,
+				"Mission: %s · Zustand: %s · Projekt: %s\nDie Mission wurde im Run-Journal erkannt, wird aber nicht automatisch fortgesetzt. Vor einer späteren Wiederaufnahme müssen Projektzustand und Task-Postconditions abgeglichen werden.",
+				"Mission: %s · State: %s · Project: %s\nThe Mission was detected in the run journal but is not resumed automatically. Project state and task postconditions must be reconciled before any future resume."),
+				sanitizeRunJournalText(recovery.Mission.MissionID, 160),
+				sanitizeRunJournalText(recovery.Mission.State, 80),
+				filepath.Clean(recovery.Mission.Project)),
+			Timestamp: time.Now(),
+		}
 	}
 	return UIEvent{
 		ID:      newID(),
