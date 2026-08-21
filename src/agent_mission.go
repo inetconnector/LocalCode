@@ -125,6 +125,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	}
 
 	missionCtx, cancel := context.WithCancel(ctx)
+	executionRunID := newID()
 	started := time.Now()
 	s.mu.Lock()
 	if s.Running {
@@ -134,7 +135,10 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	}
 	s.Running = true
 	s.Cancel = cancel
-	s.RunID = missionID
+	// MissionID is stable product identity. RunID is an execution-scoped token
+	// used by the shared active-run controls/journal hooks and must never be a
+	// caller-selected identifier that could collide with a stale journal run.
+	s.RunID = executionRunID
 	s.RunPhase = "mission-read-only"
 	s.RunStartedAt = started
 	s.LastProgressAt = started
@@ -147,7 +151,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		s.mu.Lock()
 		// ForceStopAgent deliberately changes RunID. Do not let a late mission
 		// completion resurrect or otherwise rewrite a force-stopped UI state.
-		if s.RunID == missionID {
+		if s.RunID == executionRunID {
 			s.Running = false
 			s.Cancel = nil
 			s.RunPhase = "idle"
@@ -173,6 +177,9 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	scheduler := NewAgentScheduler(missionCtx, AgentResourceLimits{})
 	defer scheduler.missionCancel()
 	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, &graph, scheduler, budgetedExecute)
+	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		cancelUnfinishedReadOnlyMissionTasks(&graph)
+	}
 	finished := time.Now()
 	accounting := agentMissionAccounting(req.Budget, run.UsageByTask, started, finished)
 	state, reason, budgetExhaustedBy := deriveAgentMissionOutcome(graph, run, runErr, accounting, tracker)

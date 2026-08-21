@@ -3,12 +3,14 @@
 **Verified:** 2026-08-21 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Authoritative merged base for this slice:** `1e6cc45e17677263df112b07ac77e7e9126c9efc`  
-**Last merged functional PR:** #52 `feat: add governed read-only mission entry`  
-**PR #52 Quality run:** `32470934218` – success across the complete Quality workflow  
+**Current authoritative merged master:** `a4453534aa513b48d41ae2f754c4c05d6c04358a`  
+**Last merged functional PR:** #53 `feat: add mission usage and budget accounting`  
+**PR #53 Quality run:** `32471919238` – complete success including tests, race detector, >=80% coverage gate, Android APK and native Windows builds  
+**Active work:** PR #54 `fix: terminalize cancelled mission graphs`, branch `fix/mission-cancel-terminal-graph`  
+**Source/docs head immediately before this STATE refresh:** `af584cde35232b49c2002ade683a5a728765c09d`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-This file is the self-contained restart point for current LocalCode work. `TODO.md` contains unfinished work only; PR-by-PR implementation history belongs in Git history rather than being duplicated here.
+This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only. Git history and merged PRs remain the detailed implementation record.
 
 ## 1. Product objective
 
@@ -16,11 +18,11 @@ LocalCode is a Windows-first, local-first coding-agent/development system center
 
 `Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler/Resource Manager -> Agent Factory -> Explorer/Builder/Test/Reviewer -> isolated workspaces/worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
 
-A core local-hardware rule remains:
+A core rule is:
 
 `logical task parallelism != model inference parallelism`
 
-Many tasks may be logically ready while local model inference stays bounded by explicit resource limits.
+Many tasks may be logically ready while local model inference remains explicitly resource-bounded.
 
 ## 2. Current merged functional state
 
@@ -29,27 +31,17 @@ Many tasks may be logically ready while local model inference stays bounded by e
 Merged and active:
 
 - Windows-native Go application with loopback Desktop HTTP/SSE API.
-- LocalCode Native coding-agent tool loop with approvals, deterministic supervisor/reliability guards and completion verification.
+- LocalCode Native coding-agent loop with approvals, deterministic supervisor/reliability guards and completion verification.
 - Selectable LocalCode Native, Aider, Claude Code, OpenCode and Claw Code engines.
 - Ollama discovery/bootstrap and local model use.
 - Project/task history, project management, quarantine/restore and controlled project actions.
 - Controlled files, Git, builds/tests, tool discovery, web research, MCP, attachments and asset/image boundaries.
-- Project/global instructions, compatible rule files, Skills and project slash commands.
-- Context compaction, loop/stagnation guards, local memory boundaries and durable `run_journal.go` recovery for normal interrupted runs.
+- Project/global instructions, rule files, Skills, slash commands, context compaction, loop/stagnation guards and local memory boundaries.
+- `run_journal.go` is the durable recovery authority for normal interrupted runs.
 
 ### Android / Mobile Remote
 
-Current merged behavior includes:
-
-- packaged native Android shell,
-- mDNS discovery plus QR/pair/deep-link handoff,
-- private HTTPS/TLS fingerprint pinning,
-- WebView native file picker and Android speech input through a narrow JS bridge,
-- visible input/provider errors and callback cleanup,
-- DE/EN native status text,
-- paired Remote controls for project/task navigation, attachments, voice, stop, send and existing approvals.
-
-Mobile remains deliberately narrower than Desktop. A physical-device smoke remains useful for OEM-specific picker/speech behavior; CI builds the native APK and checks the bridge/UI contracts.
+Merged behavior includes native Android packaging, mDNS discovery, QR/pair/deep-link handoff, private HTTPS/TLS fingerprint pinning, native file picker, Android speech input, visible input/provider errors, DE/EN native status text and the existing paired Remote controls. Mobile remains deliberately narrower than Desktop and does not gain tool authority.
 
 ### Native Agent Teams / Phase 5
 
@@ -59,56 +51,70 @@ Executable child roles remain intentionally read-only:
 - Planner
 - Reviewer
 
-Each child receives isolated context, fixed role capabilities and hard per-child model/tool/time/estimated-token budgets. Mutation, shell, Git, network/web, MCP tool calls, installation, memory, approvals and recursive child spawning remain outside the child action schema.
+Child schemas permit only project-tree reads, file reads, text search, approval-free read-only LSP and structured finish. Mutation, shell, Git, network/web, MCP tool calls, installation, memory writes, approvals and recursive child spawning remain absent.
 
-Merged orchestration layers now are:
+Merged orchestration layers:
 
-1. Structured Agent contracts: roles, budgets, usage, capabilities and `AgentResult`.
-2. Deterministic Task DAG: validated IDs, dependencies, readiness and terminal propagation.
-3. Scheduler / Resource Manager: bounded queues/resources, one model-inference slot by default, capability-aware admission, cancellation and snapshots.
-4. Actual read-only scheduler dispatch: authorized Explorer/Planner/Reviewer tasks execute through the Native child runtime and return structured result/usage.
-5. Race-safe scheduler finalization: detached task copies and one scheduler lock boundary serialize cancellation versus child completion; cancellation-first drops late results/usage.
-6. Governed product-level read-only Mission entry, merged in #52: an explicit mission request validates mission/task IDs, direct project boundary, DAG, executable roles and requested capability envelope before fixed role capabilities are granted. Planner suggestions remain inert data and never self-execute.
-7. Mission start reuses the existing global `AppState` `Running`/`Cancel`/`RunID` authority so a Mission does not create a competing active-run state. `StopAgent` cancels an active Mission; `ForceStopAgent` cannot be undone by a late Mission completion.
+1. Structured Agent contracts: roles, capabilities, per-child budgets, usage and structured `AgentResult`.
+2. Deterministic Task DAG with stable IDs, dependencies, readiness and terminal propagation.
+3. Scheduler/Resource Manager with bounded queue/resource classes and one model-inference slot by default.
+4. Actual scheduler dispatch of authorized Explorer/Planner/Reviewer tasks.
+5. Race-safe detached task preparation/finalization: cancellation-first drops late results/usage; completion-first remains successful.
+6. Governed read-only Mission entry from PR #52: explicit Mission request validates project boundary, DAG, executable roles and requested capability envelope before fixed read-only capabilities are granted. Planner suggestions remain inert data.
+7. Mission usage/budget accounting from PR #53: scheduler-accepted `UsageByTask` is aggregated exactly once; Mission wall-time is separated from summed child-work time; optional Mission ceilings only tighten normalized child budgets; terminal reasons distinguish Mission-budget exhaustion, child-budget exhaustion, cancellation and failure.
 
-The current #53 slice adds mission-level aggregate usage and optional additional budget ceilings. Final accounting is recomputed only from scheduler-accepted `UsageByTask`; cancelled late child output is not authoritative. Mission limits only tighten normalized child budgets and never increase child resources or capabilities.
+## 3. Active PR #54 – cancellation terminal graph fix
 
-Still absent:
+Known product-boundary issue found after #53: `StopAgent` cancelled the active scheduled child through the parent context, but already queued siblings and dependency-blocked siblings could remain `ready`/`blocked` in the returned Mission graph even though the Mission itself had stopped.
 
-- Desktop HTTP/UI Mission start/status surface,
-- narrower Mobile read-only Mission view,
-- larger product-level resource-saturation/fairness coverage,
-- durable Mission persistence/recovery integrated with `run_journal.go`,
-- mutation-capable Builder/worktree isolation,
-- Integrator/Test-Agent mutation flow.
+PR #54 fixes this without expanding scheduler authority:
 
-## 3. Safety and correctness invariants
+- `MissionID` remains stable caller-visible product identity.
+- `AppState.RunID` is changed to a fresh execution-scoped ID rather than the caller-selected Mission ID, preventing accidental collision with stale run-journal IDs used by shared stop/journal hooks.
+- After synchronous scheduled dispatch returns because the parent Mission context was cancelled, every still-unfinished Mission task is terminalized as `cancelled`.
+- Already-successful and already-failed terminal tasks are preserved.
+- Cancellation-first late Child result/usage remains discarded by the existing scheduler finalization boundary.
+- A product-level regression test covers one already-successful task, one running task, one queued ready sibling and one dependency-blocked sibling; it also verifies MissionID/RunID separation.
+
+Current active files:
+
+- `src/agent_mission.go`
+- `src/agent_mission_cancel.go`
+- `src/agent_mission_cancel_test.go`
+- `TODO.md`
+- `docs/ARCHITECTURE.md`
+- `STATE.md`
+
+No Builder, mutation, HTTP/Remote Mission endpoint, Mobile capability, durable Mission persistence or competing journal is introduced by #54.
+
+## 4. Safety and correctness invariants
 
 Mandatory invariants:
 
-- Canonical project/workspace containment, including symlink/junction escape protection where applicable.
+- Canonical project/workspace containment including symlink/junction escape protection where applicable.
 - SHA/version preconditions bind approval to previewed state.
 - Atomic/conflict-aware writes and checked postconditions.
 - Owned subprocess timeout/cancellation and Windows process-tree termination.
-- No default or persistent `danger-full-access` equivalent.
-- Planner `RequestedCapabilities` are planning data only; they never self-grant executable `Capabilities`.
-- Dynamic role labels remain inert until governance maps them to an implemented runtime.
+- No default or silently persistent `danger-full-access` equivalent.
+- Planner `RequestedCapabilities` are planning data only and never self-grant executable `Capabilities`.
+- Dynamic role labels remain inert until mapped by trusted governance to an implemented runtime.
 - Mobile permissions remain narrower than Desktop permissions.
-- Read-only child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
+- Read-only Child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
 - No unsupervised concurrent mutation of the same workspace.
-- `run_journal.go` remains the durable recovery authority; future Mission persistence must integrate with it rather than create another journal.
-- Child/Mission usage must not be double-counted; cancelled late results are not accepted as completed work.
-- Mission budgets may only constrain existing child budgets, never widen them.
-- Statement coverage remains >=80.0%; safety/test gates are not weakened to make CI pass.
+- `run_journal.go` remains the single durable recovery authority; future Mission persistence must integrate with it.
+- Child/Mission usage is never double-counted; cancellation-first late results are non-authoritative.
+- Mission budgets may only constrain existing Child budgets, never widen them.
+- Stable Mission identity is separate from execution-scoped run/journal identity.
+- Statement coverage Quality gate remains >=80.0%; safety/test gates are never weakened merely to make CI pass.
 
-## 4. Important continuation files
+## 5. Important continuation files
 
 Rules/docs:
 
 - `AGENTS.md`
+- `README.md`
 - `STATE.md`
 - `TODO.md`
-- `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/SECURITY.md`
 - `.github/workflows/quality.yml`
@@ -123,7 +129,8 @@ Agent/orchestration:
 - `src/agent_scheduler_dispatch.go`
 - `src/agent_scheduler_finalize.go`
 - `src/agent_mission.go`
-- `src/agent_mission_accounting.go` (current #53 slice until merged)
+- `src/agent_mission_accounting.go`
+- `src/agent_mission_cancel.go`
 - `src/run_journal.go`
 
 UI/remote:
@@ -134,18 +141,16 @@ UI/remote:
 - `src/static/remote.html`
 - `android/app/.../MainActivity.java`
 
-## 5. Exact next development direction
+## 6. Exact next development direction
 
-After #53 is green and merged:
-
-1. Add larger Mission/DAG resource-saturation and fairness tests.
-2. Complete product-boundary cancellation coverage for queued/admitted/completing/already-terminal Mission tasks.
-3. Expose stable read-only Mission/scheduler state in Desktop, including terminal reason, per-task state/resource class and budget snapshots.
-4. Only after the Desktop contract is stable, expose a narrower read-only Mobile Mission view without new authority.
+1. Finish PR #54: require full Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
+2. Add larger Mission/DAG resource-saturation and fairness coverage beyond existing linear/fan-out/fan-in and basic class-bypass tests.
+3. Expose stable read-only Mission/scheduler state in Desktop: Mission terminal reason, per-task state/resource class and budget snapshots.
+4. After the Desktop contract is stable, add a narrower read-only Mobile Mission view with no new authority.
 5. Add model/resource saturation diagnostics and reproducible logical-parallelism benchmarks.
 6. Move to durable Mission metadata/recovery integrated with `run_journal.go`.
-7. Only then begin mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
+7. Only then implement mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
-## 6. Cleanup rule
+## 7. Cleanup rule
 
-Only `master` is an authoritative continuation base. Superseded PR carriers are closed rather than reused. Obsolete merged feature refs and obsolete Actions runs should be physically deleted when the available GitHub integration exposes delete operations; the current connector does not expose branch-ref or workflow-run deletion, so stale refs must never be treated as active development in the meantime.
+Only `master` is an authoritative continuation base after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted when the GitHub integration exposes delete operations; the current connector still does not expose branch-ref or workflow-run deletion, so stale refs must never be treated as active development.
