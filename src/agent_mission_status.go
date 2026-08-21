@@ -55,10 +55,10 @@ type AgentModelBackendDiagnostics struct {
 }
 
 type AgentQueueDiagnostics struct {
-	Queued      int `json:"queued"`
-	Limit       int `json:"limit"`
-	Available   int `json:"available"`
-	FillPercent int `json:"fill_percent"`
+	Queued      int  `json:"queued"`
+	Limit       int  `json:"limit"`
+	Available   int  `json:"available"`
+	FillPercent int  `json:"fill_percent"`
 	AtLimit     bool `json:"at_limit"`
 }
 
@@ -375,7 +375,7 @@ func (s Status) MarshalJSON() ([]byte, error) {
 	type statusAlias Status
 	payload := struct {
 		statusAlias
-		Mission       *AgentMissionDesktopStatus     `json:"mission,omitempty"`
+		Mission       *AgentMissionDesktopStatus    `json:"mission,omitempty"`
 		Orchestration AgentOrchestrationDiagnostics `json:"orchestration"`
 	}{statusAlias: statusAlias(s)}
 	if mission, ok := agentMissionDesktopStatusForRun(s.RunID); ok {
