@@ -3,11 +3,11 @@
 **Verified:** 2026-08-21 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `f822518e3ca0a7bba171113d9dd30b4cb09524c7`  
-**Last merged functional PR:** #54 `fix: terminalize cancelled mission graphs`  
-**PR #54 Quality run:** `32473569489` – complete success including tests, race detector, >=80% coverage gate, Android APK and native Windows builds  
-**Active work:** PR #55 `test: cover scheduler saturation and fairness at scale`, branch `test/scheduler-saturation-fairness`  
-**Source/test head before this STATE refresh:** `1026808be89641b8ae0f2d2acc7d34fb68f33e8c`  
+**Current authoritative merged master:** `f2fc84453a35a36aac9a4ed618139bf8a3060211`  
+**Last merged functional PR:** #55 `test: cover scheduler saturation and fairness at scale`  
+**PR #55 Quality run:** `32474252624` – complete success including tests, race detector, >=80% coverage gate, Android APK and native Windows builds  
+**Active work:** PR #56 `feat: surface read-only mission status in Desktop`, branch `feat/desktop-mission-status`  
+**Source/test head before this STATE refresh:** `c00f3152c599f84f635e7f4bf926f9e6e94682bb`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -48,22 +48,38 @@ Merged orchestration layers:
 6. Governed explicit read-only Mission entry: validates Mission/task IDs, direct project boundary, DAG, executable roles and requested capability envelope; Planner suggestions stay inert.
 7. Mission-level accounting/budgets: accepted `UsageByTask` is counted once; wall-time is separate from summed child work; Mission ceilings only tighten normalized child budgets; terminal reasons are machine-readable.
 8. Product-boundary cancellation from #54: stable `MissionID` is separated from fresh execution-scoped `AppState.RunID`; after parent/`StopAgent` cancellation all still-unfinished Mission tasks are terminalized `cancelled`, while already-terminal successful/failed work is preserved.
+9. Scheduler saturation/fairness coverage from #55: simultaneous resource-class saturation, cross-class bypass, FIFO inside a saturated class and a 14-task fan-out/fan-in drain are verified without starvation or resource leakage.
 
-## 3. Active PR #55 – saturation/fairness coverage
+## 3. Active PR #56 – Desktop Mission status
 
-PR #55 adds tests only; it changes no scheduler policy or authority.
+PR #56 adds a read-only observation surface to Desktop without adding a Mission start/control API.
 
-Coverage added:
+Backend/status contract:
 
-- Nine simultaneously ready tasks across `model-inference` and `read-cpu` resource classes.
-- Two model slots and two read slots are saturated at once.
-- An admissible task from a different resource class may bypass older queued work that is blocked only because its own resource class is saturated.
-- FIFO ordering must remain stable inside the saturated model-inference class.
-- Every admitted lease must release and final resource usage must return to zero.
-- A larger scheduled DAG contains one root, twelve fan-out children and one fan-in join (14 total tasks).
-- With one model-inference slot the larger DAG must drain deterministically without starvation, collect accepted usage for every task and end with no queued/running resources.
+- `src/agent_mission_status.go` maintains a bounded in-memory Mission-status registry keyed by the fresh execution-scoped `RunID`; maximum retained entries are 32 and oldest entries are evicted.
+- `/api/status` remains the single Desktop status source. A custom `Status.MarshalJSON` adds `mission` only when the status `RunID` has matching Mission telemetry; unrelated runs do not receive Mission data.
+- While a read-only Mission executes, a monitor publishes Mission identity/project/model, running state, live scheduler queue/running/resource snapshots, task state/resource class/queue position/budget snapshots and Mission budget usage.
+- Final Mission status publishes machine-readable terminal state/reason and the accepted terminal scheduler/accounting snapshot.
+- After cancellation, the returned scheduler snapshot is refreshed after graph-wide terminalization so `queued=0`, `running=0` and task terminal states agree across Mission result and Desktop telemetry.
+- This registry is **ephemeral observation only**. It is not persistence, cannot resume a Mission and does not compete with `run_journal.go`.
 
-If these assertions expose a scheduler defect, fix the implementation rather than weakening the tests.
+Desktop UI contract:
+
+- `src/static/mission_status.js` renders a Mission card in the existing right-side **Outputs** inspector.
+- The card shows Mission state/reason, queued/running counts, Mission budget usage/limits, scheduler resource usage and each task's state/resource class/queue/admission/budget information.
+- New visible strings are supplied in synchronized German and English dictionaries.
+- The Mission card is read-only and references no chat-send, approval, project-mutation or terminal-command endpoint.
+- `src/static/i18n.js` dynamically loads the Mission-status module after the main Desktop state/functions exist.
+
+Focused tests cover JSON scoping, live + terminal cancellation telemetry, bounded registry eviction, the Desktop asset loader/DE+EN contract and absence of mutating endpoint references.
+
+Still absent after #56:
+
+- a narrower read-only Mobile Remote Mission view,
+- Mission start/control surface in Desktop or Mobile,
+- model/resource saturation diagnostics and reproducible local-concurrency benchmarks,
+- durable Mission metadata/recovery integrated with `run_journal.go`,
+- mutation-capable Builder/worktree agents and Integrator/Test-Agent mutation flow.
 
 ## 4. Safety and correctness invariants
 
@@ -77,28 +93,29 @@ If these assertions expose a scheduler defect, fix the implementation rather tha
 - Mobile permissions remain narrower than Desktop permissions.
 - Read-only Child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
 - No unsupervised concurrent mutation of the same workspace.
-- `run_journal.go` remains the single durable recovery authority; future Mission persistence must integrate with it.
+- `run_journal.go` remains the single durable recovery authority; Desktop Mission telemetry is non-durable observation only.
 - Child/Mission usage is not double-counted and cancelled late results are non-authoritative.
 - Mission budgets only constrain Child budgets, never widen them.
 - Stable Mission identity is separate from execution-scoped run/journal identity.
+- Desktop Mission status grants no new capabilities and exposes no mutation/control endpoint.
 - Statement coverage Quality gate remains >=80.0%; safety/test gates are not weakened merely to make CI pass.
 
 ## 5. Important continuation files
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `.github/workflows/quality.yml`.
 
-Agent/orchestration: `src/agent.go`, `src/subagent_model.go`, `src/agent_team_types.go`, `src/agent_task_graph.go`, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission.go`, `src/agent_mission_accounting.go`, `src/agent_mission_cancel.go`, `src/run_journal.go`.
+Agent/orchestration: `src/agent.go`, `src/subagent_model.go`, `src/agent_team_types.go`, `src/agent_task_graph.go`, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission.go`, `src/agent_mission_accounting.go`, `src/agent_mission_cancel.go`, `src/agent_mission_status.go`, `src/run_journal.go`.
 
-Active test file: `src/agent_scheduler_fairness_test.go`.
+Desktop Mission tests/assets: `src/agent_mission_status_test.go`, `src/agent_mission_status_registry_test.go`, `src/agent_mission_status_contract_test.go`, `src/static/mission_status.js`, `src/static/i18n.js`.
 
 UI/remote: `src/server.go`, `src/remote_server.go`, `src/static/index.html`, `src/static/remote.html`, `android/app/.../MainActivity.java`.
 
 ## 6. Exact next development direction
 
-1. Finish PR #55: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
-2. Surface stable read-only Mission/scheduler state in Desktop: Mission state/reason, per-task state, queue/resource class and budget snapshots.
-3. After the Desktop contract is stable, expose a narrower read-only Mobile Mission view without new authority.
-4. Add model/resource saturation diagnostics and reproducible logical-parallelism benchmarks.
+1. Finish PR #56: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
+2. Expose a narrower read-only Mobile Remote Mission view without adding Mobile tool/control authority.
+3. Add model/resource saturation diagnostics.
+4. Add reproducible benchmarks for logical task parallelism versus actual local model concurrency before making performance claims.
 5. Move to durable Mission metadata/recovery integrated with `run_journal.go`.
 6. Only then implement mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
