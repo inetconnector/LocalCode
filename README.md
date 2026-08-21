@@ -59,11 +59,13 @@ LocalCode besitzt aktuell ausführbare **read-only** Child-Rollen:
 
 Child-Agenten haben getrennten Kontext, harte Modell-/Tool-/Zeit-/Tokenbudgets und können nur Projektbaum, Dateien, Textsuche und genehmigungsfreies LSP lesen. Schreiben, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Genehmigungen und rekursives Spawning gehören nicht zu ihrem Action-Schema.
 
-Ein deterministischer Task-DAG und ein begrenzter Scheduler/Resource Manager sind implementiert. Mehrere logisch bereite Tasks können in der Queue stehen, während lokale Modellinferenz standardmäßig auf einen aktiven Slot begrenzt bleibt. Der Scheduler führt autorisierte Explorer/Planner/Reviewer tatsächlich aus, sammelt strukturierte `AgentResult`- und Usage-Daten und schaltet abhängige Tasks deterministisch frei.
+Ein deterministischer Task-DAG, ein begrenzter Scheduler/Resource Manager und ein expliziter read-only Mission-Einstieg sind implementiert. Mehrere logisch bereite Tasks können in der Queue stehen, während lokale Modellinferenz standardmäßig auf einen aktiven Slot begrenzt bleibt. Der Scheduler führt autorisierte Explorer/Planner/Reviewer tatsächlich aus, sammelt strukturierte `AgentResult`- und Usage-Daten und schaltet abhängige Tasks deterministisch frei. Größere Sättigungs-/Fairness-Tests prüfen FIFO innerhalb einer Ressourcenklasse, Cross-Class-Bypass und einen 14-Task-Fan-out/Fan-in-DAG ohne Starvation.
 
-Cancel und Child-Abschluss sind race-sicher serialisiert: Der Child erhält eine abgetrennte Task-Kopie; ein bereits gewonnener Cancel darf nicht durch ein verspätetes Child-Ergebnis überschrieben werden, und ein bereits erfolgreich finalisierter Task wird nicht nachträglich storniert.
+Cancel und Child-Abschluss sind race-sicher serialisiert: Der Child erhält eine abgetrennte Task-Kopie; ein bereits gewonnener Cancel darf nicht durch ein verspätetes Child-Ergebnis überschrieben werden, und ein bereits erfolgreich finalisierter Task wird nicht nachträglich storniert. Ein Mission-Abbruch terminalisiert außerdem noch unfertige Tasks kontrolliert als `cancelled`.
 
-**Noch nicht implementiert:** mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten, Integrator/Test-Agent-Mutationsfluss und eine vollwertige produktseitige Mission-Oberfläche.
+Der Desktop kann den **read-only Mission-Status** im rechten Ausgabenbereich anzeigen: Mission-State/-Reason, Queue/Running, Ressourcenklassen, Task-Zustände und Budget-Snapshots. Diese Anzeige ist reine Beobachtung. Sie startet oder verändert keine Mission, vergibt keine Capabilities und ist keine Recovery-Persistenz; `run_journal.go` bleibt die dauerhafte Recovery-Autorität.
+
+**Noch nicht implementiert:** eine Mobile-Mission-Ansicht, eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
 
 ### Handy-Remote / Android
 
@@ -164,11 +166,13 @@ LocalCode currently has executable **read-only** child roles:
 
 Child agents receive isolated context, hard model/tool/time/token budgets and may only read the project tree, files, text search and approval-free LSP. Write actions, shell, Git, web/network, MCP tool calls, installation, memory, approvals and recursive spawning are absent from their action schema.
 
-A deterministic task DAG and bounded Scheduler/Resource Manager are implemented. Multiple logically ready tasks can be queued while local model inference defaults to one active slot. The scheduler now actually dispatches authorized Explorer/Planner/Reviewer tasks, collects structured `AgentResult` and usage data, and deterministically unlocks dependent tasks.
+A deterministic task DAG, bounded Scheduler/Resource Manager and explicit read-only Mission entry are implemented. Multiple logically ready tasks can be queued while local model inference defaults to one active slot. The scheduler actually dispatches authorized Explorer/Planner/Reviewer tasks, collects structured `AgentResult` and usage data, and deterministically unlocks dependent tasks. Larger saturation/fairness tests verify FIFO inside a resource class, cross-class bypass and a 14-task fan-out/fan-in DAG without starvation.
 
-Cancellation and child completion are serialized safely: the child receives a detached task copy; a cancellation that wins first cannot be overwritten by a late child result, and a successfully finalized task cannot be cancelled afterwards.
+Cancellation and child completion are serialized safely: the child receives a detached task copy; a cancellation that wins first cannot be overwritten by a late child result, and a successfully finalized task cannot be cancelled afterwards. Whole-Mission cancellation also terminalizes unfinished tasks as `cancelled`.
 
-**Not implemented yet:** mutation-capable Builder agents, parallel worktree mutation agents, Integrator/Test-Agent mutation flow, and a full product-level Mission UI.
+Desktop can display **read-only Mission status** in the Output inspector: Mission state/reason, queued/running counts, resource classes, task states and budget snapshots. This is observation only. It cannot start or mutate a Mission, grant capabilities or act as recovery persistence; `run_journal.go` remains the durable recovery authority.
+
+**Not implemented yet:** a Mobile Mission view, a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
 
 ### Phone Remote / Android
 
