@@ -183,6 +183,7 @@ func TestMissionCompletionEvidenceSurvivesFinalGraphRebuild(t *testing.T) {
 				Summary: "different final result that must not replace first evidence",
 			},
 		}},
+		},
 		Run: AgentScheduledRun{UsageByTask: map[string]AgentUsage{}},
 	}
 	app := &AppState{}
