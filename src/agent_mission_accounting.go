@@ -39,10 +39,11 @@ type AgentMissionAccounting struct {
 type agentMissionBudgetTracker struct {
 	mu sync.Mutex
 
-	limit     AgentBudget
-	started   time.Time
-	usage     AgentUsage
-	blockedBy string
+	limit       AgentBudget
+	started     time.Time
+	usage       AgentUsage
+	blockedBy   string
+	constrained map[string]map[string]struct{}
 }
 
 func validateAgentMissionBudget(budget AgentBudget) error {
@@ -65,7 +66,11 @@ func newAgentMissionBudgetTracker(limit AgentBudget, started time.Time) *agentMi
 	if started.IsZero() {
 		started = time.Now()
 	}
-	return &agentMissionBudgetTracker{limit: limit, started: started}
+	return &agentMissionBudgetTracker{
+		limit:       limit,
+		started:     started,
+		constrained: map[string]map[string]struct{}{},
+	}
 }
 
 // prepareTask applies the remaining mission budget only as a further
@@ -83,11 +88,23 @@ func (t *agentMissionBudgetTracker) prepareTask(task AgentTask) (AgentTask, bool
 		t.blockedBy = snapshot.ExhaustedBy
 		return task, false
 	}
-	task.Budget = capAgentBudgetToMissionRemaining(task.Budget, t.limit, snapshot.Remaining)
+	capped, dimensions := capAgentBudgetToMissionRemaining(task.Budget, t.limit, snapshot.Remaining)
+	if len(dimensions) > 0 {
+		set := make(map[string]struct{}, len(dimensions))
+		for _, dimension := range dimensions {
+			set[dimension] = struct{}{}
+		}
+		t.constrained[task.ID] = set
+	}
+	task.Budget = capped
 	return task, true
 }
 
-func (t *agentMissionBudgetTracker) recordAppliedUsage(usage AgentUsage, childResult AgentResultStatus) {
+// recordObservedUsage exists only so the next admission can be constrained by
+// work just performed. Final accounting never trusts this speculative tracker:
+// it is recomputed from scheduler-accepted UsageByTask so a late cancelled
+// child cannot double-count or change the terminal result.
+func (t *agentMissionBudgetTracker) recordObservedUsage(usage AgentUsage) {
 	if t == nil {
 		return
 	}
@@ -96,16 +113,6 @@ func (t *agentMissionBudgetTracker) recordAppliedUsage(usage AgentUsage, childRe
 	t.usage.ModelCalls += usage.ModelCalls
 	t.usage.ToolCalls += usage.ToolCalls
 	t.usage.EstimatedTokens += usage.EstimatedTokens
-
-	// A child that only hits its own normal budget remains a task-level failure.
-	// Mark mission exhaustion only when the aggregate mission limit is now
-	// exhausted and the child itself stopped on a budget boundary.
-	if childResult == AgentResultBudgetExhausted {
-		snapshot := t.snapshotLocked(time.Now())
-		if snapshot.Exhausted {
-			t.blockedBy = snapshot.ExhaustedBy
-		}
-	}
 }
 
 func (t *agentMissionBudgetTracker) blockedDimension() string {
@@ -117,6 +124,16 @@ func (t *agentMissionBudgetTracker) blockedDimension() string {
 	return t.blockedBy
 }
 
+func (t *agentMissionBudgetTracker) constrainedTaskDimension(taskID, dimension string) bool {
+	if t == nil || dimension == "" {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	_, ok := t.constrained[taskID][dimension]
+	return ok
+}
+
 func (t *agentMissionBudgetTracker) snapshotLocked(now time.Time) AgentBudgetSnapshot {
 	usage := t.usage
 	usage.ElapsedMillis = now.Sub(t.started).Milliseconds()
@@ -126,20 +143,25 @@ func (t *agentMissionBudgetTracker) snapshotLocked(now time.Time) AgentBudgetSna
 	return agentBudgetSnapshot(t.limit, usage)
 }
 
-func capAgentBudgetToMissionRemaining(child, missionLimit, remaining AgentBudget) AgentBudget {
+func capAgentBudgetToMissionRemaining(child, missionLimit, remaining AgentBudget) (AgentBudget, []string) {
+	dimensions := make([]string, 0, 4)
 	if missionLimit.ModelCalls > 0 && remaining.ModelCalls < child.ModelCalls {
 		child.ModelCalls = remaining.ModelCalls
+		dimensions = append(dimensions, "model_calls")
 	}
 	if missionLimit.ToolCalls > 0 && remaining.ToolCalls < child.ToolCalls {
 		child.ToolCalls = remaining.ToolCalls
+		dimensions = append(dimensions, "tool_calls")
 	}
 	if missionLimit.EstimatedTokenBudget > 0 && remaining.EstimatedTokenBudget < child.EstimatedTokenBudget {
 		child.EstimatedTokenBudget = remaining.EstimatedTokenBudget
+		dimensions = append(dimensions, "estimated_tokens")
 	}
 	if missionLimit.TimeSeconds > 0 && remaining.TimeSeconds < child.TimeSeconds {
 		child.TimeSeconds = remaining.TimeSeconds
+		dimensions = append(dimensions, "time")
 	}
-	return child
+	return child, dimensions
 }
 
 func agentMissionAccounting(limit AgentBudget, usageByTask map[string]AgentUsage, started, finished time.Time) AgentMissionAccounting {
@@ -162,9 +184,27 @@ func agentMissionAccounting(limit AgentBudget, usageByTask map[string]AgentUsage
 	}
 }
 
-func deriveAgentMissionOutcome(graph AgentTaskGraph, runErr error, blockedBy string) (AgentMissionState, AgentMissionReason, string) {
-	if blockedBy != "" {
+func missionBudgetStoppedAcceptedTask(run AgentScheduledRun, tracker *agentMissionBudgetTracker, exhaustedBy string) bool {
+	if tracker == nil || exhaustedBy == "" {
+		return false
+	}
+	for _, scheduled := range run.Results {
+		if scheduled.Result.Status != AgentResultBudgetExhausted {
+			continue
+		}
+		if tracker.constrainedTaskDimension(scheduled.TaskID, exhaustedBy) {
+			return true
+		}
+	}
+	return false
+}
+
+func deriveAgentMissionOutcome(graph AgentTaskGraph, run AgentScheduledRun, runErr error, accounting AgentMissionAccounting, tracker *agentMissionBudgetTracker) (AgentMissionState, AgentMissionReason, string) {
+	if blockedBy := tracker.blockedDimension(); blockedBy != "" {
 		return AgentMissionBudgetExhausted, AgentMissionReasonBudgetExhausted, blockedBy
+	}
+	if accounting.Budget.Exhausted && missionBudgetStoppedAcceptedTask(run, tracker, accounting.Budget.ExhaustedBy) {
+		return AgentMissionBudgetExhausted, AgentMissionReasonBudgetExhausted, accounting.Budget.ExhaustedBy
 	}
 	if runErr != nil {
 		if runErr == context.Canceled || runErr == context.DeadlineExceeded {
