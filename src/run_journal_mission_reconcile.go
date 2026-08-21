@@ -16,15 +16,17 @@ import (
 )
 
 const (
-	missionGitStateObserved       = "observed"
-	missionGitStateNotRepository  = "not_repository"
-	missionGitStateUnavailable    = "unavailable"
+	missionGitStateObserved      = "observed"
+	missionGitStateNotRepository = "not_repository"
+	missionGitStateUnavailable   = "unavailable"
+
 	missionReconcileMatched              = "matched"
 	missionReconcileProjectUnavailable   = "project_unavailable"
 	missionReconcileProjectMismatch      = "project_mismatch"
 	missionReconcileGitChanged           = "git_changed"
 	missionReconcileGitUnavailable       = "git_unavailable"
 	missionReconcileInsufficientEvidence = "insufficient_evidence"
+
 	missionTaskDispositionTerminal             = "terminal"
 	missionTaskDispositionVerifyPostconditions = "verify_postconditions"
 	missionTaskDispositionInterruptedUnknown   = "interrupted_unknown"
