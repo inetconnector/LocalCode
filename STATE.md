@@ -3,10 +3,10 @@
 **Verified:** 2026-08-21 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `c49c9fac642a6031f7680c0868687a451e425f55`  
-**Last merged functional PR:** #57 `feat: show active read-only Mission in Mobile Remote`  
-**PR #57 Quality run:** `32481345080` – complete success including frontend syntax, Android APK, full-stack integration, Go tests, race detector, >=80% coverage gate, native Windows builds and diff check  
-**Active work:** PR #58 `feat: add orchestration saturation diagnostics`, branch `feat/orchestration-saturation-diagnostics`  
+**Current authoritative merged master:** `5f6dac0b1f29ab7bb8ba45656fd58a512685f095`  
+**Last merged functional PR:** #58 `feat: add orchestration saturation diagnostics`  
+**PR #58 Quality run:** `32488109852` – complete success including frontend syntax, Android APK, full-stack integration, Go tests, race detector, >=80% coverage gate, native Windows builds and diff check  
+**Active work:** PR #59 `test: benchmark orchestration parallelism`, branch `bench/orchestration-parallelism`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -26,6 +26,8 @@ Core hardware rule: `logical task parallelism != model inference parallelism`.
 Merged and active: Windows-native Go application, loopback Desktop HTTP/SSE API, LocalCode Native agent loop with approvals/reliability guards, selectable Native/Aider/Claude Code/OpenCode/Claw Code engines, Ollama integration, project/task history, controlled files/Git/builds/tests/tool discovery/web/MCP/attachments/assets, context compaction, local memory boundaries and durable normal-run recovery through `run_journal.go`.
 
 Desktop Mission telemetry from #56 is bounded and ephemeral. `/api/status` attaches the richer `mission` payload only when it matches the execution-scoped `RunID`; the Outputs inspector renders Mission state/reason, queue/running, resources, tasks and budgets without adding Mission control or persistence.
+
+PR #58 is merged. `/api/status` also contains machine-readable orchestration diagnostics that distinguish backend/model availability, active Mission state, queue pressure and actual resource saturation. `at_capacity` means a resource is full; `saturated` requires that the resource is full and matching work is waiting. Diagnostics include queue utilization, logical ready/running/blocked counts, waiting model work and per-resource limit/in-use/available/waiting data. The Desktop UI renders these facts read-only and does not alter Scheduler policy or concurrency.
 
 ### Android / Mobile Remote
 
@@ -48,31 +50,30 @@ Merged orchestration layers:
 9. Scheduler saturation/fairness coverage including cross-class bypass, FIFO within a saturated class and a 14-task fan-out/fan-in drain without starvation.
 10. Desktop Mission telemetry from #56, bounded in-memory and scoped to the matching execution `RunID`.
 11. Narrow Mobile Mission observation from #57 without a new Remote endpoint or authority.
+12. Observation-only backend/queue/resource saturation diagnostics from #58.
 
-## 3. Active PR #58 – orchestration saturation diagnostics
+## 3. Active PR #59 – orchestration parallelism benchmarks
 
-PR #58 adds observation only and does not change Scheduler policy or concurrency.
+PR #59 adds benchmark evidence only; it does not change Scheduler limits, admission policy, child capabilities or model concurrency.
 
-Machine-readable `/api/status` diagnostics:
+Deterministic synthetic benchmark:
 
-- Always adds an `orchestration` object to Desktop status JSON.
-- Separately classifies `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`.
-- Machine-readable reasons distinguish `idle`, `mission_running`, `ollama_offline`, `no_model_selected`, `selected_model_missing`, `queue_limit_reached` and `resource_waiting`.
-- Backend diagnostics report Ollama online state, selected model, whether that exact model is present in the returned local model list, installed-model count and backend error text.
-- Queue diagnostics report queued count, actual scheduler queue limit, available slots, fill percentage and whether the queue limit is reached.
-- Logical task diagnostics report ready/running/blocked task counts and how many tasks are waiting specifically for model inference.
-- Per-resource diagnostics report class, limit, in-use, available, waiting, `at_capacity` and `saturated`.
-- **At capacity is deliberately not the same as saturated:** saturation requires a full resource **and** waiting work for that resource.
-- Actual normalized Mission resource limits are retained in the ephemeral Mission status so diagnostics do not assume default limits while a Mission is active.
+- `BenchmarkScheduledReadOnlyDispatcherParallelism` creates four independent governed read-only Explorer tasks that are logically ready together.
+- It repeats the same workload with model-inference resource limits 1, 2 and 4.
+- It reports logical ready tasks, configured model slots, peak executor calls actually in flight, tasks/op and executor-to-ready ratio.
+- The executor contains a short deterministic delay so overlap is observable if dispatch becomes concurrent later.
+- Current dispatch remains synchronous in `runScheduledReadOnlyAgentGraphWithExecutor`; therefore a higher model-slot limit alone is not evidence of concurrent child-model execution.
 
-Desktop UI:
+Explicitly opt-in real Ollama benchmark:
 
-- The existing `src/static/mission_status.js` module renders a read-only Orchestration card in the Outputs inspector.
-- It shows backend/model state, queue utilization, logical task counts and each resource class with in-use/limit/waiting plus capacity/saturation state.
-- DE/EN strings are synchronized.
-- The diagnostics UI references no mutating chat/approval/project/terminal endpoint.
+- `TestOllamaConcurrencyBenchmarkOptIn` is fixed-work rather than auto-calibrated because local LLM requests are expensive.
+- It uses the production `OllamaClient.Chat` path with the exact same already-installed model for client concurrency 1, 2 and 4.
+- It is disabled unless `LOCALCODE_BENCH_OLLAMA=1` and requires `LOCALCODE_BENCH_MODEL`.
+- It accepts loopback Ollama endpoints only, never calls `EnsureRunning`, never pulls/installs a model and never changes LocalCode/Scheduler configuration.
+- It emits machine-readable `ORCHESTRATION_BENCH` JSON with wall time, mean/p95 latency, requests/second, client-overlap factor and speedup relative to sequential execution.
+- End-to-end client overlap is not claimed to prove simultaneous GPU kernels or simultaneous token generation inside Ollama.
 
-Focused tests cover backend-failure distinctions, at-capacity-vs-saturation semantics, waiting model-inference pressure, queue-limit saturation, idle readiness, JSON inclusion and the read-only UI contract.
+`docs/ORCHESTRATION_BENCHMARKS.md` documents commands, bounds and interpretation rules.
 
 ## 4. Safety and correctness invariants
 
@@ -91,24 +92,27 @@ Focused tests cover backend-failure distinctions, at-capacity-vs-saturation sema
 - Mission budgets only constrain Child budgets, never widen them.
 - Stable Mission identity is separate from execution-scoped run/journal identity.
 - Diagnostics must not alter Scheduler limits, admission or model concurrency.
-- No performance/superiority claim may be made from diagnostics alone; reproducible benchmarks are still required.
+- Benchmark output must not automatically alter Scheduler policy; capacity changes require a separate reviewed change with VRAM/memory, fairness, cancellation and stability evidence.
+- Real Ollama benchmark traffic is opt-in and loopback-only and must never trigger model download/start/install behavior.
 - Statement coverage Quality gate remains >=80.0%; safety/test gates are not weakened merely to make CI pass.
 
 ## 5. Important continuation files
 
-Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `.github/workflows/quality.yml`.
+Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
 Agent/orchestration: `src/agent_team_types.go`, `src/agent_task_graph.go`, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission.go`, `src/agent_mission_accounting.go`, `src/agent_mission_cancel.go`, `src/agent_mission_status.go`, `src/run_journal.go`.
 
 Diagnostics/tests/UI: `src/agent_orchestration_diagnostics_test.go`, `src/agent_mission_status_contract_test.go`, `src/static/mission_status.js`.
 
+Benchmarks: `src/agent_orchestration_parallelism_benchmark_test.go`, `docs/ORCHESTRATION_BENCHMARKS.md`.
+
 Mobile contract: `src/static/remote.html`, `src/remote_mission_status_test.go`, `src/remote_mission_status_contract.md`.
 
 ## 6. Exact next development direction
 
-1. Finish PR #58: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
-2. Add reproducible benchmarks for logical task parallelism versus actual local model concurrency before making performance claims.
-3. Move to durable Mission metadata/recovery integrated with `run_journal.go`.
+1. Finish PR #59: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
+2. Move to durable Mission metadata/recovery integrated with `run_journal.go`; do not create a competing journal.
+3. Add restart reconciliation and bounded pause/resume/retry semantics on top of that durable Mission state.
 4. Only then implement mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
 ## 7. Cleanup rule
