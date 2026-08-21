@@ -61,46 +61,25 @@ Child-Agenten haben getrennten Kontext, harte Modell-/Tool-/Zeit-/Tokenbudgets u
 
 Ein deterministischer Task-DAG, ein begrenzter Scheduler/Resource Manager und ein expliziter read-only Mission-Einstieg sind implementiert. Mehrere logisch bereite Tasks können in der Queue stehen, während lokale Modellinferenz standardmäßig auf einen aktiven Slot begrenzt bleibt. Der Scheduler führt autorisierte Explorer/Planner/Reviewer tatsächlich aus, sammelt strukturierte `AgentResult`- und Usage-Daten und schaltet abhängige Tasks deterministisch frei. Größere Sättigungs-/Fairness-Tests prüfen FIFO innerhalb einer Ressourcenklasse, Cross-Class-Bypass und einen 14-Task-Fan-out/Fan-in-DAG ohne Starvation.
 
-Cancel und Child-Abschluss sind race-sicher serialisiert: Der Child erhält eine abgetrennte Task-Kopie; ein bereits gewonnener Cancel darf nicht durch ein verspätetes Child-Ergebnis überschrieben werden, und ein bereits erfolgreich finalisierter Task wird nicht nachträglich storniert. Ein Mission-Abbruch terminalisiert außerdem noch unfertige Tasks kontrolliert als `cancelled`.
+Cancel und Child-Abschluss sind race-sicher serialisiert. Ein Mission-Abbruch terminalisiert noch unfertige Tasks kontrolliert als `cancelled`; verspätete Child-Resultate können den gewonnenen Cancel nicht überschreiben.
 
 Der Desktop kann den **read-only Mission-Status** im rechten Ausgabenbereich anzeigen: Mission-State/-Reason, Queue/Running, Ressourcenklassen, Task-Zustände und Budget-Snapshots. Diese Anzeige ist reine Beobachtung. Sie startet oder verändert keine Mission, vergibt keine Capabilities und ist keine Recovery-Persistenz; `run_journal.go` bleibt die dauerhafte Recovery-Autorität.
 
-**Noch nicht implementiert:** eine Mobile-Mission-Ansicht, eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
+Die Mobile Remote bleibt absichtlich schmaler: Wenn eine read-only Mission aktiv ist, zeigt sie lediglich **Mission · Läuft** sowie eine kompakte DE/EN-Hinweiskarte. Dafür werden ausschließlich die bereits vorhandenen authentifizierten Statusfelder `running` und `run_phase` verwendet. Mobile erhält dabei keine Mission-/Task-IDs, Scheduler-, Ressourcen-, Budget- oder Accounting-Daten und keinen neuen Mission-Start-/Steuerpfad.
+
+**Noch nicht implementiert:** eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
 
 ### Handy-Remote / Android
 
 LocalCode betreibt optional einen getrennten, token-geschützten Remote-Server für das lokale Netzwerk. Über **Hilfe → Remote koppeln** wird ein kurzlebiger Pairing-Code bzw. Pair-/QR-Link erzeugt.
 
-Die native Android-Hülle ist bereits vorhanden. Sie kann:
+Die native Android-Hülle ist bereits vorhanden. Sie kann LocalCode per mDNS finden, Pair-/QR-/Deep-Link-Daten übernehmen, den TLS-SHA-256-Fingerprint pinnen, die Remote-Web-App öffnen, den nativen Android-Dateipicker verwenden, Spracheingabe starten und Fehler sichtbar anzeigen.
 
-- LocalCode per mDNS im lokalen Netzwerk finden,
-- Pair-/QR-/Deep-Link-Daten übernehmen,
-- den TLS-SHA-256-Fingerprint pinnen,
-- die Remote-Web-App in einer WebView öffnen,
-- über die Büroklammer den nativen Android-Dateipicker nutzen,
-- Spracheingabe über Android `RecognizerIntent` starten,
-- erkannten Text nur in das Promptfeld einfügen,
-- Fehler von Dateipicker/Speech sichtbar in der Remote-Ansicht anzeigen.
-
-Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Entfernen von Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Attachments werden gemeinsam mit Projekt, Thread und Modell an den Windows-Rechner übertragen; doppelte Send-Aufrufe werden gesperrt. Prompt und Attachments werden erst nach erfolgreichem Chat-Request geleert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
+Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Die Mission-Anzeige fügt **keinen** neuen Remote-Endpunkt und **keine** neue Autorität hinzu; bestehendes Stop-Verhalten bleibt unverändert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
 
 ### Build und Qualität
 
-Die GitHub-Quality-Pipeline prüft unter anderem:
-
-- Go-Version / Setup,
-- `gofmt`,
-- `go vet ./...`,
-- Frontend-JavaScript-Syntax,
-- PowerShell-Syntax,
-- native Android-Remote-APK,
-- Vulnerability Scan,
-- Full-Stack-Loopback-HTTP-Integration,
-- vollständige Go-Tests,
-- Race Detector,
-- Statement Coverage (Gate mindestens 80 %),
-- native Windows-Builds,
-- `git diff --check`.
+Die GitHub-Quality-Pipeline prüft unter anderem Go-Version/Setup, `gofmt`, `go vet ./...`, Frontend-JavaScript-Syntax, PowerShell-Syntax, native Android-Remote-APK, Vulnerability Scan, Full-Stack-Loopback-HTTP-Integration, vollständige Go-Tests, Race Detector, Statement Coverage (Gate mindestens 80 %), native Windows-Builds und `git diff --check`.
 
 ### Wichtige Dokumente
 
@@ -133,81 +112,37 @@ Large model downloads can take time on first startup. Diagnostics are written to
 
 ### Coding-agent engines
 
-LocalCode can switch between:
-
-- **LocalCode Native** – the built-in tool loop with approvals, sandbox/path boundaries, recovery and Agent-Team building blocks.
-- **Aider** – supports local Ollama models.
-- **Claude Code** – requires a suitable sign-in/provider configuration.
-- **OpenCode** – supports local Ollama models and optional provider authentication.
-- **Claw Code** – experimental external engine behind LocalCode's approval boundary.
-
-The engine can be selected in the composer and in Settings. There is no silent provider or model drift.
+LocalCode can switch between LocalCode Native, Aider, Claude Code, OpenCode and experimental Claw Code. The engine can be selected in the composer and Settings; there is no silent provider or model drift.
 
 ### Projects, tasks and tools
 
 LocalCode manages projects and persistent task/thread history. Depending on configuration and approval, the Native agent can read and modify files, use Git, run builds/tests, discover local tooling, use MCP, perform public-web research, process attachments and use local image/asset tools.
 
-Key protections include:
-
-- canonical project/workspace boundaries including symlink/NTFS-junction checks,
-- approval-gated file, command, network and installation actions,
-- SHA/version preconditions and atomic conflict-aware file changes,
-- controlled process cancellation and timeouts,
-- a durable run journal for interrupted runs,
-- no automatic authority escalation from prompts, rules, skills or Planner text.
+Key protections include canonical project/workspace boundaries, approval-gated risky actions, SHA/version preconditions, atomic conflict-aware writes, controlled process cancellation/timeouts, a durable run journal and no automatic authority escalation from prompts/rules/skills/Planner text.
 
 ### Native Agent Teams – current state
 
-LocalCode currently has executable **read-only** child roles:
+LocalCode currently has executable **read-only** child roles: Explorer, Planner and Reviewer. Child agents receive isolated context and hard budgets; write actions, shell, Git, web/network, MCP tool calls, installation, memory, approvals and recursive spawning are absent from their action schema.
 
-- Explorer
-- Planner
-- Reviewer
+A deterministic task DAG, bounded Scheduler/Resource Manager and explicit read-only Mission entry are implemented. Local inference defaults to one model slot. Saturation/fairness tests verify FIFO within a resource class, cross-class bypass and a 14-task fan-out/fan-in DAG without starvation.
 
-Child agents receive isolated context, hard model/tool/time/token budgets and may only read the project tree, files, text search and approval-free LSP. Write actions, shell, Git, web/network, MCP tool calls, installation, memory, approvals and recursive spawning are absent from their action schema.
+Cancellation and child completion are serialized safely. Whole-Mission cancellation terminalizes unfinished work as `cancelled`, and late child output cannot overwrite cancellation that won first.
 
-A deterministic task DAG, bounded Scheduler/Resource Manager and explicit read-only Mission entry are implemented. Multiple logically ready tasks can be queued while local model inference defaults to one active slot. The scheduler actually dispatches authorized Explorer/Planner/Reviewer tasks, collects structured `AgentResult` and usage data, and deterministically unlocks dependent tasks. Larger saturation/fairness tests verify FIFO inside a resource class, cross-class bypass and a 14-task fan-out/fan-in DAG without starvation.
+Desktop can display **read-only Mission status** in the Output inspector: Mission state/reason, queued/running counts, resource classes, task states and budget snapshots. This is observation only and is not a Mission-control or recovery surface.
 
-Cancellation and child completion are serialized safely: the child receives a detached task copy; a cancellation that wins first cannot be overwritten by a late child result, and a successfully finalized task cannot be cancelled afterwards. Whole-Mission cancellation also terminalizes unfinished tasks as `cancelled`.
+Mobile Remote stays deliberately narrower: while a read-only Mission is active it shows only **Mission · Running** and a compact localized notice, derived from the already-authenticated `running` and `run_phase` status fields. Mobile receives no Mission/task IDs, scheduler/resource/budget/accounting data and no new Mission start/control path.
 
-Desktop can display **read-only Mission status** in the Output inspector: Mission state/reason, queued/running counts, resource classes, task states and budget snapshots. This is observation only. It cannot start or mutate a Mission, grant capabilities or act as recovery persistence; `run_journal.go` remains the durable recovery authority.
-
-**Not implemented yet:** a Mobile Mission view, a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
+**Not implemented yet:** a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
 
 ### Phone Remote / Android
 
-LocalCode can run a separate token-protected Remote server on the local network. **Help → Pair Remote** creates a short-lived pairing code or pair/QR link.
+LocalCode can run a separate token-protected Remote server on the local network. The native Android shell supports mDNS discovery, Pair/QR/deep links, TLS fingerprint pinning, native file picking and Android speech input.
 
-The native Android shell already exists. It can:
-
-- discover LocalCode over mDNS,
-- consume pair/QR/deep-link data,
-- pin the TLS SHA-256 fingerprint,
-- load the Remote web app in a WebView,
-- open Android's native file picker from the paperclip control,
-- start Android `RecognizerIntent` speech input,
-- append recognized text to the prompt without auto-sending,
-- surface file-picker/speech failures visibly inside Remote.
-
-The Remote UI supports pairing, projects/tasks, engine selection, attachments, attachment removal, voice input, send, stop, approvals and project actions. Attachments are sent together with project, thread and model to the Windows host; duplicate submissions are locked. Prompt and attachments are cleared only after a successful chat request. Mobile gets no extra tool authority; the actual work remains on the Windows machine.
+The Remote UI supports pairing, projects/tasks, engine selection, attachments, voice input, send, stop, approvals and project actions. The Mission indicator adds **no** new Remote endpoint or authority; existing stop behavior is unchanged. The actual work remains on the Windows host.
 
 ### Build and quality
 
-The GitHub Quality pipeline checks, among other things:
-
-- Go setup/version,
-- `gofmt`,
-- `go vet ./...`,
-- frontend JavaScript syntax,
-- PowerShell syntax,
-- native Android Remote APK,
-- vulnerability scan,
-- full-stack loopback HTTP integration,
-- complete Go tests,
-- race detector,
-- statement coverage (minimum gate 80%),
-- native Windows builds,
-- `git diff --check`.
+The GitHub Quality pipeline checks Go setup/version, `gofmt`, `go vet ./...`, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, complete Go tests, race detector, statement coverage (minimum 80%), native Windows builds and `git diff --check`.
 
 ### Important documents
 
