@@ -68,3 +68,21 @@ func TestRemoteMissionUIUsesOnlyExistingReadOnlyRunStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteMissionUIAddsNoNewMissionControls(t *testing.T) {
+	data, err := staticFS.ReadFile("static/remote.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	for _, forbidden := range []string{
+		"startMission",
+		"runMission",
+		"cancelMission",
+		"data-mission-action",
+	} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("Remote mission UI must not add Mission controls; found %q", forbidden)
+		}
+	}
+}
