@@ -3,10 +3,10 @@
 **Verified:** 2026-08-21 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `25e507041b9e6044aceebf63a40425f9360e48e3`  
-**Last merged functional PR:** #56 `feat: surface read-only mission status in Desktop`  
-**PR #56 Quality run:** `32478663724` – complete success including frontend syntax, full-stack integration, Go tests, race detector, >=80% coverage gate, Android APK and native Windows builds  
-**Active work:** PR #57 `feat: show active read-only Mission in Mobile Remote`, branch `feat/mobile-mission-status`  
+**Current authoritative merged master:** `c49c9fac642a6031f7680c0868687a451e425f55`  
+**Last merged functional PR:** #57 `feat: show active read-only Mission in Mobile Remote`  
+**PR #57 Quality run:** `32481345080` – complete success including frontend syntax, Android APK, full-stack integration, Go tests, race detector, >=80% coverage gate, native Windows builds and diff check  
+**Active work:** PR #58 `feat: add orchestration saturation diagnostics`, branch `feat/orchestration-saturation-diagnostics`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -25,11 +25,11 @@ Core hardware rule: `logical task parallelism != model inference parallelism`.
 
 Merged and active: Windows-native Go application, loopback Desktop HTTP/SSE API, LocalCode Native agent loop with approvals/reliability guards, selectable Native/Aider/Claude Code/OpenCode/Claw Code engines, Ollama integration, project/task history, controlled files/Git/builds/tests/tool discovery/web/MCP/attachments/assets, context compaction, local memory boundaries and durable normal-run recovery through `run_journal.go`.
 
-PR #56 added bounded, ephemeral Desktop Mission telemetry to the existing `/api/status` source. The Desktop Outputs inspector can observe Mission state/reason, queue/running counts, resources, task state/resource/queue/admission data and Mission/task budget snapshots. This surface is observation only: it adds no Mission start/control endpoint and does not replace `run_journal.go`.
+Desktop Mission telemetry from #56 is bounded and ephemeral. `/api/status` attaches the richer `mission` payload only when it matches the execution-scoped `RunID`; the Outputs inspector renders Mission state/reason, queue/running, resources, tasks and budgets without adding Mission control or persistence.
 
 ### Android / Mobile Remote
 
-Merged behavior includes native Android packaging, mDNS discovery, QR/pair/deep-link handoff, private HTTPS/TLS fingerprint pinning, native file picker, Android speech input, DE/EN text and paired Remote controls. Mobile remains deliberately narrower than Desktop and gains no extra tool authority.
+PR #57 is merged. Mobile Remote shows only a narrow active read-only Mission indicator derived from the already-authenticated `running` and `run_phase` status fields. It does not receive the Desktop `mission` payload, Mission/task IDs, scheduler/resource/budget/accounting details or new Mission-control authority. Existing Remote stop behavior is unchanged.
 
 ### Native Agent Teams / Phase 5
 
@@ -47,19 +47,32 @@ Merged orchestration layers:
 8. Product-boundary cancellation with stable `MissionID` separated from execution-scoped `RunID` and graph-wide terminal cancellation.
 9. Scheduler saturation/fairness coverage including cross-class bypass, FIFO within a saturated class and a 14-task fan-out/fan-in drain without starvation.
 10. Desktop Mission telemetry from #56, bounded in-memory and scoped to the matching execution `RunID`.
+11. Narrow Mobile Mission observation from #57 without a new Remote endpoint or authority.
 
-## 3. Active PR #57 – narrow Mobile Mission observation
+## 3. Active PR #58 – orchestration saturation diagnostics
 
-PR #57 deliberately does **not** expose the richer Desktop Mission payload to Mobile.
+PR #58 adds observation only and does not change Scheduler policy or concurrency.
 
-Current slice:
+Machine-readable `/api/status` diagnostics:
 
-- Reuses the already-authenticated `/remote/api/status` fields `running` and `run_phase`; no new Remote endpoint is introduced.
-- When `running && run_phase == "mission-read-only"`, the Remote header identifies the active run as a Mission and the Tasks view shows a compact DE/EN read-only Mission card.
-- Mobile receives no Mission/task identifier, scheduler/task detail, resource/budget/accounting payload or Mission start action from this slice.
-- Existing Remote stop behavior is unchanged; no new control action or tool/capability authority is added.
-- Contract tests require the Remote status to remain without a `mission` payload and reject Mission endpoint/control markers or Desktop-only accounting details in the Remote asset.
-- `src/remote_mission_status_contract.md` records this source-level authority boundary.
+- Always adds an `orchestration` object to Desktop status JSON.
+- Separately classifies `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`.
+- Machine-readable reasons distinguish `idle`, `mission_running`, `ollama_offline`, `no_model_selected`, `selected_model_missing`, `queue_limit_reached` and `resource_waiting`.
+- Backend diagnostics report Ollama online state, selected model, whether that exact model is present in the returned local model list, installed-model count and backend error text.
+- Queue diagnostics report queued count, actual scheduler queue limit, available slots, fill percentage and whether the queue limit is reached.
+- Logical task diagnostics report ready/running/blocked task counts and how many tasks are waiting specifically for model inference.
+- Per-resource diagnostics report class, limit, in-use, available, waiting, `at_capacity` and `saturated`.
+- **At capacity is deliberately not the same as saturated:** saturation requires a full resource **and** waiting work for that resource.
+- Actual normalized Mission resource limits are retained in the ephemeral Mission status so diagnostics do not assume default limits while a Mission is active.
+
+Desktop UI:
+
+- The existing `src/static/mission_status.js` module renders a read-only Orchestration card in the Outputs inspector.
+- It shows backend/model state, queue utilization, logical task counts and each resource class with in-use/limit/waiting plus capacity/saturation state.
+- DE/EN strings are synchronized.
+- The diagnostics UI references no mutating chat/approval/project/terminal endpoint.
+
+Focused tests cover backend-failure distinctions, at-capacity-vs-saturation semantics, waiting model-inference pressure, queue-limit saturation, idle readiness, JSON inclusion and the read-only UI contract.
 
 ## 4. Safety and correctness invariants
 
@@ -73,10 +86,12 @@ Current slice:
 - Mobile permissions and Mission observability remain narrower than Desktop.
 - Read-only Child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
 - No unsupervised concurrent mutation of the same workspace.
-- `run_journal.go` remains the single durable recovery authority; Mission telemetry is non-durable observation only.
+- `run_journal.go` remains the single durable recovery authority; Mission telemetry and orchestration diagnostics are non-durable observation only.
 - Child/Mission usage is not double-counted and cancelled late results are non-authoritative.
 - Mission budgets only constrain Child budgets, never widen them.
 - Stable Mission identity is separate from execution-scoped run/journal identity.
+- Diagnostics must not alter Scheduler limits, admission or model concurrency.
+- No performance/superiority claim may be made from diagnostics alone; reproducible benchmarks are still required.
 - Statement coverage Quality gate remains >=80.0%; safety/test gates are not weakened merely to make CI pass.
 
 ## 5. Important continuation files
@@ -85,15 +100,16 @@ Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.
 
 Agent/orchestration: `src/agent_team_types.go`, `src/agent_task_graph.go`, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission.go`, `src/agent_mission_accounting.go`, `src/agent_mission_cancel.go`, `src/agent_mission_status.go`, `src/run_journal.go`.
 
-Mission UI/tests: `src/static/mission_status.js`, `src/agent_mission_status*_test.go`, `src/static/remote.html`, `src/remote_mission_status_test.go`, `src/remote_mission_status_contract.md`.
+Diagnostics/tests/UI: `src/agent_orchestration_diagnostics_test.go`, `src/agent_mission_status_contract_test.go`, `src/static/mission_status.js`.
+
+Mobile contract: `src/static/remote.html`, `src/remote_mission_status_test.go`, `src/remote_mission_status_contract.md`.
 
 ## 6. Exact next development direction
 
-1. Finish PR #57: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
-2. Add model/resource saturation diagnostics.
-3. Add reproducible benchmarks for logical task parallelism versus actual local model concurrency before making performance claims.
-4. Move to durable Mission metadata/recovery integrated with `run_journal.go`.
-5. Only then implement mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
+1. Finish PR #58: require complete Quality success for the exact head, inspect reviews/threads, mark Ready and merge automatically.
+2. Add reproducible benchmarks for logical task parallelism versus actual local model concurrency before making performance claims.
+3. Move to durable Mission metadata/recovery integrated with `run_journal.go`.
+4. Only then implement mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
 ## 7. Cleanup rule
 
