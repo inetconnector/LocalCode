@@ -90,7 +90,7 @@ Focused tests cover durable Mission shape/redaction/bounds, scheduler checkpoint
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
-Mission/recovery: `src/agent_mission.go`, `src/agent_mission_recovery.go`, `src/agent_mission_recovery_test.go`, `src/run_journal.go`, `src/run_journal_test.go`, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
+Mission/recovery: `src/agent_mission.go`, `src/run_journal_mission.go`, `src/run_journal_mission_test.go`, `src/run_journal.go`, `src/run_journal_test.go`, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
 
 Agent/orchestration: `src/agent_team_types.go`, `src/agent_task_graph.go`, `src/agent_scheduler.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission_cancel.go`, `src/agent_mission_status.go`.
 
