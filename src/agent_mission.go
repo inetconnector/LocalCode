@@ -20,15 +20,20 @@ type AgentReadOnlyMissionRequest struct {
 	ParentTaskID string              `json:"parent_task_id,omitempty"`
 	Project      string              `json:"project"`
 	Model        string              `json:"model,omitempty"`
+	Budget       AgentBudget         `json:"budget,omitempty"`
 	Tasks        []AgentTaskProposal `json:"tasks"`
 }
 
 type AgentReadOnlyMissionResult struct {
-	MissionID string            `json:"mission_id"`
-	Project   string            `json:"project"`
-	Model     string            `json:"model"`
-	Graph     AgentTaskGraph    `json:"graph"`
-	Run       AgentScheduledRun `json:"run"`
+	MissionID         string                 `json:"mission_id"`
+	Project           string                 `json:"project"`
+	Model             string                 `json:"model"`
+	State             AgentMissionState      `json:"state"`
+	Reason            AgentMissionReason     `json:"reason"`
+	BudgetExhaustedBy string                 `json:"budget_exhausted_by,omitempty"`
+	Accounting        AgentMissionAccounting `json:"accounting"`
+	Graph             AgentTaskGraph         `json:"graph"`
+	Run               AgentScheduledRun      `json:"run"`
 }
 
 // RunReadOnlyMission is the explicit governance entry above Planner/DAG/Scheduler.
@@ -55,6 +60,9 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if err := validateAgentMissionBudget(req.Budget); err != nil {
 		return result, err
 	}
 
@@ -117,7 +125,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	}
 
 	missionCtx, cancel := context.WithCancel(ctx)
-	now := time.Now()
+	started := time.Now()
 	s.mu.Lock()
 	if s.Running {
 		s.mu.Unlock()
@@ -128,8 +136,8 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	s.Cancel = cancel
 	s.RunID = missionID
 	s.RunPhase = "mission-read-only"
-	s.RunStartedAt = now
-	s.LastProgressAt = now
+	s.RunStartedAt = started
+	s.LastProgressAt = started
 	s.Project = project
 	s.Model = model
 	s.mu.Unlock()
@@ -148,16 +156,37 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		s.mu.Unlock()
 	}()
 
+	tracker := newAgentMissionBudgetTracker(req.Budget, started)
+	budgetedExecute := func(childCtx context.Context, childProject string, childCfg Config, task AgentTask) (AgentResult, error) {
+		constrained, allowed := tracker.prepareTask(task)
+		if !allowed {
+			return AgentResult{
+				Status:  AgentResultBudgetExhausted,
+				Summary: "Mission budget exhausted before task: " + tracker.blockedDimension(),
+			}, nil
+		}
+		childResult, childErr := execute(childCtx, childProject, childCfg, constrained)
+		tracker.recordObservedUsage(childResult.Usage)
+		return childResult, childErr
+	}
+
 	scheduler := NewAgentScheduler(missionCtx, AgentResourceLimits{})
 	defer scheduler.missionCancel()
-	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, &graph, scheduler, execute)
+	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, &graph, scheduler, budgetedExecute)
+	finished := time.Now()
+	accounting := agentMissionAccounting(req.Budget, run.UsageByTask, started, finished)
+	state, reason, budgetExhaustedBy := deriveAgentMissionOutcome(graph, run, runErr, accounting, tracker)
 
 	result = AgentReadOnlyMissionResult{
-		MissionID: missionID,
-		Project:   project,
-		Model:     model,
-		Graph:     graph,
-		Run:       run,
+		MissionID:         missionID,
+		Project:           project,
+		Model:             model,
+		State:             state,
+		Reason:            reason,
+		BudgetExhaustedBy: budgetExhaustedBy,
+		Accounting:        accounting,
+		Graph:             graph,
+		Run:               run,
 	}
 	return result, runErr
 }

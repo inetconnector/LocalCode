@@ -1,7 +1,7 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative base before this documentation carrier:** master `f767263a30b7ff35256e469938328941e1c5f6cb`  
+**Authoritative base for this slice:** master `1e6cc45e17677263df112b07ac77e7e9126c9efc`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -16,13 +16,6 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P0 – Finish Phase 5: product-level read-only orchestration
 
-- [ ] Add an explicit product-level **Mission entry path** above the existing Planner/DAG/Scheduler stack.
-  - Must not silently execute arbitrary Planner suggestions.
-  - Governance must explicitly validate the graph, executable roles and granted capabilities.
-  - Read-only Explorer/Planner/Reviewer only in this phase.
-  - Mission start must have a stable ID and observable state.
-- [ ] Connect actual child usage to mission-level aggregate accounting without double-counting per-child usage/budgets.
-- [ ] Define mission-level budget exhaustion behavior and expose a machine-readable reason.
 - [ ] Add larger DAG resource-saturation/fairness tests beyond the existing linear and fan-out/fan-in dispatch tests.
 - [ ] Add mission-entry cancellation tests covering queued, admitted, completing and already-terminal tasks at the product boundary.
 - [ ] Surface stable mission/scheduler state in Desktop: queued/running/blocked/cancelled/succeeded, resource class and budget state.
@@ -82,5 +75,4 @@ This file contains unfinished functional work only. Completed PR history belongs
 ## Documentation/cleanup acceptance gates
 
 - [ ] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
-- [ ] Remove stale statements that native Android shell or mDNS/QR discovery are future work.
 - [ ] Delete stale merged feature branch refs and obsolete GitHub Actions runs once delete-capable GitHub access is available.
