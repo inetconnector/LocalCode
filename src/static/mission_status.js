@@ -7,11 +7,22 @@
     Object.assign(i18n.dictionaries.de, {
       'Mission':'Mission',
       'Mission-Status':'Mission-Status',
+      'Orchestrierung':'Orchestrierung',
       'Status':'Status',
       'Grund':'Grund',
+      'Backend':'Backend',
+      'Queue-Auslastung':'Queue-Auslastung',
+      'Logisch bereit':'Logisch bereit',
+      'Logisch laufend':'Logisch laufend',
+      'Logisch blockiert':'Logisch blockiert',
+      'Wartet auf Modell':'Wartet auf Modell',
       'Warteschlange':'Warteschlange',
       'Laufend':'Laufend',
       'Ressourcen':'Ressourcen',
+      'Kapazität':'Kapazität',
+      'Wartend':'Wartend',
+      'frei':'frei',
+      'voll':'voll',
       'Budget':'Budget',
       'Aufgaben':'Aufgaben',
       'Modellaufrufe':'Modellaufrufe',
@@ -23,6 +34,20 @@
       'erschöpft':'erschöpft',
       'Queue':'Queue',
       'blockiert':'blockiert',
+      'online':'online',
+      'offline':'offline',
+      'ready':'bereit',
+      'active':'aktiv',
+      'saturated':'gesättigt',
+      'backend_unavailable':'Backend nicht verfügbar',
+      'model_unavailable':'Modell nicht verfügbar',
+      'idle':'bereit',
+      'mission_running':'Mission läuft',
+      'ollama_offline':'Ollama offline',
+      'no_model_selected':'kein Modell gewählt',
+      'selected_model_missing':'gewähltes Modell fehlt lokal',
+      'queue_limit_reached':'Queue-Limit erreicht',
+      'resource_waiting':'Ressource voll, Arbeit wartet',
       'running':'läuft',
       'succeeded':'erfolgreich',
       'failed':'fehlgeschlagen',
@@ -42,11 +67,22 @@
     Object.assign(i18n.dictionaries.en, {
       'Mission':'Mission',
       'Mission-Status':'Mission status',
+      'Orchestrierung':'Orchestration',
       'Status':'Status',
       'Grund':'Reason',
+      'Backend':'Backend',
+      'Queue-Auslastung':'Queue utilization',
+      'Logisch bereit':'Logically ready',
+      'Logisch laufend':'Logically running',
+      'Logisch blockiert':'Logically blocked',
+      'Wartet auf Modell':'Waiting for model',
       'Warteschlange':'Queued',
       'Laufend':'Running',
       'Ressourcen':'Resources',
+      'Kapazität':'Capacity',
+      'Wartend':'Waiting',
+      'frei':'free',
+      'voll':'at capacity',
       'Budget':'Budget',
       'Aufgaben':'Tasks',
       'Modellaufrufe':'Model calls',
@@ -58,6 +94,20 @@
       'erschöpft':'exhausted',
       'Queue':'Queue',
       'blockiert':'blocked',
+      'online':'online',
+      'offline':'offline',
+      'ready':'ready',
+      'active':'active',
+      'saturated':'saturated',
+      'backend_unavailable':'backend unavailable',
+      'model_unavailable':'model unavailable',
+      'idle':'ready',
+      'mission_running':'Mission running',
+      'ollama_offline':'Ollama offline',
+      'no_model_selected':'no model selected',
+      'selected_model_missing':'selected model is not installed',
+      'queue_limit_reached':'queue limit reached',
+      'resource_waiting':'resource full while work is waiting',
       'running':'running',
       'succeeded':'succeeded',
       'failed':'failed',
@@ -80,10 +130,13 @@
   style.id = 'localcode-mission-status-style';
   style.textContent = `
     .mission-status-card{border-color:#40536a;background:#1b232a}
+    .orchestration-diagnostics-card{border-color:#3f4d59;background:#192126}
     .mission-status-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
     .mission-status-title{font-weight:750;min-width:0;flex:1;overflow-wrap:anywhere}
     .mission-status-state{font-size:10px;border:1px solid #4b617a;border-radius:99px;padding:2px 7px;white-space:nowrap;color:#bcd7f5}
-    .mission-status-state.succeeded{border-color:#386b49;color:#8ee2a7}.mission-status-state.failed,.mission-status-state.budget_exhausted{border-color:#7b4b4b;color:#ffaaaa}.mission-status-state.cancelled{border-color:#756543;color:#e3c980}
+    .mission-status-state.ready,.mission-status-state.succeeded{border-color:#386b49;color:#8ee2a7}
+    .mission-status-state.failed,.mission-status-state.budget_exhausted,.mission-status-state.saturated,.mission-status-state.backend_unavailable,.mission-status-state.model_unavailable{border-color:#7b4b4b;color:#ffaaaa}
+    .mission-status-state.cancelled{border-color:#756543;color:#e3c980}
     .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:10.5px;margin-top:7px}
     .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#94a1a8}
     .mission-status-section{margin-top:10px;padding-top:9px;border-top:1px solid #313c43}.mission-status-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#92a0a7;font-weight:700;margin-bottom:6px}
@@ -132,6 +185,59 @@
     wrap.appendChild(heading);
     parent.appendChild(wrap);
     return wrap;
+  }
+
+  function buildDiagnosticsCard(diagnostics) {
+    const card = document.createElement('div');
+    card.className = 'output-card mission-status-card orchestration-diagnostics-card';
+    card.dataset.orchestrationDiagnostics = '1';
+
+    const head = document.createElement('div');
+    head.className = 'mission-status-head';
+    const title = document.createElement('div');
+    title.className = 'mission-status-title';
+    title.textContent = tr('Orchestrierung');
+    const stateChip = document.createElement('div');
+    stateChip.className = `mission-status-state ${diagnostics.state || ''}`;
+    stateChip.textContent = stateLabel(diagnostics.state);
+    head.append(title, stateChip);
+    card.appendChild(head);
+
+    const backend = diagnostics.backend || {};
+    const queue = diagnostics.queue || {};
+    const backendText = `${backend.online ? tr('online') : tr('offline')}${backend.selected_model ? ` · ${backend.selected_model}` : ''}`;
+    appendGrid(card, 'mission-status-meta', [
+      ['Status', stateLabel(diagnostics.state)],
+      ['Grund', stateLabel(diagnostics.reason)],
+      ['Backend', backendText],
+      ['Queue-Auslastung', `${int(queue.queued)}/${int(queue.limit)} · ${int(queue.fill_percent)}%`],
+      ['Logisch bereit', int(diagnostics.logical_ready)],
+      ['Logisch laufend', int(diagnostics.logical_running)],
+      ['Logisch blockiert', int(diagnostics.logical_blocked)],
+      ['Wartet auf Modell', int(diagnostics.waiting_for_model_inference)]
+    ]);
+
+    const resources = section(card, 'Ressourcen');
+    for (const resource of diagnostics.resources || []) {
+      const row = document.createElement('div');
+      row.className = 'mission-task';
+      const rowHead = document.createElement('div');
+      rowHead.className = 'mission-task-head';
+      const name = document.createElement('div');
+      name.className = 'mission-task-id';
+      name.textContent = stateLabel(resource.class);
+      const resourceState = document.createElement('div');
+      resourceState.className = 'mission-task-state';
+      resourceState.textContent = resource.saturated ? stateLabel('saturated') : resource.at_capacity ? tr('voll') : `${int(resource.available)} ${tr('frei')}`;
+      rowHead.append(name, resourceState);
+      row.appendChild(rowHead);
+      const sub = document.createElement('div');
+      sub.className = 'mission-task-sub';
+      sub.textContent = `${tr('Kapazität')}: ${int(resource.in_use)}/${int(resource.limit)} · ${tr('Wartend')}: ${int(resource.waiting)}`;
+      row.appendChild(sub);
+      resources.appendChild(row);
+    }
+    return card;
   }
 
   function buildMissionCard(mission) {
@@ -207,15 +313,24 @@
   renderInspector = function() {
     originalRenderInspector();
     if (state.rightTab !== 'outputs') return;
-    const mission = state.status?.mission;
-    if (!mission) return;
     const body = document.querySelector('#rightBody');
     const list = body?.querySelector('.output-list');
     if (!body) return;
     body.querySelector('[data-mission-status]')?.remove();
-    const card = buildMissionCard(mission);
-    if (list) list.prepend(card);
-    else body.prepend(card);
+    body.querySelector('[data-orchestration-diagnostics]')?.remove();
+
+    const diagnostics = state.status?.orchestration;
+    if (diagnostics) {
+      const card = buildDiagnosticsCard(diagnostics);
+      if (list) list.prepend(card);
+      else body.prepend(card);
+    }
+    const mission = state.status?.mission;
+    if (mission) {
+      const card = buildMissionCard(mission);
+      if (list) list.prepend(card);
+      else body.prepend(card);
+    }
   };
 
   let sawRunningMission = false;
@@ -232,7 +347,7 @@
       sawRunningMission = !!mission && mission.state === 'running';
       renderInspector();
     } catch (_) {
-      // The normal health monitor owns connectivity errors. Mission telemetry is optional UI observation.
+      // The normal health monitor owns connectivity errors. Mission/diagnostic telemetry is observation only.
     } finally {
       refreshInFlight = false;
     }
