@@ -65,7 +65,9 @@ Cancel und Child-Abschluss sind race-sicher serialisiert: Der Child erhält eine
 
 Der Desktop kann den **read-only Mission-Status** im rechten Ausgabenbereich anzeigen: Mission-State/-Reason, Queue/Running, Ressourcenklassen, Task-Zustände und Budget-Snapshots. Diese Anzeige ist reine Beobachtung. Sie startet oder verändert keine Mission, vergibt keine Capabilities und ist keine Recovery-Persistenz; `run_journal.go` bleibt die dauerhafte Recovery-Autorität.
 
-**Noch nicht implementiert:** eine Mobile-Mission-Ansicht, eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
+Die Mobile Remote zeigt bei einer aktiven read-only Mission lediglich **Mission · Läuft** und eine kompakte DE/EN-Hinweiskarte. Dafür werden nur die bereits vorhandenen authentifizierten Statusfelder `running` und `run_phase` verwendet. Es gibt keinen neuen Remote-Mission-Endpunkt, keine Mission-/Task-IDs, keine Scheduler-/Ressourcen-/Budget-/Accounting-Daten und keinen neuen Mission-Start-/Steuerpfad.
+
+**Noch nicht implementiert:** eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
 
 ### Handy-Remote / Android
 
@@ -82,7 +84,7 @@ Die native Android-Hülle ist bereits vorhanden. Sie kann:
 - erkannten Text nur in das Promptfeld einfügen,
 - Fehler von Dateipicker/Speech sichtbar in der Remote-Ansicht anzeigen.
 
-Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Entfernen von Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Attachments werden gemeinsam mit Projekt, Thread und Modell an den Windows-Rechner übertragen; doppelte Send-Aufrufe werden gesperrt. Prompt und Attachments werden erst nach erfolgreichem Chat-Request geleert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
+Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Entfernen von Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Attachments werden gemeinsam mit Projekt, Thread und Modell an den Windows-Rechner übertragen; doppelte Send-Aufrufe werden gesperrt. Prompt und Attachments werden erst nach erfolgreichem Chat-Request geleert. Die neue Mission-Anzeige fügt keinen neuen Remote-Endpunkt und keine neue Authority hinzu; bestehendes Stop-Verhalten bleibt unverändert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
 
 ### Build und Qualität
 
@@ -172,7 +174,9 @@ Cancellation and child completion are serialized safely: the child receives a de
 
 Desktop can display **read-only Mission status** in the Output inspector: Mission state/reason, queued/running counts, resource classes, task states and budget snapshots. This is observation only. It cannot start or mutate a Mission, grant capabilities or act as recovery persistence; `run_journal.go` remains the durable recovery authority.
 
-**Not implemented yet:** a Mobile Mission view, a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
+Mobile Remote shows only **Mission · Running** and a compact localized notice while a read-only Mission is active. It derives this from the already-authenticated `running` and `run_phase` status fields. No new Remote Mission endpoint, Mission/task IDs, scheduler/resource/budget/accounting data or Mission start/control path is added.
+
+**Not implemented yet:** a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
 
 ### Phone Remote / Android
 
@@ -189,7 +193,7 @@ The native Android shell already exists. It can:
 - append recognized text to the prompt without auto-sending,
 - surface file-picker/speech failures visibly inside Remote.
 
-The Remote UI supports pairing, projects/tasks, engine selection, attachments, attachment removal, voice input, send, stop, approvals and project actions. Attachments are sent together with project, thread and model to the Windows host; duplicate submissions are locked. Prompt and attachments are cleared only after a successful chat request. Mobile gets no extra tool authority; the actual work remains on the Windows machine.
+The Remote UI supports pairing, projects/tasks, engine selection, attachments, attachment removal, voice input, send, stop, approvals and project actions. Attachments are sent together with project, thread and model to the Windows host; duplicate submissions are locked. Prompt and attachments are cleared only after a successful chat request. The Mission indicator adds no new Remote endpoint or authority and leaves existing stop behavior unchanged. Mobile gets no extra tool authority; the actual work remains on the Windows machine.
 
 ### Build and quality
 

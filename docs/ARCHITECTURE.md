@@ -38,6 +38,7 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
 - `src/static/mission_status.js` – read-only Mission-Card im Desktop-Output-Inspector.
 - `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
+- `src/remote_mission_status_contract.md` – Source-Level-Vertrag für die schmale Mobile-Mission-Anzeige.
 - `android/app/.../MainActivity.java` – native Android-Hülle.
 
 ### Native Agent Teams
@@ -84,11 +85,17 @@ Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
 
 Die Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **nichts** dauerhaft und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. `src/static/mission_status.js` liest ausschließlich diese Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector. Die Oberfläche besitzt in diesem Slice keinen Mission-Start-/Mutation-/Approval-Pfad.
 
+### Mobile Mission-Status
+
+Die Mobile Remote bleibt absichtlich enger als Desktop. Sie verwendet **keinen** neuen Mission-Endpunkt und bekommt nicht das Desktop-`mission`-Objekt. Stattdessen nutzt `src/static/remote.html` ausschließlich die bereits authentifizierten Felder `running` und `run_phase` aus `/remote/api/status`.
+
+Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-Oberfläche im Header sowie in der Tasks-Ansicht lediglich an, dass eine read-only Mission läuft. Nicht übertragen werden Mission-/Task-IDs, Scheduler-/Queue-/Ressourcendetails, Mission-/Task-Budgets, Usage/Accounting oder neue Mission-Start-/Spawn-/Retry-/Resume-Aktionen. Das bestehende Remote-Stop-Verhalten bleibt unverändert; dieser Slice fügt keine neue Authority hinzu.
+
 ### Recovery und nächste Stufen
 
-`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go` ist ausdrücklich kein Recovery-Speicher.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go` und die Mobile-Anzeige sind ausdrücklich keine Recovery-Speicher.
 
-Als Nächstes folgen eine engere read-only Mobile-Mission-Ansicht ohne zusätzliche Authority, Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
+Als Nächstes folgen Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
 
 ---
 
@@ -130,6 +137,7 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/run_journal.go` – durable active-run recovery authority.
 - `src/static/mission_status.js` – read-only Mission card in the Desktop Output inspector.
 - `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
+- `src/remote_mission_status_contract.md` – source-level contract for the narrow Mobile Mission display.
 - `android/app/.../MainActivity.java` – native Android shell.
 
 ### Native Agent Teams
@@ -176,8 +184,14 @@ While a read-only Mission is executing, a bounded in-memory monitor publishes:
 
 The registry retains only a bounded number of observations and evicts old data. It writes **nothing** durably and cannot start, continue, resume or authorize a Mission. `src/static/mission_status.js` only reads this status data and renders a DE/EN card in the existing Output inspector. This slice contains no Mission-start, mutation or approval path.
 
+### Mobile Mission status
+
+Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission endpoint and does not receive the Desktop `mission` object. `src/static/remote.html` uses only the already-authenticated `running` and `run_phase` fields from `/remote/api/status`.
+
+When `running == true && run_phase == "mission-read-only"`, Remote only indicates an active read-only Mission in its header and Tasks view. It does not receive Mission/task IDs, scheduler/queue/resource details, Mission/task budgets, usage/accounting or new Mission start/spawn/retry/resume actions. Existing Remote stop behavior is unchanged; this slice adds no new authority.
+
 ### Recovery and next layers
 
-`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry in `agent_mission_status.go` is explicitly not a recovery store.
+`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry and the Mobile indicator are explicitly not recovery stores.
 
-Next come a narrower read-only Mobile Mission view without additional authority, resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
+Next come resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.

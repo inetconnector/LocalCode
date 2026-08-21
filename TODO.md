@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `f2fc84453a35a36aac9a4ed618139bf8a3060211`  
-**Active work:** PR #56 `feat: surface read-only mission status in Desktop`  
+**Authoritative merged base for this slice:** master `25e507041b9e6044aceebf63a40425f9360e48e3`  
+**Active work:** PR #57 `feat: show active read-only Mission in Mobile Remote`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -17,7 +17,6 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P0 – Finish Phase 5: product-level read-only orchestration
 
-- [ ] Add a narrower read-only Mobile Remote mission view without adding Mobile tool or Mission-control authority.
 - [ ] Add model-backend/resource saturation diagnostics.
 - [ ] Add reproducible benchmarks for logical task parallelism vs actual local model concurrency before making performance claims.
 

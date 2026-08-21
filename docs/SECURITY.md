@@ -75,6 +75,8 @@ Wichtige Remote-Schutzmaßnahmen:
 - Speech Recognition wird nur gestartet, wenn ein passender Android-Handler verfügbar ist; Launch-/Picker-Fehler werden sichtbar in der Remote-Ansicht angezeigt.
 - Attachments laufen danach durch die normale Remote-/Backend-Validierung.
 
+Die Mobile-Mission-Anzeige erweitert diese Grenze nicht: Sie verwendet ausschließlich die bereits authentifizierten `/remote/api/status`-Felder `running` und `run_phase`. Nur für `running == true` und `run_phase == "mission-read-only"` wird ein read-only Mission-Hinweis angezeigt. Es gibt keinen neuen `/remote/api/mission`-Endpunkt, kein Mobile-`mission`-Payload, keine Mission-/Task-IDs, keine Scheduler-/Ressourcen-/Budget-/Accounting-Daten und keine neuen Mission-Control-Aktionen. Das bereits vorhandene Remote-Stop-Verhalten bleibt unverändert. `remote_mission_status_test.go` und `remote_mission_status_contract.md` sichern diese schmale Beobachtungsgrenze ab.
+
 ### Netzwerk und MCP
 
 Öffentliche Webabrufe prüfen Zieladressen und blockieren Loopback, Link-local, private und sonstige nichtöffentliche Ziele. DNS-Rebinding wird verhindert, indem die zuvor validierte IP für den tatsächlichen Verbindungsaufbau verwendet wird.
@@ -93,7 +95,7 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 `run_journal.go` ist die Recovery-Autorität für aktive Runs. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
 
-Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry ist ausdrücklich nicht persistent und darf nicht als Recovery-Ersatz verwendet werden.
+Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry und die Mobile-Mission-Anzeige sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
 
 ### Zukünftige Mutation-Agenten
 
@@ -171,6 +173,8 @@ Important protections include:
 - speech recognition starts only when Android has a compatible handler; picker/speech launch failures are surfaced visibly in Remote;
 - attachments then pass through normal Remote/backend validation.
 
+The Mobile Mission indicator does not widen this boundary. It uses only the existing authenticated `/remote/api/status` fields `running` and `run_phase`, and is shown only for `running == true && run_phase == "mission-read-only"`. No new `/remote/api/mission` endpoint or Mobile `mission` payload is added; Mobile receives no Mission/task IDs, scheduler/resource/budget/accounting data or new Mission-control actions. Existing Remote stop behavior is unchanged. `remote_mission_status_test.go` and `remote_mission_status_contract.md` guard this narrow observation surface.
+
 ### Network and MCP
 
 Public web fetches validate destinations and reject loopback, link-local, private and other non-public addresses. DNS rebinding is mitigated by dialing the exact IP that was validated before connection.
@@ -189,7 +193,7 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 `run_journal.go` is the recovery authority for active runs. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
 
-Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry is explicitly non-durable and must not be used as a recovery substitute.
+Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry and Mobile Mission indicator are explicitly non-durable and must not be used as recovery substitutes.
 
 ### Future mutation agents
 
