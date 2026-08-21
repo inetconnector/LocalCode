@@ -65,9 +65,11 @@ Cancel und Child-Abschluss sind race-sicher serialisiert: Der Child erhält eine
 
 Der Desktop kann den **read-only Mission-Status** im rechten Ausgabenbereich anzeigen: Mission-State/-Reason, Queue/Running, Ressourcenklassen, Task-Zustände und Budget-Snapshots. Diese Anzeige ist reine Beobachtung. Sie startet oder verändert keine Mission, vergibt keine Capabilities und ist keine Recovery-Persistenz; `run_journal.go` bleibt die dauerhafte Recovery-Autorität.
 
+Zusätzlich liefert `/api/status` maschinenlesbare **Orchestrierungsdiagnostik** und zeigt sie im Desktop-Ausgabenbereich an. Unterschieden werden Ollama offline, kein Modell gewählt, gewähltes Modell lokal nicht vorhanden, aktive Mission, Queue-Limit und echte Ressourcensättigung. `at_capacity` bedeutet nur, dass ein Slot vollständig belegt ist; `saturated` wird erst gemeldet, wenn die Ressource voll ist **und** passende Arbeit darauf wartet. Angezeigt werden Queue-Auslastung, logische Ready/Running/Blocked-Zahlen, wartende Modellarbeit sowie Limit/In-Use/Available/Waiting je Ressourcenklasse. Die Diagnostik verändert weder Limits noch Parallelität und ist kein Benchmark.
+
 Die Mobile Remote zeigt bei einer aktiven read-only Mission lediglich **Mission · Läuft** und eine kompakte DE/EN-Hinweiskarte. Dafür werden nur die bereits vorhandenen authentifizierten Statusfelder `running` und `run_phase` verwendet. Es gibt keinen neuen Remote-Mission-Endpunkt, keine Mission-/Task-IDs, keine Scheduler-/Ressourcen-/Budget-/Accounting-Daten und keinen neuen Mission-Start-/Steuerpfad.
 
-**Noch nicht implementiert:** eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
+**Noch nicht implementiert:** reproduzierbare Performance-Benchmarks für logische Parallelität vs. lokale Modellkonkurrenz, eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
 
 ### Handy-Remote / Android
 
@@ -84,7 +86,7 @@ Die native Android-Hülle ist bereits vorhanden. Sie kann:
 - erkannten Text nur in das Promptfeld einfügen,
 - Fehler von Dateipicker/Speech sichtbar in der Remote-Ansicht anzeigen.
 
-Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Entfernen von Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Attachments werden gemeinsam mit Projekt, Thread und Modell an den Windows-Rechner übertragen; doppelte Send-Aufrufe werden gesperrt. Prompt und Attachments werden erst nach erfolgreichem Chat-Request geleert. Die neue Mission-Anzeige fügt keinen neuen Remote-Endpunkt und keine neue Authority hinzu; bestehendes Stop-Verhalten bleibt unverändert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
+Die Remote-Oberfläche unterstützt Pairing, Projekte/Tasks, Engine-Auswahl, Attachments, Entfernen von Attachments, Spracheingabe, Senden, Stop, Genehmigungen und Projektaktionen. Attachments werden gemeinsam mit Projekt, Thread und Modell an den Windows-Rechner übertragen; doppelte Send-Aufrufe werden gesperrt. Prompt und Attachments werden erst nach erfolgreichem Chat-Request geleert. Die Mission-Anzeige fügt keinen neuen Remote-Endpunkt und keine neue Authority hinzu; bestehendes Stop-Verhalten bleibt unverändert. Mobile besitzt keine zusätzlichen Werkzeugrechte; die eigentliche Arbeit läuft auf dem Windows-Rechner.
 
 ### Build und Qualität
 
@@ -174,9 +176,11 @@ Cancellation and child completion are serialized safely: the child receives a de
 
 Desktop can display **read-only Mission status** in the Output inspector: Mission state/reason, queued/running counts, resource classes, task states and budget snapshots. This is observation only. It cannot start or mutate a Mission, grant capabilities or act as recovery persistence; `run_journal.go` remains the durable recovery authority.
 
+`/api/status` also exposes machine-readable **orchestration diagnostics**, rendered in the Desktop Output inspector. It distinguishes Ollama offline, no selected model, selected model not installed locally, active Mission, queue-limit pressure and actual resource saturation. `at_capacity` only means every slot is occupied; `saturated` requires a full resource **and** work waiting for it. The diagnostics show queue utilization, logical ready/running/blocked counts, waiting model work and limit/in-use/available/waiting per resource class. Diagnostics do not change limits/concurrency and are not benchmark evidence.
+
 Mobile Remote shows only **Mission · Running** and a compact localized notice while a read-only Mission is active. It derives this from the already-authenticated `running` and `run_phase` status fields. No new Remote Mission endpoint, Mission/task IDs, scheduler/resource/budget/accounting data or Mission start/control path is added.
 
-**Not implemented yet:** a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
+**Not implemented yet:** reproducible performance benchmarks for logical parallelism versus local model concurrency, a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
 
 ### Phone Remote / Android
 
