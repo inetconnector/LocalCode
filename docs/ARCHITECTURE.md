@@ -34,7 +34,7 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/agent_mission.go` – explizite Governance-/Mission-Einstiegsgrenze.
 - `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
 - `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
-- `src/agent_mission_recovery.go` – begrenzte strukturierte Mission-Metadaten und Journal-Checkpoint-Abbildung; kein Auto-Resume.
+- `src/run_journal_mission.go` – begrenzte strukturierte Mission-Metadaten und Journal-Checkpoint-Abbildung; kein Auto-Resume.
 - `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
 - `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetischer Dispatcher- und opt-in Ollama-Parallelitätsbenchmark.
@@ -171,7 +171,7 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/agent_mission.go` – explicit governance/Mission entry boundary.
 - `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
 - `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
-- `src/agent_mission_recovery.go` – bounded structured Mission metadata and journal-checkpoint mapping; no auto-resume.
+- `src/run_journal_mission.go` – bounded structured Mission metadata and journal-checkpoint mapping; no auto-resume.
 - `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
 - `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetic dispatcher and opt-in Ollama parallelism benchmark.
