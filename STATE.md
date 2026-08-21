@@ -6,7 +6,7 @@
 **Current authoritative merged master:** `d72d2d1b14dc50bb6e5fce4f3d2fe1174d51c5ed`  
 **Last merged functional PR:** #60 `feat: persist durable Mission metadata in run journal`  
 **Active work:** PR #61 `feat: reconcile interrupted missions on restart`, branch `feat/mission-restart-reconciliation`  
-**Active head:** the commit containing this `STATE.md` refresh; its immediate parent/head before this self-referential refresh was `2f08cf9846246390c0b8b2f9cdbce8f5dafa5d36`. The exact resulting PR head is verified from GitHub immediately before Quality/merge.  
+**Active head:** the commit containing this `STATE.md` refresh; its immediate source/documentation parent before this self-referential refresh was `784b15ac9af8dfa24a82ff1c97ee2c125890c121`. The exact resulting PR head is verified from GitHub immediately before Quality/merge.  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -76,14 +76,14 @@ On startup, an interrupted Mission is compared against the current project/Git o
 Task dispositions are conservative:
 
 - durable `failed`/`cancelled` tasks stay terminal,
-- a task that was `running` at interruption is always `interrupted_unknown` and is never inferred successful,
+- a task whose durable `Running` flag is true or whose state is `running` at interruption is always `interrupted_unknown` and is never inferred successful,
 - durable `succeeded`/legacy `completed` requires `verify_postconditions` even when project/Git match,
 - pending/not-started work is only classified `pending` when the overall project/Git reconciliation matched,
 - otherwise potentially reusable/pending work is `blocked_reconciliation`.
 
 Interrupted Mission recovery remains visible even if the project path disappeared; ordinary non-Mission recovery retains the old requirement that the project directory still exist. The startup card exposes the reconciliation state in synchronized DE/EN wording and reiterates that no automatic resume occurs.
 
-Focused tests cover exact task dispositions, Git drift, legacy/missing baseline, privacy of raw porcelain paths, the fixed read-only Git command set, and missing-project recovery visibility.
+Focused tests cover exact task dispositions including a stale/inconsistent durable `Running` flag, Git drift, legacy/missing baseline, privacy of raw porcelain paths, the fixed read-only Git command set, and missing-project recovery visibility.
 
 Canonical documentation has been synchronized in `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and `TODO.md`. The final PR head must pass the complete Quality workflow before Ready/merge.
 
@@ -102,7 +102,7 @@ Canonical documentation has been synchronized in `README.md`, `docs/ARCHITECTURE
 - `run_journal.go` is the single durable recovery authority; no second Mission journal may be introduced.
 - Durable Mission metadata is bounded operational state, not a second transcript or authority source.
 - Reconciliation is evidence, not execution authority. No automatic Mission resume/retry/replay exists.
-- A crash-running task is never treated as successful.
+- A crash-running task is never treated as successful, including when a stale durable `Running` flag conflicts with its state field.
 - Raw Git porcelain paths are not persisted in the Mission baseline; only bounded hashes/HEAD evidence is stored.
 - Child/Mission usage is not double-counted and cancelled late results are non-authoritative.
 - Mission budgets only constrain Child budgets, never widen them.
