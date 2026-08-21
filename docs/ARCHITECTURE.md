@@ -2,147 +2,207 @@
 
 ## Deutsch
 
-LocalCode ist eine einzelne Go-Anwendung mit eingebettetem Web-Frontend, einer ausschließlich an `127.0.0.1` gebundenen Desktop-HTTP-/SSE-API und einem getrennten token-geschützten Remote-HTTP-/SSE-Server für Handys im lokalen Netzwerk.
+### Systemübersicht
 
-- `main.go`: Versionsübergabe, kompaktes Startfenster, automatische Laufzeiteinrichtung und lokaler Serverstart.
-- `runtime_bootstrap.go`: Fortschrittsgesteuerte Prüfung und automatische Vervollständigung von Ollama, konfigurierten Modellen und der ausgewählten Coding-Agent-Engine.
-- `ollama.go`: Dienstsuche, Modellinventar, Modell-Download, Chat und lokale Bildanalyse.
-- `server.go`: API, SSE, Projekte, Aufgaben, Einstellungen und Genehmigungen.
-- `remote_server.go`: LAN-Remote-Web-App, Pairing-Code-Austausch, Hash-basierte Gerätetokens, Remote-Status, Projekte, Aufgaben, Chat, Stop, Genehmigungen und SSE.
-- `project_catalog.go` und `history.go`: Projekt-Aliase, Anheften, Entfernen, Wiederherstellen und persistente Aufgabenaktionen.
-- `agent.go`, `agent_supervisor.go`, `subagent.go` und `continuation.go`: Agentenschleife, deterministische Steuerung, read-only Subagent-Handoffs, Abschlussprüfung/-Review, Fortsetzungen und Abbruch.
-- `instruction_context.go`: globale und projektbezogene Regelkette, Cursor-Regeln sowie lokale Skill-Indizes und relevante Skill-Inhalte für den Agentenstart.
-- `memory.go`: lokale dauerhafte Agentenerinnerungen, Scope-Filterung, Secret-Blockade und Kontext-Zusammenfassung.
-- `asset_tools.go` und `image_generator.go`: validierte lokale SVG-/Icon-Erzeugung, Raster-/Icon-Asset-Erzeugung, lokale Bildmodell-Generierung, Rendering und Konvertierung mit XML-, Signatur-, Größen- und Dimensionsprüfung vor dem Schreiben.
-- `aider_engine.go`: isolierte Aider-/uv-Installation, Aufrufparameter, Verlauf, Backups und geschütztes Undo.
-- `mcp.go` und `mcp_builtin.go`: eingebaute und externe MCP-Sitzungen einschließlich kontrollierter Prozessfreigabe.
-- `path_tools.go`: Dateioperationen und kanonische Sandboxprüfung einschließlich Symlinks und NTFS-Junctions.
-- `web_tools.go`: öffentliche Webabrufe mit IP-Prüfung beim Verbindungsaufbau.
-- `tool_registry.go`, `tool_install.go`, `project_automation.go`: Werkzeugerkennung, Installation, Build und Deployment.
-- `static/index.html` und `static/i18n.js`: Desktop-Oberfläche und vollständige deutsche/englische Sprachkataloge.
-- `static/remote.html`: eigenständige mobile Remote-Oberfläche im dunklen AHSMA-nahen Layout mit eigenem kleinen Deutsch/Englisch-Katalog.
+LocalCode ist eine Windows-first Go-Anwendung mit eingebettetem Web-Frontend. Die zentralen Laufzeitpfade sind:
 
-### Start- und Bootstrap-Ablauf
+`Desktop UI -> Loopback API -> AppState/Supervisor -> Native oder externe Engine -> kontrollierte Tools -> Verifikation/Recovery`
 
-1. Konfiguration und frühere Produktdaten werden aus portablen oder benutzerlokalen Verzeichnissen geladen.
-2. Eine bereits laufende ältere LocalCode-Instanz wird kontrolliert abgelöst.
-3. Ein ausschließlich an Loopback gebundenes, token-geschütztes Startfenster zeigt alle weiteren Schritte und bietet bei Fehlern Wiederholen, Log-Ordner, eingeschränkten Start und Beenden.
-4. Ollama wird gesucht und gestartet. Fehlt es unter Windows, lädt LocalCode den offiziellen Installer, prüft dessen Authenticode-Signatur und installiert ihn unbeaufsichtigt für den Benutzer.
-5. Fehlende für LocalCode und die ausgewählte Engine benötigte Modelle werden über die Ollama-API geladen. Auf einem frischen System wird nur das konfigurierte Standardmodell geladen, damit ein alter gespeicherter Modellname keinen zweiten großen Download auslöst.
-6. Die ausgewählte externe Engine wird geprüft; Aider wird gegen die angeheftete Version geprüft. Falls nötig, installiert LocalCode das geprüfte portable `uv`, eine isolierte Python-3.12-Laufzeit und `aider-chat==0.86.2`.
-7. Erst nach erfolgreicher Verifikation startet die lokale UI-API. Details und Fehler werden im LocalCode-Log festgehalten.
-8. Wenn Remote aktiviert ist, startet zusätzlich ein zweiter HTTP-Server auf dem konfigurierten Remote-Port. Dieser Server liefert `/remote` und akzeptiert Projekt-, Chat- und Genehmigungsaktionen nur mit einem zuvor gekoppelten Gerätetoken. Der Pairing-Code wird ausschließlich über die loopback-geschützte Desktop-API erzeugt und läuft nach zehn Minuten ab.
+und für Mobilgeräte:
 
-Zustände werden unter einem Mutex verwaltet. Ereignisse werden im Speicher sofort veröffentlicht und durch einen zusammenfassenden Hintergrundschreiber atomar persistiert. Offene Genehmigungen sind Backendzustand und erscheinen zusätzlich als feste Entscheidungsleiste. Jede UI-Instanz fordert ihren Snapshot mit konkreter Projekt- und Aufgaben-ID an; ein Agentenlauf bleibt global auf eine gleichzeitig aktive Ausführung begrenzt.
+`Android/Browser Remote -> separater token-geschützter Remote-Server -> dieselben AppState-Operationen mit engerer Berechtigungsoberfläche`
 
-Die Remote-App verwendet dieselben `AppState`-Operationen wie die Desktop-Oberfläche: `StartAgentForThread`, Chat-Auswahl, neue Aufgaben, Datei-Anhänge aus Dateiauswahl oder Drag-and-drop, `StopAgent`, Genehmigungsentscheidungen und SSE-Abonnements. Die Android-Hülle verbindet den WebView-Dateiinput mit der nativen Dateiauswahl für alle Dateitypen und bietet eine schmale `LocalCodeAndroid`-Brücke für Androids Speech-Recognizer; erkannter Text wird nur in das Remote-Promptfeld übernommen. Die Remote-Tabs können per Button oder horizontalem Swipe gewechselt werden. Die Handy-Oberfläche setzt beim ersten Start standardmäßig die Engine `native`/LocalCode und merkt spätere manuelle Remote-Auswahlen lokal. Sie besitzt keine eigenen Werkzeugrechte. Gerätetokens werden auf dem Handy als Browser-LocalStorage gehalten; LocalCode speichert nur SHA-256-Hashes mit Geräte-ID, Name, Pairing-Zeit und optionalem Last-Seen-Zeitpunkt.
+Die Anwendung trennt bewusst **logische Agentenparallelität** von **tatsächlicher Modellinferenzparallelität**. Viele DAG-Tasks können bereit sein; der Scheduler begrenzt lokale Inferenz standardmäßig auf einen aktiven Model-Slot.
 
-Die Desktop-Eingabeleiste enthält neben Genehmigungsmodus und Modell ein direktes Engine-Select für `native`, `aider`, `opencode`, `claude` und `claw`. Die Auswahl schreibt dieselbe persistente `editing_engine`-Konfiguration wie der Einstellungsdialog und ist während laufender Agentenläufe gesperrt.
+### Zentrale Komponenten
 
-Task-Hooks laufen am Anfang und Ende eines Agentenlaufs. Tool-Hooks laufen direkt vor beziehungsweise nach einer konkreten Werkzeugaktion innerhalb der Agentenschleife. Before-Tool-Hooks werden vor `handleAgentAction` ausgeführt und brechen den Lauf bei Fehler ab, damit ein fehlschlagender Policy-/Vorbereitungscheck keine Werkzeugmutation zulässt. After-Tool-Hooks laufen nach nicht-finalen Werkzeugaktionen und werden separat als Ereignis oder Warnung protokolliert. Hook-Befehle werden mit `runProjectCommand`, konfigurierter Befehlsumgebung, Timeout und Prozessbaum-Abbruch ausgeführt.
+- `src/types.go` – `Config`, `AppState`, gemeinsame Laufzeittypen.
+- `src/server.go` – Desktop Loopback HTTP/SSE API.
+- `src/remote_server.go` – separater Mobile-Remote-Server, Pairing/Token/SSE/Remote-Aktionen.
+- `src/agent.go` – Hauptschleife von LocalCode Native und Werkzeugdispatch.
+- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministische Steuerung, Edit-Preflight, Abschluss-/No-Progress-Schutz.
+- `src/subagent.go` – deterministischer read-only Repository-Handoff/Fallback.
+- `src/subagent_model.go` – modellgestützte read-only Explorer/Planner/Reviewer-Child-Runtime.
+- `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Task und strukturierter `AgentResult`.
+- `src/agent_task_graph.go` – Task-DAG-Validierung, Dependencies, Readiness und Zustandspropagation.
+- `src/agent_scheduler.go` – Queue, Ressourcenlimits, Admission, Cancellation und Scheduler-Snapshots.
+- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung von autorisierten read-only Child-Tasks.
+- `src/agent_scheduler_finalize.go` – serialisierte Vorbereitung/Finalisierung gegen Cancel-Races.
+- `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
+- `src/path_tools.go` und Dateiwerkzeuge – kanonische Pfad-/Mutation-Grenzen.
+- `src/mcp*.go`, `src/web_tools.go`, `src/tool_*` – externe Werkzeug-/Netzwerkgrenzen.
+- `src/static/*` – Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
+- `android/app/.../MainActivity.java` – native Android-Hülle mit Discovery, TLS-Pinning, WebView, Datei- und Speech-Brücke.
 
-Projekt-Commands werden durch `project_commands.go` read-only indexiert. Der Agentenstart ruft für neue Aufgaben `expandSlashCommandPrompt` auf: passt die Nutzereingabe zu `/name`, wird die Datei aus `.localcode/commands`, kompatiblen `.codex/.opencode/.cursor/commands` oder dem globalen LocalCode-Command-Ordner gelesen, Frontmatter entfernt und mit `{{args}}`, `{{project}}` und `{{cwd}}` expandiert. Die ursprüngliche Nutzereingabe bleibt als UI-Ereignis erhalten; `LastTask` und der Modellprompt erhalten die expandierte Arbeitsanweisung. Innerhalb der Werkzeugschleife liefern `command_list` und `command_read(name)` dieselben Templates read-only an das Modell.
+### Desktop und externe Engines
 
-Vor dem Abschluss einer Editieraufgabe prüft LocalCode nicht nur die Modellmeldung, sondern den beobachteten Arbeitszustand: geänderte und erwähnte Dateien, erkannte Funktionsmarker, Postconditions von Dateiwerkzeugen und den Nachweis einer passenden Prüfung nach der letzten Code-/App-/Tool-Änderung. Reine Dokumentationsänderungen erfüllen keine Implementierungsaufgabe; Dokumentationsaufgaben und reine Dateioperationen werden gesondert erkannt.
+Die Desktop-Oberfläche spricht ausschließlich die lokale Loopback-API an. LocalCode hält Projekt, Thread, Modell, Engine, laufenden Run, Genehmigungen und Events im zentralen Zustand. Externe Engines Aider, Claude Code, OpenCode und Claw Code werden als kontrollierte Unterprozesse/Integrationen unter LocalCode gestartet; LocalCode Native nutzt die eigene strukturierte Werkzeugschleife.
 
-Wiederholt identische Abschlussblockaden werden gezählt. Bei Einzeldatei-Aufgaben kann der Supervisor daraus eine fokussierte Reparaturaktion ableiten: Das Modell erhält ein enges Inhaltsschema für genau die verlangte Datei, danach läuft die Änderung als normale `write_file`-Aktion mit Preview, Genehmigung, Backup und Postcondition. Für die weitere Modellhistorie werden große `write_file`-/`replace_text`-Payloads nach der Ausführung durch kompakte Platzhalter ersetzt; bei Bedarf muss das Modell den aktuellen Dateiinhalt explizit mit `read_file` nachladen. Wenn die Aufgabe ausdrücklich eine Datei- oder Inhaltsprüfung verlangt, kann ein passender `read_file`-/`search_text`-Schritt die Verifikation erfüllen; allgemeine Funktionsprüfungen bleiben an Syntax-, Test-, Build- oder Smoke-Kommandos gebunden.
+### Mobile Remote und Android
 
-`subagent_analyze` ist die erste modellgestützte Native-Agent-Team-Stufe. Ein Child-Task besitzt Rolle, Objective, Capabilities, Budget und einen strukturierten `AgentResult`; ausführbare Rollen sind zunächst Explorer, Planner und Reviewer. Jeder Child erhält einen eigenen Modellkontext und darf über ein separates Action-Schema ausschließlich `list_files`, `read_file`, `search_text`, freigabefreies `lsp` und `finish` verwenden. Modellaufrufe, Toolaufrufe, Gesamtdauer und als Schätzung gekennzeichnetes Kontext-/Antwort-Tokenvolumen sind hart begrenzt; Child-Toolschritte werden als `subagent:<role>:<action>` sichtbar protokolliert. Planner dürfen strukturierte Folgeaufgaben vorschlagen, führen diese aber nicht aus. Reviewer bleiben von Builder-Argumentationen getrennt und erhalten nur den explizit übergebenen Task-/Evidenzkontext. Mutation, Shell, Git, Netzwerk, MCP, Installationen, Memory, Approval-Requests und rekursives Spawning existieren im Child-Schema nicht. Modellfehler und Budgetende fallen deterministisch auf den bisherigen read-only Repository-Handoff zurück. Der obligatorische Edit-Preflight nutzt einen internen deterministischen Prefix und startet bewusst keinen Child-Modelllauf. Task-DAG, Scheduler und Worktree-Mutation sind darauf aufbauende, noch getrennt zu implementierende Stufen.
+Remote ist ein eigener Server mit schmaler API. Pairing erzeugt ein Gerätetoken; LocalCode persistiert nur dessen Hash. Der langlebige Token wird nicht als SSE-URL-Parameter verwendet; Streams werden über kurzlebige Tickets autorisiert.
 
-Der Agentenstart baut eine begrenzte Instruktionskette. Pro globalem Verzeichnis gilt `AGENTS.override.md` vor `AGENTS.md`; unterstützt werden LocalCode-Konfiguration und `CODEX_HOME`. Projektseitig gilt ebenfalls Override vor Basis, danach werden mehrere kompatible Anweisungsdateien wie `CLAUDE.md`, `GEMINI.md`, `QWEN.md`, `.agents.md`, `TEAM_GUIDE.md` und `.github/copilot-instructions.md` zusätzlich zu `README.md` und `STATE.md` eingebettet. Legacy `.cursorrules` und verschachtelte `.cursor/rules` werden eingebettet, wenn sie `alwaysApply` setzen, per `globs` zu genannten Projektdateien passen, per `activation`/`triggers`/`keywords`/`when` zur Aufgabe passen oder textlich zur Nutzeraufgabe passen; `exclude_globs` kann eine ansonsten passende Regel für erwähnte Pfade ausblenden. Frontmatter unterstützt neben Inline-Werten auch YAML-Listen, Inline-Arrays und kommaseparierte Listen mit zitierten Kommas. Skills werden in Projekt- und globalen Verzeichnissen indexiert; Relevanz nutzt dieselben Always-/Glob-/Activation-/Textsignale, und gleichnamige Skills werden deterministisch auf einen Eintrag reduziert: Projekt-Skills schlagen globale Skills, innerhalb derselben Ebene gewinnt höhere `priority`, danach Relevanz und Root-Reihenfolge. Relevante `SKILL.md`-Dateien werden zusätzlich vollständig begrenzt eingebettet, außer sie deklarieren Berechtigungen außerhalb bekannter read-only Aliase oder `scripts`/`commands`. Solche Skills bleiben als `approval-required` im Index sichtbar und können per `skill_read` gelesen werden, erweitern aber keine Berechtigungen. Die read-only Aktionen `skill_list`, `skill_read`, `skill_list_resources` und `skill_read_resource` erlauben progressives Nachladen einzelner Skills und ihrer Textressourcen während des Agentenlaufs. Die schreibende Aktion `skill_copy_resource` kopiert binäre oder anderweitig projektbenötigte Skill-Ressourcen erst nach normaler Dateigenehmigung in einen Projektpfad. `skill_run_script` startet nur exakt deklarierte `scripts`-/`commands`-Einträge nach separater Genehmigung und nutzt die normale Befehlsausführung mit Timeout, Blocklisten und Prozessabbruch.
+Die native Android-Hülle ist bereits implementiert. Sie:
 
-Agentenerinnerungen werden als normalisierte Einträge in der lokalen Konfiguration gespeichert. Jeder neue native Agentenlauf erhält globale Erinnerungen und Erinnerungen des aktiven Projekts im eingebetteten Kontext. Schreibende Memory-Aktionen speichern atomar über denselben Konfigurationspfad; Löschungen verlangen eine konkrete ID. `detectDirectMemoryRequest` erkennt direkte Speicher-, Listen- und Löschformulierungen beim Agentenstart vor Slash-Command-Expansion und vor dem Modellaufruf. Solche Läufe schreiben ein normales Nutzer- und Abschlussereignis in den Chat, starten aber keinen Ollama-Lauf.
+- entdeckt LocalCode per mDNS,
+- kann Pair-/QR-/Deep-Link-Daten übernehmen,
+- akzeptiert nur private HTTPS-Ziele mit erwartetem TLS-SHA-256-Fingerprint,
+- verbindet WebView-Dateiinputs mit Androids Dateipicker,
+- stellt eine enge Speech-Brücke zu `RecognizerIntent` bereit,
+- räumt WebView-/Chooser-Ressourcen beim Activity-Abbau auf.
 
-SVG-/Icon-Ressourcen laufen über ein eigenes Werkzeug, wenn der native Agent `create_svg_asset` nutzt. Der Pfad muss auf `.svg` enden, der Inhalt muss gültiges XML mit `<svg>`-Wurzel und Größenangabe sein, und Skripte, Event-Handler sowie `javascript:`-URLs werden vor der Dateioperation blockiert.
+Die Android-Brücke führt keine LocalCode-Werkzeuge aus. Sie liefert nur Dateien bzw. erkannten Text an die bereits geladene Remote-Web-App. Werkzeugrechte bleiben auf dem Windows-Host.
 
-Raster- und Icon-Dateien laufen über `create_image_asset`, wenn der Agent vollständige Bildbytes als Data-URL oder Base64 besitzt. Unterstützt werden `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` und `.bmp`. LocalCode dekodiert die Binärdaten, begrenzt sie auf 16 MiB, prüft Format-Signaturen und Dimensionen und schreibt danach über dieselbe kanonische Projektpfadgrenze mit Backup und Datei-Postcondition.
+### Native Agent Teams
 
-Neue Rasterbilder laufen über `generate_image_asset`, wenn ein lokal erreichbarer AUTOMATIC1111-/Forge-kompatibler Generator konfiguriert ist. Die Standard-URL ist `http://127.0.0.1:7860`; akzeptiert werden nur Loopback-Hosts wie `localhost`, `127.0.0.1` oder `::1`. LocalCode sendet einen `txt2img`-Auftrag an `/sdapi/v1/txt2img`, begrenzt Prompt und Zielgröße, dekodiert die zurückgegebene Base64-PNG, konvertiert bei Bedarf nach `.jpg`, `.jpeg`, `.webp` oder `.ico` und schreibt erst nach erneuter Signatur- und Dimensionsprüfung.
+#### Child Runtime
 
-Vorhandene Rasterdateien laufen über `convert_image_asset`, wenn ein lokales Bild in ein anderes Projektbild umgewandelt werden soll. Quellen sind decodierbare PNG/JPG/JPEG/GIF-Dateien und PNG-basierte ICO-Dateien; Ziele sind `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. Optional angegebene Zielgrößen werden mit einer deterministischen lokalen Skalierung angewendet. PNG/JPEG/ICO werden lokal encodiert; WebP wird aus einer temporären lokalen HTML/PNG-Zwischenquelle über denselben Headless-Browser-Renderer erzeugt. Nach dem Encoding wird die Zieldatei erneut per Signatur und Dimensionen validiert.
+Aktuell ausführbare Rollen:
 
-SVG-/HTML-/Canvas-Rendering läuft über `render_asset`. Die Quelle muss lokal im Projekt liegen und auf `.svg`, `.html` oder `.htm` enden; Ziele sind `.png`, `.jpg`, `.jpeg`, `.webp` oder `.ico`. SVG wird vorher mit dem SVG-Validator geprüft. HTML-Quellen mit externen HTTP(S)-Referenzen werden abgelehnt. Der Renderer nutzt ein vorhandenes Edge/Chrome im Headless-Modus mit temporärem Profil, totem lokalen Proxy und Dimensionsvorgabe. PNG wird direkt aus dem Browser-Screenshot validiert; JPEG und ICO werden aus dem validierten PNG erzeugt und anschließend über dieselbe Bildsignaturprüfung validiert. WebP wird direkt als Headless-Browser-Screenshot erzeugt und über RIFF/WebP-Signatur sowie Dimensionen geprüft.
+- Explorer
+- Planner
+- Reviewer
 
-MCP-Sitzungen speichern serverweite `instructions` aus der Initialisierung. Die Agentenzusammenfassung enthält diese Hinweise zusammen mit den aktivierten Servern; eingebaute MCP-Server liefern eigene kurze Nutzungsregeln.
+Ein Child-Task besitzt Objective, Role, Capabilities, Budget und strukturiertes Resultat. Das Child-Schema erlaubt nur:
+
+- Projektbaum lesen,
+- Datei lesen,
+- Textsuche,
+- genehmigungsfreies read-only LSP,
+- strukturiertes `finish`.
+
+Mutation, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Approval-Requests und rekursives Spawning sind nicht Teil des Child-Schemas.
+
+#### Task DAG
+
+`AgentTaskGraph` enthält eine Mission-ID und stabile Task-IDs. Dependencies werden validiert; Zyklen, fehlende/self/duplizierte Abhängigkeiten und inkonsistente Zustände werden abgewiesen. Readiness und Blockierung werden deterministisch aus Dependency-Zuständen abgeleitet.
+
+#### Scheduler / Resource Manager
+
+`AgentScheduler` trennt die logische Ready-Queue von Ressourcenadmission. Ressourcenklassen sind derzeit unter anderem:
+
+- `model-inference`
+- `read-cpu`
+- `build`
+- `exclusive-integration`
+
+Noch werden read-only Child-Tasks standardmäßig als Model-Inference klassifiziert. Default ist ein aktiver Model-Slot. Planner-`RequestedCapabilities` werden niemals selbst zu ausführbaren `Capabilities`; Admission verlangt eine bekannte Runtime-Rolle und tatsächlich gewährte Capabilities.
+
+#### Actual read-only dispatch
+
+`runScheduledReadOnlyAgentGraph` verbindet DAG und Scheduler mit der bestehenden Child-Runtime. Ablauf:
+
+1. Ready-Tasks werden in die begrenzte Queue aufgenommen.
+2. Scheduler wählt einen zulässigen Lease.
+3. `prepareScheduledAgentTask` prüft den aktiven Lease unter Scheduler-Lock, normalisiert das Task-Budget und erstellt eine **abgetrennte Kopie** für den Child.
+4. Der Child läuft außerhalb des Locks.
+5. `finalizeScheduledAgentTask` konkurriert mit `CancelTask`/`CancelMission` wieder unter demselben Scheduler-Lock.
+6. Nur der terminale Gewinner darf Resultat und Zustand festschreiben; der Lease wird exakt einmal freigegeben.
+7. Danach werden Dependencies reconciled und der nächste Task kann admitted werden.
+
+Damit greift ein Child während der Modellarbeit nicht auf den gemeinsam mutierbaren Graph-Pointer zu. Ein Cancel, der zuerst gewinnt, verwirft verspätete Child-Ergebnisse. Ein bereits erfolgreich finalisierter Task bleibt erfolgreich.
+
+### Recovery
+
+`run_journal.go` ist die bestehende Recovery-Autorität für aktive Hauptläufe. Zukünftige dauerhafte Mission-Persistenz muss diesen Pfad erweitern oder integrieren; ein zweites konkurrierendes Journal ist architektonisch nicht zulässig.
+
+### Nächste Architekturstufe
+
+Noch fehlt der **produktseitige Mission Manager** zwischen Main-Agent/Planner und Task-DAG/Scheduler. Diese Ebene muss explizit validieren, welche Planner-Vorschläge tatsächlich als Mission ausgeführt werden dürfen. Danach folgen Mission-Budgets, UI/Remote-Status, dauerhafte Mission-Recovery und erst später mutation-capable Builder in isolierten Git-Worktrees.
+
+---
 
 ## English
 
-LocalCode is a single Go application with an embedded web frontend, a desktop HTTP/SSE API bound exclusively to `127.0.0.1`, and a separate token-protected Remote HTTP/SSE server for phones on the local network.
+### System overview
 
-- `main.go`: version handover, compact startup window, automatic runtime setup, and local server startup.
-- `runtime_bootstrap.go`: progress-driven verification and automatic completion of Ollama, configured models, and the selected coding-agent engine.
-- `ollama.go`: service discovery, model inventory, model pulls, chat, and local image analysis.
-- `server.go`: API, SSE, projects, tasks, settings, and approvals.
-- `remote_server.go`: LAN Remote web app, pairing-code exchange, hash-based device tokens, remote status, projects, tasks, chat, stop, approvals, and SSE.
-- `project_catalog.go` and `history.go`: aliases, pin/remove/restore behavior, and persistent task actions.
-- `agent.go`, `agent_supervisor.go`, `subagent.go`, and `continuation.go`: agent loop, deterministic supervision, read-only subagent handoffs, completion guard/review, continuations, and cancellation.
-- `instruction_context.go`: global and project rule chain, Cursor rules, plus local skill indexes and relevant skill contents for agent startup.
-- `memory.go`: local durable agent memories, scope filtering, secret blocking, and context summarization.
-- `asset_tools.go` and `image_generator.go`: validated local SVG/icon creation plus raster/icon asset creation, local image-model generation, rendering, and conversion with XML, signature, size, and dimension checks before writing.
-- `aider_engine.go`: isolated Aider/uv setup, invocation arguments, histories, backups, and guarded undo.
-- `mcp.go` and `mcp_builtin.go`: built-in and external MCP sessions with controlled process reaping.
-- `path_tools.go`: file operations and canonical sandbox checks including symlinks and NTFS junctions.
-- `web_tools.go`: public web fetches with IP validation at connection time.
-- `tool_registry.go`, `tool_install.go`, and `project_automation.go`: tool discovery, installation, build, and deployment.
-- `static/index.html` and `static/i18n.js`: desktop UI and complete German/English catalogs.
-- `static/remote.html`: standalone mobile Remote UI in a dark AHSMA-adjacent layout with its own small German/English catalog.
+LocalCode is a Windows-first Go application with an embedded web frontend. Its main runtime paths are:
 
-### Startup and bootstrap flow
+`Desktop UI -> Loopback API -> AppState/Supervisor -> Native or external engine -> controlled tools -> verification/recovery`
 
-1. Configuration and legacy product data are loaded from portable or per-user directories.
-2. A running older LocalCode instance is replaced in a controlled manner.
-3. A loopback-only, token-protected startup window displays every following step and offers retry, log-folder access, limited mode, and exit on failure.
-4. Ollama is discovered and started. If missing on Windows, LocalCode downloads the official installer, validates its Authenticode signature, and installs it unattended for the current user.
-5. Missing models required by LocalCode and the selected engine are pulled through the Ollama API. On a fresh system only the configured default is pulled so a stale historical model does not trigger a second large download.
-6. The selected external engine is checked; Aider is checked against the pinned version. When needed, LocalCode installs the verified portable `uv`, an isolated Python 3.12 runtime, and `aider-chat==0.86.2`.
-7. The loopback UI API starts only after successful verification. Details and failures are written to the LocalCode log.
-8. When Remote is enabled, a second HTTP server starts on the configured Remote port. It serves `/remote` and accepts project, chat, and approval actions only with a previously paired device token. Pairing codes are created only through the loopback-protected desktop API and expire after ten minutes.
+and for phones:
 
-State is mutex-protected. Events are published immediately in memory and atomically persisted by one coalescing background writer. Pending approvals are backend state and are duplicated in a fixed decision bar. Every UI instance requests an explicit project/task snapshot; agent execution remains globally limited to one active run.
+`Android/browser Remote -> separate token-protected Remote server -> the same AppState operations through a narrower permission surface`
 
-The Remote app uses the same `AppState` operations as the desktop UI: `StartAgentForThread`, chat selection, new tasks, file attachments from the picker or drag-and-drop, `StopAgent`, approval decisions, and SSE subscriptions. The Android shell connects WebView file inputs to the native chooser for all file types and exposes a narrow `LocalCodeAndroid` bridge for Android's speech recognizer; recognized text is only appended to the Remote prompt field. Remote tabs can be changed by button or horizontal swipe. On first use the phone UI defaults to the `native`/LocalCode engine and remembers later manual Remote selections locally. It has no separate tool privileges. Device tokens are kept on the phone in browser localStorage; LocalCode stores only SHA-256 hashes with the device ID, name, pairing time, and optional last-seen timestamp.
+The design deliberately separates **logical agent parallelism** from **actual model-inference parallelism**. Many DAG tasks may be ready while the Scheduler defaults to a single active local model-inference slot.
 
-The desktop composer includes a direct engine selector next to approval mode and model for `native`, `aider`, `opencode`, `claude`, and `claw`. The selector writes the same persistent `editing_engine` configuration as the settings dialog and is disabled while an agent run is active.
+### Core components
 
-Task hooks run at the beginning and end of an agent run. Tool hooks run directly before or after one concrete tool action inside the agent loop. Before-tool hooks execute before `handleAgentAction` and abort the run on failure so a failed policy or preparation check cannot allow a tool mutation. After-tool hooks run after non-final tool actions and are logged separately as events or warnings. Hook commands are executed through `runProjectCommand` with the configured command environment, timeout, and process-tree cancellation.
+- `src/types.go` – `Config`, `AppState`, shared runtime types.
+- `src/server.go` – Desktop loopback HTTP/SSE API.
+- `src/remote_server.go` – separate Mobile Remote server for pairing/token/SSE/Remote actions.
+- `src/agent.go` – LocalCode Native main loop and tool dispatch.
+- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministic supervision, edit preflight, completion/no-progress controls.
+- `src/subagent.go` – deterministic read-only repository handoff/fallback.
+- `src/subagent_model.go` – model-backed read-only Explorer/Planner/Reviewer runtime.
+- `src/agent_team_types.go` – roles, capabilities, budgets, usage, tasks and structured `AgentResult`.
+- `src/agent_task_graph.go` – DAG validation, dependencies, readiness and state propagation.
+- `src/agent_scheduler.go` – queue, resource limits, admission, cancellation and scheduler snapshots.
+- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only children.
+- `src/agent_scheduler_finalize.go` – serialized preparation/finalization against cancellation races.
+- `src/run_journal.go` – durable active-run recovery authority.
+- `src/path_tools.go` and file tools – canonical path/mutation boundaries.
+- `src/mcp*.go`, `src/web_tools.go`, `src/tool_*` – external tool/network boundaries.
+- `src/static/*` – Desktop/Remote web UIs and DE/EN catalogs.
+- `android/app/.../MainActivity.java` – native Android shell with discovery, TLS pinning, WebView, file and speech bridge.
 
-Project commands are indexed read-only by `project_commands.go`. Agent startup calls `expandSlashCommandPrompt` for new tasks: when the user prompt matches `/name`, LocalCode reads the file from `.localcode/commands`, compatible `.codex/.opencode/.cursor/commands`, or the global LocalCode command folder, strips frontmatter, and expands `{{args}}`, `{{project}}`, and `{{cwd}}`. The original user prompt remains visible as the UI event; `LastTask` and the model prompt receive the expanded working instruction. Inside the tool loop, `command_list` and `command_read(name)` expose the same templates to the model read-only.
+### Desktop and external engines
 
-Before completing an editing task, LocalCode checks the observed working state rather than only the model's message: changed and mentioned files, requested capability markers, file-tool postconditions, and proof of a suitable check after the last code/app/tool change. Documentation-only edits do not satisfy implementation tasks; documentation tasks and pure file operations are classified separately.
+The Desktop UI talks only to the local loopback API. LocalCode owns project, thread, model, engine, active run, approvals and events. Aider, Claude Code, OpenCode and Claw Code run as controlled external integrations; LocalCode Native uses the built-in structured tool loop.
 
-Repeated identical completion blocks are counted. For single-file tasks the supervisor can derive a focused repair action: the model receives a narrow content schema for exactly the requested file, then the change runs as a normal `write_file` action with preview, approval, backup, and postcondition. Large `write_file`/`replace_text` payloads are compacted in later model history after execution; the model must explicitly call `read_file` when exact current content is needed. When the task explicitly asks for file or content verification, a matching `read_file`/`search_text` step can satisfy that verification; generic functional checks still require syntax, test, build, or smoke commands.
+### Mobile Remote and Android
 
-`subagent_analyze` is the first model-backed Native Agent Teams stage. A child task carries a role, objective, capabilities, budget, and structured `AgentResult`; executable roles initially are Explorer, Planner, and Reviewer. Each child receives its own model context and a separate action schema containing only `list_files`, `read_file`, `search_text`, approval-free `lsp`, and `finish`. Model calls, tool calls, total elapsed time, and explicitly estimated context/response token volume are hard-bounded; child tool steps are exposed as `subagent:<role>:<action>` events. Planners may return structured follow-up task proposals but cannot execute them. Reviewers stay independent of builder reasoning and receive only the task/evidence explicitly handed to them. Mutation, shell, Git, networking, MCP, installation, memory, approval requests, and recursive spawning are absent from the child schema. Model failures and budget exhaustion deterministically fall back to the existing read-only repository handoff. The mandatory edit preflight uses an internal deterministic prefix and deliberately starts no child-model run. Task DAGs, scheduling, and worktree mutation remain separate follow-up stages on top of this runtime.
+Remote is a separate server with a narrow API. Pairing creates a device token while LocalCode persists only its hash. The long-lived token is not placed in SSE URLs; streams use short-lived tickets.
 
-Agent startup builds a bounded instruction chain. For each global directory, `AGENTS.override.md` wins over `AGENTS.md`; LocalCode configuration and `CODEX_HOME` are supported. Project-side discovery uses the same override-before-base rule, then embeds multiple compatible instruction files such as `CLAUDE.md`, `GEMINI.md`, `QWEN.md`, `.agents.md`, `TEAM_GUIDE.md`, and `.github/copilot-instructions.md` in addition to `README.md` and `STATE.md`. Legacy `.cursorrules` and nested `.cursor/rules` are embedded when they set `alwaysApply`, match mentioned project files through `globs`, match the task through `activation`/`triggers`/`keywords`/`when`, or textually match the user task; `exclude_globs` can suppress an otherwise matching rule for mentioned paths. Frontmatter supports inline values plus YAML lists, inline arrays, and comma-separated lists with quoted commas. Skills are indexed from project and global directories; relevance uses the same always/glob/activation/text signals, and duplicate skill names are reduced deterministically to one entry: project skills beat global skills, higher `priority` wins within the same tier, followed by relevance and root order. Relevant `SKILL.md` files are also embedded with limits unless they declare permissions beyond known read-only aliases or `scripts`/`commands`. Those skills remain visible as `approval-required` in the index and can be read through `skill_read`, but they do not grant permissions. The read-only `skill_list`, `skill_read`, `skill_list_resources`, and `skill_read_resource` actions let an agent progressively load individual skills and their text resources during a run. The mutating `skill_copy_resource` action copies binary or otherwise project-needed skill resources into a project path only after normal file-change approval. `skill_run_script` runs only exactly declared `scripts`/`commands` entries after separate approval and uses the normal command runner with timeouts, blocklists, and process cancellation.
+The native Android shell is already implemented. It:
 
-Agent memories are stored as normalized entries in the local configuration. Every new native agent run receives global memories and memories for the active project in the embedded context. Writing memory actions persist atomically through the same configuration path; deletion requires a concrete ID. `detectDirectMemoryRequest` recognizes direct remember, list, and forget phrasings at agent startup before slash-command expansion and before the model call. These runs write normal user and final events into the chat, but they do not start an Ollama run.
+- discovers LocalCode via mDNS,
+- consumes pair/QR/deep-link data,
+- accepts only private HTTPS endpoints with the expected TLS SHA-256 fingerprint,
+- connects WebView file inputs to Android's file picker,
+- exposes a narrow `RecognizerIntent` speech bridge,
+- cleans up WebView/file-chooser resources during Activity teardown.
 
-SVG/icon resources use a dedicated tool when the native agent calls `create_svg_asset`. The path must end in `.svg`, content must be valid XML with an `<svg>` root and size metadata, and scripts, event handlers, and `javascript:` URLs are blocked before the file operation.
+The Android bridge does not execute LocalCode tools. It only returns files or recognized text to the loaded Remote web app. Tool authority remains on the Windows host.
 
-Raster and icon files use `create_image_asset` when the agent has complete image bytes as a data URL or Base64. Supported extensions are `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, and `.bmp`. LocalCode decodes the binary data, caps it at 16 MiB, checks format signatures and dimensions, and then writes through the same canonical project path boundary with backup and file postcondition.
+### Native Agent Teams
 
-New raster images use `generate_image_asset` when a locally reachable AUTOMATIC1111/Forge-compatible generator is configured. The default URL is `http://127.0.0.1:7860`; only loopback hosts such as `localhost`, `127.0.0.1`, or `::1` are accepted. LocalCode sends a `txt2img` request to `/sdapi/v1/txt2img`, limits prompt and target dimensions, decodes the returned Base64 PNG, converts to `.jpg`, `.jpeg`, `.webp`, or `.ico` when needed, and writes only after renewed signature and dimension validation.
+#### Child runtime
 
-Existing raster files use `convert_image_asset` when a local image should be converted into another project image. Sources are decodable PNG/JPG/JPEG/GIF files and PNG-backed ICO files; targets are `.png`, `.jpg`, `.jpeg`, `.webp`, or `.ico`. Optional target dimensions are applied with deterministic local scaling. PNG/JPEG/ICO are encoded locally; WebP is produced from a temporary local HTML/PNG intermediate through the same headless-browser renderer. After encoding, the target file is validated again by signature and dimensions.
+Currently executable roles:
 
-SVG/HTML/canvas rendering uses `render_asset`. The source must be local to the project and end in `.svg`, `.html`, or `.htm`; targets are `.png`, `.jpg`, `.jpeg`, `.webp`, or `.ico`. SVG is checked with the SVG validator first. HTML sources with external HTTP(S) references are rejected. Rendering uses an installed Edge/Chrome browser in headless mode with a temporary profile, dead local proxy, and explicit dimensions. PNG is validated from the browser screenshot; JPEG and ICO are produced from the validated PNG and then checked through the same image-signature validation. WebP is produced directly as a headless-browser screenshot and checked through RIFF/WebP signature and dimensions.
+- Explorer
+- Planner
+- Reviewer
 
-MCP sessions store server-wide `instructions` from initialization. The agent summary includes these hints together with the enabled servers; built-in MCP servers provide their own short usage rules.
-## Native Agent Task DAG (Phase 4)
+A child task has an objective, role, capabilities, budget and structured result. Its schema permits only project-tree reads, file reads, text search, approval-free read-only LSP and structured finish. Mutation, shell, Git, web/network, MCP tool calls, installation, memory, approval requests and recursive spawning are absent.
 
-Planner `suggested_tasks` are converted into `AgentTaskGraph` data with stable task IDs, mission/parent metadata, explicit dependencies, requested capabilities, and deterministic task states. Graph construction validates identifiers, duplicate or missing dependencies, self-dependencies, cycles, and state/mission consistency before the graph is exposed to the parent. Dependency reconciliation derives ready/blocked state deterministically and propagates failed/cancelled dependencies without executing a task.
+#### Task DAG
 
-Dynamic role labels remain data. Executable Native child roles are still restricted by the existing runtime role/capability validation. `RequestedCapabilities` records what a plan asks for; it is deliberately separate from granted `Capabilities`. Task-DAG construction therefore cannot escalate authority. Scheduler/resource queues, durable missions, mutation-capable Builders, worktrees, Integrator/Test-Agent execution, and OS/QEMU missions remain later layers above this contract.
+`AgentTaskGraph` contains a Mission ID and stable task IDs. Dependencies are validated; cycles, missing/self/duplicate dependencies and inconsistent states are rejected. Readiness/blocking is deterministically derived from dependency state.
 
-Deutsch: Der Task-DAG ist eine validierte Planungsschicht, keine neue Berechtigungsschicht. Rollenbezeichnungen und angeforderte Fähigkeiten in Planner-Vorschlägen bleiben Daten; tatsächliche Ausführungsrechte werden weiterhin ausschließlich durch die LocalCode-Governance vergeben.
+#### Scheduler / Resource Manager
 
-## Native Agent Scheduler (Phase 5 backend foundation)
+`AgentScheduler` separates the logical ready queue from resource admission. Resource classes currently include `model-inference`, `read-cpu`, `build` and `exclusive-integration`. Read-only children currently default to model inference, with one active model slot by default. Planner `RequestedCapabilities` never self-grant executable `Capabilities`; admission requires a known executable role plus actually granted capabilities.
 
-The backend Scheduler/Resource Manager sits above `AgentTaskGraph` and below any future Agent Factory dispatch. It keeps two concepts separate: a task can be logically `ready` in the DAG without being admitted to an execution resource. `AgentResourceLimits` currently defaults to one `model-inference` slot, four `read-cpu` slots, one future `build` slot, one future `exclusive-integration` slot, and a bounded queue. Queue order is deterministic from graph order; saturated resources do not block independent resource classes, while older tasks of the same class keep precedence.
+#### Actual read-only dispatch
 
-Admission is deliberately conservative. A task must still use an executable current Native role and must already carry the actually granted role capabilities in `AgentTask.Capabilities`. `RequestedCapabilities` and dynamic Planner role labels remain planning data. Admission creates an exact scheduler lease with a child context, transitions the task from `ready` to `running`, accounts resource use, and releases the resource only through the matching lease. Scheduler snapshots expose queued/running tasks, resource limits/in-use/available values, admission block reasons, and budget remaining/exhaustion state. Mission and task cancellation cancel scheduler-owned contexts and release scheduler-owned resources.
+`runScheduledReadOnlyAgentGraph` connects the DAG/Scheduler to the child runtime:
 
-This layer is still backend admission/accounting only. It does not start asynchronous child-agent dispatch, mutate files, create worktrees, persist missions, integrate results, widen Mobile permissions, or execute OS/QEMU workloads.
+1. ready tasks enter the bounded queue;
+2. the scheduler chooses an admissible lease;
+3. `prepareScheduledAgentTask` validates the lease under the scheduler lock, normalizes budget and creates a **detached task copy**;
+4. the child executes outside the lock;
+5. `finalizeScheduledAgentTask` competes with `CancelTask`/`CancelMission` under the same scheduler lock;
+6. only the terminal winner may persist result/state and the lease is released exactly once;
+7. dependencies are reconciled and the next task may be admitted.
 
-Deutsch: Der Phase-5-Scheduler ist derzeit eine Backend-Schicht fuer Admission, Ressourcen- und Budget-Snapshots. Er plant keine neuen Rechte und startet noch keine parallelen mutierenden Agenten. Mehrere Aufgaben duerfen logisch bereit sein, aber lokale Modell-Inference bleibt standardmaessig auf einen aktiven Slot begrenzt.
+The child therefore does not retain a pointer into the shared mutable graph during model execution. Cancellation-first discards late child results; completion-first remains successful.
+
+### Recovery
+
+`run_journal.go` is the existing recovery authority for active main-agent runs. Future durable Mission storage must integrate with this authority rather than creating a competing journal.
+
+### Next architecture layer
+
+The missing layer is a **product-level Mission Manager** between the main agent/Planner and DAG/Scheduler. It must explicitly validate which Planner proposals are allowed to execute. Mission budgets, UI/Remote state and durable Mission recovery come next; mutation-capable Builders in isolated Git worktrees come later.
