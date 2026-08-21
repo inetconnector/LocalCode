@@ -21,6 +21,8 @@ type AgentScheduledRun struct {
 	Snapshot    AgentSchedulerSnapshot     `json:"snapshot"`
 }
 
+type scheduledReadOnlyAgentExecutor func(context.Context, string, Config, AgentTask) (AgentResult, error)
+
 func scheduledAgentTaskTerminalState(result AgentResult, runErr error) AgentTaskState {
 	if runErr != nil {
 		return AgentTaskFailed
@@ -39,15 +41,19 @@ func scheduledAgentTaskTerminalState(result AgentResult, runErr error) AgentTask
 // existing isolated Native read-only child runtime. It intentionally does not
 // grant capabilities: only tasks already authorized by the trusted parent can
 // be admitted by AgentScheduler.
-//
-// The runner is deterministic at the graph boundary. It queues all logically
-// ready tasks, lets the scheduler choose an admissible lease, executes exactly
-// that task through runNativeReadOnlyAgentTask, stores its structured result,
-// releases the lease into a terminal graph state, then reconciles dependencies
-// before the next admission. The default scheduler therefore keeps local model
-// inference at one active task while still representing multiple ready tasks in
-// its bounded queue.
 func (s *AppState) runScheduledReadOnlyAgentGraph(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler) (AgentScheduledRun, error) {
+	if s == nil {
+		return AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}, fmt.Errorf("app state is nil")
+	}
+	return s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, graph, scheduler, s.runNativeReadOnlyAgentTask)
+}
+
+// runScheduledReadOnlyAgentGraphWithExecutor keeps the graph/scheduler boundary
+// deterministic while allowing focused race tests to replace only the isolated
+// child runtime. Task preparation and finalization are serialized by the
+// scheduler; the executor receives a detached task value and never mutates the
+// shared graph directly.
+func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutor(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor) (AgentScheduledRun, error) {
 	run := AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}
 	if s == nil {
 		return run, fmt.Errorf("app state is nil")
@@ -57,6 +63,9 @@ func (s *AppState) runScheduledReadOnlyAgentGraph(project string, cfg Config, gr
 	}
 	if scheduler == nil {
 		return run, fmt.Errorf("agent scheduler is nil")
+	}
+	if execute == nil {
+		return run, fmt.Errorf("scheduled read-only executor is nil")
 	}
 	if err := validateAgentTaskGraph(*graph); err != nil {
 		return run, err
@@ -85,39 +94,40 @@ func (s *AppState) runScheduledReadOnlyAgentGraph(project string, cfg Config, gr
 			return run, nil
 		}
 
-		task := agentTaskByID(graph, lease.TaskID)
-		if task == nil {
+		executionTask, err := scheduler.prepareScheduledAgentTask(graph, lease, cfg)
+		if err != nil {
 			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
-			return run, fmt.Errorf("scheduled task %q disappeared after admission", lease.TaskID)
+			if lease.Context.Err() != nil {
+				return run, context.Canceled
+			}
+			return run, err
 		}
-		task.Budget = normalizeAgentBudget(task.Budget, task.Role, cfg)
-		executionTask := *task
-		result, runErr := s.runNativeReadOnlyAgentTask(lease.Context, project, cfg, executionTask)
+
+		result, runErr := execute(lease.Context, project, cfg, executionTask)
 		if runErr != nil {
 			result = AgentResult{
 				Status:  AgentResultBlocked,
 				Summary: "Scheduled read-only child execution failed: " + strings.TrimSpace(runErr.Error()),
+				Usage:   result.Usage,
 			}
 		}
-		task.Result = result
-		run.UsageByTask[task.ID] = result.Usage
-		run.Results = append(run.Results, AgentScheduledTaskResult{TaskID: task.ID, Role: task.Role, Result: result})
-
+		next := scheduledAgentTaskTerminalState(result, runErr)
 		if lease.Context.Err() != nil {
-			if task.State == AgentTaskRunning {
-				if releaseErr := scheduler.Release(graph, lease, AgentTaskCancelled); releaseErr != nil {
-					run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
-					return run, releaseErr
-				}
-			}
+			next = AgentTaskCancelled
+		}
+
+		finalized, finalizeErr := scheduler.finalizeScheduledAgentTask(graph, lease, result, next)
+		if finalizeErr != nil {
+			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
+			return run, finalizeErr
+		}
+		if finalized.Applied {
+			run.UsageByTask[executionTask.ID] = result.Usage
+			run.Results = append(run.Results, AgentScheduledTaskResult{TaskID: executionTask.ID, Role: executionTask.Role, Result: result})
+		}
+		if finalized.State == AgentTaskCancelled {
 			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
 			return run, context.Canceled
-		}
-
-		next := scheduledAgentTaskTerminalState(result, runErr)
-		if err := scheduler.Release(graph, lease, next); err != nil {
-			run.Snapshot = scheduler.Snapshot(graph, run.UsageByTask)
-			return run, err
 		}
 	}
 }
