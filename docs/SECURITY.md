@@ -12,31 +12,50 @@ LocalCode setzt auf mehrere Anwendungsschutzschichten statt auf eine einzige all
 - Destruktive oder riskante System-/Git-Befehle werden blockiert oder benötigen einen strengeren Pfad.
 - Eigene Prozesse besitzen Timeouts, Cancellation und Windows-Prozessbaum-Abbruch.
 - Es gibt keinen standardmäßigen oder dauerhaft still aktivierten `danger-full-access`-Modus.
-- Prompts, Regeln, Skills, Memories oder Planner-Ausgaben können keine Berechtigungen selbst erweitern.
+- Prompts, Regeldateien, Slash-Commands, Skills, Memories oder Planner-Ausgaben können keine Berechtigungen selbst erweitern.
 - Geheimnisse sollen nicht in normaler Konfiguration, Memories oder Recovery-Metadaten persistiert werden.
 
 ### Planner, Capabilities und Agent Teams
 
-`RequestedCapabilities` aus Planner-/Task-Vorschlägen sind reine Planungsdaten. Ausführbare `Capabilities` werden davon getrennt gehalten und müssen von einer vertrauenswürdigen Governance-/Parent-Grenze vergeben werden.
+`RequestedCapabilities` aus Planner-/Task-Vorschlägen sind reine Planungsdaten. Ausführbare `Capabilities` werden davon getrennt gehalten und müssen von einer vertrauenswürdigen Governance-/Parent-Grenze explizit vergeben werden.
 
-Aktuell ausführbare Child-Rollen sind Explorer, Planner und Reviewer. Das Child-Action-Schema enthält ausschließlich Projektbaum-/Datei-/Text-/LSP-Lesen und strukturiertes `finish`. Datei-Mutation, Shell, Git-Mutation, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory-Schreiben, Approval-Requests und rekursives Child-Spawning fehlen.
+Aktuell ausführbare Child-Rollen sind Explorer, Planner und Reviewer. Das Child-Action-Schema enthält ausschließlich read-only Operationen:
+
+- Projektbaum lesen,
+- Datei lesen,
+- Textsuche,
+- genehmigungsfreies read-only LSP,
+- strukturiertes `finish`.
+
+Nicht enthalten sind Datei-Mutation, Shell/Befehle, Git-Mutation, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory-Schreiben, Approval-Requests und rekursives Child-Spawning. Damit kann ein Child diese Rechte nicht allein durch Modelltext anfordern.
 
 ### Scheduler / Cancellation-Sicherheit
 
-Der Scheduler trennt Ready-Queue und Ressourcenadmission; lokale Modellinferenz besitzt standardmäßig einen aktiven Slot. Scheduled Children erhalten abgetrennte Task-Kopien. Preparation, Finalize und Cancellation werden an derselben Scheduler-Sperre serialisiert. Cancellation-first verwirft verspätete Child-Resultate/Usage; Completion-first bleibt erfolgreich.
+Der Scheduler trennt Ready-Queue und tatsächliche Ressourcenadmission. Standardmäßig gibt es nur einen aktiven lokalen Model-Inference-Slot.
 
-Bei vollständigem Mission-Cancel werden nach beendetem synchronen Dispatch alle noch nicht terminalen Tasks als `cancelled` terminalisiert und der abschließende Scheduler-Snapshot erneut erstellt. Konkurrenz- und Produktgrenzentests laufen unter Go's Race Detector.
+Ein besonders wichtiger Race-Schutz gilt für laufende Scheduled Children:
+
+1. `prepareScheduledAgentTask` prüft den Lease unter dem Scheduler-Mutex.
+2. Das Child erhält eine **abgetrennte Kopie** des Tasks, keinen Pointer in den gemeinsam mutierbaren Graphen.
+3. Das Modell läuft außerhalb des Mutex.
+4. `finalizeScheduledAgentTask`, `CancelTask` und `CancelMission` konkurrieren wieder unter derselben Scheduler-Sperre.
+5. Genau ein terminaler Gewinner darf Zustand/Resultat festschreiben und den Lease freigeben.
+
+Wenn Cancellation zuerst gewinnt, werden verspätete Child-Resultate/Usage nicht in den Task geschrieben. Wenn Completion zuerst erfolgreich finalisiert wurde, ändert ein späteres Cancel den erfolgreichen Task nicht mehr. Parent-Context-Cancellation wird ebenfalls als Cancellation behandelt. Bei vollständigem Mission-Cancel werden nach beendetem synchronen Dispatch alle noch nicht terminalen Tasks als `cancelled` terminalisiert und der abschließende Scheduler-Snapshot erneut erstellt. Diese Grenzen besitzen absichtliche Konkurrenz- und Produktgrenzentests unter Go's Race Detector.
 
 ### Desktop Mission-Status
 
 Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
 
-- `/api/status` bleibt die Loopback-Statusquelle; Mission-Daten werden nur für die passende execution-scoped `RunID` ergänzt.
-- Die stabile `MissionID` wird nicht als Run-/Journal-Identifier verwendet.
-- Mission-Telemetrie liegt ausschließlich in einer begrenzten In-Memory-Registry.
-- Die Registry ist kein Journal, Resume-Mechanismus oder Berechtigungsquelle.
-- Die Desktop-Card besitzt keinen Mission-Start-, Datei-, Shell-, Git-, Approval-, Projektmutations- oder Terminal-Command-Pfad.
-- Statusanzeige kann `RequestedCapabilities` nicht in ausführbare Rechte umwandeln.
+- `/api/status` bleibt die vorhandene Loopback-Statusquelle; Mission-Daten werden nur für die exakt passende execution-scoped `RunID` ergänzt.
+- Die stabile, vom Aufrufer gewählte `MissionID` wird nicht als Run-/Journal-Identifier verwendet.
+- Mission-Telemetrie liegt ausschließlich in einer begrenzten In-Memory-Registry; alte Einträge werden entfernt.
+- Die Registry ist kein Journal, kein Resume-Mechanismus und keine Berechtigungsquelle.
+- Die Desktop-Card liest Mission-/Scheduler-/Budget-/Task-Zustände, besitzt aber keinen Mission-Start-, Datei-, Shell-, Git-, Approval-, Projektmutations- oder Terminal-Command-Pfad.
+- Das Anzeigen eines Planner-/Task-Status kann keine `RequestedCapabilities` in ausführbare Rechte umwandeln.
+- Mobile/Remote erhält durch diese Desktop-Erweiterung keine neue API oder Authority.
+
+Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
 
 ### Mobile Remote / Android
 
@@ -44,101 +63,138 @@ Desktop und Mobile sind getrennte Servergrenzen. Die Desktop-API bleibt Loopback
 
 Wichtige Remote-Schutzmaßnahmen:
 
-- Pairing erzeugt ein zufälliges Gerätetoken; persistent gespeichert wird nur dessen SHA-256-Hash.
-- Dauerhafte Tokens stehen nicht in SSE-URLs; Streams verwenden kurzlebige Tickets.
+- Pairing wird über die Desktop-Seite initiiert und erzeugt ein zufälliges Gerätetoken.
+- LocalCode persistiert nur den SHA-256-Hash des Gerätetokens.
+- Dauerhafte Tokens werden nicht in SSE-URLs geschrieben; Streams verwenden kurzlebige Tickets.
 - Cross-Origin-/Fetch-Site-Prüfungen begrenzen unerwünschte Browser-POSTs.
-- LAN-Remote verwendet HTTPS; Android pinnt den erwarteten TLS-SHA-256-Fingerprint.
+- LAN-Remote verwendet HTTPS; die Android-Hülle pinnt den erwarteten TLS-SHA-256-Fingerprint.
+- Manuelle Android-Ziele müssen private HTTPS-IP-Ziele mit passendem Fingerprint sein.
 - mDNS/QR/Deep-Link-Discovery transportiert Endpoint/Fingerprint, verleiht aber keine zusätzlichen Rechte.
-- Die JavaScript-Brücke bleibt auf Dateipicker und Android Speech Recognition begrenzt und führt keine LocalCode-Werkzeuge aus.
-- Attachments laufen durch normale Remote-/Backend-Validierung.
+- Die JavaScript-Brücke ist eng: Dateipicker und Android Speech Recognition. Sie führt keine LocalCode-Werkzeuge aus.
+- Pending WebView-Dateiauswahl-Callbacks werden bei Ersatz, Fehler und Activity-Abbau abgeschlossen/cancelled, damit kein hängender Callback zurückbleibt.
+- Speech Recognition wird nur gestartet, wenn ein passender Android-Handler verfügbar ist; Launch-/Picker-Fehler werden sichtbar in der Remote-Ansicht angezeigt.
+- Attachments laufen danach durch die normale Remote-/Backend-Validierung.
 
-#### Mobile Mission-Anzeige
+Die Mobile-Mission-Anzeige erweitert diese Grenze nicht: Sie verwendet ausschließlich die bereits authentifizierten `/remote/api/status`-Felder `running` und `run_phase`. Nur für `running == true` und `run_phase == "mission-read-only"` wird ein read-only Mission-Hinweis angezeigt. Es gibt keinen neuen `/remote/api/mission`-Endpunkt, kein Mobile-`mission`-Payload, keine Mission-/Task-IDs, keine Scheduler-/Ressourcen-/Budget-/Accounting-Daten und keine neuen Mission-Control-Aktionen. Das bereits vorhandene Remote-Stop-Verhalten bleibt unverändert. `remote_mission_status_test.go` und `remote_mission_status_contract.md` sichern diese schmale Beobachtungsgrenze ab.
 
-Die Mobile-Mission-Anzeige ist absichtlich **narrow read-only observation**:
+### Netzwerk und MCP
 
-- Sie verwendet ausschließlich die bereits vorhandene authentifizierte `/remote/api/status`-Antwort.
-- Relevant sind nur `running` und `run_phase`.
-- Eine Mission wird nur angezeigt, wenn `running == true` und `run_phase == "mission-read-only"`.
-- Es wird kein `/remote/api/mission`-Endpunkt hinzugefügt.
-- Das reichere Desktop-`mission`-Objekt wird Remote nicht bereitgestellt.
-- Die UI erhält dadurch keine Mission-/Task-IDs, Scheduler-/Queue-/Ressourcendaten, Budgets, Usage/Accounting oder neue Mission-Control-Aktionen.
-- Es werden keine neuen Tool-, Datei-, Shell-, Git-, Netzwerk-, Approval- oder Mutation-Rechte vergeben.
-- Das bereits vorhandene Remote-Stop-Verhalten bleibt unverändert; dieser Slice fügt keinen neuen Steuerpfad hinzu.
+Öffentliche Webabrufe prüfen Zieladressen und blockieren Loopback, Link-local, private und sonstige nichtöffentliche Ziele. DNS-Rebinding wird verhindert, indem die zuvor validierte IP für den tatsächlichen Verbindungsaufbau verwendet wird.
 
-`remote_mission_status_test.go` und `remote_mission_status_contract.md` schützen diese Grenze explizit gegen spätere unbemerkte Ausweitung.
+MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kontrollierter Prozessbeendigung. Skill-/Prompt-Metadaten können keine MCP-Rechte selbst aktivieren.
 
-### Netzwerk, MCP, Skills und Memories
+### Skills, Commands und Memories
 
-Öffentliche Webabrufe prüfen Zieladressen und blockieren nichtöffentliche Ziele; DNS-Rebinding wird durch Dialing der validierten IP begrenzt. MCP ist explizit konfiguriert und besitzt Timeouts/kontrollierten Prozesslebenszyklus. Regel-/Skill-/Command-/Memory-Inhalte erweitern Modellkontext, nicht Policy oder Authority.
+- Projekt-/Slash-Commands sind Text-Templates; sie führen selbst keine Shell-Befehle aus.
+- Regel-/Skill-Dateien erweitern Modellkontext, nicht Policy.
+- Skills mit nicht-read-only Toolrechten oder deklarierten Scripts/Commands werden nicht automatisch als privilegierte Arbeitsanweisung ausgeführt.
+- Skill-Ressourcen unterliegen Pfad-/Größen-/Genehmigungsgrenzen.
+- Persistente Memories lehnen secret-ähnliche Inhalte ab und erweitern keine Werkzeugrechte.
 
 ### Recovery
 
-`run_journal.go` ist die Recovery-Autorität für aktive Runs. Zukünftige Mission-Persistenz muss in diese Autorität integriert werden. Desktop- und Mobile-Mission-Anzeigen sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
+`run_journal.go` ist die Recovery-Autorität für aktive Runs. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
+
+Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry und die Mobile-Mission-Anzeige sind ausdrücklich nicht persistent und dürfen nicht als Recovery-Ersatz verwendet werden.
 
 ### Zukünftige Mutation-Agenten
 
-Builder-/Worktree-Mutation ist noch nicht implementiert. Wenn sie eingeführt wird, gelten weiterhin kontrollierte Workspaces/Worktrees, keine unsupervised concurrent mutation desselben Workspace, normale Genehmigungen und SHA-Preconditions, diff-reviewbare Resultate, Verifikation nach der letzten Mutation, Integrator als kontrollierte Zusammenführungsgrenze und sichere Cancellation/Recovery ohne blindes destruktives Reset/Clean.
+Builder-/Worktree-Mutation ist noch nicht implementiert. Wenn sie eingeführt wird, gelten weiterhin sämtliche bestehenden LocalCode-Grenzen: eigener kontrollierter Workspace/Worktree, keine unsupervised concurrent mutation desselben Workspace, normale Genehmigungen und SHA-Preconditions, diff-reviewbare Resultate, Verifikation nach der letzten Mutation, Integrator als kontrollierte Zusammenführungsgrenze und sichere Cancellation/Recovery ohne blindes `reset --hard`/`clean`.
 
 ---
 
 ## English
 
-LocalCode uses multiple application-level protection layers rather than relying on one all-powerful sandbox. These boundaries apply to both LocalCode Native and external coding engines.
+LocalCode uses multiple application-level protection layers rather than relying on one all-powerful sandbox. These boundaries apply whether LocalCode Native or an external coding engine is selected.
 
 ### Baseline rules
 
 - File, command, network and installation actions pass through LocalCode policy and approvals.
 - Project/workspace paths are canonicalized; symlink and NTFS-junction escapes are rejected.
-- File mutations use version/SHA preconditions, conflict-aware atomic writes and postconditions.
-- Destructive/high-risk operations are blocked or routed through stricter paths.
+- File mutations use version/SHA preconditions, conflict-aware atomic write paths and postconditions.
+- Destructive or high-risk system/Git commands are blocked or routed through a stricter path.
 - Owned processes have timeouts, cancellation and Windows process-tree termination.
 - There is no default or silently persistent `danger-full-access` mode.
-- Prompts, rules, skills, memories and Planner output cannot self-escalate authority.
-- Secrets should not be persisted in ordinary configuration, memory or recovery metadata.
+- Prompts, rule files, slash commands, skills, memories and Planner output cannot self-escalate authority.
+- Secrets should not be persisted in normal configuration, memories or recovery metadata.
 
 ### Planner, capabilities and Agent Teams
 
-`RequestedCapabilities` from Planner/task proposals are planning data only. Executable capabilities remain separate and must be granted by a trusted governance/parent boundary.
+`RequestedCapabilities` from Planner/task proposals are planning data only. Executable `Capabilities` remain separate and must be explicitly granted by a trusted governance/parent boundary.
 
-Executable child roles are Explorer, Planner and Reviewer. Their action schema is limited to project-tree/file/text/LSP reads and structured `finish`; file mutation, shell, Git mutation, web/network, MCP tool calls, installation, memory writes, approval requests and recursive spawning are absent.
+Currently executable child roles are Explorer, Planner and Reviewer. Their action schema is read-only and contains only project-tree reads, file reads, text search, approval-free read-only LSP and structured `finish`.
+
+The schema does not contain file mutation, shell/commands, Git mutation, web/network, MCP tool calls, installation, memory writes, approval requests or recursive spawning. The model therefore cannot obtain those rights merely by requesting them in text.
 
 ### Scheduler / cancellation safety
 
-The Scheduler separates ready queue and resource admission; local model inference defaults to one slot. Scheduled children receive detached task copies. Preparation, finalization and cancellation are serialized at the same scheduler-lock boundary. Cancellation-first discards late results/usage; completion-first remains successful.
+The Scheduler separates the ready queue from actual resource admission. Local model inference defaults to one active slot.
 
-Whole-Mission cancellation terminalizes every remaining nonterminal task as `cancelled` after synchronous dispatch stops and refreshes the terminal scheduler snapshot. Race and product-boundary tests exercise these guarantees under Go's race detector.
+A critical race boundary protects scheduled children:
+
+1. `prepareScheduledAgentTask` validates the lease under the scheduler mutex.
+2. The child receives a **detached task copy**, not a pointer into the shared mutable graph.
+3. Model execution happens outside the mutex.
+4. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete under the same scheduler lock.
+5. Exactly one terminal winner may persist state/result and release the lease.
+
+If cancellation wins first, late child results/usage are discarded. If successful completion finalizes first, later cancellation cannot rewrite that successful task. Parent-context cancellation is handled as cancellation as well. Whole-Mission cancellation terminalizes every still-nonterminal task after synchronous dispatch stops and refreshes the terminal scheduler snapshot. Deliberate race and product-boundary tests exercise these guarantees under Go's race detector.
 
 ### Desktop Mission status
 
-Desktop Mission status is **observation only**. `/api/status` attaches Mission data only for the matching execution-scoped `RunID`; telemetry is bounded/in-memory, not a journal or authorization source. The Desktop card has no Mission-start, file, shell, Git, approval, project-mutation or terminal-command path.
+The Desktop Mission display is an **observation-only boundary**:
+
+- `/api/status` remains the existing loopback status source; Mission data is attached only for the exactly matching execution-scoped `RunID`.
+- The caller-selected stable `MissionID` is never used as a run/journal identifier.
+- Mission telemetry lives only in a bounded in-memory registry and old entries are evicted.
+- The registry is not a journal, resume mechanism or source of authorization.
+- The Desktop card reads Mission/scheduler/budget/task state but has no Mission-start, file, shell, Git, approval, project-mutation or terminal-command path.
+- Displaying Planner/task status cannot convert `RequestedCapabilities` into executable authority.
+- This Desktop extension grants no new Mobile/Remote API or authority.
+
+Status observation therefore cannot start new work or bypass existing safety boundaries. Any future Mission-control surface must be a separate, reviewed governance boundary.
 
 ### Mobile Remote / Android
 
-Desktop and Mobile are separate server boundaries. Remote exposes a narrower API and grants no additional tool authority. Pairing tokens are hashed at rest, SSE uses short-lived tickets, origin/fetch-site checks protect mutations, LAN Remote uses HTTPS with Android TLS fingerprint pinning, and the JavaScript bridge is limited to file picking and speech input.
+Desktop and Mobile are separate server boundaries. The Desktop API remains loopback-oriented. Remote exposes a narrower API and grants no additional tool authority.
 
-#### Mobile Mission display
+Important protections include:
 
-Mobile Mission status is deliberately **narrow read-only observation**:
+- pairing initiated from Desktop creates a random device token;
+- LocalCode persists only the token's SHA-256 hash;
+- long-lived tokens are not placed in SSE URLs; streams use short-lived tickets;
+- Origin/Fetch-Site checks limit unwanted browser POSTs;
+- LAN Remote uses HTTPS and the Android shell pins the expected TLS SHA-256 fingerprint;
+- manual Android endpoints must be private HTTPS IP endpoints with the matching fingerprint;
+- mDNS/QR/deep-link discovery transports endpoint/fingerprint data but grants no new authority;
+- the JavaScript bridge is deliberately narrow: file picker and Android speech recognition only;
+- the bridge never executes LocalCode tools;
+- pending WebView file-chooser callbacks are closed/cancelled on replacement, failure and Activity teardown;
+- speech recognition starts only when Android has a compatible handler; picker/speech launch failures are surfaced visibly in Remote;
+- attachments then pass through normal Remote/backend validation.
 
-- it reuses only the existing authenticated `/remote/api/status` response;
-- only `running` and `run_phase` are needed;
-- an active Mission is shown only for `running == true && run_phase == "mission-read-only"`;
-- no `/remote/api/mission` endpoint is added;
-- the richer Desktop `mission` object is not exposed to Remote;
-- Mobile receives no Mission/task IDs, scheduler/queue/resource details, budgets, usage/accounting or new Mission-control actions;
-- no new tool/file/shell/Git/network/approval/mutation authority is granted;
-- existing Remote stop behavior is unchanged and this slice adds no new control path.
+The Mobile Mission indicator does not widen this boundary. It uses only the existing authenticated `/remote/api/status` fields `running` and `run_phase`, and is shown only for `running == true && run_phase == "mission-read-only"`. No new `/remote/api/mission` endpoint or Mobile `mission` payload is added; Mobile receives no Mission/task IDs, scheduler/resource/budget/accounting data or new Mission-control actions. Existing Remote stop behavior is unchanged. `remote_mission_status_test.go` and `remote_mission_status_contract.md` guard this narrow observation surface.
 
-`remote_mission_status_test.go` and `remote_mission_status_contract.md` explicitly guard this boundary against accidental widening.
+### Network and MCP
 
-### Network, MCP, skills and memories
+Public web fetches validate destinations and reject loopback, link-local, private and other non-public addresses. DNS rebinding is mitigated by dialing the exact IP that was validated before connection.
 
-Public web fetches validate destinations and reject non-public targets; DNS-rebinding protection dials the validated IP. MCP is explicit and lifecycle-controlled. Rules, skills, commands and memories extend model context, not policy or authority.
+MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controlled subprocess lifecycle. Skill/prompt metadata cannot self-enable MCP authority.
+
+### Skills, commands and memories
+
+- Project/slash commands are text templates and do not execute shell commands by themselves.
+- Rule/skill files extend model context, not policy.
+- Skills declaring non-read-only tool authority or scripts/commands do not become automatically privileged instructions.
+- Skill resources remain subject to path, size and approval boundaries.
+- Durable memories reject secret-like contents and do not expand tool authority.
 
 ### Recovery
 
-`run_journal.go` remains the recovery authority for active runs. Future Mission persistence must integrate with it. Desktop and Mobile Mission displays are non-durable observation only and must not become recovery substitutes.
+`run_journal.go` is the recovery authority for active runs. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
+
+Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry and Mobile Mission indicator are explicitly non-durable and must not be used as recovery substitutes.
 
 ### Future mutation agents
 
-Builder/worktree mutation is not implemented. When introduced, existing controls remain: managed workspaces/worktrees, no unsupervised concurrent mutation of the same workspace, approvals/SHA preconditions, diff-reviewable results, post-mutation verification, controlled integration and safe cancellation/recovery without blind destructive reset/clean shortcuts.
+Builder/worktree mutation is not implemented yet. When introduced, all existing LocalCode boundaries continue to apply: controlled workspaces/worktrees, no unsupervised concurrent mutation of the same workspace, normal approvals and SHA preconditions, diff-reviewable results, verification after the last mutation, a controlled Integrator boundary and safe cancellation/recovery without blind destructive reset/clean shortcuts.
