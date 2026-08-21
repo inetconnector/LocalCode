@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `c49c9fac642a6031f7680c0868687a451e425f55`  
-**Active work:** PR #58 `feat: add orchestration saturation diagnostics`  
+**Authoritative merged base for this slice:** master `5f6dac0b1f29ab7bb8ba45656fd58a512685f095`  
+**Active work:** PR #59 `test: benchmark orchestration parallelism`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -14,10 +14,6 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Verify current master, active PR/head, CI, reviews and review threads before merging.
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
-
-## P0 – Finish Phase 5: product-level read-only orchestration
-
-- [ ] Add reproducible benchmarks for logical task parallelism vs actual local model concurrency before making performance claims.
 
 ## P0/P1 – Phase 6: durable Missions and recovery
 
