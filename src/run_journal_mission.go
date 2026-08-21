@@ -30,6 +30,7 @@ type MissionRecoveryTaskState struct {
 	State                  AgentTaskState       `json:"state"`
 	ResourceClass          AgentResourceClass   `json:"resource_class,omitempty"`
 	QueuePosition          int                  `json:"queue_position,omitempty"`
+	Running                bool                 `json:"running,omitempty"`
 	AdmissionBlockedReason string               `json:"admission_blocked_reason,omitempty"`
 	BudgetSnapshot         *AgentBudgetSnapshot `json:"budget_snapshot,omitempty"`
 	Usage                  AgentUsage           `json:"usage,omitempty"`
@@ -138,6 +139,32 @@ func newMissionRecoveryState(req AgentReadOnlyMissionRequest, graph AgentTaskGra
 	}
 }
 
+func applyMissionSchedulerSnapshot(mission *MissionRecoveryState, snapshot AgentSchedulerSnapshot) {
+	if mission == nil {
+		return
+	}
+	byID := make(map[string]AgentTaskScheduleSnapshot, len(snapshot.Tasks))
+	for _, task := range snapshot.Tasks {
+		byID[task.TaskID] = task
+	}
+	for index := range mission.Tasks {
+		taskSnapshot, ok := byID[mission.Tasks[index].ID]
+		if !ok {
+			continue
+		}
+		mission.Tasks[index].State = taskSnapshot.State
+		if taskSnapshot.ResourceClass != "" {
+			mission.Tasks[index].ResourceClass = taskSnapshot.ResourceClass
+		}
+		mission.Tasks[index].QueuePosition = taskSnapshot.QueuePosition
+		mission.Tasks[index].Running = taskSnapshot.Running
+		mission.Tasks[index].AdmissionBlockedReason = sanitizeRunJournalText(taskSnapshot.AdmissionBlockedReason, 1000)
+		budgetCopy := taskSnapshot.Budget
+		mission.Tasks[index].BudgetSnapshot = &budgetCopy
+	}
+	mission.UpdatedAt = time.Now()
+}
+
 func (s *AppState) beginMissionRunJournal(runID string, req AgentReadOnlyMissionRequest, graph AgentTaskGraph, project, model string, started time.Time) {
 	mission := newMissionRecoveryState(req, graph, project, model, started)
 	state := RunRecoveryState{
@@ -162,26 +189,7 @@ func (s *AppState) beginMissionRunJournal(runID string, req AgentReadOnlyMission
 
 func (s *AppState) journalMissionSchedulerSnapshot(runID string, snapshot AgentSchedulerSnapshot) {
 	s.updateRunJournal(runID, func(state *RunRecoveryState) {
-		if state.Mission == nil {
-			return
-		}
-		byID := make(map[string]AgentTaskScheduleSnapshot, len(snapshot.Tasks))
-		for _, task := range snapshot.Tasks {
-			byID[task.TaskID] = task
-		}
-		for index := range state.Mission.Tasks {
-			taskSnapshot, ok := byID[state.Mission.Tasks[index].ID]
-			if !ok {
-				continue
-			}
-			state.Mission.Tasks[index].State = taskSnapshot.State
-			state.Mission.Tasks[index].ResourceClass = taskSnapshot.ResourceClass
-			state.Mission.Tasks[index].QueuePosition = taskSnapshot.QueuePosition
-			state.Mission.Tasks[index].AdmissionBlockedReason = sanitizeRunJournalText(taskSnapshot.AdmissionBlockedReason, 1000)
-			budgetCopy := taskSnapshot.Budget
-			state.Mission.Tasks[index].BudgetSnapshot = &budgetCopy
-		}
-		state.Mission.UpdatedAt = time.Now()
+		applyMissionSchedulerSnapshot(state.Mission, snapshot)
 	})
 }
 
@@ -196,13 +204,28 @@ func (s *AppState) finishMissionRunJournal(runID string, result AgentReadOnlyMis
 		return
 	}
 	if state.Mission != nil {
+		previousByID := make(map[string]MissionRecoveryTaskState, len(state.Mission.Tasks))
+		for _, task := range state.Mission.Tasks {
+			previousByID[task.ID] = task
+		}
 		state.Mission.State = string(result.State)
 		state.Mission.Reason = string(result.Reason)
 		state.Mission.BudgetExhaustedBy = sanitizeRunJournalText(result.BudgetExhaustedBy, 120)
 		state.Mission.Tasks = missionRecoveryTasksFromGraph(result.Graph)
 		for index := range state.Mission.Tasks {
+			if previous, ok := previousByID[state.Mission.Tasks[index].ID]; ok {
+				state.Mission.Tasks[index].ResourceClass = previous.ResourceClass
+				state.Mission.Tasks[index].QueuePosition = previous.QueuePosition
+				state.Mission.Tasks[index].Running = false
+				state.Mission.Tasks[index].AdmissionBlockedReason = previous.AdmissionBlockedReason
+				if previous.BudgetSnapshot != nil {
+					budgetCopy := *previous.BudgetSnapshot
+					state.Mission.Tasks[index].BudgetSnapshot = &budgetCopy
+				}
+			}
 			state.Mission.Tasks[index].Usage = result.Run.UsageByTask[state.Mission.Tasks[index].ID]
 		}
+		applyMissionSchedulerSnapshot(state.Mission, result.Run.Snapshot)
 		accountingCopy := result.Accounting
 		state.Mission.Accounting = &accountingCopy
 		state.Mission.UpdatedAt = time.Now()
