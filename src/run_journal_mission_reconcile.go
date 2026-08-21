@@ -16,17 +16,15 @@ import (
 )
 
 const (
-	missionGitStateObserved      = "observed"
-	missionGitStateNotRepository = "not_repository"
-	missionGitStateUnavailable   = "unavailable"
-
+	missionGitStateObserved       = "observed"
+	missionGitStateNotRepository  = "not_repository"
+	missionGitStateUnavailable    = "unavailable"
 	missionReconcileMatched              = "matched"
 	missionReconcileProjectUnavailable   = "project_unavailable"
 	missionReconcileProjectMismatch      = "project_mismatch"
 	missionReconcileGitChanged           = "git_changed"
 	missionReconcileGitUnavailable       = "git_unavailable"
 	missionReconcileInsufficientEvidence = "insufficient_evidence"
-
 	missionTaskDispositionTerminal             = "terminal"
 	missionTaskDispositionVerifyPostconditions = "verify_postconditions"
 	missionTaskDispositionInterruptedUnknown   = "interrupted_unknown"
@@ -144,14 +142,15 @@ func missionTaskReconciliation(task MissionRecoveryTaskState, overallState strin
 		TaskID:       task.ID,
 		DurableState: task.State,
 	}
+	if task.Running || task.State == AgentTaskRunning {
+		result.Disposition = missionTaskDispositionInterruptedUnknown
+		result.Reason = "running_at_interruption_is_not_success"
+		return result
+	}
 	switch task.State {
 	case AgentTaskFailed, AgentTaskCancelled:
 		result.Disposition = missionTaskDispositionTerminal
 		result.Reason = "durable_terminal_state"
-		return result
-	case AgentTaskRunning:
-		result.Disposition = missionTaskDispositionInterruptedUnknown
-		result.Reason = "running_at_interruption_is_not_success"
 		return result
 	case AgentTaskSucceeded, AgentTaskCompleted:
 		if overallState == missionReconcileMatched {
