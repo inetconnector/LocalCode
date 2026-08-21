@@ -26,27 +26,27 @@ type MissionTaskPostconditionCheck struct {
 }
 
 type MissionTaskPostconditionVerification struct {
-	TaskID          string                           `json:"task_id"`
-	Passed          bool                             `json:"passed"`
-	AlreadyVerified bool                             `json:"already_verified,omitempty"`
-	EvidenceSHA256  string                           `json:"evidence_sha256"`
-	CheckCount      int                              `json:"check_count"`
-	ObservedAt      time.Time                        `json:"observed_at"`
-	Checks          []MissionTaskPostconditionCheck  `json:"checks"`
+	TaskID          string                          `json:"task_id"`
+	Passed          bool                            `json:"passed"`
+	AlreadyVerified bool                            `json:"already_verified,omitempty"`
+	EvidenceSHA256  string                          `json:"evidence_sha256"`
+	CheckCount      int                             `json:"check_count"`
+	ObservedAt      time.Time                       `json:"observed_at"`
+	Checks          []MissionTaskPostconditionCheck `json:"checks"`
 }
 
 type missionTaskPostconditionDigestInput struct {
-	MissionID                  string                           `json:"mission_id"`
-	TaskID                     string                           `json:"task_id"`
-	CompletionResultSHA256     string                           `json:"completion_result_sha256,omitempty"`
-	ReconciliationState        string                           `json:"reconciliation_state"`
-	ReconciliationReason       string                           `json:"reconciliation_reason"`
-	CurrentProjectIdentityHash string                           `json:"current_project_identity_sha256,omitempty"`
-	CurrentGitState            string                           `json:"current_git_state"`
-	CurrentGitRootHash         string                           `json:"current_git_root_sha256,omitempty"`
-	CurrentGitHead             string                           `json:"current_git_head,omitempty"`
-	CurrentGitStatusHash       string                           `json:"current_git_status_sha256,omitempty"`
-	Checks                     []MissionTaskPostconditionCheck  `json:"checks"`
+	MissionID                  string                          `json:"mission_id"`
+	TaskID                     string                          `json:"task_id"`
+	CompletionResultSHA256     string                          `json:"completion_result_sha256,omitempty"`
+	ReconciliationState        string                          `json:"reconciliation_state"`
+	ReconciliationReason       string                          `json:"reconciliation_reason"`
+	CurrentProjectIdentityHash string                          `json:"current_project_identity_sha256,omitempty"`
+	CurrentGitState            string                          `json:"current_git_state"`
+	CurrentGitRootHash         string                          `json:"current_git_root_sha256,omitempty"`
+	CurrentGitHead             string                          `json:"current_git_head,omitempty"`
+	CurrentGitStatusHash       string                          `json:"current_git_status_sha256,omitempty"`
+	Checks                     []MissionTaskPostconditionCheck `json:"checks"`
 }
 
 func missionTaskPostconditionEvidenceDigest(missionID string, task MissionRecoveryTaskState, reconciliation *MissionRestartReconciliation, checks []MissionTaskPostconditionCheck) string {
