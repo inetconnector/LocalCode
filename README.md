@@ -67,9 +67,11 @@ Der Desktop kann den **read-only Mission-Status** im rechten Ausgabenbereich anz
 
 Zusätzlich liefert `/api/status` maschinenlesbare **Orchestrierungsdiagnostik** und zeigt sie im Desktop-Ausgabenbereich an. Unterschieden werden Ollama offline, kein Modell gewählt, gewähltes Modell lokal nicht vorhanden, aktive Mission, Queue-Limit und echte Ressourcensättigung. `at_capacity` bedeutet nur, dass ein Slot vollständig belegt ist; `saturated` wird erst gemeldet, wenn die Ressource voll ist **und** passende Arbeit darauf wartet. Angezeigt werden Queue-Auslastung, logische Ready/Running/Blocked-Zahlen, wartende Modellarbeit sowie Limit/In-Use/Available/Waiting je Ressourcenklasse. Die Diagnostik verändert weder Limits noch Parallelität und ist kein Benchmark.
 
+Für die Orchestrierung gibt es zusätzlich reproduzierbare **Parallelitäts-Benchmarks**. Ein deterministischer synthetischer Benchmark misst vier gleichzeitig logisch bereite read-only Tasks bei Model-Slot-Limits 1/2/4 und berichtet die tatsächlich beobachtete Executor-Überlappung. Der aktuelle synchrone Dispatcher erreicht dabei nicht automatisch echte Parallelität nur weil mehr Model-Slots konfiguriert sind. Ein zweiter, ausdrücklich opt-in ausgeführter Ollama-Benchmark nutzt den produktiven `OllamaClient.Chat`-Pfad und vergleicht ein festes Arbeitsvolumen bei Client-Konkurrenz 1/2/4. Er akzeptiert nur Loopback, verlangt ein bereits installiertes exaktes Modell und startet oder lädt nichts. End-to-End-Request-Überlappung wird dabei nicht als Beweis gleichzeitiger GPU-Inferenz interpretiert. Details: `docs/ORCHESTRATION_BENCHMARKS.md`.
+
 Die Mobile Remote zeigt bei einer aktiven read-only Mission lediglich **Mission · Läuft** und eine kompakte DE/EN-Hinweiskarte. Dafür werden nur die bereits vorhandenen authentifizierten Statusfelder `running` und `run_phase` verwendet. Es gibt keinen neuen Remote-Mission-Endpunkt, keine Mission-/Task-IDs, keine Scheduler-/Ressourcen-/Budget-/Accounting-Daten und keinen neuen Mission-Start-/Steuerpfad.
 
-**Noch nicht implementiert:** reproduzierbare Performance-Benchmarks für logische Parallelität vs. lokale Modellkonkurrenz, eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
+**Noch nicht implementiert:** eine produktseitige Mission-Start-/Steueroberfläche, dauerhafte Mission-Recovery, mutation-capable Builder-Agenten, parallele Worktree-Schreibagenten und Integrator/Test-Agent-Mutationsfluss.
 
 ### Handy-Remote / Android
 
@@ -113,6 +115,7 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 - `TODO.md` – ausschließlich offene funktionale Arbeit
 - `docs/ARCHITECTURE.md` – Architektur und Laufzeitgrenzen
 - `docs/SECURITY.md` – Sicherheitsmodell
+- `docs/ORCHESTRATION_BENCHMARKS.md` – reproduzierbare Orchestrierungs-/Ollama-Benchmarks und Interpretationsgrenzen
 - `android/README.md` – Android-Remote-Details
 
 ---
@@ -178,9 +181,11 @@ Desktop can display **read-only Mission status** in the Output inspector: Missio
 
 `/api/status` also exposes machine-readable **orchestration diagnostics**, rendered in the Desktop Output inspector. It distinguishes Ollama offline, no selected model, selected model not installed locally, active Mission, queue-limit pressure and actual resource saturation. `at_capacity` only means every slot is occupied; `saturated` requires a full resource **and** work waiting for it. The diagnostics show queue utilization, logical ready/running/blocked counts, waiting model work and limit/in-use/available/waiting per resource class. Diagnostics do not change limits/concurrency and are not benchmark evidence.
 
+LocalCode now also has reproducible **orchestration parallelism benchmarks**. A deterministic synthetic benchmark measures four simultaneously logically-ready read-only tasks with model-slot limits 1/2/4 and reports the executor overlap actually observed. The current synchronous dispatcher therefore does not become genuinely parallel merely because more model slots are configured. A second explicitly opt-in Ollama benchmark uses the production `OllamaClient.Chat` path and compares a fixed workload at client concurrency 1/2/4. It accepts loopback only, requires an exact already-installed model, and never starts or downloads anything. End-to-end request overlap is not interpreted as proof of simultaneous GPU inference. See `docs/ORCHESTRATION_BENCHMARKS.md`.
+
 Mobile Remote shows only **Mission · Running** and a compact localized notice while a read-only Mission is active. It derives this from the already-authenticated `running` and `run_phase` status fields. No new Remote Mission endpoint, Mission/task IDs, scheduler/resource/budget/accounting data or Mission start/control path is added.
 
-**Not implemented yet:** reproducible performance benchmarks for logical parallelism versus local model concurrency, a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
+**Not implemented yet:** a product Mission-start/control surface, durable Mission recovery, mutation-capable Builder agents, parallel worktree mutation agents and Integrator/Test-Agent mutation flow.
 
 ### Phone Remote / Android
 
@@ -224,6 +229,7 @@ The GitHub Quality pipeline checks, among other things:
 - `TODO.md` – unfinished functional work only
 - `docs/ARCHITECTURE.md` – architecture/runtime boundaries
 - `docs/SECURITY.md` – security model
+- `docs/ORCHESTRATION_BENCHMARKS.md` – reproducible orchestration/Ollama benchmarks and interpretation boundaries
 - `android/README.md` – Android Remote details
 
 ## License
