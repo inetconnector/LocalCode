@@ -37,24 +37,24 @@ type MissionRecoveryTaskState struct {
 }
 
 type MissionRecoveryState struct {
-	Kind              string                       `json:"kind"`
-	MissionID         string                       `json:"mission_id"`
-	ParentTaskID      string                       `json:"parent_task_id,omitempty"`
-	Objective         string                       `json:"objective,omitempty"`
-	Project           string                       `json:"project"`
-	Model             string                       `json:"model,omitempty"`
-	Constraints       []string                     `json:"constraints,omitempty"`
-	SuccessCriteria   []string                     `json:"success_criteria,omitempty"`
-	Budget            AgentBudget                  `json:"budget"`
-	State             string                       `json:"state"`
-	Reason            string                       `json:"reason,omitempty"`
-	BudgetExhaustedBy string                       `json:"budget_exhausted_by,omitempty"`
-	Baseline          *MissionProjectBaseline      `json:"baseline,omitempty"`
+	Kind              string                        `json:"kind"`
+	MissionID         string                        `json:"mission_id"`
+	ParentTaskID      string                        `json:"parent_task_id,omitempty"`
+	Objective         string                        `json:"objective,omitempty"`
+	Project           string                        `json:"project"`
+	Model             string                        `json:"model,omitempty"`
+	Constraints       []string                      `json:"constraints,omitempty"`
+	SuccessCriteria   []string                      `json:"success_criteria,omitempty"`
+	Budget            AgentBudget                   `json:"budget"`
+	State             string                        `json:"state"`
+	Reason            string                        `json:"reason,omitempty"`
+	BudgetExhaustedBy string                        `json:"budget_exhausted_by,omitempty"`
+	Baseline          *MissionProjectBaseline       `json:"baseline,omitempty"`
 	Reconciliation    *MissionRestartReconciliation `json:"reconciliation,omitempty"`
-	Tasks             []MissionRecoveryTaskState   `json:"tasks"`
-	Accounting        *AgentMissionAccounting      `json:"accounting,omitempty"`
-	StartedAt         time.Time                    `json:"started_at"`
-	UpdatedAt         time.Time                    `json:"updated_at"`
+	Tasks             []MissionRecoveryTaskState    `json:"tasks"`
+	Accounting        *AgentMissionAccounting       `json:"accounting,omitempty"`
+	StartedAt         time.Time                     `json:"started_at"`
+	UpdatedAt         time.Time                     `json:"updated_at"`
 }
 
 func sanitizeMissionRecoveryList(values []string) []string {
