@@ -15,6 +15,7 @@ type scheduledDispatchTestOutcome struct {
 }
 
 func TestScheduledReadOnlyDispatchCancellationWinsCompletionRace(t *testing.T) {
+	project := t.TempDir()
 	graph := schedulerTestGraph(t, []AgentTaskProposal{{
 		ID:        "root",
 		Role:      "explorer",
@@ -37,7 +38,7 @@ func TestScheduledReadOnlyDispatchCancellationWinsCompletionRace(t *testing.T) {
 	}
 
 	go func() {
-		run, err := (&AppState{}).runScheduledReadOnlyAgentGraphWithExecutor(t.TempDir(), Config{}, &graph, scheduler, execute)
+		run, err := (&AppState{}).runScheduledReadOnlyAgentGraphWithExecutor(project, Config{}, &graph, scheduler, execute)
 		done <- scheduledDispatchTestOutcome{run: run, err: err}
 	}()
 
@@ -83,6 +84,7 @@ func TestScheduledReadOnlyDispatchCancellationWinsCompletionRace(t *testing.T) {
 func TestScheduledReadOnlyDispatchCompletionCancelRaceHasSingleTerminalWinner(t *testing.T) {
 	const iterations = 32
 	for i := 0; i < iterations; i++ {
+		project := t.TempDir()
 		graph := schedulerTestGraph(t, []AgentTaskProposal{{
 			ID:        "race",
 			Role:      "explorer",
@@ -109,7 +111,7 @@ func TestScheduledReadOnlyDispatchCompletionCancelRaceHasSingleTerminalWinner(t 
 		}
 
 		go func() {
-			run, err := (&AppState{}).runScheduledReadOnlyAgentGraphWithExecutor(t.TempDir(), Config{}, &graph, scheduler, execute)
+			run, err := (&AppState{}).runScheduledReadOnlyAgentGraphWithExecutor(project, Config{}, &graph, scheduler, execute)
 			done <- scheduledDispatchTestOutcome{run: run, err: err}
 		}()
 		select {
