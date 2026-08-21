@@ -37,22 +37,24 @@ type MissionRecoveryTaskState struct {
 }
 
 type MissionRecoveryState struct {
-	Kind              string                     `json:"kind"`
-	MissionID         string                     `json:"mission_id"`
-	ParentTaskID      string                     `json:"parent_task_id,omitempty"`
-	Objective         string                     `json:"objective,omitempty"`
-	Project           string                     `json:"project"`
-	Model             string                     `json:"model,omitempty"`
-	Constraints       []string                   `json:"constraints,omitempty"`
-	SuccessCriteria   []string                   `json:"success_criteria,omitempty"`
-	Budget            AgentBudget                `json:"budget"`
-	State             string                     `json:"state"`
-	Reason            string                     `json:"reason,omitempty"`
-	BudgetExhaustedBy string                     `json:"budget_exhausted_by,omitempty"`
-	Tasks             []MissionRecoveryTaskState `json:"tasks"`
-	Accounting        *AgentMissionAccounting    `json:"accounting,omitempty"`
-	StartedAt         time.Time                  `json:"started_at"`
-	UpdatedAt         time.Time                  `json:"updated_at"`
+	Kind              string                       `json:"kind"`
+	MissionID         string                       `json:"mission_id"`
+	ParentTaskID      string                       `json:"parent_task_id,omitempty"`
+	Objective         string                       `json:"objective,omitempty"`
+	Project           string                       `json:"project"`
+	Model             string                       `json:"model,omitempty"`
+	Constraints       []string                     `json:"constraints,omitempty"`
+	SuccessCriteria   []string                     `json:"success_criteria,omitempty"`
+	Budget            AgentBudget                  `json:"budget"`
+	State             string                       `json:"state"`
+	Reason            string                       `json:"reason,omitempty"`
+	BudgetExhaustedBy string                       `json:"budget_exhausted_by,omitempty"`
+	Baseline          *MissionProjectBaseline      `json:"baseline,omitempty"`
+	Reconciliation    *MissionRestartReconciliation `json:"reconciliation,omitempty"`
+	Tasks             []MissionRecoveryTaskState   `json:"tasks"`
+	Accounting        *AgentMissionAccounting      `json:"accounting,omitempty"`
+	StartedAt         time.Time                    `json:"started_at"`
+	UpdatedAt         time.Time                    `json:"updated_at"`
 }
 
 func sanitizeMissionRecoveryList(values []string) []string {
@@ -86,6 +88,15 @@ func cloneMissionRecoveryState(state *MissionRecoveryState) *MissionRecoveryStat
 			budgetCopy := *state.Tasks[index].BudgetSnapshot
 			copyState.Tasks[index].BudgetSnapshot = &budgetCopy
 		}
+	}
+	if state.Baseline != nil {
+		baselineCopy := *state.Baseline
+		copyState.Baseline = &baselineCopy
+	}
+	if state.Reconciliation != nil {
+		reconciliationCopy := *state.Reconciliation
+		reconciliationCopy.Tasks = append([]MissionRecoveryTaskReconciliation(nil), state.Reconciliation.Tasks...)
+		copyState.Reconciliation = &reconciliationCopy
 	}
 	if state.Accounting != nil {
 		accountingCopy := *state.Accounting
@@ -167,6 +178,8 @@ func applyMissionSchedulerSnapshot(mission *MissionRecoveryState, snapshot Agent
 
 func (s *AppState) beginMissionRunJournal(runID string, req AgentReadOnlyMissionRequest, graph AgentTaskGraph, project, model string, started time.Time) {
 	mission := newMissionRecoveryState(req, graph, project, model, started)
+	baseline := captureMissionProjectBaseline(project)
+	mission.Baseline = &baseline
 	state := RunRecoveryState{
 		SchemaVersion: runJournalSchemaVersion,
 		RunID:         runID,
