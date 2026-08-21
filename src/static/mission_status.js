@@ -238,11 +238,17 @@
     }
   }
 
-  window.addEventListener('load', () => {
+  let initialized = false;
+  function init() {
+    if (initialized) return;
+    initialized = true;
     const mission = state.status?.mission;
     sawRunningMission = !!mission && mission.state === 'running';
     renderInspector();
     setInterval(refreshMissionStatus, 1500);
     document.addEventListener('localcode:language', () => setTimeout(renderInspector, 0));
-  });
+  }
+
+  if (document.readyState === 'complete') setTimeout(init, 0);
+  else window.addEventListener('load', init, {once:true});
 })();
