@@ -33,6 +33,7 @@ type MissionRecoveryTaskState struct {
 	Running                bool                           `json:"running,omitempty"`
 	AdmissionBlockedReason string                         `json:"admission_blocked_reason,omitempty"`
 	BudgetSnapshot         *AgentBudgetSnapshot           `json:"budget_snapshot,omitempty"`
+	Lifecycle              *MissionTaskLifecycle          `json:"lifecycle,omitempty"`
 	CompletionEvidence     *MissionTaskCompletionEvidence `json:"completion_evidence,omitempty"`
 	Usage                  AgentUsage                     `json:"usage,omitempty"`
 }
@@ -88,6 +89,10 @@ func cloneMissionRecoveryState(state *MissionRecoveryState) *MissionRecoveryStat
 		if state.Tasks[index].BudgetSnapshot != nil {
 			budgetCopy := *state.Tasks[index].BudgetSnapshot
 			copyState.Tasks[index].BudgetSnapshot = &budgetCopy
+		}
+		if state.Tasks[index].Lifecycle != nil {
+			lifecycleCopy := *state.Tasks[index].Lifecycle
+			copyState.Tasks[index].Lifecycle = &lifecycleCopy
 		}
 		if state.Tasks[index].CompletionEvidence != nil {
 			evidenceCopy := *state.Tasks[index].CompletionEvidence
@@ -159,6 +164,7 @@ func applyMissionSchedulerSnapshot(mission *MissionRecoveryState, snapshot Agent
 	if mission == nil {
 		return
 	}
+	observedAt := time.Now()
 	byID := make(map[string]AgentTaskScheduleSnapshot, len(snapshot.Tasks))
 	for _, task := range snapshot.Tasks {
 		byID[task.TaskID] = task
@@ -168,6 +174,7 @@ func applyMissionSchedulerSnapshot(mission *MissionRecoveryState, snapshot Agent
 		if !ok {
 			continue
 		}
+		updateMissionTaskLifecycle(&mission.Tasks[index], taskSnapshot, observedAt)
 		mission.Tasks[index].State = taskSnapshot.State
 		if taskSnapshot.ResourceClass != "" {
 			mission.Tasks[index].ResourceClass = taskSnapshot.ResourceClass
@@ -178,7 +185,7 @@ func applyMissionSchedulerSnapshot(mission *MissionRecoveryState, snapshot Agent
 		budgetCopy := taskSnapshot.Budget
 		mission.Tasks[index].BudgetSnapshot = &budgetCopy
 	}
-	mission.UpdatedAt = time.Now()
+	mission.UpdatedAt = observedAt
 }
 
 func (s *AppState) beginMissionRunJournal(runID string, req AgentReadOnlyMissionRequest, graph AgentTaskGraph, project, model string, started time.Time) {
@@ -246,6 +253,10 @@ func (s *AppState) finishMissionRunJournal(runID string, result AgentReadOnlyMis
 				if previous.BudgetSnapshot != nil {
 					budgetCopy := *previous.BudgetSnapshot
 					state.Mission.Tasks[index].BudgetSnapshot = &budgetCopy
+				}
+				if previous.Lifecycle != nil {
+					lifecycleCopy := *previous.Lifecycle
+					state.Mission.Tasks[index].Lifecycle = &lifecycleCopy
 				}
 				if previous.CompletionEvidence != nil {
 					evidenceCopy := *previous.CompletionEvidence
