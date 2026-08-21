@@ -35,8 +35,9 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
 - `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
 - `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
+- `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
 - `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
-- `src/static/mission_status.js` – read-only Mission-Card im Desktop-Output-Inspector.
+- `src/static/mission_status.js` – read-only Mission- und Orchestrierungsdiagnostik im Desktop-Output-Inspector.
 - `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
 - `src/remote_mission_status_contract.md` – Source-Level-Vertrag für die schmale Mobile-Mission-Anzeige.
 - `android/app/.../MainActivity.java` – native Android-Hülle.
@@ -85,6 +86,16 @@ Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
 
 Die Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **nichts** dauerhaft und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. `src/static/mission_status.js` liest ausschließlich diese Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector. Die Oberfläche besitzt in diesem Slice keinen Mission-Start-/Mutation-/Approval-Pfad.
 
+### Orchestrierungs- und Sättigungsdiagnostik
+
+`/api/status` enthält zusätzlich ein maschinenlesbares `orchestration`-Objekt. Es wird aus dem bereits gelesenen Ollama-/Modellzustand und – falls vorhanden – dem aktuellen ephemeren Mission-/Scheduler-Snapshot abgeleitet; es ist keine zweite Scheduler- oder Recovery-Quelle.
+
+Die Diagnose unterscheidet `ready`, `active`, `saturated`, `backend_unavailable` und `model_unavailable`. Gründe unterscheiden insbesondere Ollama offline, kein ausgewähltes Modell, ein lokal nicht vorhandenes ausgewähltes Modell, eine laufende Mission, ein erreichtes Queue-Limit und wartende Arbeit auf einer ausgelasteten Ressourcenklasse.
+
+Pro Ressourcenklasse werden Limit, Belegung, freie Slots und wartende Tasks ausgewiesen. **`at_capacity` und `saturated` sind absichtlich verschieden:** `at_capacity` bedeutet nur, dass alle Slots belegt sind; `saturated` gilt erst, wenn zusätzlich passende Arbeit auf diese volle Ressource wartet. Queue-Auslastung sowie logische Ready-/Running-/Blocked-Zahlen werden separat ausgewiesen. Tatsächliche normalisierte Mission-Ressourcenlimits werden im ephemeren Mission-Status mitgeführt, damit die Diagnose während einer Mission nicht still Standardlimits annimmt.
+
+Die Diagnose verändert weder Queue-Limits noch Admission noch Modellparallelität. Sie startet keine Arbeit und ist keine Performance-Evidenz. Aussagen über sinnvolle lokale Modellkonkurrenz müssen weiterhin durch reproduzierbare Benchmarks auf definierter Hardware und Workload belegt werden. `src/static/mission_status.js` rendert die Diagnose read-only im bestehenden Desktop-Output-Inspector; Mobile erhält diesen Desktop-Payload nicht.
+
 ### Mobile Mission-Status
 
 Die Mobile Remote bleibt absichtlich enger als Desktop. Sie verwendet **keinen** neuen Mission-Endpunkt und bekommt nicht das Desktop-`mission`-Objekt. Stattdessen nutzt `src/static/remote.html` ausschließlich die bereits authentifizierten Felder `running` und `run_phase` aus `/remote/api/status`.
@@ -93,9 +104,9 @@ Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-
 
 ### Recovery und nächste Stufen
 
-`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go` und die Mobile-Anzeige sind ausdrücklich keine Recovery-Speicher.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go`, die Orchestrierungsdiagnostik und die Mobile-Anzeige sind ausdrücklich keine Recovery-Speicher.
 
-Als Nächstes folgen Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
+Als Nächstes folgen reproduzierbare Benchmarks für logische Task-Parallelität versus tatsächliche lokale Modellkonkurrenz und danach dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
 
 ---
 
@@ -134,8 +145,9 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
 - `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
 - `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
+- `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
 - `src/run_journal.go` – durable active-run recovery authority.
-- `src/static/mission_status.js` – read-only Mission card in the Desktop Output inspector.
+- `src/static/mission_status.js` – read-only Mission and orchestration diagnostics in the Desktop Output inspector.
 - `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
 - `src/remote_mission_status_contract.md` – source-level contract for the narrow Mobile Mission display.
 - `android/app/.../MainActivity.java` – native Android shell.
@@ -184,6 +196,16 @@ While a read-only Mission is executing, a bounded in-memory monitor publishes:
 
 The registry retains only a bounded number of observations and evicts old data. It writes **nothing** durably and cannot start, continue, resume or authorize a Mission. `src/static/mission_status.js` only reads this status data and renders a DE/EN card in the existing Output inspector. This slice contains no Mission-start, mutation or approval path.
 
+### Orchestration and saturation diagnostics
+
+`/api/status` also contains a machine-readable `orchestration` object. It is derived from the already-read Ollama/model state and, when present, the current ephemeral Mission/Scheduler snapshot; it is not a second Scheduler or recovery source.
+
+Diagnostics distinguish `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`. Reasons separately identify Ollama offline, no selected model, a selected model missing locally, a running Mission, a reached queue limit and queued work waiting on a full resource class.
+
+For each resource class, diagnostics report limit, in-use, available and waiting work. **`at_capacity` intentionally differs from `saturated`:** `at_capacity` only means every slot is occupied; `saturated` requires both a full resource and compatible work waiting for it. Queue utilization and logical ready/running/blocked counts are reported separately. Actual normalized Mission resource limits are retained in ephemeral Mission status so active-Mission diagnostics do not silently assume defaults.
+
+Diagnostics do not alter queue limits, admission or model concurrency. They cannot start work and are not performance evidence. Any claim about useful local model concurrency still requires reproducible benchmarks on defined hardware and workloads. `src/static/mission_status.js` renders these diagnostics read-only in the existing Desktop Output inspector; Mobile does not receive this Desktop payload.
+
 ### Mobile Mission status
 
 Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission endpoint and does not receive the Desktop `mission` object. `src/static/remote.html` uses only the already-authenticated `running` and `run_phase` fields from `/remote/api/status`.
@@ -192,6 +214,6 @@ When `running == true && run_phase == "mission-read-only"`, Remote only indicate
 
 ### Recovery and next layers
 
-`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry and the Mobile indicator are explicitly not recovery stores.
+`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry, orchestration diagnostics and the Mobile indicator are explicitly not recovery stores.
 
-Next come resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
+Next come reproducible benchmarks for logical task parallelism versus actual local model concurrency, followed by durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
