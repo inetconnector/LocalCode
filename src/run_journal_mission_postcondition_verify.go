@@ -192,12 +192,19 @@ func verifyRecoverableMissionTaskPostconditions(runID, taskID string) (MissionTa
 	if currentTask == nil || currentTask.CompletionEvidence == nil {
 		return result, fmt.Errorf("mission completion evidence is unavailable")
 	}
-	if result.AlreadyVerified {
-		reconciliationCopy := *reconciled.Mission.Reconciliation
-		reconciliationCopy.Tasks = append([]MissionRecoveryTaskReconciliation(nil), reconciled.Mission.Reconciliation.Tasks...)
-		current.Mission.Reconciliation = &reconciliationCopy
+	persistReconciliation := func(recompute bool) error {
+		if recompute {
+			current.Mission.Reconciliation = reconcileMissionRecoveryWithCurrent(current.Mission, reconciled.Mission.Reconciliation.Current, reconciled.Mission.Reconciliation.ObservedAt)
+		} else {
+			reconciliationCopy := *reconciled.Mission.Reconciliation
+			reconciliationCopy.Tasks = append([]MissionRecoveryTaskReconciliation(nil), reconciled.Mission.Reconciliation.Tasks...)
+			current.Mission.Reconciliation = &reconciliationCopy
+		}
 		current.Mission.UpdatedAt = time.Now()
-		if err := writeRunJournalUnlocked(*current); err != nil {
+		return writeRunJournalUnlocked(*current)
+	}
+	if currentTask.CompletionEvidence.VerificationState == missionVerificationVerified {
+		if err := persistReconciliation(false); err != nil {
 			return result, err
 		}
 		return result, nil
@@ -210,11 +217,7 @@ func verifyRecoverableMissionTaskPostconditions(runID, taskID string) (MissionTa
 	if err := recordMissionTaskVerificationOutcome(currentTask.CompletionEvidence, next, result.EvidenceSHA256, result.CheckCount, result.ObservedAt); err != nil {
 		return result, err
 	}
-	reconciliationCopy := *reconciled.Mission.Reconciliation
-	reconciliationCopy.Tasks = append([]MissionRecoveryTaskReconciliation(nil), reconciled.Mission.Reconciliation.Tasks...)
-	current.Mission.Reconciliation = &reconciliationCopy
-	current.Mission.UpdatedAt = time.Now()
-	if err := writeRunJournalUnlocked(*current); err != nil {
+	if err := persistReconciliation(true); err != nil {
 		return result, err
 	}
 	return result, nil
