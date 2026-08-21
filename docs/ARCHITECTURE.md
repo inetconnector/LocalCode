@@ -34,8 +34,10 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/agent_mission.go` – explizite Governance-/Mission-Einstiegsgrenze.
 - `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
 - `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
+- `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
 - `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
-- `src/static/*` – Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
+- `src/static/mission_status.js` – read-only Mission-Card im Desktop-Output-Inspector.
+- `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
 - `android/app/.../MainActivity.java` – native Android-Hülle.
 
 ### Native Agent Teams
@@ -43,6 +45,8 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 Aktuell ausführbare Child-Rollen sind ausschließlich **Explorer**, **Planner** und **Reviewer**. Ihr Action-Schema ist read-only: Projektbaum, Dateien, Textsuche, genehmigungsfreies LSP und strukturiertes `finish`. Mutation, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Approval-Requests und rekursives Spawning fehlen absichtlich.
 
 `AgentTaskGraph` enthält eine stabile Mission-ID und stabile Task-IDs. Dependencies, Zyklen und Zustände werden validiert. Der `AgentScheduler` hält eine begrenzte Ready-Queue und Ressourcenklassen; read-only Child-Tasks verwenden derzeit standardmäßig `model-inference`, dessen Default-Limit eins ist.
+
+Die Scheduler-Abnahme enthält inzwischen größere Sättigungs-/Fairness-Fälle: mehrere Ressourcenklassen können gleichzeitig gesättigt sein, zulässige Arbeit einer anderen Klasse darf blockierte ältere Arbeit umgehen, FIFO bleibt innerhalb derselben Ressourcenklasse erhalten und ein 14-Task-Fan-out/Fan-in-DAG muss ohne Starvation oder Ressourcenleck vollständig drainen.
 
 ### Governed Mission Manager
 
@@ -63,13 +67,28 @@ Missionweite Usage wird ausschließlich aus vom Scheduler akzeptiertem `UsageByT
 5. `finalizeScheduledAgentTask`, `CancelTask` und `CancelMission` konkurrieren wieder an derselben Lock-Grenze.
 6. Nur der terminale Gewinner darf Resultat/Usage festschreiben und den Lease freigeben.
 
-Cancellation-first verwirft verspätete Child-Resultate. Completion-first bleibt erfolgreich. Wenn eine komplette Mission über Parent-Context bzw. `StopAgent` abgebrochen wird, terminalisiert die Mission-Grenze nach Ende des synchronen Dispatches zusätzlich alle noch unfertigen `ready`/`blocked`/sonst nicht terminalen Tasks als `cancelled`; bereits terminale erfolgreiche oder fehlgeschlagene Tasks bleiben unverändert.
+Cancellation-first verwirft verspätete Child-Resultate. Completion-first bleibt erfolgreich. Wenn eine komplette Mission über Parent-Context bzw. `StopAgent` abgebrochen wird, terminalisiert die Mission-Grenze nach Ende des synchronen Dispatches zusätzlich alle noch unfertigen `ready`/`blocked`/sonst nicht terminalen Tasks als `cancelled`; bereits terminale erfolgreiche oder fehlgeschlagene Tasks bleiben unverändert. Der abschließende Scheduler-Snapshot wird danach erneut erzeugt, sodass Graph, Mission-Resultat und Desktop-Status denselben terminalen Zustand zeigen.
+
+### Desktop Mission-Status
+
+Der Desktop verwendet weiterhin `/api/status` als kanonische Statusquelle. `Status.MarshalJSON` ergänzt nur dann ein `mission`-Objekt, wenn zur aktuellen execution-scoped `RunID` passende Mission-Telemetrie vorliegt. Normale Runs oder fremde RunIDs erhalten kein Mission-Objekt.
+
+Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
+
+- stabile `MissionID` und execution-scoped `RunID`,
+- Mission-State/-Reason,
+- Queue-/Running-Zahlen,
+- Ressourcenklasse, Limit und Belegung,
+- Task-State, Queue-Position, Admission-Block-Grund und Task-Budget,
+- Mission-Budget und Usage.
+
+Die Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **nichts** dauerhaft und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. `src/static/mission_status.js` liest ausschließlich diese Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector. Die Oberfläche besitzt in diesem Slice keinen Mission-Start-/Mutation-/Approval-Pfad.
 
 ### Recovery und nächste Stufen
 
-`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go` ist ausdrücklich kein Recovery-Speicher.
 
-Als Nächstes folgen größere DAG-Saturation/Fairness-Tests, ein stabiler Desktop-Mission-Status, danach eine engere read-only Mobile-Ansicht, Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
+Als Nächstes folgen eine engere read-only Mobile-Mission-Ansicht ohne zusätzliche Authority, Ressourcen-Diagnostik/Benchmarks und dauerhafte Mission-Recovery. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
 
 ---
 
@@ -107,8 +126,10 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/agent_mission.go` – explicit governance/Mission entry boundary.
 - `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
 - `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
+- `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
 - `src/run_journal.go` – durable active-run recovery authority.
-- `src/static/*` – Desktop/Remote UIs and DE/EN catalogs.
+- `src/static/mission_status.js` – read-only Mission card in the Desktop Output inspector.
+- `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
 - `android/app/.../MainActivity.java` – native Android shell.
 
 ### Native Agent Teams
@@ -116,6 +137,8 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 The only executable child roles are **Explorer**, **Planner** and **Reviewer**. Their action schema is read-only: project tree, file reads, text search, approval-free LSP and structured `finish`. Mutation, shell, Git, web/network, MCP tool calls, installation, memory, approval requests and recursive spawning are intentionally absent.
 
 `AgentTaskGraph` contains a stable Mission ID and stable task IDs. Dependencies, cycles and states are validated. `AgentScheduler` owns a bounded ready queue and resource classes; read-only children currently default to `model-inference`, whose default limit is one.
+
+Scheduler acceptance now includes larger saturation/fairness cases: multiple resource classes can be saturated simultaneously, admissible work in another class may bypass older work blocked by its saturated class, FIFO is preserved within a resource class, and a 14-task fan-out/fan-in DAG must drain without starvation or resource leakage.
 
 ### Governed Mission Manager
 
@@ -136,10 +159,25 @@ Mission-wide usage is aggregated only from scheduler-accepted `UsageByTask`. Mod
 5. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete again at the same lock boundary;
 6. only the terminal winner may persist result/usage and release the lease.
 
-Cancellation-first discards late child results. Completion-first remains successful. When a whole Mission is cancelled through its parent context or `StopAgent`, the Mission boundary also terminalizes every still-unfinished `ready`/`blocked`/other non-terminal task as `cancelled` after synchronous dispatch has stopped; already-terminal successful or failed work is preserved.
+Cancellation-first discards late child results. Completion-first remains successful. When a whole Mission is cancelled through its parent context or `StopAgent`, the Mission boundary also terminalizes every still-unfinished `ready`/`blocked`/other non-terminal task as `cancelled` after synchronous dispatch has stopped; already-terminal successful or failed work is preserved. The terminal scheduler snapshot is refreshed afterwards so the graph, Mission result and Desktop status expose the same terminal state.
+
+### Desktop Mission status
+
+Desktop continues to use `/api/status` as its canonical status source. `Status.MarshalJSON` adds a `mission` object only when Mission telemetry matches the current execution-scoped `RunID`. Normal runs and unrelated RunIDs do not receive Mission data.
+
+While a read-only Mission is executing, a bounded in-memory monitor publishes:
+
+- stable `MissionID` and execution-scoped `RunID`,
+- Mission state/reason,
+- queued/running counts,
+- resource class, limits and usage,
+- task state, queue position, admission-block reason and task budget,
+- Mission budget and usage.
+
+The registry retains only a bounded number of observations and evicts old data. It writes **nothing** durably and cannot start, continue, resume or authorize a Mission. `src/static/mission_status.js` only reads this status data and renders a DE/EN card in the existing Output inspector. This slice contains no Mission-start, mutation or approval path.
 
 ### Recovery and next layers
 
-`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal.
+`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry in `agent_mission_status.go` is explicitly not a recovery store.
 
-Next come larger DAG saturation/fairness tests, a stable Desktop Mission status surface, then a narrower read-only Mobile view, resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.
+Next come a narrower read-only Mobile Mission view without additional authority, resource diagnostics/benchmarks and durable Mission recovery. Mutation-capable Builders in isolated Git worktrees come later.

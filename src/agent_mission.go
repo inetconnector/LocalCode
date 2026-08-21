@@ -176,9 +176,12 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 
 	scheduler := NewAgentScheduler(missionCtx, AgentResourceLimits{})
 	defer scheduler.missionCancel()
+	stopMissionStatus := startAgentMissionDesktopStatusMonitor(executionRunID, missionID, project, model, started, scheduler, &graph, tracker)
 	run, runErr := s.runScheduledReadOnlyAgentGraphWithExecutor(project, cfg, &graph, scheduler, budgetedExecute)
+	stopMissionStatus()
 	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 		cancelUnfinishedReadOnlyMissionTasks(&graph)
+		run.Snapshot = scheduler.Snapshot(&graph, run.UsageByTask)
 	}
 	finished := time.Now()
 	accounting := agentMissionAccounting(req.Budget, run.UsageByTask, started, finished)
@@ -195,6 +198,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		Graph:             graph,
 		Run:               run,
 	}
+	publishFinalAgentMissionDesktopStatus(executionRunID, result, started, finished)
 	return result, runErr
 }
 

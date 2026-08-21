@@ -27,19 +27,7 @@ Aktuell ausführbare Child-Rollen sind Explorer, Planner und Reviewer. Das Child
 - genehmigungsfreies read-only LSP,
 - strukturiertes `finish`.
 
-Nicht enthalten sind:
-
-- Datei-Mutation,
-- Shell/Befehle,
-- Git-Mutation,
-- Web/Netzwerk,
-- MCP-Tool-Aufrufe,
-- Installation,
-- Memory-Schreiben,
-- Approval-Requests,
-- rekursives Child-Spawning.
-
-Damit kann ein Child diese Rechte nicht allein durch Modelltext anfordern.
+Nicht enthalten sind Datei-Mutation, Shell/Befehle, Git-Mutation, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory-Schreiben, Approval-Requests und rekursives Child-Spawning. Damit kann ein Child diese Rechte nicht allein durch Modelltext anfordern.
 
 ### Scheduler / Cancellation-Sicherheit
 
@@ -53,7 +41,21 @@ Ein besonders wichtiger Race-Schutz gilt für laufende Scheduled Children:
 4. `finalizeScheduledAgentTask`, `CancelTask` und `CancelMission` konkurrieren wieder unter derselben Scheduler-Sperre.
 5. Genau ein terminaler Gewinner darf Zustand/Resultat festschreiben und den Lease freigeben.
 
-Wenn Cancellation zuerst gewinnt, werden verspätete Child-Resultate/Usage nicht in den Task geschrieben. Wenn Completion zuerst erfolgreich finalisiert wurde, ändert ein späteres Cancel den erfolgreichen Task nicht mehr. Parent-Context-Cancellation wird ebenfalls als Cancellation behandelt. Diese Grenze besitzt absichtliche Konkurrenztests unter Go's Race Detector.
+Wenn Cancellation zuerst gewinnt, werden verspätete Child-Resultate/Usage nicht in den Task geschrieben. Wenn Completion zuerst erfolgreich finalisiert wurde, ändert ein späteres Cancel den erfolgreichen Task nicht mehr. Parent-Context-Cancellation wird ebenfalls als Cancellation behandelt. Bei vollständigem Mission-Cancel werden nach beendetem synchronen Dispatch alle noch nicht terminalen Tasks als `cancelled` terminalisiert und der abschließende Scheduler-Snapshot erneut erstellt. Diese Grenzen besitzen absichtliche Konkurrenz- und Produktgrenzentests unter Go's Race Detector.
+
+### Desktop Mission-Status
+
+Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
+
+- `/api/status` bleibt die vorhandene Loopback-Statusquelle; Mission-Daten werden nur für die exakt passende execution-scoped `RunID` ergänzt.
+- Die stabile, vom Aufrufer gewählte `MissionID` wird nicht als Run-/Journal-Identifier verwendet.
+- Mission-Telemetrie liegt ausschließlich in einer begrenzten In-Memory-Registry; alte Einträge werden entfernt.
+- Die Registry ist kein Journal, kein Resume-Mechanismus und keine Berechtigungsquelle.
+- Die Desktop-Card liest Mission-/Scheduler-/Budget-/Task-Zustände, besitzt aber keinen Mission-Start-, Datei-, Shell-, Git-, Approval-, Projektmutations- oder Terminal-Command-Pfad.
+- Das Anzeigen eines Planner-/Task-Status kann keine `RequestedCapabilities` in ausführbare Rechte umwandeln.
+- Mobile/Remote erhält durch diese Desktop-Erweiterung keine neue API oder Authority.
+
+Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
 
 ### Mobile Remote / Android
 
@@ -91,19 +93,11 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 `run_journal.go` ist die Recovery-Autorität für aktive Runs. Persistiert werden nur recovery-relevante, begrenzte Metadaten; Roh-Toolausgaben und Zugangsdaten sollen nicht als zweites Transcript gespeichert werden.
 
-Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen.
+Zukünftige Mission-Persistenz muss in diese Recovery-Autorität integriert werden. Ein konkurrierendes zweites Journal würde widersprüchliche Wiederaufnahmeentscheidungen ermöglichen und ist daher nicht vorgesehen. Die Desktop-Mission-Status-Registry ist ausdrücklich nicht persistent und darf nicht als Recovery-Ersatz verwendet werden.
 
 ### Zukünftige Mutation-Agenten
 
-Builder-/Worktree-Mutation ist noch nicht implementiert. Wenn sie eingeführt wird, gelten weiterhin sämtliche bestehenden LocalCode-Grenzen:
-
-- eigener kontrollierter Workspace/Worktree,
-- keine unsupervised concurrent mutation desselben Workspace,
-- normale Genehmigungen und SHA-Preconditions,
-- diff-reviewbare Resultate,
-- Verifikation nach der letzten Mutation,
-- Integrator als kontrollierte Zusammenführungsgrenze,
-- sichere Cancellation/Recovery ohne blindes `reset --hard`/`clean`.
+Builder-/Worktree-Mutation ist noch nicht implementiert. Wenn sie eingeführt wird, gelten weiterhin sämtliche bestehenden LocalCode-Grenzen: eigener kontrollierter Workspace/Worktree, keine unsupervised concurrent mutation desselben Workspace, normale Genehmigungen und SHA-Preconditions, diff-reviewbare Resultate, Verifikation nach der letzten Mutation, Integrator als kontrollierte Zusammenführungsgrenze und sichere Cancellation/Recovery ohne blindes `reset --hard`/`clean`.
 
 ---
 
@@ -128,7 +122,7 @@ LocalCode uses multiple application-level protection layers rather than relying 
 
 Currently executable child roles are Explorer, Planner and Reviewer. Their action schema is read-only and contains only project-tree reads, file reads, text search, approval-free read-only LSP and structured `finish`.
 
-The schema does not contain file mutation, shell/commands, Git mutation, web/network, MCP tool calls, installation, memory writes, approval requests or recursive child spawning. The model therefore cannot obtain those rights merely by requesting them in text.
+The schema does not contain file mutation, shell/commands, Git mutation, web/network, MCP tool calls, installation, memory writes, approval requests or recursive spawning. The model therefore cannot obtain those rights merely by requesting them in text.
 
 ### Scheduler / cancellation safety
 
@@ -142,7 +136,21 @@ A critical race boundary protects scheduled children:
 4. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete under the same scheduler lock.
 5. Exactly one terminal winner may persist state/result and release the lease.
 
-If cancellation wins first, late child results/usage are discarded. If successful completion finalizes first, later cancellation cannot rewrite that successful task. Parent-context cancellation is handled as cancellation as well. Deliberate competing tests run under Go's race detector.
+If cancellation wins first, late child results/usage are discarded. If successful completion finalizes first, later cancellation cannot rewrite that successful task. Parent-context cancellation is handled as cancellation as well. Whole-Mission cancellation terminalizes every still-nonterminal task after synchronous dispatch stops and refreshes the terminal scheduler snapshot. Deliberate race and product-boundary tests exercise these guarantees under Go's race detector.
+
+### Desktop Mission status
+
+The Desktop Mission display is an **observation-only boundary**:
+
+- `/api/status` remains the existing loopback status source; Mission data is attached only for the exactly matching execution-scoped `RunID`.
+- The caller-selected stable `MissionID` is never used as a run/journal identifier.
+- Mission telemetry lives only in a bounded in-memory registry and old entries are evicted.
+- The registry is not a journal, resume mechanism or source of authorization.
+- The Desktop card reads Mission/scheduler/budget/task state but has no Mission-start, file, shell, Git, approval, project-mutation or terminal-command path.
+- Displaying Planner/task status cannot convert `RequestedCapabilities` into executable authority.
+- This Desktop extension grants no new Mobile/Remote API or authority.
+
+Status observation therefore cannot start new work or bypass existing safety boundaries. Any future Mission-control surface must be a separate, reviewed governance boundary.
 
 ### Mobile Remote / Android
 
@@ -175,13 +183,13 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 - Rule/skill files extend model context, not policy.
 - Skills declaring non-read-only tool authority or scripts/commands do not become automatically privileged instructions.
 - Skill resources remain subject to path, size and approval boundaries.
-- Durable memories reject secret-like content and do not expand tool authority.
+- Durable memories reject secret-like contents and do not expand tool authority.
 
 ### Recovery
 
 `run_journal.go` is the recovery authority for active runs. Only bounded recovery-relevant metadata is persisted; raw tool output and credentials should not become a second transcript.
 
-Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided.
+Future Mission persistence must integrate with this recovery authority. A competing second journal would permit contradictory resume decisions and is intentionally avoided. The Desktop Mission status registry is explicitly non-durable and must not be used as a recovery substitute.
 
 ### Future mutation agents
 
