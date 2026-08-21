@@ -29,15 +29,16 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Task und `AgentResult`.
 - `src/agent_task_graph.go` – DAG-Validierung, Dependencies und Zustandspropagation.
 - `src/agent_scheduler.go` – Queue, Ressourcenlimits, Admission, Cancellation und Snapshots.
-- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung autorisierter read-only Tasks.
+- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung autorisierter read-only Tasks und durable Mission-Checkpoint-Hooks.
 - `src/agent_scheduler_finalize.go` – serialisierte Vorbereitung/Finalisierung gegen Cancel-Races.
 - `src/agent_mission.go` – explizite Governance-/Mission-Einstiegsgrenze.
 - `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
 - `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
+- `src/agent_mission_recovery.go` – begrenzte strukturierte Mission-Metadaten und Journal-Checkpoint-Abbildung; kein Auto-Resume.
 - `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
 - `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetischer Dispatcher- und opt-in Ollama-Parallelitätsbenchmark.
-- `src/run_journal.go` – dauerhafte aktive Run-/Recovery-Autorität.
+- `src/run_journal.go` – einzige dauerhafte aktive Run-/Mission-Recovery-Autorität (`active-run.json`).
 - `src/static/mission_status.js` – read-only Mission- und Orchestrierungsdiagnostik im Desktop-Output-Inspector.
 - `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
 - `src/remote_mission_status_contract.md` – Source-Level-Vertrag für die schmale Mobile-Mission-Anzeige.
@@ -86,7 +87,23 @@ Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
 - Task-State, Queue-Position, Admission-Block-Grund und Task-Budget,
 - Mission-Budget und Usage.
 
-Die Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **nichts** dauerhaft und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. `src/static/mission_status.js` liest ausschließlich diese Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector. Die Oberfläche besitzt in diesem Slice keinen Mission-Start-/Mutation-/Approval-Pfad.
+Die Status-Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **selbst nichts dauerhaft** und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. Durable Mission-Checkpoints laufen getrennt davon ausschließlich über `run_journal.go`. `src/static/mission_status.js` liest nur Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector.
+
+### Durable Mission-Checkpoints im Run Journal
+
+Eine validierte read-only Mission hängt ihre Recovery-Metadaten an denselben `RunRecoveryState`, den normale Runs bereits unter `active-run.json` verwenden. Es gibt kein zweites Mission-Journal.
+
+Der optionale Mission-Checkpoint enthält begrenzt und strukturiert:
+
+- stabile `MissionID`, Objective, direkte Projekt-/Scope-Identität, Model, Constraints und Success Criteria,
+- Mission-Budget,
+- Task-ID, Parent/Dependencies, Rolle, Zustand/Grund, Requested-/Granted-Capabilities, Model und Task-Budget,
+- Scheduler-Ressourcenklasse, Queue-Position, Running-Flag und Budget-Snapshot,
+- finalen Mission-State/-Reason, Mission-Accounting und ausschließlich vom Scheduler akzeptierte `UsageByTask`.
+
+Freitext wird über die bestehende Journal-Redaction sanitisiert und hart begrenzt. Rohes Child-/Modellresultat, Findings und Tool-Transcript werden nicht als zweites Transcript persistiert. Scheduler-Checkpoints aktualisieren denselben Journal-Datensatz während des Dispatches; die finale Mission-Ableitung schreibt den terminalen strukturierten Zustand vor dem normalen Journalabschluss.
+
+Ein unterbrochener Mission-Datensatz ist beim Start erkennbar, wird aber **nicht automatisch ausgeführt**. Insbesondere verweigert der normale Chat-Recovery-Pfad `Weiter`/`Continue` Mission-Journale, damit strukturierte Mission-Arbeit nicht als gewöhnlicher Prompt erneut abgespielt wird. Restart-Reconciliation gegen aktuelle Projekt-/Git-/Postconditions ist die nächste Schicht vor einem späteren Resume.
 
 ### Orchestrierungs- und Sättigungsdiagnostik
 
@@ -114,9 +131,9 @@ Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-
 
 ### Recovery und nächste Stufen
 
-`run_journal.go` bleibt die einzige Recovery-Autorität. Missionen besitzen noch keine dauerhafte eigene Recovery-Persistenz; die spätere Phase muss in diesen Pfad integriert werden und darf kein konkurrierendes Journal erzeugen. Die Desktop-Telemetrie aus `agent_mission_status.go`, die Orchestrierungsdiagnostik und die Mobile-Anzeige sind ausdrücklich keine Recovery-Speicher.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Read-only Missions besitzen jetzt begrenzte strukturierte durable Metadaten und Scheduler-/Accounting-Checkpoints im bestehenden `active-run.json`; Desktop-Telemetrie, Orchestrierungsdiagnostik und Mobile-Anzeige bleiben davon getrennte, nicht autoritative Beobachtungsflächen.
 
-Als Nächstes folgt dauerhafte Mission-Metadaten-/Recovery-Integration in `run_journal.go` mit Restart-Reconciliation. Mutation-capable Builder in isolierten Git-Worktrees kommen erst danach.
+Noch nicht implementiert sind automatische Mission-Wiederaufnahme, Retry oder Replay. Als Nächstes folgt Restart-Reconciliation gegen aktuelle Projekt-/Git-/Task-Postconditions; erst danach können kontrolliertes Resume/Retry und weitere Crash-Recovery-Fälle aufgebaut werden. Mutation-capable Builder in isolierten Git-Worktrees kommen erst nach belastbarer Mission-Recovery.
 
 ---
 
@@ -149,15 +166,16 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/agent_team_types.go` – roles, capabilities, budgets, usage, tasks and `AgentResult`.
 - `src/agent_task_graph.go` – DAG validation, dependencies and state propagation.
 - `src/agent_scheduler.go` – queue, resource limits, admission, cancellation and snapshots.
-- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only tasks.
+- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only tasks plus durable Mission checkpoint hooks.
 - `src/agent_scheduler_finalize.go` – serialized preparation/finalization against cancellation races.
 - `src/agent_mission.go` – explicit governance/Mission entry boundary.
 - `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
 - `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
+- `src/agent_mission_recovery.go` – bounded structured Mission metadata and journal-checkpoint mapping; no auto-resume.
 - `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
 - `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetic dispatcher and opt-in Ollama parallelism benchmark.
-- `src/run_journal.go` – durable active-run recovery authority.
+- `src/run_journal.go` – sole durable active-run/Mission recovery authority (`active-run.json`).
 - `src/static/mission_status.js` – read-only Mission and orchestration diagnostics in the Desktop Output inspector.
 - `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
 - `src/remote_mission_status_contract.md` – source-level contract for the narrow Mobile Mission display.
@@ -170,7 +188,7 @@ The only executable child roles are **Explorer**, **Planner** and **Reviewer**. 
 
 `AgentTaskGraph` contains a stable Mission ID and stable task IDs. Dependencies, cycles and states are validated. `AgentScheduler` owns a bounded ready queue and resource classes; read-only children currently default to `model-inference`, whose default limit is one.
 
-Scheduler acceptance now includes larger saturation/fairness cases: multiple resource classes can be saturated simultaneously, admissible work in another class may bypass older work blocked by its saturated class, FIFO is preserved within a resource class, and a 14-task fan-out/fan-in DAG must drain without starvation or resource leakage.
+Scheduler acceptance includes larger saturation/fairness cases: multiple resource classes may be saturated simultaneously, admissible work in another class may bypass older work blocked by its saturated class, FIFO is preserved within a resource class, and a 14-task fan-out/fan-in DAG must drain without starvation or resource leakage.
 
 ### Governed Mission Manager
 
@@ -191,49 +209,46 @@ Mission-wide usage is aggregated only from scheduler-accepted `UsageByTask`. Mod
 5. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete again at the same lock boundary;
 6. only the terminal winner may persist result/usage and release the lease.
 
-Cancellation-first discards late child results. Completion-first remains successful. When a whole Mission is cancelled through its parent context or `StopAgent`, the Mission boundary also terminalizes every still-unfinished `ready`/`blocked`/other non-terminal task as `cancelled` after synchronous dispatch has stopped; already-terminal successful or failed work is preserved. The terminal scheduler snapshot is refreshed afterwards so the graph, Mission result and Desktop status expose the same terminal state.
+Cancellation-first discards late child results. Completion-first remains successful. Whole-Mission cancellation terminalizes unfinished work after synchronous dispatch stops and refreshes the terminal Scheduler snapshot so graph, Mission result and Desktop status agree.
 
 ### Desktop Mission status
 
 Desktop continues to use `/api/status` as its canonical status source. `Status.MarshalJSON` adds a `mission` object only when Mission telemetry matches the current execution-scoped `RunID`. Normal runs and unrelated RunIDs do not receive Mission data.
 
-While a read-only Mission is executing, a bounded in-memory monitor publishes:
+While a read-only Mission is executing, a bounded in-memory monitor publishes stable Mission/Run identity, Mission state/reason, queued/running counts, resource state, task state/queue/admission/budget facts and Mission budget/usage.
 
-- stable `MissionID` and execution-scoped `RunID`,
-- Mission state/reason,
-- queued/running counts,
-- resource class, limits and usage,
-- task state, queue position, admission-block reason and task budget,
-- Mission budget and usage.
+The status registry is bounded and evicts old observations. It **does not itself write durable state** and cannot start, continue, resume or authorize a Mission. Durable Mission checkpoints are separate and flow only through `run_journal.go`. `src/static/mission_status.js` only reads status data.
 
-The registry retains only a bounded number of observations and evicts old data. It writes **nothing** durably and cannot start, continue, resume or authorize a Mission. `src/static/mission_status.js` only reads this status data and renders a DE/EN card in the existing Output inspector. This slice contains no Mission-start, mutation or approval path.
+### Durable Mission checkpoints in the run journal
+
+A validated read-only Mission attaches its recovery metadata to the same `RunRecoveryState` already persisted as `active-run.json` for normal runs. No second Mission journal is introduced.
+
+The optional Mission checkpoint contains bounded structured identity/objective/scope/model/constraints/success criteria, Mission budget, task DAG/state/capability/model/budget information, Scheduler resource/queue/running/budget snapshots, and final Mission state/reason/accounting plus only scheduler-accepted per-task usage.
+
+Free text passes through the existing journal redaction and hard bounds. Raw Child/model result prose, findings and tool transcripts are not copied into durable Mission metadata. Scheduler checkpoints update the same journal record during dispatch; final Mission derivation records terminal structured state before normal journal completion.
+
+An interrupted Mission is detectable at startup but is **not automatically executed**. Normal chat `Continue` recovery refuses Mission journal entries so structured Mission work cannot be replayed as an ordinary prompt. Restart reconciliation against current project/Git/postconditions is required before any future resume implementation.
 
 ### Orchestration and saturation diagnostics
 
-`/api/status` also contains a machine-readable `orchestration` object. It is derived from the already-read Ollama/model state and, when present, the current ephemeral Mission/Scheduler snapshot; it is not a second Scheduler or recovery source.
+`/api/status` also contains a machine-readable `orchestration` object derived from current Ollama/model state and the ephemeral Mission/Scheduler snapshot. It is not a second Scheduler or recovery source.
 
-Diagnostics distinguish `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`. Reasons separately identify Ollama offline, no selected model, a selected model missing locally, a running Mission, a reached queue limit and queued work waiting on a full resource class.
-
-For each resource class, diagnostics report limit, in-use, available and waiting work. **`at_capacity` intentionally differs from `saturated`:** `at_capacity` only means every slot is occupied; `saturated` requires both a full resource and compatible work waiting for it. Queue utilization and logical ready/running/blocked counts are reported separately. Actual normalized Mission resource limits are retained in ephemeral Mission status so active-Mission diagnostics do not silently assume defaults.
-
-Diagnostics do not alter queue limits, admission or model concurrency. They cannot start work and are not performance evidence. Benchmark measurement is handled separately by the benchmark boundary below. `src/static/mission_status.js` renders these diagnostics read-only in the existing Desktop Output inspector; Mobile does not receive this Desktop payload.
+Diagnostics distinguish `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`; `at_capacity` only means every slot is occupied while `saturated` additionally requires matching waiting work. Diagnostics do not alter queue limits, admission or model concurrency and are not performance evidence.
 
 ### Orchestration benchmarks
 
-`BenchmarkScheduledReadOnlyDispatcherParallelism` deliberately separates three layers: four simultaneously logically-ready read-only tasks, configured `model-inference` slot capacity and actually observed executor overlap. The current `runScheduledReadOnlyAgentGraphWithExecutor` loop invokes the executor synchronously. A model-inference limit greater than one therefore is not by itself evidence of parallel child-model calls. The synthetic executor has a fixed short delay so future real overlap becomes visible in the same measurement format.
+`BenchmarkScheduledReadOnlyDispatcherParallelism` deliberately separates logical readiness, configured `model-inference` slot capacity and observed executor overlap. The current dispatch loop invokes the executor synchronously; a model-inference limit greater than one is therefore not by itself evidence of parallel child-model calls.
 
-`TestOllamaConcurrencyBenchmarkOptIn` additionally measures a fixed real Ollama workload at client concurrency 1/2/4 through the same production `OllamaClient.Chat` path. This run is explicitly opt-in, accepts loopback only, requires an exact already-installed model and calls neither `EnsureRunning` nor `Pull`. It measures end-to-end wall time, latency, requests/second and client overlap. It does **not** infer simultaneous GPU-kernel or token inference because Ollama may queue or batch internally.
+`TestOllamaConcurrencyBenchmarkOptIn` measures a fixed real Ollama workload at client concurrency 1/2/4 through the production `OllamaClient.Chat` path. It is explicitly opt-in, loopback-only, requires an exact already-installed model and calls neither `EnsureRunning` nor `Pull`. Client overlap or throughput is not treated as proof of simultaneous GPU/token inference.
 
-Benchmark results are evidence, not Scheduler policy. A later model-slot change is a separate reviewed change. Commands, parameter bounds and interpretation rules are documented in `docs/ORCHESTRATION_BENCHMARKS.md`.
+Benchmark results are evidence, not Scheduler policy. Model-slot changes require a separate reviewed change. Commands, bounds and interpretation rules are documented in `docs/ORCHESTRATION_BENCHMARKS.md`.
 
 ### Mobile Mission status
 
-Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission endpoint and does not receive the Desktop `mission` object. `src/static/remote.html` uses only the already-authenticated `running` and `run_phase` fields from `/remote/api/status`.
-
-When `running == true && run_phase == "mission-read-only"`, Remote only indicates an active read-only Mission in its header and Tasks view. It does not receive Mission/task IDs, scheduler/queue/resource details, Mission/task budgets, usage/accounting or new Mission start/spawn/retry/resume actions. Existing Remote stop behavior is unchanged; this slice adds no new authority.
+Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission endpoint and does not receive the Desktop `mission` object. `src/static/remote.html` uses only authenticated `running` and `run_phase` fields. Existing Remote stop behavior is unchanged and no Mission control authority is added.
 
 ### Recovery and next layers
 
-`run_journal.go` remains the sole recovery authority. Missions do not yet have durable recovery persistence; the later Mission-recovery phase must integrate with this path rather than create a competing journal. Desktop telemetry, orchestration diagnostics and the Mobile indicator are explicitly not recovery stores.
+`run_journal.go` remains the sole recovery authority. Read-only Missions now have bounded structured durable metadata plus Scheduler/accounting checkpoints inside the existing `active-run.json`; Desktop telemetry, orchestration diagnostics and the Mobile indicator remain separate non-authoritative observation surfaces.
 
-Next is durable Mission metadata/recovery integration with `run_journal.go` plus restart reconciliation. Mutation-capable Builders in isolated Git worktrees come later.
+Automatic Mission resume, retry and replay are still absent. Restart reconciliation against current project/Git/task postconditions comes next, followed by controlled resume/retry and broader crash-recovery coverage. Mutation-capable Builders in isolated Git worktrees come only after durable Mission recovery is sound.
