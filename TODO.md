@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `d72d2d1b14dc50bb6e5fce4f3d2fe1174d51c5ed`  
-**Active work:** PR #61 `feat: reconcile interrupted missions on restart`, branch `feat/mission-restart-reconciliation`  
+**Authoritative merged base for this slice:** master `6feb2e981bc290f0fd08c642488fc46b1d351c2e`  
+**Active work:** PR #62 `feat: persist mission task completion evidence`, branch `feat/mission-postcondition-evidence`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -15,17 +15,18 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
 
-## P0 – finish current restart-reconciliation slice
+## P0 – finish current completion-evidence slice
 
-- [ ] Finish PR #61 on one exact head: keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
-- [ ] Preserve the safety boundary: reconciliation is observation/classification only. Do not add automatic Mission resume, retry or replay in #61.
-- [ ] Keep crash-running tasks `interrupted_unknown`; never infer success from a durable `running` flag.
-- [ ] Keep raw Git porcelain paths out of durable recovery data; only bounded identity hashes/HEAD evidence may be stored.
+- [ ] Finish PR #62 on one exact head: keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
+- [ ] Persist successful-task completion evidence at scheduler-authoritative checkpoints so an interruption after accepted completion does not lose it.
+- [ ] Keep evidence bounded to result status/digest, fixed structural counts, `unverified` state and timestamp; do not persist raw Child/model result text, findings, file paths, test details, risk text or suggested-task objectives.
+- [ ] Keep first accepted completion evidence immutable; stale/late results must not overwrite it.
+- [ ] Preserve the safety boundary: completion evidence is not postcondition verification and grants no automatic Mission resume, retry or replay.
 
 ## P0/P1 – Phase 6: safe Mission continuation after reconciliation
 
-- [ ] Persist bounded task result/postcondition evidence sufficient to verify previously completed read-only work without copying raw Child/model transcripts.
-- [ ] Persist task attempt/retry counters, verification state and relevant transition timestamps.
+- [ ] Persist task attempt/retry counters and relevant transition timestamps.
+- [ ] Add explicit verification state transitions and bounded postcondition-verification evidence on top of the `unverified` completion record.
 - [ ] Define explicit recovery transitions for queued, ready, blocked, running-at-crash, failed, cancelled, succeeded-but-unverified and verified work.
 - [ ] Support Mission/task pause and controlled resume only after reconciliation and required postcondition verification pass.
 - [ ] Add controlled retry with per-task/per-mission attempt limits; preserve existing cancel semantics.
