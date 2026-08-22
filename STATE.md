@@ -72,13 +72,15 @@ The planner emits per-task actions such as:
 
 Dependency safety is deliberately stricter than normal DAG readiness: any task that could later be reused or executed requires every dependency to be a **currently matched, verified durable success**. An unverified or drift-blocked dependency prevents downstream continuation.
 
+A historical `verified` flag is not sufficient for reuse. `reuse_verified` additionally requires coherent durable evidence: a successful persisted result status, canonical result and verification SHA-256 digests, a positive bounded verification check count and attempt record, nonnegative structure counts, and non-zero monotonic completion/verification timestamps. Malformed historical verification evidence is downgraded to `verify_postconditions` and cannot satisfy downstream dependencies until freshly re-verified.
+
 Fixed planning bounds are `3` execution attempts per task and `192` aggregate Mission attempts (`64` maximum read-only Mission tasks × `3`). Existing lifecycle counters are authoritative evidence for these bounds; repeated snapshots never create attempts. Failed/retryable legacy work without lifecycle evidence is not made retryable because the remaining attempt budget cannot be proven.
 
 Before producing any candidate action, #65 reconstructs and validates the durable task graph using the existing DAG validator. Duplicate IDs, missing dependencies, cycles, unsupported states, invalid task metadata, more than 64 tasks, negative/inconsistent lifecycle counters or counters above the fixed per-task limit make the plan invalid. Invalid plans produce only `invalid_recovery_state`, never executable candidates.
 
 The aggregate Mission attempt bound is represented explicitly in the plan together with observed attempts and bounded prospective reservations. Reservations are planning facts only: they are not execution leases and cannot authorize a task.
 
-Focused tests cover verified/unverified dependencies, current Git drift, stale crash-running flags, retry eligibility and task limits, missing legacy lifecycle evidence, malformed/cyclic recovery DAGs, inconsistent lifecycle counters and the exact 64×3 Mission bound.
+Focused tests cover verified/unverified dependencies, malformed historical `verified` evidence, current Git drift, stale crash-running flags, retry eligibility and task limits, missing legacy lifecycle evidence, malformed/cyclic recovery DAGs, inconsistent lifecycle counters and the exact 64×3 Mission bound.
 
 ## 5. Safety and correctness invariants
 
@@ -98,6 +100,7 @@ Focused tests cover verified/unverified dependencies, current Git drift, stale c
 - A crash-running task is never treated as successful or directly resumable.
 - Repeated scheduler snapshots must not double-count task attempts.
 - Verification records must not persist raw verification output; `verified` may not silently regress.
+- A malformed historical `verified` record must never authorize reuse or satisfy a dependency without fresh postcondition verification.
 - Recovery transition plans are classification only, never Scheduler admission or execution authority.
 - Reusable/executable candidates require currently verified reusable dependencies.
 - Malformed recovery graphs/counters must fail closed to `invalid_recovery_state`.
