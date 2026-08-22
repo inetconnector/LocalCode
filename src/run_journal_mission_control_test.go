@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"testing"
