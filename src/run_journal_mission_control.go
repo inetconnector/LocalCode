@@ -30,6 +30,7 @@ type MissionRecoveryControlSnapshot struct {
 	RunID                   string                               `json:"run_id"`
 	MissionID               string                               `json:"mission_id"`
 	ObservedAt              time.Time                            `json:"observed_at"`
+	JournalSHA256           string                               `json:"journal_sha256"`
 	SnapshotSHA256          string                               `json:"snapshot_sha256"`
 	ReconciliationState     string                               `json:"reconciliation_state"`
 	ReconciliationReason    string                               `json:"reconciliation_reason"`
@@ -187,6 +188,7 @@ func buildMissionRecoveryControlSnapshot(state *RunRecoveryState, journalFingerp
 		RunID:                   state.RunID,
 		MissionID:               mission.MissionID,
 		ObservedAt:              observedAt,
+		JournalSHA256:           journalFingerprint,
 		Verifications:           verifications,
 		Plan:                    plan,
 		ReadOnly:                true,

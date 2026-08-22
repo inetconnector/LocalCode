@@ -41,6 +41,8 @@ func (s *Server) routes() {
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 	s.mux.HandleFunc("/api/ping", s.handlePing)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
+	s.mux.HandleFunc("/api/mission-recovery", s.handleMissionRecovery)
+	s.mux.HandleFunc("/api/mission-recovery/continue", s.handleMissionRecoveryContinue)
 	s.mux.HandleFunc("/api/projects", s.handleProjects)
 	s.mux.HandleFunc("/api/select-project", s.handleSelectProject)
 	s.mux.HandleFunc("/api/project-action", s.handleProjectAction)
