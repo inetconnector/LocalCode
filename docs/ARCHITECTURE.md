@@ -37,6 +37,7 @@ LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher 
 - `src/run_journal_mission.go` – begrenzte strukturierte Mission-Metadaten, Projekt-/Git-Baseline und Journal-Checkpoint-Abbildung; kein Auto-Resume.
 - `src/run_journal_mission_reconcile.go` – read-only Restart-Reconciliation gegen Projektidentität, Git-HEAD und gehashten Worktree-Zustand; keine Resume-/Retry-Authority.
 - `src/run_journal_mission_postcondition_verify.go` – deterministische read-only Postcondition-Verifikation für durable erfolgreiche Recovery-Tasks; keine Child-/Modell-Ausführung und keine Resume-/Retry-Authority.
+- `src/run_journal_mission_transition_plan.go` – deterministische Recovery-Transition-Klassifikation mit Dependency- und Attempt-Grenzen; reine Planung ohne Scheduler-Admission oder Ausführung.
 - `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
 - `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetischer Dispatcher- und opt-in Ollama-Parallelitätsbenchmark.
@@ -91,7 +92,7 @@ Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
 
 Die Status-Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **selbst nichts dauerhaft** und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. Durable Mission-Checkpoints laufen getrennt davon ausschließlich über `run_journal.go`. `src/static/mission_status.js` liest nur Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector.
 
-### Durable Mission-Checkpoints und Restart-Reconciliation
+### Durable Mission-Checkpoints, Verifikation und Transition-Planung
 
 Eine validierte read-only Mission hängt ihre Recovery-Metadaten an denselben `RunRecoveryState`, den normale Runs bereits unter `active-run.json` verwenden. Es gibt kein zweites Mission-Journal.
 
@@ -101,21 +102,24 @@ Der optionale Mission-Checkpoint enthält begrenzt und strukturiert:
 - Mission-Budget,
 - Task-ID, Parent/Dependencies, Rolle, Zustand/Grund, Requested-/Granted-Capabilities, Model und Task-Budget,
 - Scheduler-Ressourcenklasse, Queue-Position, Running-Flag und Budget-Snapshot,
+- Completion-/Lifecycle-/Verification-Evidenz,
 - finalen Mission-State/-Reason, Mission-Accounting und ausschließlich vom Scheduler akzeptierte `UsageByTask`.
 
 Beim Missionsstart wird zusätzlich eine begrenzte Reconciliation-Baseline festgehalten: SHA-256 der kanonischen Projektidentität, Git-Beobachtungszustand, SHA-256 der Git-Root-Identität, exaktes `HEAD`, SHA-256 der Bytes aus `git status --porcelain=v1 -z --untracked-files=all` sowie der Erfassungszeitpunkt. Rohe Porcelain-Ausgabe und damit Dateipfade werden nicht in den Checkpoint geschrieben.
 
 Der Git-Observer ist ein privater, fest verdrahteter read-only Pfad. Er akzeptiert keinen freien Command-Text und führt mit einem Drei-Sekunden-Timeout ausschließlich `rev-parse --show-toplevel`, `rev-parse --verify HEAD` und den genannten Porcelain-Status aus. Diese Beobachtung erteilt keine Git-, Shell- oder Scheduler-Berechtigung.
 
-Nach einem Prozessabbruch wird eine nicht-terminale Mission beim nächsten Laden gegen die aktuelle Projekt-/Git-Sicht abgeglichen. Der abgeleitete Zustand ist `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` oder `insufficient_evidence`. Ältere Mission-Journale ohne Baseline sowie nicht ausreichend beobachtbare Baselines werden konservativ als `insufficient_evidence` behandelt.
+Nach einem Prozessabbruch wird eine nicht-terminale Mission gegen die aktuelle Projekt-/Git-Sicht abgeglichen. Der Zustand ist `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` oder `insufficient_evidence`. Ein beim Abbruch laufender Task bleibt `interrupted_unknown`. Durable erfolgreiche Tasks benötigen begrenzte Verifikation; ein historisches `verified` ist nur wiederverwendbar, wenn die **aktuelle** Reconciliation weiterhin `matched` ist.
 
-Task-Zustände werden klassifiziert, nicht ausgeführt: ein bei Prozessabbruch `running` markierter Task wird immer `interrupted_unknown`; durable `succeeded`/legacy `completed`-Tasks bleiben bei fehlender/fehlgeschlagener Verifikation `verify_postconditions`; ein bereits `verified` erfolgreicher Task wird nur dann als terminal/wiederverwendbar klassifiziert, wenn die **aktuelle** Projekt-/Git-Reconciliation weiterhin `matched` ist. Noch nicht gestartete Arbeit wird nur bei `matched` als `pending` eingestuft; bei Drift oder unzureichender Evidenz bleibt potenziell wiederverwendbare Arbeit `blocked_reconciliation`; bereits `failed`/`cancelled` bleibt terminal.
+Der interne Postcondition-Verifier führt eine frische read-only Projekt-/Git-Beobachtung durch und prüft feste Recovery-Fakten: aktuelle Reconciliation `matched`, Task nicht laufend, durable Success-State, vorhandene Completion-Evidenz, erfolgreicher Completion-Status und kanonischer Completion-SHA-256. Der Verification-Digest bindet Mission-/Task-ID, Completion-Digest, aktuelle gehashte Projekt-/Git-Identität, `HEAD`, gehashten Porcelain-Status und feste Check-Bools. Rohpfade, Child-/Modelloutput und rohe Verifikationsausgabe werden nicht persistiert. Eine optimistische Journal-Precondition verhindert einen Write, wenn sich der Mission-Recovery-Zustand während der Beobachtung geändert hat.
 
-Für einen durable erfolgreichen Task kann der interne Postcondition-Verifier eine frische read-only Projekt-/Git-Beobachtung durchführen. Er prüft ausschließlich feste Recovery-Fakten: aktuelle Reconciliation `matched`, Task nicht laufend, durable Success-State, vorhandene Completion-Evidenz, erfolgreicher Completion-Status und kanonischer Completion-SHA-256. Der daraus erzeugte Verification-Digest bindet Mission-/Task-ID, Completion-Digest, aktuelle gehashte Projekt-/Git-Identität, `HEAD`, gehashten Porcelain-Status und die festen Check-Bools. Rohpfade, Child-/Modelloutput und rohe Verifikationsausgabe werden nicht persistiert. Ein historisches `verified` ersetzt niemals die aktuelle Reconciliation; Drift blockiert Wiederverwendung auch dann, wenn der terminale Verification-State selbst nicht zurückgestuft wird.
+Auf dieser Evidenz erzeugt der Transition-Planer ausschließlich Klassifikation. Er rekonstruiert den durable DAG und validiert ihn mit der bestehenden Graph-Validierung. Duplicate IDs, fehlende Dependencies, Zyklen, ungültige Task-Metadaten, mehr als 64 Tasks oder inkonsistente/überhöhte Lifecycle-Zähler führen zu einem invaliden Plan; dann wird ausschließlich `invalid_recovery_state` ausgegeben.
 
-Freitext wird über die bestehende Journal-Redaction sanitisiert und hart begrenzt. Rohes Child-/Modellresultat, Findings und Tool-Transcript werden nicht als zweites Transcript persistiert. Scheduler-Checkpoints aktualisieren denselben Journal-Datensatz während des Dispatches; die finale Mission-Ableitung schreibt den terminalen strukturierten Zustand vor dem normalen Journalabschluss.
+Bei gültigem Plan sind unter anderem `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, `preserve_terminal` sowie blockierende Reconciliation-/Dependency-/Attempt-Zustände möglich. Für jede Wiederverwendungs- oder spätere Ausführungskandidatur müssen alle Dependencies aktuell `verified` und wiederverwendbar sein. Die Planungsobergrenzen sind drei Attempts pro Task und 192 Attempts pro Mission (64×3). Failed/retryable Legacy-Tasks ohne Lifecycle-Evidenz werden nicht als Retry-Kandidaten eingestuft, weil das verbleibende Attempt-Budget nicht beweisbar ist.
 
-Ein unterbrochener Mission-Datensatz bleibt auch dann als Recovery-Evidenz sichtbar, wenn sein Projektverzeichnis inzwischen fehlt; normale Nicht-Mission-Runs behalten dagegen die bisherige Projekt-Existenzprüfung. Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale weiterhin ausdrücklich. Reconciliation und Postcondition-Verifikation starten keine Child-Arbeit und sind keine Resume-/Retry-/Replay-Autorität.
+Der Planer reserviert keine echte Scheduler-Ressource. `RequiresNewAttempt` und prospective Attempt-Zählung sind Planungsfakten, keine Leases, keine Admission und keine Ausführungsberechtigung. Er startet weder Child noch Modell und verändert keine Mission.
+
+Freitext wird über die bestehende Journal-Redaction sanitisiert und hart begrenzt. Rohes Child-/Modellresultat, Findings und Tool-Transcript werden nicht als zweites Transcript persistiert. Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale weiterhin ausdrücklich. Reconciliation, Postcondition-Verifikation und Transition-Planung sind keine Resume-/Retry-/Replay-Autorität.
 
 ### Orchestrierungs- und Sättigungsdiagnostik
 
@@ -143,9 +147,9 @@ Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-
 
 ### Recovery und nächste Stufen
 
-`run_journal.go` bleibt die einzige Recovery-Autorität. Read-only Missions besitzen begrenzte strukturierte durable Metadaten, Projekt-/Git-Baselines, Scheduler-/Accounting-Checkpoints, Completion-/Lifecycle-/Verification-Evidenz, abgeleitete Restart-Reconciliation und die interne read-only Postcondition-Verifikation im bestehenden `active-run.json`-Recovery-Pfad; Desktop-Telemetrie, Orchestrierungsdiagnostik und Mobile-Anzeige bleiben davon getrennte, nicht autoritative Beobachtungsflächen.
+`run_journal.go` bleibt die einzige Recovery-Autorität. Read-only Missions besitzen begrenzte strukturierte durable Metadaten, Projekt-/Git-Baselines, Scheduler-/Accounting-Checkpoints, Completion-/Lifecycle-/Verification-Evidenz, Restart-Reconciliation, interne read-only Postcondition-Verifikation und deterministische Transition-Planung im bestehenden Recovery-Pfad. Desktop-Telemetrie, Orchestrierungsdiagnostik und Mobile-Anzeige bleiben nicht autoritativ.
 
-Automatische Mission-Wiederaufnahme, Retry und Replay sind weiterhin nicht implementiert. Als Nächstes folgt ein deterministischer Recovery-Transition-Planer für queued/ready/blocked/running-at-crash/failed/cancelled/unverified/verification-failed/verified; erst darauf dürfen kontrolliertes Resume/Retry und weitere Crash-Recovery-Fälle aufbauen. Mutation-capable Builder in isolierten Git-Worktrees kommen erst nach belastbarer Mission-Recovery.
+Automatische Mission-Wiederaufnahme, Retry und Replay sind weiterhin nicht implementiert. Als Nächstes folgt eine explizite kontrollierte read-only Recovery-Control-Grenze, die unmittelbar vor jeder Pause/Resume/Retry-Entscheidung Reconciliation, notwendige Verifikation und Transition-Plan frisch berechnet und weiterhin normale Scheduler-/Budget-/Cancellation-Grenzen einhält. Mutation-capable Builder in isolierten Git-Worktrees kommen erst nach belastbarer Mission-Recovery.
 
 ---
 
@@ -186,6 +190,7 @@ LocalCode deliberately separates **logical agent parallelism** from **actual mod
 - `src/run_journal_mission.go` – bounded structured Mission metadata, project/Git baseline and journal-checkpoint mapping; no auto-resume.
 - `src/run_journal_mission_reconcile.go` – read-only restart reconciliation against project identity, Git HEAD and hashed worktree state; no resume/retry authority.
 - `src/run_journal_mission_postcondition_verify.go` – deterministic read-only postcondition verification for durable successful recovery tasks; no Child/model execution and no resume/retry authority.
+- `src/run_journal_mission_transition_plan.go` – deterministic recovery-transition classification with dependency and attempt limits; planning only, without Scheduler admission or execution.
 - `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
 - `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
 - `src/agent_orchestration_parallelism_benchmark_test.go` – synthetic dispatcher and opt-in Ollama parallelism benchmark.
@@ -233,25 +238,23 @@ While a read-only Mission is executing, a bounded in-memory monitor publishes st
 
 The status registry is bounded and evicts old observations. It **does not itself write durable state** and cannot start, continue, resume or authorize a Mission. Durable Mission checkpoints are separate and flow only through `run_journal.go`. `src/static/mission_status.js` only reads status data.
 
-### Durable Mission checkpoints and restart reconciliation
+### Durable Mission checkpoints, verification and transition planning
 
 A validated read-only Mission attaches its recovery metadata to the same `RunRecoveryState` already persisted as `active-run.json` for normal runs. No second Mission journal is introduced.
 
-The optional Mission checkpoint contains bounded structured identity/objective/scope/model/constraints/success criteria, Mission budget, task DAG/state/capability/model/budget information, Scheduler resource/queue/running/budget snapshots, and final Mission state/reason/accounting plus only scheduler-accepted per-task usage.
+The Mission checkpoint stores bounded structured identity/objective/scope/model/constraints/success criteria, Mission budget, DAG/task state and capabilities, Scheduler resource/queue/running/budget snapshots, completion/lifecycle/verification evidence, final Mission state/reason/accounting and only scheduler-accepted usage.
 
-Mission start also captures a bounded reconciliation baseline: SHA-256 of canonical project identity, Git observation state, SHA-256 of Git-root identity, exact `HEAD`, SHA-256 of the bytes returned by `git status --porcelain=v1 -z --untracked-files=all`, and capture time. Raw porcelain output and therefore file paths are not persisted.
+Mission start captures a bounded reconciliation baseline: SHA-256 canonical project identity, Git observation state, SHA-256 Git-root identity, exact `HEAD`, SHA-256 of `git status --porcelain=v1 -z --untracked-files=all` bytes and capture time. Raw porcelain output and file paths are not persisted. The Git observer is fixed-function read-only and grants no Git, shell or Scheduler authority.
 
-The Git observer is a private fixed-function read-only path. It accepts no arbitrary command text and runs only `rev-parse --show-toplevel`, `rev-parse --verify HEAD`, and the stated porcelain status with a three-second timeout. Observation grants no Git, shell or Scheduler authority.
+After interruption, current project/Git state is reconciled as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` or `insufficient_evidence`. Crash-running work stays `interrupted_unknown`. Durable success needs bounded verification, and historical `verified` is reusable only while current reconciliation remains `matched`.
 
-After a process interruption, a non-terminal Mission is compared with the current project/Git observation on the next load. The derived state is `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable`, or `insufficient_evidence`. Older Mission journals without the baseline, and baselines that could not be observed sufficiently, are conservatively classified as `insufficient_evidence`.
+The internal postcondition verifier freshly observes current project/Git state and checks fixed recovery facts: matched reconciliation, non-running task, durable success, completion evidence, successful completion status and canonical completion digest. Its SHA-256 evidence binds Mission/task identity and current hashed/HEAD Git observation. Raw paths, Child/model output and raw verification output are not persisted. An optimistic journal precondition prevents stale writes after concurrent recovery-state changes.
 
-Task states are classified rather than executed: a task marked `running` at process interruption always becomes `interrupted_unknown`; durable `succeeded`/legacy `completed` work remains `verify_postconditions` when verification is absent or failed; already `verified` successful work is terminal/reusable only while the **current** project/Git reconciliation still matches. Not-started work is `pending` only when reconciliation matched; drift or insufficient evidence keeps potentially reusable work `blocked_reconciliation`; existing `failed`/`cancelled` work remains terminal.
+The transition planner then produces classification only. It reconstructs and validates the durable DAG. Duplicate IDs, missing dependencies, cycles, invalid task metadata, more than 64 tasks or inconsistent/over-limit lifecycle counters invalidate the whole plan; every task becomes `invalid_recovery_state` and no candidate is executable.
 
-For a durable successful task, the internal postcondition verifier can perform a fresh read-only project/Git observation. It checks only fixed recovery facts: current reconciliation is `matched`, task is not running, durable success state, completion evidence exists, completion status is successful, and the completion SHA-256 is canonical. Its verification digest binds Mission/task identity, completion digest, current hashed project/Git identity, `HEAD`, hashed porcelain status and fixed check booleans. Raw paths, Child/model output and raw verification output are not persisted. Historical `verified` never overrides current reconciliation; drift blocks reuse even though the terminal verification state itself is not regressed.
+Valid plans may classify `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, `preserve_terminal` and blocking reconciliation/dependency/attempt outcomes. Any reusable or future executable candidate requires every dependency to be currently verified and reusable. Fixed planning bounds are three attempts per task and 192 aggregate Mission attempts (64×3). Failed/retryable legacy work without lifecycle evidence is not retryable because its remaining attempt budget cannot be proven.
 
-Free text passes through the existing journal redaction and hard bounds. Raw Child/model result prose, findings and tool transcripts are not copied into durable Mission metadata. Scheduler checkpoints update the same journal record during dispatch; final Mission derivation records terminal structured state before normal journal completion.
-
-An interrupted Mission remains visible as recovery evidence even when its project directory has disappeared; normal non-Mission recovery retains the existing project-directory existence requirement. Normal chat `Continue` recovery still explicitly rejects Mission journals. Reconciliation and postcondition verification start no Child work and are not resume/retry/replay authority.
+The planner reserves no Scheduler resource. Prospective attempts and `RequiresNewAttempt` are planning facts, not leases, admission or execution authority. It starts no Child/model and mutates no Mission. Normal chat `Continue` still rejects Mission journals. Reconciliation, verification and transition planning are not resume/retry/replay authority.
 
 ### Orchestration and saturation diagnostics
 
@@ -273,6 +276,6 @@ Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission
 
 ### Recovery and next layers
 
-`run_journal.go` remains the sole recovery authority. Read-only Missions now have bounded structured durable metadata, project/Git baselines, Scheduler/accounting checkpoints, completion/lifecycle/verification evidence, derived restart reconciliation and internal read-only postcondition verification in the existing `active-run.json` recovery path; Desktop telemetry, orchestration diagnostics and the Mobile indicator remain separate non-authoritative observation surfaces.
+`run_journal.go` remains the sole recovery authority. Read-only Missions now have bounded structured durable metadata, project/Git baselines, Scheduler/accounting checkpoints, completion/lifecycle/verification evidence, restart reconciliation, internal read-only postcondition verification and deterministic transition planning in the existing recovery path. Desktop telemetry, orchestration diagnostics and the Mobile indicator remain non-authoritative.
 
-Automatic Mission resume, retry and replay remain absent. A deterministic recovery-transition planner for queued/ready/blocked/running-at-crash/failed/cancelled/unverified/verification-failed/verified work comes next; only then can controlled resume/retry and broader crash-recovery coverage be built. Mutation-capable Builders in isolated Git worktrees come only after durable Mission recovery is sound.
+Automatic Mission resume, retry and replay remain absent. Next comes an explicit controlled read-only recovery-control boundary that recomputes reconciliation, required verification and the transition plan immediately before any pause/resume/retry decision and still obeys normal Scheduler, budget and cancellation boundaries. Mutation-capable Builders in isolated Git worktrees come only after durable Mission recovery is sound.
