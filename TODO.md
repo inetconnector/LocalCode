@@ -3,7 +3,7 @@
 **Verified:** 2026-08-22 Europe/Berlin  
 **Authoritative merged base for this slice:** master `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
 **Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
-**Active work:** documentation synchronization on branch `docs/finalize-desktop-mission-recovery`; PR not yet opened at this checkpoint  
+**Active work:** draft PR #70 `docs: finalize desktop mission recovery state`, branch `docs/finalize-desktop-mission-recovery`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.
@@ -18,13 +18,12 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Keep startup passive; recovery must never automatically resume/retry/replay work.
 - [ ] Keep Mobile/Remote authority narrower than Desktop.
 
-## P0 – finish post-#69 documentation synchronization
+## P0 – finish PR #70 documentation synchronization
 
-- [ ] Correct README, Architecture and Security text that still describes controlled Mission resume/retry as unimplemented.
-- [ ] Record #69 as merged on `master` and Quality #608 as the exact-tree fully green validation evidence.
-- [ ] Keep the Desktop recovery trust boundary explicit: loopback-only control, fresh admission revalidation, no reusable UI authorization token, no Remote/Mobile recovery route, no automatic startup continuation.
-- [ ] Obtain a complete exact-head Quality success for the final documentation head.
-- [ ] Inspect reviews and review threads; merge only the exact green head and verify the resulting `master` SHA.
+- [ ] Obtain one complete exact-head Quality success for the final documentation head: format, Vet, frontend syntax, PowerShell, Android, vulnerability scan, full-stack loopback integration, Go tests, Race Detector, >=80.0% coverage, native Windows builds and clean Git diff.
+- [ ] Inspect PR #70 reviews and inline review threads; resolve any blocking feedback without changing the documented recovery/security boundary incorrectly.
+- [ ] Mark PR #70 Ready only after the exact head is fully green, re-check the head SHA, then squash-merge with `expected_head_sha`.
+- [ ] Verify the resulting authoritative `master` SHA and update canonical state before starting the next functional slice.
 
 ## P0/P1 – bounded Mission Memory / Knowledge
 
