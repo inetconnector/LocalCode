@@ -15,12 +15,13 @@ import (
 var errMissionRecoveryAdmissionStale = errors.New("mission recovery admission journal changed")
 
 type MissionRecoveryContinuationExecution struct {
-	RunID     string            `json:"run_id"`
-	MissionID string            `json:"mission_id"`
-	TaskID    string            `json:"task_id"`
-	Action    string            `json:"action"`
-	Graph     AgentTaskGraph    `json:"graph"`
-	Run       AgentScheduledRun `json:"run"`
+	RunID       string            `json:"run_id"`
+	ParentRunID string            `json:"parent_run_id"`
+	MissionID   string            `json:"mission_id"`
+	TaskID      string            `json:"task_id"`
+	Action      string            `json:"action"`
+	Graph       AgentTaskGraph    `json:"graph"`
+	Run         AgentScheduledRun `json:"run"`
 }
 
 func missionRecoveryActiveDuration(elapsedMillis int64) (time.Duration, error) {
@@ -30,37 +31,127 @@ func missionRecoveryActiveDuration(elapsedMillis int64) (time.Duration, error) {
 	return time.Duration(elapsedMillis) * time.Millisecond, nil
 }
 
-func capRecoveryGraphTaskBudgets(graph *AgentTaskGraph, historical map[string]AgentUsage) error {
+func conservativeRecoveryIntBudget(explicit, observed int) int {
+	switch {
+	case explicit > 0 && observed > 0 && observed < explicit:
+		return observed
+	case explicit > 0:
+		return explicit
+	default:
+		return observed
+	}
+}
+
+func conservativeRecoveryInt64Budget(explicit, observed int64) int64 {
+	switch {
+	case explicit > 0 && observed > 0 && observed < explicit:
+		return observed
+	case explicit > 0:
+		return explicit
+	default:
+		return observed
+	}
+}
+
+func recoveryTaskTotalBudget(task MissionRecoveryTaskState, cfg Config) (AgentBudget, error) {
+	if err := validateAgentMissionBudget(task.Budget); err != nil {
+		return AgentBudget{}, fmt.Errorf("task %q: %w", task.ID, err)
+	}
+	limit := task.Budget
+	attempted := task.Lifecycle != nil && task.Lifecycle.AttemptCount > 0
+	if attempted {
+		if task.BudgetSnapshot == nil {
+			return AgentBudget{}, fmt.Errorf("task %q has attempts without budget-snapshot limit evidence", task.ID)
+		}
+		observed := task.BudgetSnapshot.Limit
+		if err := validateAgentMissionBudget(observed); err != nil {
+			return AgentBudget{}, fmt.Errorf("task %q has invalid budget-snapshot limit: %w", task.ID, err)
+		}
+		usage, err := missionRecoveryAcceptedTaskUsage(task)
+		if err != nil {
+			return AgentBudget{}, err
+		}
+		if usage.ModelCalls > 0 && observed.ModelCalls <= 0 {
+			return AgentBudget{}, fmt.Errorf("task %q has model usage without persisted model-call limit", task.ID)
+		}
+		if usage.ToolCalls > 0 && observed.ToolCalls <= 0 {
+			return AgentBudget{}, fmt.Errorf("task %q has tool usage without persisted tool-call limit", task.ID)
+		}
+		if usage.EstimatedTokens > 0 && observed.EstimatedTokenBudget <= 0 {
+			return AgentBudget{}, fmt.Errorf("task %q has token usage without persisted token limit", task.ID)
+		}
+		if usage.ElapsedMillis > 0 && observed.TimeSeconds <= 0 {
+			return AgentBudget{}, fmt.Errorf("task %q has elapsed usage without persisted time limit", task.ID)
+		}
+		limit = AgentBudget{
+			ModelCalls:           conservativeRecoveryIntBudget(task.Budget.ModelCalls, observed.ModelCalls),
+			ToolCalls:            conservativeRecoveryIntBudget(task.Budget.ToolCalls, observed.ToolCalls),
+			EstimatedTokenBudget: conservativeRecoveryInt64Budget(task.Budget.EstimatedTokenBudget, observed.EstimatedTokenBudget),
+			TimeSeconds:          conservativeRecoveryIntBudget(task.Budget.TimeSeconds, observed.TimeSeconds),
+		}
+	}
+	return normalizeAgentBudget(limit, task.Role, cfg), nil
+}
+
+func prepareRecoveryGraphTaskBudgets(materialized MissionRecoveryContinuationMaterialization, graph *AgentTaskGraph, cfg Config) error {
 	if graph == nil {
 		return errors.New("recovery continuation graph is nil")
 	}
+	state, fingerprint, err := loadMissionRecoveryControlState(materialized.RunID)
+	if err != nil {
+		return err
+	}
+	if fingerprint != materialized.JournalSHA256 {
+		return errMissionRecoveryAdmissionStale
+	}
+	durableByID := make(map[string]MissionRecoveryTaskState, len(state.Mission.Tasks))
+	for _, task := range state.Mission.Tasks {
+		durableByID[task.ID] = task
+	}
 	for index := range graph.Tasks {
 		task := &graph.Tasks[index]
-		usage := historical[task.ID]
+		durable, ok := durableByID[task.ID]
+		if !ok {
+			return fmt.Errorf("recovery task %q disappeared before admission", task.ID)
+		}
+		usage := materialized.HistoricalUsageByTask[task.ID]
 		if !missionRecoveryUsageValid(usage) {
 			return fmt.Errorf("task %q has invalid historical usage", task.ID)
 		}
-		snapshot := agentBudgetSnapshot(task.Budget, usage)
+		limit, err := recoveryTaskTotalBudget(durable, cfg)
+		if err != nil {
+			return err
+		}
+		task.Budget = limit
+		snapshot := agentBudgetSnapshot(limit, usage)
 		if task.State == AgentTaskReady && snapshot.Exhausted {
 			return fmt.Errorf("%w: task %q %s", errMissionRecoveryContinuationBudget, task.ID, snapshot.ExhaustedBy)
 		}
-		if task.State != AgentTaskReady {
-			continue
-		}
-		if task.Budget.ModelCalls > 0 {
-			task.Budget.ModelCalls = snapshot.Remaining.ModelCalls
-		}
-		if task.Budget.ToolCalls > 0 {
-			task.Budget.ToolCalls = snapshot.Remaining.ToolCalls
-		}
-		if task.Budget.EstimatedTokenBudget > 0 {
-			task.Budget.EstimatedTokenBudget = snapshot.Remaining.EstimatedTokenBudget
-		}
-		if task.Budget.TimeSeconds > 0 {
-			task.Budget.TimeSeconds = snapshot.Remaining.TimeSeconds
-		}
 	}
 	return nil
+}
+
+func capRecoveryExecutionTaskBudget(task AgentTask, historical AgentUsage) (AgentTask, error) {
+	if !missionRecoveryUsageValid(historical) {
+		return task, fmt.Errorf("task %q has invalid historical usage", task.ID)
+	}
+	snapshot := agentBudgetSnapshot(task.Budget, historical)
+	if snapshot.Exhausted {
+		return task, fmt.Errorf("%w: task %q %s", errMissionRecoveryContinuationBudget, task.ID, snapshot.ExhaustedBy)
+	}
+	if task.Budget.ModelCalls > 0 {
+		task.Budget.ModelCalls = snapshot.Remaining.ModelCalls
+	}
+	if task.Budget.ToolCalls > 0 {
+		task.Budget.ToolCalls = snapshot.Remaining.ToolCalls
+	}
+	if task.Budget.EstimatedTokenBudget > 0 {
+		task.Budget.EstimatedTokenBudget = snapshot.Remaining.EstimatedTokenBudget
+	}
+	if task.Budget.TimeSeconds > 0 {
+		task.Budget.TimeSeconds = snapshot.Remaining.TimeSeconds
+	}
+	return task, nil
 }
 
 func newRecoveryMissionBudgetTracker(limit AgentBudget, historical AgentUsage, admittedAt time.Time) (*agentMissionBudgetTracker, error) {
@@ -119,10 +210,16 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 	}
 
 	candidateIndex := -1
+	missionAttempts := 0
 	for index := range state.Mission.Tasks {
+		if lifecycle := state.Mission.Tasks[index].Lifecycle; lifecycle != nil {
+			if lifecycle.AttemptCount < 0 {
+				return errMissionRecoveryContinuationCandidate
+			}
+			missionAttempts += lifecycle.AttemptCount
+		}
 		if state.Mission.Tasks[index].ID == materialized.TaskID {
 			candidateIndex = index
-			break
 		}
 	}
 	if candidateIndex < 0 {
@@ -132,16 +229,16 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 	if candidate.Lifecycle == nil {
 		candidate.Lifecycle = &MissionTaskLifecycle{}
 	}
-	if candidate.Lifecycle.AttemptReserved || candidate.Lifecycle.AttemptCount < 0 || candidate.Lifecycle.AttemptCount >= missionRecoveryMaxTaskAttempts {
+	if candidate.Lifecycle.AttemptCount < 0 || candidate.Lifecycle.AttemptCount >= missionRecoveryMaxTaskAttempts || missionAttempts >= missionRecoveryMaxMissionAttempts {
 		return errMissionRecoveryContinuationCandidate
 	}
-	candidate.Lifecycle.AttemptCount++
-	candidate.Lifecycle.RetryCount = candidate.Lifecycle.AttemptCount - 1
-	if candidate.Lifecycle.RetryCount < 0 {
-		candidate.Lifecycle.RetryCount = 0
+	// Persist admission intent before any Scheduler exists, but do not consume
+	// retry budget yet. AttemptCount advances only at the first durable Running
+	// checkpoint. A crash in this gap therefore leaves a reusable reservation.
+	if !candidate.Lifecycle.AttemptReserved {
+		candidate.Lifecycle.AttemptReserved = true
+		candidate.Lifecycle.AttemptReservedAt = admittedAt
 	}
-	candidate.Lifecycle.AttemptReserved = true
-	candidate.Lifecycle.AttemptReservedAt = admittedAt
 	candidate.Lifecycle.StateUpdatedAt = admittedAt
 	candidate.State = AgentTaskReady
 	candidate.Running = false
@@ -149,6 +246,7 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 	candidate.AdmissionBlockedReason = ""
 	candidate.CompletionEvidence = nil
 
+	parentRunID := state.RunID
 	// Rebase the active-time anchor so crash/offline downtime remains excluded
 	// while all previously consumed active wall time remains charged.
 	state.Mission.StartedAt = admittedAt.Add(-active)
@@ -161,7 +259,15 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 	state.UpdatedAt = admittedAt
 	state.Terminal = false
 	state.Outcome = ""
-	state.Events = append(state.Events, RunJournalEvent{At: admittedAt, Type: "mission_continuation_reserved", Action: materialized.Action, Message: sanitizeRunJournalText(materialized.TaskID, 160)})
+	state.Events = append(state.Events, RunJournalEvent{
+		At:     admittedAt,
+		Type:   "mission_continuation_reserved",
+		Action: materialized.Action,
+		Message: sanitizeRunJournalText(
+			"task="+materialized.TaskID+";parent_run="+parentRunID,
+			400,
+		),
+	})
 	if len(state.Events) > 64 {
 		state.Events = append([]RunJournalEvent(nil), state.Events[len(state.Events)-64:]...)
 	}
@@ -201,6 +307,7 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 		graphByID[task.ID] = task
 	}
 	usageByTask := make(map[string]AgentUsage, len(state.Mission.Tasks))
+	allSucceeded := len(state.Mission.Tasks) > 0
 	for index := range state.Mission.Tasks {
 		durable := &state.Mission.Tasks[index]
 		if task, ok := graphByID[durable.ID]; ok {
@@ -209,25 +316,35 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 			if usage, exists := run.UsageByTask[durable.ID]; exists {
 				durable.Usage = usage
 			}
-			if durable.Lifecycle != nil && durable.Lifecycle.AttemptReserved {
-				durable.Lifecycle.AttemptReserved = false
-				durable.Lifecycle.AttemptReservedAt = time.Time{}
-				durable.Lifecycle.LastFinishedAt = finishedAt
-			}
 		}
 		usageByTask[durable.ID] = durable.Usage
+		if !isSuccessfulAgentTaskState(durable.State) {
+			allSucceeded = false
+		}
 	}
 	accounting := agentMissionAccounting(state.Mission.Budget, usageByTask, state.Mission.StartedAt, finishedAt)
 	state.Mission.Accounting = &accounting
+	state.Mission.UpdatedAt = finishedAt
+	state.UpdatedAt = finishedAt
+
+	if runErr == nil && allSucceeded {
+		state.Mission.State = string(AgentMissionSucceeded)
+		state.Mission.Reason = string(AgentMissionReasonCompleted)
+		state.Mission.BudgetExhaustedBy = ""
+		state.Phase = "idle"
+		state.Terminal = true
+		state.Outcome = string(AgentMissionSucceeded) + ":" + string(AgentMissionReasonCompleted)
+		state.Events = append(state.Events, RunJournalEvent{At: finishedAt, Type: "mission_end", Action: missionRecoveryKindReadOnly, Message: state.Outcome})
+		return writeRunJournalUnlocked(*state)
+	}
+
 	state.Mission.State = missionRecoveryRunning
 	state.Mission.Reason = ""
 	state.Mission.BudgetExhaustedBy = ""
 	if accounting.Budget.Exhausted {
 		state.Mission.BudgetExhaustedBy = accounting.Budget.ExhaustedBy
 	}
-	state.Mission.UpdatedAt = finishedAt
 	state.Phase = "mission-read-only"
-	state.UpdatedAt = finishedAt
 	state.Terminal = false
 	state.Outcome = ""
 	message := "checkpoint"
@@ -258,13 +375,14 @@ func (s *AppState) runMissionRecoveryContinuationWithExecutor(ctx context.Contex
 		s.mu.Unlock()
 		return out, errMissionRecoveryControlActiveRun
 	}
+	cfg := s.Config
 	materialized, err := buildStableMissionRecoveryContinuationWithObserver(runID, taskID, nil)
 	if err != nil {
 		s.mu.Unlock()
 		return out, err
 	}
 	graph := materialized.Graph
-	if err := capRecoveryGraphTaskBudgets(&graph, materialized.HistoricalUsageByTask); err != nil {
+	if err := prepareRecoveryGraphTaskBudgets(materialized, &graph, cfg); err != nil {
 		s.mu.Unlock()
 		return out, err
 	}
@@ -305,7 +423,11 @@ func (s *AppState) runMissionRecoveryContinuationWithExecutor(ctx context.Contex
 		return out, err
 	}
 	budgetedExecute := func(childCtx context.Context, childProject string, childCfg Config, task AgentTask) (AgentResult, error) {
-		constrained, allowed := tracker.prepareTask(task)
+		remainingTask, remainingErr := capRecoveryExecutionTaskBudget(task, materialized.HistoricalUsageByTask[task.ID])
+		if remainingErr != nil {
+			return AgentResult{Status: AgentResultBudgetExhausted, Summary: remainingErr.Error()}, remainingErr
+		}
+		constrained, allowed := tracker.prepareTask(remainingTask)
 		if !allowed {
 			return AgentResult{Status: AgentResultBudgetExhausted, Summary: "Mission budget exhausted before task: " + tracker.blockedDimension()}, nil
 		}
@@ -314,9 +436,6 @@ func (s *AppState) runMissionRecoveryContinuationWithExecutor(ctx context.Contex
 		return result, childErr
 	}
 
-	s.mu.RLock()
-	cfg := s.Config
-	s.mu.RUnlock()
 	scheduler := NewAgentScheduler(missionCtx, AgentResourceLimits{})
 	defer scheduler.missionCancel()
 	checkpoint := func(snapshot AgentSchedulerSnapshot) {
@@ -332,7 +451,15 @@ func (s *AppState) runMissionRecoveryContinuationWithExecutor(ctx context.Contex
 	if finishErr := finishMissionRecoveryContinuation(executionRunID, &graph, run, finishedAt, runErr); finishErr != nil && runErr == nil {
 		runErr = finishErr
 	}
-	out = MissionRecoveryContinuationExecution{RunID: executionRunID, MissionID: materialized.MissionID, TaskID: materialized.TaskID, Action: materialized.Action, Graph: graph, Run: run}
+	out = MissionRecoveryContinuationExecution{
+		RunID:       executionRunID,
+		ParentRunID: materialized.RunID,
+		MissionID:   materialized.MissionID,
+		TaskID:      materialized.TaskID,
+		Action:      materialized.Action,
+		Graph:       graph,
+		Run:         run,
+	}
 	return out, runErr
 }
 
