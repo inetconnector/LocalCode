@@ -5,11 +5,13 @@ package main
 import "time"
 
 type MissionTaskLifecycle struct {
-	AttemptCount   int       `json:"attempt_count"`
-	RetryCount     int       `json:"retry_count"`
-	StateUpdatedAt time.Time `json:"state_updated_at"`
-	LastStartedAt  time.Time `json:"last_started_at,omitempty"`
-	LastFinishedAt time.Time `json:"last_finished_at,omitempty"`
+	AttemptCount      int       `json:"attempt_count"`
+	RetryCount        int       `json:"retry_count"`
+	AttemptReserved   bool      `json:"attempt_reserved,omitempty"`
+	AttemptReservedAt time.Time `json:"attempt_reserved_at,omitempty"`
+	StateUpdatedAt    time.Time `json:"state_updated_at"`
+	LastStartedAt     time.Time `json:"last_started_at,omitempty"`
+	LastFinishedAt    time.Time `json:"last_finished_at,omitempty"`
 }
 
 func updateMissionTaskLifecycle(task *MissionRecoveryTaskState, snapshot AgentTaskScheduleSnapshot, observedAt time.Time) {
@@ -28,11 +30,16 @@ func updateMissionTaskLifecycle(task *MissionRecoveryTaskState, snapshot AgentTa
 		lifecycle.StateUpdatedAt = observedAt
 	}
 	if snapshot.Running && !task.Running {
-		lifecycle.AttemptCount++
-		if lifecycle.AttemptCount > 1 {
-			lifecycle.RetryCount = lifecycle.AttemptCount - 1
+		if lifecycle.AttemptReserved {
+			lifecycle.AttemptReserved = false
+			lifecycle.AttemptReservedAt = time.Time{}
 		} else {
-			lifecycle.RetryCount = 0
+			lifecycle.AttemptCount++
+			if lifecycle.AttemptCount > 1 {
+				lifecycle.RetryCount = lifecycle.AttemptCount - 1
+			} else {
+				lifecycle.RetryCount = 0
+			}
 		}
 		lifecycle.LastStartedAt = observedAt
 	}
