@@ -124,10 +124,21 @@ func applyMissionRecoveryControlVerification(mission *MissionRecoveryState, resu
 			continue
 		}
 		evidence := *mission.Tasks[index].CompletionEvidence
-		evidence.VerificationState = missionVerificationVerified
-		if evidence.VerificationAttemptCount <= 0 {
-			evidence.VerificationAttemptCount = 1
+		switch evidence.VerificationState {
+		case missionVerificationUnverified, missionVerificationFailed:
+			if evidence.VerificationAttemptCount < 0 {
+				return
+			}
+			evidence.VerificationAttemptCount++
+		case missionVerificationVerified:
+			if evidence.VerificationAttemptCount <= 0 {
+				return
+			}
+			evidence.VerificationAttemptCount++
+		default:
+			return
 		}
+		evidence.VerificationState = missionVerificationVerified
 		evidence.LastVerificationEvidenceSHA256 = result.EvidenceSHA256
 		evidence.LastVerificationCheckCount = result.CheckCount
 		evidence.VerificationUpdatedAt = result.ObservedAt
