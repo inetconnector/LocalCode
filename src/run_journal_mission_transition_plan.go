@@ -62,6 +62,22 @@ func missionRecoveryTaskAttemptCounts(task MissionRecoveryTaskState) (attempts, 
 	return attempts, retries, true
 }
 
+func missionRecoveryTaskLifecycleValid(task MissionRecoveryTaskState) bool {
+	if task.Lifecycle == nil {
+		return true
+	}
+	attempts := task.Lifecycle.AttemptCount
+	retries := task.Lifecycle.RetryCount
+	if attempts < 0 || attempts > missionRecoveryMaxTaskAttempts || retries < 0 {
+		return false
+	}
+	expectedRetries := 0
+	if attempts > 1 {
+		expectedRetries = attempts - 1
+	}
+	return retries == expectedRetries
+}
+
 func missionRecoveryTransitionGraphValid(mission *MissionRecoveryState) bool {
 	if mission == nil || len(mission.Tasks) == 0 || len(mission.Tasks) > maxReadOnlyMissionTasks {
 		return false
@@ -71,6 +87,9 @@ func missionRecoveryTransitionGraphValid(mission *MissionRecoveryState) bool {
 		Tasks:     make([]AgentTask, 0, len(mission.Tasks)),
 	}
 	for _, task := range mission.Tasks {
+		if !missionRecoveryTaskLifecycleValid(task) {
+			return false
+		}
 		graph.Tasks = append(graph.Tasks, AgentTask{
 			ID:                    task.ID,
 			ParentID:              task.ParentID,
