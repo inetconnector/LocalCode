@@ -78,6 +78,31 @@ func missionRecoveryTaskLifecycleValid(task MissionRecoveryTaskState) bool {
 	return retries == expectedRetries
 }
 
+func missionRecoveryTaskVerifiedEvidenceReusable(task MissionRecoveryTaskState) bool {
+	evidence := task.CompletionEvidence
+	if evidence == nil || evidence.VerificationState != missionVerificationVerified {
+		return false
+	}
+	if evidence.ResultStatus != AgentResultCompleted && evidence.ResultStatus != AgentResultFallback {
+		return false
+	}
+	if !validMissionVerificationDigest(evidence.ResultSHA256) || !validMissionVerificationDigest(evidence.LastVerificationEvidenceSHA256) {
+		return false
+	}
+	if evidence.VerificationAttemptCount <= 0 || evidence.LastVerificationCheckCount <= 0 || evidence.LastVerificationCheckCount > maxMissionVerificationChecks {
+		return false
+	}
+	if evidence.CompletedAt.IsZero() || evidence.VerificationUpdatedAt.IsZero() || evidence.VerificationUpdatedAt.Before(evidence.CompletedAt) {
+		return false
+	}
+	return evidence.FindingCount >= 0 &&
+		evidence.ChangedFileCount >= 0 &&
+		evidence.CommitCount >= 0 &&
+		evidence.TestCount >= 0 &&
+		evidence.RiskCount >= 0 &&
+		evidence.SuggestedTaskCount >= 0
+}
+
 func missionRecoveryTransitionGraphValid(mission *MissionRecoveryState) bool {
 	if mission == nil || len(mission.Tasks) == 0 || len(mission.Tasks) > maxReadOnlyMissionTasks {
 		return false
@@ -174,13 +199,15 @@ func initialMissionRecoveryTaskTransition(task MissionRecoveryTaskState, reconci
 
 	switch task.State {
 	case AgentTaskSucceeded, AgentTaskCompleted:
-		if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationVerified {
+		if missionRecoveryTaskVerifiedEvidenceReusable(task) {
 			transition.Action = missionRecoveryTransitionReuseVerified
 			transition.Reason = "durable_success_verified_against_current_match"
 			return transition
 		}
 		transition.Action = missionRecoveryTransitionVerifyPostconditions
-		if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationFailed {
+		if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationVerified {
+			transition.Reason = "verified_evidence_invalid_requires_recheck"
+		} else if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationFailed {
 			transition.Reason = "verification_failed_requires_recheck"
 		} else {
 			transition.Reason = "durable_success_requires_verification"
