@@ -76,7 +76,7 @@ For one explicit task ID it:
 - requires Run/Mission/task model identity to remain consistent and does not silently select a new model,
 - carries historical scheduler-adjacent usage forward from task BudgetSnapshot evidence and rejects negative or conflicting usage facts,
 - fails closed when a task with a recorded execution attempt lacks BudgetSnapshot usage evidence rather than interpreting missing accounting evidence as zero usage,
-- evaluates the recovered Mission budget against historical accepted usage and elapsed Mission wall time; an already-exhausted budget cannot produce a continuation materialization,
+- evaluates the recovered Mission budget against historical accepted usage and the **durably observed active Mission wall time through the last journal checkpoint**; offline/crash downtime does not consume the execution-time budget, and impossible future checkpoint timestamps fail closed,
 - constructs an in-memory DAG where verified dependencies remain successful and only the selected candidate becomes ready,
 - re-reads the journal after observation and requires the fingerprint to remain unchanged.
 
@@ -84,7 +84,7 @@ The returned `MissionRecoveryContinuationMaterialization` includes the stable jo
 
 `AppState.MissionRecoveryContinuationMaterialization(runID, taskID)` also rejects an already-active agent run and rejects a result if a run becomes active during materialization. Because an active run could theoretically start and finish after the pre-check but before the post-check, this object is intentionally **not** a reusable authorization token. The later execution slice must recompute this materialization and couple final revalidation to actual Scheduler admission under a separately reviewed atomic boundary.
 
-Current focused #67 tests cover bounded dependency closure, exclusion of unrelated work, canonical capability regeneration, resume and retry candidates, capability escalation rejection, conflicting historical usage, missing usage evidence for attempted tasks, Mission-budget exhaustion, zero journal writes and AppState active-run races.
+Current focused #67 tests cover bounded dependency closure, exclusion of unrelated work, canonical capability regeneration, resume and retry candidates, capability escalation rejection, conflicting historical usage, missing usage evidence for attempted tasks, Mission-budget exhaustion, preservation of the time budget across offline downtime, rejection of future durable checkpoint timestamps, zero journal writes and AppState active-run races.
 
 The first #67 CI attempt (#578) stopped only at `gofmt` on the new production file before Vet/tests. Formatting was corrected and the missing-usage-evidence rule was added afterwards; the final exact head must pass the complete Quality workflow before merge.
 
@@ -110,6 +110,7 @@ The first #67 CI attempt (#578) stopped only at `gofmt` on the new production fi
 - #66/#67 read-only boundaries must never mutate `active-run.json`.
 - Persisted granted capabilities never become executable merely because they are present in recovery metadata; executable continuation capabilities must be regenerated from trusted role governance.
 - Missing/conflicting historical usage evidence for attempted work must fail closed rather than widen Mission budget.
+- Offline/crash downtime is not active Mission execution time and must not silently exhaust the recovered Mission time budget.
 - Reusable/executable candidates require currently verified reusable dependencies.
 - Malformed recovery graphs/counters fail closed to `invalid_recovery_state`.
 - Raw Git porcelain paths and raw Child/model result content are not persisted in recovery evidence.
