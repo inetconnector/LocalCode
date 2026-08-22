@@ -3,12 +3,14 @@
 **Verified:** 2026-08-22 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `fd5c7e38788b0485f0548f01de89fe25f320ec7f`  
-**Last merged functional PR:** #68 `feat: atomically admit mission recovery continuation`  
-**Active work:** draft PR #69 `feat: add explicit desktop mission recovery controls`, branch `feat/desktop-mission-recovery-control`  
+**Current authoritative merged master:** `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
+**Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
+**Active work:** draft PR #70 `docs: finalize desktop mission recovery state`, branch `docs/finalize-desktop-mission-recovery`  
+**Last checked PR #70 head before this STATE write:** `6efb3bbe3b295500dbd5220104f4056c3187cbb6`; this STATE commit advances the branch once more and the final exact head must be read from PR metadata before merge  
+**PR #70 validation:** final exact-head Quality/review/thread gates pending  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-This file is the self-contained restart point. Only merged `master` is authoritative product behavior; PR #69 remains candidate behavior until its exact head passes all gates and is merged. `TODO.md` contains unfinished work only.
+This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
 
 ## 1. Product objective
 
@@ -20,82 +22,67 @@ Long-term orchestration target:
 
 Core hardware rule: `logical task parallelism != model inference parallelism`.
 
-## 2. Merged runtime and Agent-Team state
+## 2. Current merged runtime and Agent-Team state
 
-Merged runtime includes the Windows-native Go application, loopback Desktop HTTP/SSE API, LocalCode Native agent loop with approvals/reliability guards, selectable Native/Aider/Claude Code/OpenCode/Claw Code engines, Ollama integration, persistent project/task history, controlled file/Git/build/test/tool/web/MCP/attachment/asset operations, context compaction, local memory boundaries and durable normal-run recovery.
+Merged runtime includes the Windows-native Go application, loopback Desktop HTTP/SSE API, LocalCode Native agent loop with approvals/reliability guards, selectable Native/Aider/Claude Code/OpenCode/Claw Code engines, Ollama integration, persistent project/task history, controlled file/Git/build/test/tool/web/MCP/attachment/asset operations, context compaction, local memory boundaries and durable run recovery.
 
 Executable Child roles remain read-only **Explorer**, **Planner** and **Reviewer**. Their schemas allow project-tree/file/text/LSP reads and structured finish only. Mutation, shell, Git, network/web, MCP tool calls, installation, memory writes, approvals and recursive spawning remain absent.
 
-Merged orchestration includes structured Agent contracts, deterministic Task DAG, bounded Scheduler/Resource Manager, scheduled read-only dispatch, race-safe finalization/cancellation, governed Mission entry, Mission budgets/accounting, stable `MissionID` separated from execution `RunID`, Desktop/Mobile observation, diagnostics and reproducible synthetic/opt-in Ollama parallelism benchmarks.
+Merged orchestration includes structured Agent contracts, deterministic Task DAG, bounded Scheduler/Resource Manager, scheduled read-only dispatch, race-safe finalization/cancellation, governed Mission entry, Mission budgets/accounting, stable `MissionID` separated from execution-scoped `RunID`, Desktop/Mobile observation, diagnostics and reproducible synthetic/opt-in Ollama parallelism benchmarks.
 
-Current Child dispatch remains synchronous; configured model-slot capacity alone is not proof of parallel inference.
+Current Child dispatch is synchronous. Higher configured model-slot capacity alone is not proof of parallel model inference.
 
-## 3. Phase 6 recovery foundation merged through PR #68
+## 3. Durable read-only Mission recovery – merged through PR #69
 
-`run_journal.go` remains the **single durable recovery authority**. Read-only Missions use bounded structured metadata in the existing `active-run.json`; no second Mission journal exists.
+`run_journal.go` remains the **single durable recovery authority**. Read-only Missions use bounded structured metadata in the existing `active-run.json`; there is no second Mission journal.
 
-- **#61**: restart reconciliation from canonical project/Git identity, exact HEAD and hashed worktree evidence. Crash-running work is never treated as success.
-- **#62**: immutable successful-task completion evidence without copying raw Child/model output into recovery authority.
-- **#63**: durable lifecycle counters/timestamps. Repeated running snapshots cannot double-count attempts.
-- **#64**: deterministic read-only postcondition verification against fresh project/Git state and canonical completion evidence.
-- **#65**: deterministic recovery transition planner with three attempts/task and 192 attempts/Mission, verified dependency requirements and fail-closed invalid-state handling.
-- **#66**: trusted read-only `MissionRecoveryControlSnapshot`; fresh observation, transient verification and bounded journal-stability retry. Snapshot/control data is observation, not a Scheduler lease or execution token.
-- **#67**: bounded continuation materialization for one explicit current `resume_candidate` or `retry_candidate`, including only the candidate plus transitively verified dependencies. Trusted role capabilities are regenerated, model identity and historical Usage are revalidated, and offline/crash downtime is excluded from active Mission time.
-- **#68**: atomic execution-capable continuation admission. The #67 materialization is recomputed while holding the AppState run gate; the exact journal fingerprint/file version is checked; a fresh execution `RunID` is reserved before any Scheduler exists; historical task/Mission budgets and accepted Usage remain cumulative; the full durable Mission is preserved while the narrow continuation graph is merged back.
+Recovery layers now merged:
 
-### #68 crash/attempt semantics
+- **#61** restart reconciliation from canonical project/Git identity, exact `HEAD` and hashed worktree evidence. Crash-running work is never inferred successful.
+- **#62** bounded completion evidence without copying raw Child/model output into recovery authority.
+- **#63** durable lifecycle counters/timestamps; repeated running snapshots cannot double-count attempts.
+- **#64** deterministic read-only postcondition verification against fresh project/Git state and canonical completion evidence.
+- **#65** deterministic transition planner with three attempts/task and 192 attempts/Mission, verified dependency requirements and fail-closed invalid-state handling.
+- **#66** trusted read-only `MissionRecoveryControlSnapshot`; fresh observation, transient verification and bounded journal-stability retry. Snapshot/control data is observation, not a Scheduler lease or execution token.
+- **#67** bounded continuation materialization for one explicit current `resume_candidate` or `retry_candidate`, containing only that candidate plus transitively verified dependencies. Trusted role capabilities are regenerated, model identity and historical Usage are revalidated, and crash/offline downtime is excluded from active Mission time.
+- **#68** atomic execution-capable continuation admission. Fresh materialization is recomputed while holding the AppState run gate; exact journal fingerprint/file version is checked; a fresh execution RunID is durably reserved before any Scheduler exists; historical task/Mission budgets and accepted Usage remain cumulative; subset execution merges back into the full durable Mission.
+- **#69** explicit **Desktop-loopback-only** recovery inspection and continue transport plus bilingual Output-inspector controls. Startup remains passive and Remote/Mobile receives no recovery-control authority.
 
-A reservation is not an attempt. `AttemptReserved` is written before Scheduler admission, but `AttemptCount` advances only when a durable Scheduler `Running` checkpoint proves execution actually started. A crash after reservation but before Scheduler admission therefore does not consume retry budget. Explicit cancellation uses the existing AppState/Scheduler cancellation owner and terminalizes the Mission consistently.
+### 3.1 Attempt, budget and cancellation invariants
 
-The authoritative #68 squash commit on `master` is `fd5c7e38788b0485f0548f01de89fe25f320ec7f`.
+A durable reservation is not an attempt. `AttemptReserved` is written before Scheduler admission, while `AttemptCount` advances only after a durable Scheduler `Running` checkpoint proves execution actually started. A crash in the reservation/admission gap does not consume retry budget.
 
-## 4. Active PR #69 – explicit Desktop Mission recovery control
+Recovery never silently mints a new budget. Historical scheduler-accepted Usage remains cumulative; task and Mission limits are restored conservatively and can only be narrowed. Offline/crash downtime is not counted as active Mission execution time.
 
-PR #69 adds the first product-facing recovery control surface, **Desktop loopback only**.
+Explicit cancellation uses the existing AppState/Scheduler cancellation owner. Late cancelled Child results are non-authoritative.
 
-### 4.1 Inspection
+### 3.2 Desktop recovery surface merged in #69
 
-`GET /api/mission-recovery` returns a deliberately bounded DTO derived from the trusted #66 control snapshot. It exposes only the interrupted Run/Mission identity, observation/fingerprint hashes, reconciliation state, plan validity/candidate availability and per-task durable state/action flags required to render an explicit choice.
+`GET /api/mission-recovery` returns a deliberately bounded DTO derived from trusted recovery control state. It exposes only interrupted Run/Mission identity, observation/fingerprint hashes, reconciliation state, plan/candidate availability and per-task durable state/action flags required for an explicit Desktop choice.
 
 It does **not** expose project paths, objectives, capabilities, raw Child/model output, findings, Usage or Mission accounting.
 
-The #66 control snapshot now exposes its already-computed `JournalSHA256` as a bounded field. The hash was already part of the snapshot digest; exposing it does not add execution authority.
+`POST /api/mission-recovery/continue` accepts one explicit task plus inspected stale-state preconditions. The body is size-bounded and strictly decoded. Only a current `resume_candidate` or `retry_candidate` can proceed.
 
-### 4.2 Explicit continuation
+UI-provided hashes are preconditions, never authority. Admission recomputes fresh #67 governance under the AppState run gate, rechecks Mission/action identity and the durable journal fingerprint, restores/caps budgets, and then executes the #68 exact journal CAS. `202 Accepted` is returned only after durable reservation and AppState ownership succeed. Accepted execution then runs asynchronously under the existing Scheduler and remains cancellable through `StopAgent`.
 
-`POST /api/mission-recovery/continue` accepts exactly one explicit task and its inspected stale-state preconditions. The request is strictly decoded, body-bounded and permits only current `resume_candidate` / `retry_candidate` intent.
+`SnapshotSHA256` records the observed control snapshot but is not reused as an authorization token because that digest includes observation time. Durable staleness is bound by `JournalSHA256`, while current project/Git reconciliation and transition planning are recomputed immediately before admission.
 
-The request never authorizes execution by itself. AppState recomputes the trusted #67 materialization immediately at admission, rechecks Mission/action identity and the durable journal fingerprint, restores/caps task budgets, then calls the #68 exact journal CAS. Only after that durable reservation succeeds does AppState become `Running` under a fresh execution-scoped `RunID`.
+### 3.3 Desktop/Remote trust boundary
 
-`SnapshotSHA256` records the UI observation shape but is not reused as an authorization token because the trusted snapshot digest deliberately includes its observation time. Durable staleness is bound by `JournalSHA256`; fresh project/Git reconciliation and transition planning are recomputed before admission.
+`src/static/mission_status.js` renders the bilingual **Interrupted Mission / Unterbrochene Mission** card in the Desktop Output inspector. Only current candidates get explicit **Resume task / Retry task** controls; nothing auto-posts or auto-resumes.
 
-The HTTP endpoint returns `202 Accepted` only after durable reservation plus AppState ownership have succeeded. Execution then proceeds asynchronously under the existing Scheduler. Request cancellation after acceptance does not orphan the run; `StopAgent` owns the accepted continuation cancellation exactly like other active work.
+The two recovery routes live only on the Desktop `Server` and inherit its loopback Host, Origin and `Sec-Fetch-Site` checks.
 
-### 4.3 Desktop UI and Remote boundary
+`RemoteServer` has no recovery route. Regression tests require `/remote/api/mission-recovery` and `/remote/api/mission-recovery/continue` to remain `404`. Mobile continues to receive only the narrow active-Mission indicator and existing stop behavior, with no recovery IDs, plan, Scheduler, budget or continuation authority.
 
-`src/static/mission_status.js` renders a bilingual **Interrupted Mission / Unterbrochene Mission** card in the Desktop Output inspector. Only current candidates receive explicit **Resume task / Retry task** buttons. The copy states that recovery never starts automatically and that the selected task is revalidated immediately before execution.
+## 4. Verification status
 
-The two routes are registered on the existing Desktop `Server` and inherit its loopback Host, Origin and `Sec-Fetch-Site` checks. The server diff is limited to the two route registrations.
+PR #69 was squash-merged to `master` as `a4fad2494cd4b6b509647a8c514807e09f5736aa`.
 
-`RemoteServer` gains **no** recovery route. Focused tests require `/remote/api/mission-recovery` and `/remote/api/mission-recovery/continue` to remain `404`. Mobile continues to receive only the narrow active-Mission indicator and existing stop behavior; it receives no recovery IDs, plan, Scheduler, budget or control authority.
+The final #69 feature-branch head `2102b0445c1d199d3f4fbe5d077735f40f096254` has the **same tree SHA** (`566fdf3d45962444cfa1c9e9950fe5db9f307177`) as the merged master commit. Quality run **#608** / run ID `32573085942` completed successfully on that exact tree. Every gate passed: Go version/setup, format, Vet, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, Go tests, Race Detector, >=80% coverage, native Windows builds and Git diff check.
 
-Startup remains passive. There is no automatic resume, retry or replay.
-
-### 4.4 Focused #69 regression coverage
-
-Current branch tests cover:
-
-- bounded Desktop recovery DTO and candidate-only executable flags;
-- no-recovery `204` and bounded inspection JSON;
-- strict request decoding, unknown-field rejection and stale-precondition `409`;
-- `202 Accepted` admission response;
-- stale preconditions cannot rotate RunID, set AppState running or invoke the executor;
-- successful admission is visible in AppState before return and `StopAgent` owns cancellation;
-- terminal cancellation is persisted through the single run journal;
-- Desktop routes inherit loopback/Origin protection;
-- Remote recovery paths remain absent/`404`.
-
-Full Quality, reviews and review threads remain the merge gates.
+The older #69 runs that stopped at format/Vet are historical failures only and are not current evidence.
 
 ## 5. Safety and correctness invariants
 
@@ -103,12 +90,12 @@ Full Quality, reviews and review threads remain the merge gates.
 - SHA/version preconditions and atomic conflict-aware writes.
 - Owned subprocess timeout/cancellation and Windows process-tree termination.
 - No default or silently persistent unrestricted capability equivalent.
-- Planner-requested or persisted capabilities never become executable authority by presence alone.
+- Planner-requested or persisted capabilities never become executable authority merely by being present.
 - Read-only Child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
-- `run_journal.go` remains the single durable recovery authority.
+- `run_journal.go` remains the single durable Mission recovery authority.
 - Current project/Git reconciliation outranks historical verification.
 - Crash-running work is never successful by inference.
-- Reservation is not an attempt; attempts count only at durable Scheduler Running.
+- Reservation is not an attempt; attempts count only at durable Scheduler `Running`.
 - Historical Usage/budget evidence is cumulative and must never be silently reset or widened.
 - Offline/crash downtime is not active Mission execution time.
 - Recovery plan/snapshot/materialization objects are not reusable execution tokens.
@@ -121,19 +108,20 @@ Full Quality, reviews and review threads remain the merge gates.
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
-Recovery core: `src/run_journal.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, `src/run_journal_mission_continuation.go`, `src/run_journal_mission_admission.go` and focused tests.
+Mission/recovery core: `src/agent_mission.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, `src/run_journal_mission_continuation.go`, `src/run_journal_mission_admission.go`, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go` and focused tests.
 
-Desktop recovery surface: `src/desktop_mission_recovery.go`, `src/server.go`, `src/static/mission_status.js`, `src/desktop_mission_recovery_test.go`, `src/desktop_mission_recovery_server_test.go`, `src/desktop_mission_recovery_remote_test.go`.
+Desktop recovery surface: `src/desktop_mission_recovery.go`, `src/desktop_mission_recovery_observer.go`, `src/server.go`, `src/static/mission_status.js`, `src/desktop_mission_recovery_test.go`, `src/desktop_mission_recovery_server_test.go`, `src/desktop_mission_recovery_remote_test.go`.
 
 Mobile boundary: `src/remote_server.go`, `src/remote_mission_status_contract.md`.
 
-## 7. Exact next direction
+## 7. Exact next development direction
 
-1. Finish PR #69 on one exact fully green Quality head; inspect reviews/threads, mark Ready and squash-merge with expected-head guard.
+1. Finish PR #70 on one exact fully green Quality head, inspect reviews/threads, mark Ready and squash-merge with an expected-head guard.
 2. Verify the resulting authoritative `master` SHA.
-3. After the read-only recovery product surface is sound, add bounded Mission Memory/Knowledge without creating a second recovery authority.
-4. Then proceed to mutation-capable Builder agents in isolated Git worktrees, followed by Integrator/Test-Agent stages.
+3. Add **bounded Mission Memory/Knowledge** for architecture decisions, subsystem contracts, known failures and test evidence without creating a second recovery authority.
+4. Define retention, size, schema-version and privacy/redaction limits before Mission Memory persistence is enabled.
+5. Only after bounded read-only Mission memory/recovery remains sound, proceed to mutation-capable Builder agents in isolated Git worktrees, followed by Integrator/Test-Agent stages.
 
 ## 8. Cleanup rule
 
-Only `master` is authoritative after merges. Superseded PR carriers and historical workflow runs must never be treated as active development. Delete obsolete feature branches/runs when supported; never claim cleanup that was not actually performed.
+Only `master` is authoritative after merges. Superseded feature refs and historical workflow runs must never be treated as active development. Delete obsolete branches/runs when the available GitHub integration supports the operation; never claim cleanup that was not actually performed.

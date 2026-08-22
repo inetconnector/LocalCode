@@ -4,152 +4,133 @@
 
 ### Systemübersicht
 
-LocalCode ist eine Windows-first Go-Anwendung mit eingebettetem Web-Frontend. Die zentralen Laufzeitpfade sind:
+LocalCode ist eine Windows-first Go-Anwendung mit eingebettetem Web-Frontend.
+
+Zentraler Desktop-Pfad:
 
 `Desktop UI -> Loopback API -> AppState/Supervisor -> Native oder externe Engine -> kontrollierte Tools -> Verifikation/Recovery`
 
-und für Mobilgeräte:
+Mobile-Pfad:
 
-`Android/Browser Remote -> separater token-geschützter Remote-Server -> dieselben AppState-Operationen mit engerer Berechtigungsoberfläche`
+`Android/Browser Remote -> separater token-geschützter Remote-Server -> engere AppState-Oberfläche`
 
-Für Native Agent Teams gilt:
+Native Agent Teams:
 
 `Governance -> Mission Manager -> Task DAG -> Scheduler/Resource Manager -> read-only Child Runtime`
 
-LocalCode trennt bewusst **logische Agentenparallelität** von **tatsächlicher Modellinferenzparallelität**. Viele DAG-Tasks können bereit sein; lokale Modellinferenz bleibt standardmäßig auf einen aktiven Model-Slot begrenzt.
+Langfristiges Ziel:
+
+`Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler -> Agent Factory -> Explorer/Builder/Test/Reviewer -> isolierte Worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
+
+LocalCode trennt **logische Task-Parallelität** von **tatsächlicher Modellinferenzparallelität**. Viele Tasks können logisch bereit sein; lokale Modellinferenz besitzt standardmäßig einen aktiven Model-Slot. Der aktuelle Dispatcher ist synchron.
 
 ### Zentrale Komponenten
 
 - `src/types.go` – `Config`, `AppState`, gemeinsame Laufzeittypen.
 - `src/server.go` – Desktop Loopback HTTP/SSE API.
 - `src/remote_server.go` – separater Mobile-Remote-Server.
-- `src/agent.go` – Hauptschleife von LocalCode Native und Werkzeugdispatch.
-- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministische Steuerung und Reliability-Grenzen.
-- `src/subagent_model.go` – modellgestützte read-only Explorer/Planner/Reviewer-Runtime.
-- `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Task und `AgentResult`.
-- `src/agent_task_graph.go` – DAG-Validierung, Dependencies und Zustandspropagation.
+- `src/agent.go` – LocalCode-Native-Hauptschleife und Werkzeugdispatch.
+- `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Tasks und `AgentResult`.
+- `src/agent_task_graph.go` – DAG-Validierung und Dependency-Zustände.
 - `src/agent_scheduler.go` – Queue, Ressourcenlimits, Admission, Cancellation und Snapshots.
-- `src/agent_scheduler_dispatch.go` – tatsächliche Scheduler-Ausführung autorisierter read-only Tasks und durable Mission-Checkpoint-Hooks.
-- `src/agent_scheduler_finalize.go` – serialisierte Vorbereitung/Finalisierung gegen Cancel-Races.
-- `src/agent_mission.go` – explizite Governance-/Mission-Einstiegsgrenze.
-- `src/agent_mission_accounting.go` – missionweite Usage, Wall-Time, Budget und Terminalgründe.
-- `src/agent_mission_cancel.go` – Produktgrenzen-Cancel für noch nicht terminale Mission-Tasks.
-- `src/run_journal_mission.go` – begrenzte strukturierte Mission-Metadaten, Projekt-/Git-Baseline und Journal-Checkpoint-Abbildung; kein Auto-Resume.
-- `src/run_journal_mission_reconcile.go` – read-only Restart-Reconciliation gegen Projektidentität, Git-HEAD und gehashten Worktree-Zustand; keine Resume-/Retry-Authority.
-- `src/run_journal_mission_postcondition_verify.go` – deterministische read-only Postcondition-Verifikation für durable erfolgreiche Recovery-Tasks; keine Child-/Modell-Ausführung und keine Resume-/Retry-Authority.
-- `src/run_journal_mission_transition_plan.go` – deterministische Recovery-Transition-Klassifikation mit Dependency- und Attempt-Grenzen; reine Planung ohne Scheduler-Admission oder Ausführung.
-- `src/agent_mission_status.go` – begrenzte, ephemere Mission-/Scheduler-Telemetrie für Desktop; keine Recovery-Autorität.
-- `src/agent_orchestration_diagnostics.go` – abgeleitete Desktop-Orchestrierungsdiagnostik für Backend, Queue und Ressourcen; keine Scheduler-Policy.
-- `src/agent_orchestration_parallelism_benchmark_test.go` – synthetischer Dispatcher- und opt-in Ollama-Parallelitätsbenchmark.
-- `src/run_journal.go` – einzige dauerhafte aktive Run-/Mission-Recovery-Autorität (`active-run.json`) und Startup-Einstieg für die Mission-Reconciliation.
-- `src/static/mission_status.js` – read-only Mission- und Orchestrierungsdiagnostik im Desktop-Output-Inspector.
-- `src/static/*` – weitere Desktop-/Remote-Weboberflächen und DE/EN-Kataloge.
-- `src/remote_mission_status_contract.md` – Source-Level-Vertrag für die schmale Mobile-Mission-Anzeige.
-- `docs/ORCHESTRATION_BENCHMARKS.md` – reproduzierbare Benchmark-Kommandos, Messwerte und Interpretationsgrenzen.
-- `android/app/.../MainActivity.java` – native Android-Hülle.
+- `src/agent_scheduler_dispatch.go` – tatsächliche read-only Child-Ausführung und Scheduler-Checkpoint-Hooks.
+- `src/agent_scheduler_finalize.go` – serialisierte Finalisierung gegen Cancel-Races.
+- `src/agent_mission.go` – explizite Mission-Governance-/Startgrenze.
+- `src/agent_mission_accounting.go` – Mission-Usage, aktive Wall-Time, Budget und Terminalgründe.
+- `src/run_journal.go` – einzige dauerhafte aktive Run-/Mission-Recovery-Autorität (`active-run.json`).
+- `src/run_journal_mission.go` – begrenzte strukturierte Mission-Metadaten und Scheduler-Checkpoint-Abbildung.
+- `src/run_journal_mission_reconcile.go` – Restart-Reconciliation gegen aktuelle Projekt-/Git-Evidenz.
+- `src/run_journal_mission_postcondition_verify.go` – deterministische read-only Postcondition-Verifikation.
+- `src/run_journal_mission_transition_plan.go` – deterministische Recovery-Transition-Klassifikation.
+- `src/run_journal_mission_control.go` – stabiler read-only Recovery-Control-Snapshot.
+- `src/run_journal_mission_continuation.go` – bounded Continuation-Materialisierung für einen expliziten Kandidaten.
+- `src/run_journal_mission_admission.go` – atomare Recovery-Reservation, Scheduler-Ausführung und subset-sichere Finalisierung.
+- `src/desktop_mission_recovery.go` – Desktop-only Inspection/Continue-Transport und AppState-Admission-Größe.
+- `src/static/mission_status.js` – Mission-/Diagnostik-/Recovery-UI im Desktop Output-Inspector.
+- `src/remote_mission_status_contract.md` – schmale Mobile-Mission-Beobachtungsgrenze.
+- `docs/ORCHESTRATION_BENCHMARKS.md` – reproduzierbare Parallelitätsmessung und Interpretationsgrenzen.
 
 ### Native Agent Teams
 
-Aktuell ausführbare Child-Rollen sind ausschließlich **Explorer**, **Planner** und **Reviewer**. Ihr Action-Schema ist read-only: Projektbaum, Dateien, Textsuche, genehmigungsfreies LSP und strukturiertes `finish`. Mutation, Shell, Git, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory, Approval-Requests und rekursives Spawning fehlen absichtlich.
+Aktuell ausführbare Child-Rollen sind ausschließlich **Explorer**, **Planner** und **Reviewer**. Ihr Action-Schema ist read-only: Projektbaum, Dateien, Textsuche, genehmigungsfreies LSP und strukturiertes `finish`. Mutation, Shell, Git-Mutation, Web/Netzwerk, MCP-Tool-Aufrufe, Installation, Memory-Schreiben, Approval-Requests und rekursives Spawning fehlen absichtlich.
 
-`AgentTaskGraph` enthält eine stabile Mission-ID und stabile Task-IDs. Dependencies, Zyklen und Zustände werden validiert. Der `AgentScheduler` hält eine begrenzte Ready-Queue und Ressourcenklassen; read-only Child-Tasks verwenden derzeit standardmäßig `model-inference`, dessen Default-Limit eins ist.
+Planner-`RequestedCapabilities` sind Planungsdaten. Ausführbare Capabilities werden erst an einer vertrauenswürdigen Governance-Grenze vergeben. Persistierte Capabilities werden bei Recovery nicht als Autorität wiederverwendet; die Runtime regeneriert den erlaubten Rollen-Envelope.
 
-Die Scheduler-Abnahme enthält inzwischen größere Sättigungs-/Fairness-Fälle: mehrere Ressourcenklassen können gleichzeitig gesättigt sein, zulässige Arbeit einer anderen Klasse darf blockierte ältere Arbeit umgehen, FIFO bleibt innerhalb derselben Ressourcenklasse erhalten und ein 14-Task-Fan-out/Fan-in-DAG muss ohne Starvation oder Ressourcenleck vollständig drainen.
+### Mission Manager, Scheduler und Accounting
 
-### Governed Mission Manager
+`MissionID` ist stabile Produktidentität. `AppState.RunID` ist dagegen execution-scoped und wird bei einer Recovery-Fortsetzung neu erzeugt.
 
-Der produktseitige read-only Mission-Einstieg ist implementiert. Eine Mission wird **nicht** allein deshalb ausgeführt, weil ein Planner Tasks vorgeschlagen hat. Ein expliziter Mission-Request wird zuerst auf Mission-/Task-IDs, direkte Projektgrenze, DAG, ausführbare Rollen und Requested-Capability-Envelope geprüft. Erst diese vertrauenswürdige Grenze vergibt die festen read-only Runtime-Capabilities.
+`AgentScheduler` trennt logische Ready-Zustände von tatsächlicher Ressourcenadmission. `prepareScheduledAgentTask` erstellt unter Scheduler-Lock eine abgetrennte Task-Kopie; der Child läuft außerhalb des Locks; Finalisierung und Cancellation konkurrieren wieder an derselben Lock-Grenze. Nur der terminale Gewinner darf Resultat/Usage festschreiben und den Lease freigeben.
 
-`MissionID` ist stabile Produktidentität. Der gemeinsame `AppState.RunID` ist dagegen ein frischer execution-scoped Token für Stop-/Journal-Hooks. Dadurch kann eine vom Aufrufer gewählte Mission-ID nicht mit einem älteren Run-Journal-Identifier kollidieren.
+Mission-Usage stammt ausschließlich aus scheduler-akzeptiertem `UsageByTask`. Model-/Tool-Calls und geschätzte Tokens bleiben additiv; aktive Mission-Wall-Time wird separat verfolgt. Mission-Budgets dürfen Child-Budgets nur einschränken, niemals erweitern.
 
-Missionweite Usage wird ausschließlich aus vom Scheduler akzeptiertem `UsageByTask` aggregiert. Model-/Tool-Calls und geschätzte Tokens sind additiv; echte Mission-Wall-Time wird getrennt von aufsummierter Child-Arbeitszeit geführt. Optionale Mission-Budgets dürfen normalisierte Child-Budgets nur weiter einschränken, niemals erhöhen.
+### Durable Mission-Recovery
 
-### Dispatch und Cancellation
+Eine validierte read-only Mission hängt ihre Recovery-Metadaten an denselben `RunRecoveryState`, den normale Runs bereits als `active-run.json` verwenden. Es gibt kein zweites Mission-Journal.
 
-`runScheduledReadOnlyAgentGraph` verbindet DAG und Scheduler mit der bestehenden Child-Runtime:
+Persistiert werden nur begrenzte strukturierte Recovery-Fakten: Mission-/Task-Identität, DAG, Rollen/Requested-/Granted-Capabilities als Zustand, Budgets, Scheduler-Fakten, Completion-/Lifecycle-/Verification-Evidenz, Mission-State/-Reason, Accounting und scheduler-akzeptierte Usage.
 
-1. Ready-Tasks werden gequeue-t.
-2. Der Scheduler vergibt einen zulässigen Lease.
-3. `prepareScheduledAgentTask` erstellt unter Scheduler-Lock eine abgetrennte Task-Kopie.
-4. Der Child läuft außerhalb des Locks.
-5. `finalizeScheduledAgentTask`, `CancelTask` und `CancelMission` konkurrieren wieder an derselben Lock-Grenze.
-6. Nur der terminale Gewinner darf Resultat/Usage festschreiben und den Lease freigeben.
+Mission-Start erfasst zusätzlich eine begrenzte Reconciliation-Baseline aus:
 
-Cancellation-first verwirft verspätete Child-Resultate. Completion-first bleibt erfolgreich. Wenn eine komplette Mission über Parent-Context bzw. `StopAgent` abgebrochen wird, terminalisiert die Mission-Grenze nach Ende des synchronen Dispatches zusätzlich alle noch unfertigen `ready`/`blocked`/sonst nicht terminalen Tasks als `cancelled`; bereits terminale erfolgreiche oder fehlgeschlagene Tasks bleiben unverändert. Der abschließende Scheduler-Snapshot wird danach erneut erzeugt, sodass Graph, Mission-Resultat und Desktop-Status denselben terminalen Zustand zeigen.
+- SHA-256 der kanonischen Projektidentität,
+- Git-Beobachtungszustand,
+- SHA-256 der Git-Root-Identität,
+- exaktem `HEAD`,
+- SHA-256 der Bytes aus `git status --porcelain=v1 -z --untracked-files=all`,
+- Erfassungszeitpunkt.
 
-### Desktop Mission-Status
+Rohe Porcelain-Ausgabe und Dateipfade werden nicht als Recovery-Transcript persistiert.
 
-Der Desktop verwendet weiterhin `/api/status` als kanonische Statusquelle. `Status.MarshalJSON` ergänzt nur dann ein `mission`-Objekt, wenn zur aktuellen execution-scoped `RunID` passende Mission-Telemetrie vorliegt. Normale Runs oder fremde RunIDs erhalten kein Mission-Objekt.
+Nach Unterbrechung wird die aktuelle Sicht klassifiziert als `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` oder `insufficient_evidence`. Crash-running Arbeit wird niemals als Erfolg behandelt. Durable erfolgreiche Tasks benötigen aktuelle, bounded Postcondition-Verifikation. Historisches `verified` überstimmt keine aktuelle Drift.
 
-Während einer read-only Mission publiziert ein begrenzter In-Memory-Monitor:
+Der Transition-Planer rekonstruiert und validiert den durable DAG. Duplicate IDs, fehlende Dependencies, Zyklen, mehr als 64 Tasks, ungültige Task-Metadaten oder inkonsistente Lifecycle-Zähler führen fail-closed zu `invalid_recovery_state`. Feste Obergrenzen sind drei tatsächliche gestartete Attempts pro Task und 192 pro Mission.
 
-- stabile `MissionID` und execution-scoped `RunID`,
-- Mission-State/-Reason,
-- Queue-/Running-Zahlen,
-- Ressourcenklasse, Limit und Belegung,
-- Task-State, Queue-Position, Admission-Block-Grund und Task-Budget,
-- Mission-Budget und Usage.
+Mögliche Klassifikationen umfassen `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, `preserve_terminal` und blockierende Reconciliation-/Dependency-/Attempt-Zustände. Planung erzeugt keinen Scheduler-Lease und keine Ausführungsberechtigung.
 
-Die Status-Registry ist auf wenige Einträge begrenzt und entfernt alte Beobachtungsdaten. Sie schreibt **selbst nichts dauerhaft** und kann keine Mission starten, fortsetzen, wiederaufnehmen oder autorisieren. Durable Mission-Checkpoints laufen getrennt davon ausschließlich über `run_journal.go`. `src/static/mission_status.js` liest nur Statusdaten und rendert sie DE/EN im bestehenden Output-Inspector.
+### Atomare Recovery-Admission
 
-### Durable Mission-Checkpoints, Verifikation und Transition-Planung
+Die erste ausführungsfähige Recovery-Grenze liegt in `run_journal_mission_admission.go`.
 
-Eine validierte read-only Mission hängt ihre Recovery-Metadaten an denselben `RunRecoveryState`, den normale Runs bereits unter `active-run.json` verwenden. Es gibt kein zweites Mission-Journal.
+Für einen expliziten Kandidaten wird die #67-Materialisierung **unter dem AppState-Run-Gate frisch neu berechnet**. Danach werden Task-/Mission-Budgets aus durablem Evidence konservativ rekonstruiert, der exakte Journal-Fingerprint und die File-Version geprüft und ein frischer execution-scoped `RunID` durch eine versionsgebundene atomare Journal-Schreiboperation reserviert.
 
-Der optionale Mission-Checkpoint enthält begrenzt und strukturiert:
+Die Reservation wird persistiert, bevor ein Scheduler existiert. Erst danach wird `AppState.Running=true` gesetzt und der Continuation-Scheduler erzeugt.
 
-- stabile `MissionID`, Objective, direkte Projekt-/Scope-Identität, Model, Constraints und Success Criteria,
-- Mission-Budget,
-- Task-ID, Parent/Dependencies, Rolle, Zustand/Grund, Requested-/Granted-Capabilities, Model und Task-Budget,
-- Scheduler-Ressourcenklasse, Queue-Position, Running-Flag und Budget-Snapshot,
-- Completion-/Lifecycle-/Verification-Evidenz,
-- finalen Mission-State/-Reason, Mission-Accounting und ausschließlich vom Scheduler akzeptierte `UsageByTask`.
+`AttemptReserved` beschreibt Admission-Intent. `AttemptCount` steigt erst mit dem ersten durable Scheduler-`Running`-Checkpoint. Ein Crash nach Reservation, aber vor Scheduler-Start, verbraucht daher keinen weiteren Retry.
 
-Beim Missionsstart wird zusätzlich eine begrenzte Reconciliation-Baseline festgehalten: SHA-256 der kanonischen Projektidentität, Git-Beobachtungszustand, SHA-256 der Git-Root-Identität, exaktes `HEAD`, SHA-256 der Bytes aus `git status --porcelain=v1 -z --untracked-files=all` sowie der Erfassungszeitpunkt. Rohe Porcelain-Ausgabe und damit Dateipfade werden nicht in den Checkpoint geschrieben.
+Historische Usage wird in den Scheduler seedend übernommen und nur um scheduler-akzeptierte neue Usage ergänzt. Die Continuation-Finalisierung merged nur den bounded Teilgraphen zurück und erhält alle unrelated Mission-Tasks. Die gewöhnliche Whole-Mission-Finalisierung wird dafür bewusst nicht wiederverwendet.
 
-Der Git-Observer ist ein privater, fest verdrahteter read-only Pfad. Er akzeptiert keinen freien Command-Text und führt mit einem Drei-Sekunden-Timeout ausschließlich `rev-parse --show-toplevel`, `rev-parse --verify HEAD` und den genannten Porcelain-Status aus. Diese Beobachtung erteilt keine Git-, Shell- oder Scheduler-Berechtigung.
+### Desktop Recovery Control
 
-Nach einem Prozessabbruch wird eine nicht-terminale Mission gegen die aktuelle Projekt-/Git-Sicht abgeglichen. Der Zustand ist `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` oder `insufficient_evidence`. Ein beim Abbruch laufender Task bleibt `interrupted_unknown`. Durable erfolgreiche Tasks benötigen begrenzte Verifikation; ein historisches `verified` ist nur wiederverwendbar, wenn die **aktuelle** Reconciliation weiterhin `matched` ist.
+Seit PR #69 besitzt der Desktop eine explizite produktseitige Recovery-Steuerung:
 
-Der interne Postcondition-Verifier führt eine frische read-only Projekt-/Git-Beobachtung durch und prüft feste Recovery-Fakten: aktuelle Reconciliation `matched`, Task nicht laufend, durable Success-State, vorhandene Completion-Evidenz, erfolgreicher Completion-Status und kanonischer Completion-SHA-256. Der Verification-Digest bindet Mission-/Task-ID, Completion-Digest, aktuelle gehashte Projekt-/Git-Identität, `HEAD`, gehashten Porcelain-Status und feste Check-Bools. Rohpfade, Child-/Modelloutput und rohe Verifikationsausgabe werden nicht persistiert. Eine optimistische Journal-Precondition verhindert einen Write, wenn sich der Mission-Recovery-Zustand während der Beobachtung geändert hat.
+- `GET /api/mission-recovery` erzeugt einen bounded Inspection-DTO aus dem trusted Recovery-Control-Snapshot.
+- `POST /api/mission-recovery/continue` akzeptiert eine explizite Run/Mission/Task/Action-Auswahl plus inspizierte Hash-Preconditions.
+- Request-Daten sind **keine** Authority. Vor Admission werden aktuelle Projekt-/Git-Evidenz, Transition-Plan, Task-/Mission-Budgets, Modell-/Capability-Governance und der aktuelle Journal-Fingerprint erneut vertrauenswürdig berechnet/geprüft.
+- `SnapshotSHA256` beschreibt die beobachtete Snapshot-Form und ist wegen des gebundenen Beobachtungszeitpunkts kein wiederverwendbares Autorisierungstoken.
+- `JournalSHA256` bindet die durable Stale-State-Precondition; die eigentliche Admission führt zusätzlich den exakten Journal/File-CAS aus.
+- `202 Accepted` kommt erst nach durable Reservation + AppState-Ownership. Die Ausführung lebt danach unabhängig vom HTTP-Request unter AppState/Scheduler und `StopAgent`.
 
-Auf dieser Evidenz erzeugt der Transition-Planer ausschließlich Klassifikation. Er rekonstruiert den durable DAG und validiert ihn mit der bestehenden Graph-Validierung. Duplicate IDs, fehlende Dependencies, Zyklen, ungültige Task-Metadaten, mehr als 64 Tasks oder inkonsistente/überhöhte Lifecycle-Zähler führen zu einem invaliden Plan; dann wird ausschließlich `invalid_recovery_state` ausgegeben.
+Die Desktop-Karte zeigt nur current `resume_candidate`/`retry_candidate`-Aktionen und startet niemals automatisch.
 
-Bei gültigem Plan sind unter anderem `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, `preserve_terminal` sowie blockierende Reconciliation-/Dependency-/Attempt-Zustände möglich. Für jede Wiederverwendungs- oder spätere Ausführungskandidatur müssen alle Dependencies aktuell `verified` und wiederverwendbar sein. Die Planungsobergrenzen sind drei Attempts pro Task und 192 Attempts pro Mission (64×3). Failed/retryable Legacy-Tasks ohne Lifecycle-Evidenz werden nicht als Retry-Kandidaten eingestuft, weil das verbleibende Attempt-Budget nicht beweisbar ist.
+### Desktop / Mobile Trennung
 
-Der Planer reserviert keine echte Scheduler-Ressource. `RequiresNewAttempt` und prospective Attempt-Zählung sind Planungsfakten, keine Leases, keine Admission und keine Ausführungsberechtigung. Er startet weder Child noch Modell und verändert keine Mission.
+Desktop-Recovery-Routen existieren nur auf dem Loopback-Server und erben dessen Host-, Origin- und `Sec-Fetch-Site`-Prüfungen.
 
-Freitext wird über die bestehende Journal-Redaction sanitisiert und hart begrenzt. Rohes Child-/Modellresultat, Findings und Tool-Transcript werden nicht als zweites Transcript persistiert. Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale weiterhin ausdrücklich. Reconciliation, Postcondition-Verifikation und Transition-Planung sind keine Resume-/Retry-/Replay-Autorität.
+`RemoteServer` besitzt keine Mission-Recovery-Route. Mobile erhält nur den schmalen aktiven Mission-Indikator aus `running` und `run_phase`; keine Mission-/Task-Recovery-IDs, keinen Transition-Plan, keine Scheduler-/Budget-/Accounting-Daten und keine Resume-/Retry-Autorität.
 
-### Orchestrierungs- und Sättigungsdiagnostik
+Startup bleibt passiv. Es gibt kein automatisches Resume, Retry oder Replay.
 
-`/api/status` enthält zusätzlich ein maschinenlesbares `orchestration`-Objekt. Es wird aus dem bereits gelesenen Ollama-/Modellzustand und – falls vorhanden – dem aktuellen ephemeren Mission-/Scheduler-Snapshot abgeleitet; es ist keine zweite Scheduler- oder Recovery-Quelle.
+### Orchestrierungsdiagnostik und Benchmarks
 
-Die Diagnose unterscheidet `ready`, `active`, `saturated`, `backend_unavailable` und `model_unavailable`. Gründe unterscheiden insbesondere Ollama offline, kein ausgewähltes Modell, ein lokal nicht vorhandenes ausgewähltes Modell, eine laufende Mission, ein erreichtes Queue-Limit und wartende Arbeit auf einer ausgelasteten Ressourcenklasse.
+`/api/status` enthält abgeleitete Orchestrierungsdiagnostik für Backend, Queue, logische Task-Zustände und Ressourcen. `at_capacity` bedeutet nur vollständige Belegung; `saturated` zusätzlich tatsächlich wartende passende Arbeit. Diagnostik verändert keine Scheduler-Policy.
 
-Pro Ressourcenklasse werden Limit, Belegung, freie Slots und wartende Tasks ausgewiesen. **`at_capacity` und `saturated` sind absichtlich verschieden:** `at_capacity` bedeutet nur, dass alle Slots belegt sind; `saturated` gilt erst, wenn zusätzlich passende Arbeit auf diese volle Ressource wartet. Queue-Auslastung sowie logische Ready-/Running-/Blocked-Zahlen werden separat ausgewiesen. Tatsächliche normalisierte Mission-Ressourcenlimits werden im ephemeren Mission-Status mitgeführt, damit die Diagnose während einer Mission nicht still Standardlimits annimmt.
+Der synthetische Parallelitätsbenchmark und der opt-in Ollama-Benchmark liefern Messdaten, keine Policy. Der Ollama-Benchmark akzeptiert nur Loopback, verlangt ein bereits installiertes exaktes Modell und startet oder lädt nichts.
 
-Die Diagnose verändert weder Queue-Limits noch Admission noch Modellparallelität. Sie startet keine Arbeit und ist keine Performance-Evidenz. Benchmark-Messung erfolgt separat über die nachfolgend beschriebene Benchmark-Grenze. `src/static/mission_status.js` rendert die Diagnose read-only im bestehenden Desktop-Output-Inspector; Mobile erhält diesen Desktop-Payload nicht.
+### Nächste Schicht
 
-### Orchestrierungs-Benchmarks
+Als nächstes kommt bounded **Mission Memory/Knowledge**. Diese Schicht darf Kontext/Planung informieren, aber niemals Capabilities vergeben, Postconditions ersetzen, Recovery autorisieren oder einen Scheduler-Lease erzeugen. Eine persistente Memory-Lösung braucht vorab feste Schema-/Size-/Retention-/Redaction-Grenzen und darf `run_journal.go` nicht als aktive Recovery-Autorität duplizieren.
 
-`BenchmarkScheduledReadOnlyDispatcherParallelism` trennt bewusst drei Ebenen: vier gleichzeitig logisch bereite read-only Tasks, konfigurierte `model-inference`-Slot-Kapazität und tatsächlich beobachtete Executor-Überlappung. Die aktuelle `runScheduledReadOnlyAgentGraphWithExecutor`-Schleife ruft den Executor synchron auf. Ein Model-Inference-Limit größer eins ist deshalb heute allein kein Beleg paralleler Child-Modellaufrufe. Der synthetische Executor enthält eine feste kurze Verzögerung, sodass eine spätere echte Überlappung im selben Messformat sichtbar würde.
-
-`TestOllamaConcurrencyBenchmarkOptIn` misst zusätzlich ein festes reales Ollama-Arbeitsvolumen bei Client-Konkurrenz 1/2/4 über denselben produktiven `OllamaClient.Chat`-Pfad. Dieser Lauf ist explizit opt-in, akzeptiert nur Loopback, verlangt ein bereits installiertes exaktes Modell und ruft weder `EnsureRunning` noch `Pull` auf. Er misst End-to-End-Wall-Time, Latenzen, Requests/Sekunde und Client-Overlap. Daraus wird **keine** gleichzeitige GPU-Kernel- oder Token-Inferenz abgeleitet, da Ollama intern queuen oder batchen kann.
-
-Benchmarkresultate sind Evidenz, aber keine Scheduler-Policy. Eine spätere Änderung von Model-Slots ist ein separater, reviewpflichtiger Change. Befehle, Parametergrenzen und Interpretationsregeln stehen in `docs/ORCHESTRATION_BENCHMARKS.md`.
-
-### Mobile Mission-Status
-
-Die Mobile Remote bleibt absichtlich enger als Desktop. Sie verwendet **keinen** neuen Mission-Endpunkt und bekommt nicht das Desktop-`mission`-Objekt. Stattdessen nutzt `src/static/remote.html` ausschließlich die bereits authentifizierten Felder `running` und `run_phase` aus `/remote/api/status`.
-
-Wenn `running == true` und `run_phase == "mission-read-only"`, zeigt die Remote-Oberfläche im Header sowie in der Tasks-Ansicht lediglich an, dass eine read-only Mission läuft. Nicht übertragen werden Mission-/Task-IDs, Scheduler-/Queue-/Ressourcendetails, Mission-/Task-Budgets, Usage/Accounting oder neue Mission-Start-/Spawn-/Retry-/Resume-Aktionen. Das bestehende Remote-Stop-Verhalten bleibt unverändert; dieser Slice fügt keine neue Authority hinzu.
-
-### Recovery und nächste Stufen
-
-`run_journal.go` bleibt die einzige Recovery-Autorität. Read-only Missions besitzen begrenzte strukturierte durable Metadaten, Projekt-/Git-Baselines, Scheduler-/Accounting-Checkpoints, Completion-/Lifecycle-/Verification-Evidenz, Restart-Reconciliation, interne read-only Postcondition-Verifikation und deterministische Transition-Planung im bestehenden Recovery-Pfad. Desktop-Telemetrie, Orchestrierungsdiagnostik und Mobile-Anzeige bleiben nicht autoritativ.
-
-Automatische Mission-Wiederaufnahme, Retry und Replay sind weiterhin nicht implementiert. Als Nächstes folgt eine explizite kontrollierte read-only Recovery-Control-Grenze, die unmittelbar vor jeder Pause/Resume/Retry-Entscheidung Reconciliation, notwendige Verifikation und Transition-Plan frisch berechnet und weiterhin normale Scheduler-/Budget-/Cancellation-Grenzen einhält. Mutation-capable Builder in isolierten Git-Worktrees kommen erst nach belastbarer Mission-Recovery.
+Mutation-capable Builder in isolierten Git-Worktrees folgen erst danach.
 
 ---
 
@@ -157,125 +138,86 @@ Automatische Mission-Wiederaufnahme, Retry und Replay sind weiterhin nicht imple
 
 ### System overview
 
-LocalCode is a Windows-first Go application with an embedded web frontend. Its main runtime paths are:
+LocalCode is a Windows-first Go application with an embedded web frontend.
+
+Desktop runtime:
 
 `Desktop UI -> Loopback API -> AppState/Supervisor -> Native or external engine -> controlled tools -> verification/recovery`
 
-and for phones:
+Mobile runtime:
 
-`Android/browser Remote -> separate token-protected Remote server -> the same AppState operations through a narrower permission surface`
+`Android/browser Remote -> separate token-protected Remote server -> narrower AppState surface`
 
-For Native Agent Teams the current path is:
+Native Agent Teams:
 
 `Governance -> Mission Manager -> Task DAG -> Scheduler/Resource Manager -> read-only Child Runtime`
 
-LocalCode deliberately separates **logical agent parallelism** from **actual model-inference parallelism**. Many DAG tasks may be ready while local inference defaults to one active model slot.
+Long-term target:
+
+`Governance -> Mission Manager -> Planner -> Task DAG -> Scheduler -> Agent Factory -> Explorer/Builder/Test/Reviewer -> isolated worktrees -> Integrator -> Acceptance Gate -> Mission Memory/Recovery/Replanning`
+
+Logical task parallelism is deliberately separated from actual model-inference parallelism. The current dispatcher is synchronous and local inference defaults to one active model slot.
 
 ### Core components
 
-- `src/types.go` – `Config`, `AppState`, shared runtime types.
-- `src/server.go` – Desktop loopback HTTP/SSE API.
-- `src/remote_server.go` – separate Mobile Remote server.
-- `src/agent.go` – LocalCode Native main loop and tool dispatch.
-- `src/agent_supervisor.go`, `src/edit_reliability.go`, `src/agent_loop_guard.go` – deterministic supervision and reliability boundaries.
-- `src/subagent_model.go` – model-backed read-only Explorer/Planner/Reviewer runtime.
-- `src/agent_team_types.go` – roles, capabilities, budgets, usage, tasks and `AgentResult`.
-- `src/agent_task_graph.go` – DAG validation, dependencies and state propagation.
-- `src/agent_scheduler.go` – queue, resource limits, admission, cancellation and snapshots.
-- `src/agent_scheduler_dispatch.go` – actual scheduled execution of authorized read-only tasks plus durable Mission checkpoint hooks.
-- `src/agent_scheduler_finalize.go` – serialized preparation/finalization against cancellation races.
-- `src/agent_mission.go` – explicit governance/Mission entry boundary.
-- `src/agent_mission_accounting.go` – Mission usage, wall time, budget and terminal reasons.
-- `src/agent_mission_cancel.go` – product-boundary cancellation for unfinished Mission tasks.
-- `src/run_journal_mission.go` – bounded structured Mission metadata, project/Git baseline and journal-checkpoint mapping; no auto-resume.
-- `src/run_journal_mission_reconcile.go` – read-only restart reconciliation against project identity, Git HEAD and hashed worktree state; no resume/retry authority.
-- `src/run_journal_mission_postcondition_verify.go` – deterministic read-only postcondition verification for durable successful recovery tasks; no Child/model execution and no resume/retry authority.
-- `src/run_journal_mission_transition_plan.go` – deterministic recovery-transition classification with dependency and attempt limits; planning only, without Scheduler admission or execution.
-- `src/agent_mission_status.go` – bounded ephemeral Mission/scheduler telemetry for Desktop; not a recovery authority.
-- `src/agent_orchestration_diagnostics.go` – derived Desktop orchestration diagnostics for backend, queue and resources; not Scheduler policy.
-- `src/agent_orchestration_parallelism_benchmark_test.go` – synthetic dispatcher and opt-in Ollama parallelism benchmark.
-- `src/run_journal.go` – sole durable active-run/Mission recovery authority (`active-run.json`) and startup entry for Mission reconciliation.
-- `src/static/mission_status.js` – read-only Mission and orchestration diagnostics in the Desktop Output inspector.
-- `src/static/*` – other Desktop/Remote UIs and DE/EN catalogs.
-- `src/remote_mission_status_contract.md` – source-level contract for the narrow Mobile Mission display.
-- `docs/ORCHESTRATION_BENCHMARKS.md` – reproducible benchmark commands, measurements and interpretation boundaries.
-- `android/app/.../MainActivity.java` – native Android shell.
+The main boundaries are `src/server.go` (Desktop loopback), `src/remote_server.go` (Mobile Remote), `src/agent_mission.go` (Mission governance), `src/agent_scheduler*.go` (queue/admission/finalization), `src/run_journal.go` plus `src/run_journal_mission*.go` (single durable recovery authority and recovery layers), `src/desktop_mission_recovery.go` (Desktop inspection/continue transport), and `src/static/mission_status.js` (Desktop Mission/recovery UI).
 
 ### Native Agent Teams
 
-The only executable child roles are **Explorer**, **Planner** and **Reviewer**. Their action schema is read-only: project tree, file reads, text search, approval-free LSP and structured `finish`. Mutation, shell, Git, web/network, MCP tool calls, installation, memory, approval requests and recursive spawning are intentionally absent.
+The only executable child roles are **Explorer**, **Planner**, and **Reviewer**. Their action schema is read-only: project tree, files, text search, approval-free LSP, and structured `finish`. Mutation, shell, Git mutation, web/network, MCP tool calls, installation, memory writes, approvals and recursive spawning are absent.
 
-`AgentTaskGraph` contains a stable Mission ID and stable task IDs. Dependencies, cycles and states are validated. `AgentScheduler` owns a bounded ready queue and resource classes; read-only children currently default to `model-inference`, whose default limit is one.
+Planner `RequestedCapabilities` are inert planning data. Executable capabilities are granted only by trusted governance. Persisted capabilities are not reused as recovery authority; the runtime rebuilds the trusted role envelope.
 
-Scheduler acceptance includes larger saturation/fairness cases: multiple resource classes may be saturated simultaneously, admissible work in another class may bypass older work blocked by its saturated class, FIFO is preserved within a resource class, and a 14-task fan-out/fan-in DAG must drain without starvation or resource leakage.
+### Mission Manager, Scheduler, and accounting
 
-### Governed Mission Manager
+`MissionID` is stable product identity while `AppState.RunID` is execution-scoped and rotates for recovery continuation.
 
-The product-level read-only Mission entry is implemented. A Mission is **not** executed merely because a Planner proposed tasks. An explicit Mission request is first validated for Mission/task IDs, direct project boundary, DAG, executable roles and requested-capability envelope. Only this trusted boundary grants the fixed read-only runtime capabilities.
+Scheduler admission and cancellation share serialized authority. Children execute on detached task copies outside the scheduler lock; only the terminal winner may persist result/usage and release the lease.
 
-`MissionID` is stable product identity. The shared `AppState.RunID` is instead a fresh execution-scoped token used by stop/journal hooks, preventing a caller-selected Mission ID from colliding with an older run-journal identifier.
+Mission usage is derived only from Scheduler-accepted `UsageByTask`. Mission budgets may narrow child budgets but never widen them.
 
-Mission-wide usage is aggregated only from scheduler-accepted `UsageByTask`. Model/tool calls and estimated tokens are additive; actual Mission wall time is kept separate from summed child-work time. Optional Mission budgets may only further constrain normalized child budgets and can never widen them.
+### Durable Mission recovery
 
-### Dispatch and cancellation
+Read-only Mission recovery metadata lives in the existing `active-run.json`; `run_journal.go` is the **only durable recovery authority**.
 
-`runScheduledReadOnlyAgentGraph` connects DAG/Scheduler to the existing child runtime:
+Mission start stores bounded project/Git evidence from canonical project identity, repository identity, exact `HEAD`, a SHA-256 fingerprint of porcelain worktree bytes, and timestamps. Raw porcelain paths are not persisted as a second transcript.
 
-1. ready tasks enter the queue;
-2. the scheduler grants an admissible lease;
-3. `prepareScheduledAgentTask` creates a detached task copy under the scheduler lock;
-4. the child executes outside the lock;
-5. `finalizeScheduledAgentTask`, `CancelTask` and `CancelMission` compete again at the same lock boundary;
-6. only the terminal winner may persist result/usage and release the lease.
+After interruption, current state is reconciled as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable`, or `insufficient_evidence`. Crash-running work is never inferred successful. Durable success requires bounded current postcondition verification, and historical verification never overrides current drift.
 
-Cancellation-first discards late child results. Completion-first remains successful. Whole-Mission cancellation terminalizes unfinished work after synchronous dispatch stops and refreshes the terminal Scheduler snapshot so graph, Mission result and Desktop status agree.
+The transition planner validates the durable DAG and lifecycle evidence. Invalid graphs/counters fail closed. Fixed limits are three actually started attempts per task and 192 per Mission. Planning may emit `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, terminal or blocking states, but planning grants no lease or execution authority.
 
-### Desktop Mission status
+### Atomic recovery admission
 
-Desktop continues to use `/api/status` as its canonical status source. `Status.MarshalJSON` adds a `mission` object only when Mission telemetry matches the current execution-scoped `RunID`. Normal runs and unrelated RunIDs do not receive Mission data.
+For an explicit candidate, trusted continuation materialization is recomputed under the AppState run gate. Task/Mission budgets are conservatively restored, exact journal fingerprint/file version are checked, and a new execution-scoped RunID is durably reserved before any Scheduler exists.
 
-While a read-only Mission is executing, a bounded in-memory monitor publishes stable Mission/Run identity, Mission state/reason, queued/running counts, resource state, task state/queue/admission/budget facts and Mission budget/usage.
+`AttemptReserved` is admission intent; `AttemptCount` increases only when a durable Scheduler `Running` checkpoint proves execution started. Historical usage is seeded cumulatively. Continuation finalization merges only the bounded subgraph back into the full durable Mission.
 
-The status registry is bounded and evicts old observations. It **does not itself write durable state** and cannot start, continue, resume or authorize a Mission. Durable Mission checkpoints are separate and flow only through `run_journal.go`. `src/static/mission_status.js` only reads status data.
+### Desktop recovery control
 
-### Durable Mission checkpoints, verification and transition planning
+Since PR #69, Desktop has explicit Mission recovery control:
 
-A validated read-only Mission attaches its recovery metadata to the same `RunRecoveryState` already persisted as `active-run.json` for normal runs. No second Mission journal is introduced.
+- `GET /api/mission-recovery` returns a bounded inspection DTO.
+- `POST /api/mission-recovery/continue` accepts one explicit Run/Mission/task/action choice plus inspected hash preconditions.
+- Request hashes are preconditions, not authority. Current project/Git state, transition plan, capability/model governance, budgets and journal fingerprint are recomputed immediately before admission.
+- `SnapshotSHA256` is not a reusable authorization token; `JournalSHA256` binds durable stale-state evidence and admission still performs the exact journal/file CAS.
+- `202 Accepted` is emitted only after durable reservation and AppState ownership. Execution then lives under AppState/Scheduler and remains cancellable via `StopAgent`.
 
-The Mission checkpoint stores bounded structured identity/objective/scope/model/constraints/success criteria, Mission budget, DAG/task state and capabilities, Scheduler resource/queue/running/budget snapshots, completion/lifecycle/verification evidence, final Mission state/reason/accounting and only scheduler-accepted usage.
+The Desktop card never auto-posts and only exposes current Resume/Retry candidates.
 
-Mission start captures a bounded reconciliation baseline: SHA-256 canonical project identity, Git observation state, SHA-256 Git-root identity, exact `HEAD`, SHA-256 of `git status --porcelain=v1 -z --untracked-files=all` bytes and capture time. Raw porcelain output and file paths are not persisted. The Git observer is fixed-function read-only and grants no Git, shell or Scheduler authority.
+### Desktop / Mobile separation
 
-After interruption, current project/Git state is reconciled as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable` or `insufficient_evidence`. Crash-running work stays `interrupted_unknown`. Durable success needs bounded verification, and historical `verified` is reusable only while current reconciliation remains `matched`.
+Recovery routes exist only on the Desktop loopback server and inherit its Host, Origin and `Sec-Fetch-Site` checks.
 
-The internal postcondition verifier freshly observes current project/Git state and checks fixed recovery facts: matched reconciliation, non-running task, durable success, completion evidence, successful completion status and canonical completion digest. Its SHA-256 evidence binds Mission/task identity and current hashed/HEAD Git observation. Raw paths, Child/model output and raw verification output are not persisted. An optimistic journal precondition prevents stale writes after concurrent recovery-state changes.
+`RemoteServer` has no recovery route. Mobile receives only the narrow active-Mission indicator from `running`/`run_phase`, with no recovery identifiers, transition plan, scheduler/budget/accounting payload or Resume/Retry authority.
 
-The transition planner then produces classification only. It reconstructs and validates the durable DAG. Duplicate IDs, missing dependencies, cycles, invalid task metadata, more than 64 tasks or inconsistent/over-limit lifecycle counters invalidate the whole plan; every task becomes `invalid_recovery_state` and no candidate is executable.
+Startup stays passive: no automatic resume, retry, or replay.
 
-Valid plans may classify `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, `interrupted_review_required`, `preserve_terminal` and blocking reconciliation/dependency/attempt outcomes. Any reusable or future executable candidate requires every dependency to be currently verified and reusable. Fixed planning bounds are three attempts per task and 192 aggregate Mission attempts (64×3). Failed/retryable legacy work without lifecycle evidence is not retryable because its remaining attempt budget cannot be proven.
+### Diagnostics and benchmarks
 
-The planner reserves no Scheduler resource. Prospective attempts and `RequiresNewAttempt` are planning facts, not leases, admission or execution authority. It starts no Child/model and mutates no Mission. Normal chat `Continue` still rejects Mission journals. Reconciliation, verification and transition planning are not resume/retry/replay authority.
+`/api/status` exposes observation-only orchestration diagnostics. Synthetic and opt-in Ollama benchmarks provide evidence but never modify Scheduler policy. The real Ollama benchmark is loopback-only, requires an already-installed exact model and starts/downloads nothing.
 
-### Orchestration and saturation diagnostics
+### Next layer
 
-`/api/status` also contains a machine-readable `orchestration` object derived from current Ollama/model state and the ephemeral Mission/Scheduler snapshot. It is not a second Scheduler or recovery source.
+Next is bounded **Mission Memory/Knowledge**. It may inform context/planning but must never grant capabilities, replace postconditions, authorize recovery or create Scheduler leases. Persistence requires fixed schema/version/size/retention/redaction rules and must not duplicate `run_journal.go` as an active recovery authority.
 
-Diagnostics distinguish `ready`, `active`, `saturated`, `backend_unavailable` and `model_unavailable`; `at_capacity` only means every slot is occupied while `saturated` additionally requires matching waiting work. Diagnostics do not alter queue limits, admission or model concurrency and are not performance evidence.
-
-### Orchestration benchmarks
-
-`BenchmarkScheduledReadOnlyDispatcherParallelism` deliberately separates logical readiness, configured `model-inference` slot capacity and observed executor overlap. The current dispatch loop invokes the executor synchronously; a model-inference limit greater than one is therefore not by itself evidence of parallel child-model calls.
-
-`TestOllamaConcurrencyBenchmarkOptIn` measures a fixed real Ollama workload at client concurrency 1/2/4 through the production `OllamaClient.Chat` path. It is explicitly opt-in, loopback-only, requires an exact already-installed model and calls neither `EnsureRunning` nor `Pull`. Client overlap or throughput is not treated as proof of simultaneous GPU/token inference.
-
-Benchmark results are evidence, not Scheduler policy. Model-slot changes require a separate reviewed change. Commands, bounds and interpretation rules are documented in `docs/ORCHESTRATION_BENCHMARKS.md`.
-
-### Mobile Mission status
-
-Mobile Remote deliberately remains narrower than Desktop. It adds **no** Mission endpoint and does not receive the Desktop `mission` object. `src/static/remote.html` uses only authenticated `running` and `run_phase` fields. Existing Remote stop behavior is unchanged and no Mission control authority is added.
-
-### Recovery and next layers
-
-`run_journal.go` remains the sole recovery authority. Read-only Missions now have bounded structured durable metadata, project/Git baselines, Scheduler/accounting checkpoints, completion/lifecycle/verification evidence, restart reconciliation, internal read-only postcondition verification and deterministic transition planning in the existing recovery path. Desktop telemetry, orchestration diagnostics and the Mobile indicator remain non-authoritative.
-
-Automatic Mission resume, retry and replay remain absent. Next comes an explicit controlled read-only recovery-control boundary that recomputes reconciliation, required verification and the transition plan immediately before any pause/resume/retry decision and still obeys normal Scheduler, budget and cancellation boundaries. Mutation-capable Builders in isolated Git worktrees come only after durable Mission recovery is sound.
+Mutation-capable Builders in isolated Git worktrees come afterwards.
