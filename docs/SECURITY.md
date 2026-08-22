@@ -81,16 +81,20 @@ Beim nächsten Start einer unterbrochenen, nicht-terminalen Mission wird die akt
 Task-Reconciliation bleibt ebenfalls konservativ:
 
 - Ein beim Prozessabbruch `running` markierter Task wird immer `interrupted_unknown`; ein laufender Zustand ist **niemals** Erfolgsbeweis.
-- Durable `succeeded`-/legacy-`completed`-Tasks werden auch bei `matched` nur als `verify_postconditions` klassifiziert.
+- Durable `succeeded`-/legacy-`completed`-Tasks bleiben bei fehlender oder fehlgeschlagener Verifikation `verify_postconditions`; ein `verified` Erfolg ist nur bei **aktuell** weiter `matched` Projekt-/Git-Reconciliation terminal/wiederverwendbar.
 - Noch nicht gestartete/nicht-terminale Arbeit wird nur bei vollständigem Projekt-/Git-Match als `pending` klassifiziert.
-- Bei Drift, fehlender oder unzureichender Evidenz bleibt potenziell wiederverwendbare Arbeit `blocked_reconciliation`.
+- Bei Drift, fehlender oder unzureichender Evidenz bleibt potenziell wiederverwendbare Arbeit `blocked_reconciliation`, auch wenn ein früherer Verification-State `verified` war.
 - Bereits `failed`/`cancelled` bleibt terminal.
 
 Weitere Grenzen:
 
 - Freitext läuft durch die bestehende Secret-Redaction und harte Längen-/Mengenbegrenzungen.
 - Rohe Child-/Modellantworten, Findings und Tool-Transcripts werden nicht als zweites Transcript in Mission-Metadaten kopiert.
-- Durable Checkpoints und Reconciliation vergeben keine Capabilities und verändern weder Scheduler-Limits noch Admission.
+- Durable Checkpoints, Reconciliation und Postcondition-Verifikation vergeben keine Capabilities und verändern weder Scheduler-Limits noch Admission.
+- Die interne Postcondition-Verifikation ruft kein Modell und keinen Child erneut auf. Sie verwendet nur die vorhandene feste read-only Projekt-/Git-Beobachtung und feste Recovery-Checks.
+- Verification-Evidenz persistiert nur SHA-256-Digest, Check-Anzahl, State und Zeitstempel; rohe Pfade, Child-/Modelloutput und rohe Verifikationsausgabe werden nicht gespeichert.
+- Nach der frischen Projekt-/Git-Beobachtung wird das Journal erneut geladen; eine zwischenzeitliche Änderung des Mission-Recovery-Zustands verhindert den Verification-Write.
+- Ein historisches `verified` überstimmt niemals aktuelle Drift. Der terminale Verification-State wird bei Drift nicht zurückgestuft, aber die aktuelle Reconciliation blockiert Wiederverwendung.
 - Persistierte Requested-/Granted-Capabilities dokumentieren Zustand; aus dem Journal entsteht keine ausführbare Authority.
 - Unterbrochene Missionen werden erkannt und reconciliert, aber **nicht** automatisch resumed, retried oder replayed.
 - Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale ausdrücklich, damit eine strukturierte Mission nicht als normaler Prompt blind erneut ausgeführt wird.
@@ -162,7 +166,7 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 Mission-Persistenz und die Projekt-/Git-Baseline sind in diese bestehende Recovery-Autorität integriert. Ein konkurrierendes zweites Journal bleibt unzulässig. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind weiterhin nicht autoritative Beobachtungsflächen und dürfen nicht als Recovery-Ersatz verwendet werden.
 
-Restart-Reconciliation ist als read-only Evidenzschicht implementiert. Automatisches Mission-Resume/Retry/Replay ist weiterhin nicht implementiert. Vor einer späteren Wiederaufnahme müssen insbesondere durable Erfolgszustände anhand begrenzter Postcondition-Evidenz verifiziert werden; blindes Replay bleibt unzulässig.
+Restart-Reconciliation und die interne Postcondition-Verifikation sind read-only Evidenzschichten. Automatisches Mission-Resume/Retry/Replay ist weiterhin nicht implementiert. Ein durable erfolgreicher Task darf nur dann als wiederverwendbar gelten, wenn seine begrenzte Verification-Evidenz `verified` ist **und** die aktuelle Projekt-/Git-Reconciliation weiterhin `matched` ist; blindes Replay bleibt unzulässig.
 
 ### Zukünftige Mutation-Agenten
 
@@ -245,16 +249,20 @@ On the next startup after an interrupted non-terminal Mission, current project/G
 Task reconciliation is equally conservative:
 
 - A task marked `running` at process interruption always becomes `interrupted_unknown`; running state is **never** evidence of success.
-- Durable `succeeded`/legacy `completed` tasks become only `verify_postconditions` even when project/Git state is `matched`.
+- Durable `succeeded`/legacy `completed` tasks remain `verify_postconditions` when verification is absent or failed; a `verified` success is terminal/reusable only while the **current** project/Git reconciliation remains `matched`.
 - Not-started/non-terminal work becomes `pending` only after a complete project/Git match.
-- Drift, unavailable or insufficient evidence leaves potentially reusable/pending work as `blocked_reconciliation`.
+- Drift, unavailable or insufficient evidence leaves potentially reusable/pending work as `blocked_reconciliation`, including work with a historical `verified` state.
 - Existing `failed`/`cancelled` work remains terminal.
 
 Additional boundaries:
 
 - Free text passes through existing secret redaction and strict count/length bounds.
 - Raw Child/model responses, findings and tool transcripts are not copied into Mission recovery metadata.
-- Durable checkpoints and reconciliation cannot grant capabilities or change Scheduler limits/admission.
+- Durable checkpoints, reconciliation and postcondition verification cannot grant capabilities or change Scheduler limits/admission.
+- The internal postcondition verifier never calls a model or re-executes a Child. It uses only the existing fixed read-only project/Git observer and fixed recovery checks.
+- Verification evidence persists only SHA-256 digest, check count, state and timestamps; raw paths, Child/model output and raw verification output are not stored.
+- After fresh project/Git observation, the run journal is reloaded; any intervening Mission recovery-state change prevents the verification write.
+- Historical `verified` never overrides current drift. Drift does not regress the terminal verification record, but current reconciliation blocks reuse.
 - Persisted requested/granted capabilities describe state only and do not become executable authority by themselves.
 - Interrupted Missions are detected and reconciled but are **not** automatically resumed, retried or replayed.
 - Normal chat `Continue` recovery explicitly rejects Mission journal entries so structured Mission work cannot be blindly replayed as an ordinary prompt.
@@ -327,7 +335,7 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 Mission persistence and the project/Git baseline are integrated with this existing recovery authority. A competing second journal remains forbidden. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator remain non-authoritative observation surfaces and must not be used as recovery substitutes.
 
-Restart reconciliation is implemented as a read-only evidence layer. Automatic Mission resume/retry/replay is still not implemented. Before any later continuation, durable success states in particular must be checked against bounded postcondition evidence; blind replay remains forbidden.
+Restart reconciliation and the internal postcondition verifier are read-only evidence layers. Automatic Mission resume/retry/replay remains unimplemented. A durable successful task may be considered reusable only when its bounded verification evidence is `verified` **and** current project/Git reconciliation remains `matched`; blind replay remains forbidden.
 
 ### Future mutation agents
 

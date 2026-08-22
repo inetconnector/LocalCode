@@ -46,10 +46,13 @@ type MissionProjectBaseline struct {
 }
 
 type MissionRecoveryTaskReconciliation struct {
-	TaskID       string         `json:"task_id"`
-	DurableState AgentTaskState `json:"durable_state"`
-	Disposition  string         `json:"disposition"`
-	Reason       string         `json:"reason"`
+	TaskID            string                   `json:"task_id"`
+	DurableState      AgentTaskState           `json:"durable_state"`
+	AttemptCount      int                      `json:"attempt_count,omitempty"`
+	RetryCount        int                      `json:"retry_count,omitempty"`
+	VerificationState MissionVerificationState `json:"verification_state,omitempty"`
+	Disposition       string                   `json:"disposition"`
+	Reason            string                   `json:"reason"`
 }
 
 type MissionRestartReconciliation struct {
@@ -144,6 +147,13 @@ func missionTaskReconciliation(task MissionRecoveryTaskState, overallState strin
 		TaskID:       task.ID,
 		DurableState: task.State,
 	}
+	if task.Lifecycle != nil {
+		result.AttemptCount = task.Lifecycle.AttemptCount
+		result.RetryCount = task.Lifecycle.RetryCount
+	}
+	if task.CompletionEvidence != nil {
+		result.VerificationState = task.CompletionEvidence.VerificationState
+	}
 	if task.Running || task.State == AgentTaskRunning {
 		result.Disposition = missionTaskDispositionInterruptedUnknown
 		result.Reason = "running_at_interruption_is_not_success"
@@ -155,12 +165,21 @@ func missionTaskReconciliation(task MissionRecoveryTaskState, overallState strin
 		result.Reason = "durable_terminal_state"
 		return result
 	case AgentTaskSucceeded, AgentTaskCompleted:
-		if overallState == missionReconcileMatched {
-			result.Disposition = missionTaskDispositionVerifyPostconditions
-			result.Reason = "durable_success_requires_postcondition_evidence"
-		} else {
+		if overallState != missionReconcileMatched {
 			result.Disposition = missionTaskDispositionBlocked
 			result.Reason = "project_reconciliation_not_matched"
+			return result
+		}
+		if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationVerified {
+			result.Disposition = missionTaskDispositionTerminal
+			result.Reason = "durable_success_verified_against_matching_project"
+			return result
+		}
+		result.Disposition = missionTaskDispositionVerifyPostconditions
+		if task.CompletionEvidence != nil && task.CompletionEvidence.VerificationState == missionVerificationFailed {
+			result.Reason = "previous_verification_failed_requires_recheck"
+		} else {
+			result.Reason = "durable_success_requires_postcondition_evidence"
 		}
 		return result
 	default:

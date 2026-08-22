@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-21 Europe/Berlin  
-**Authoritative merged base for this slice:** master `e330235ddbd7110fabe3f8cf4cb3936d6d974243`  
-**Active work:** PR #63 `feat: persist mission attempts and verification state`, branch `feat/mission-attempt-verification-state`  
+**Authoritative merged base for this slice:** master `f54e69bdfee270314aa32f53f3a9c7d5cbca96c9`  
+**Active work:** PR #64 `feat: verify recovered mission postconditions`, branch `feat/mission-recovery-postcondition-verifier`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -15,23 +15,25 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
 
-## P0 – finish current attempt/verification-state slice
+## P0 – finish current postcondition-verifier slice
 
-- [ ] Finish PR #63 on one exact head: keep canonical docs synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
-- [ ] Persist task `AttemptCount` only on a real scheduler transition into running; repeated running snapshots must not double-count.
-- [ ] Persist `RetryCount = max(AttemptCount-1, 0)` plus state-update, last-start and last-finish timestamps across checkpoints/final graph rebuilds.
-- [ ] Keep verification outcomes bounded to state, SHA-256 evidence digest, check count, verification-attempt count and timestamps; no raw verification output in the journal.
-- [ ] Allow only evidence-backed `verified`/`failed` outcomes; once `verified`, the record must not regress.
-- [ ] Preserve the safety boundary: #63 adds no verification executor and no Mission resume/retry/replay authority.
+- [ ] Finish PR #64 on one exact head: keep canonical docs synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
+- [ ] Re-observe current project/Git state before verification; only `matched` reconciliation may pass.
+- [ ] Verify only durable non-running successful tasks with valid immutable completion evidence.
+- [ ] Bind verification evidence to Mission/task identity, completion-result digest, fixed checks and current hashed/HEAD Git observation; do not persist raw paths or Child/model output.
+- [ ] Persist refreshed reconciliation together with the verification outcome and reject a write if Mission recovery state changed during the observation window.
+- [ ] Never let historical `verified` override current project/Git drift; current mismatch must remain blocked.
+- [ ] Preserve the safety boundary: no automatic Mission resume/retry/replay and no new Scheduler/capability authority in #64.
 
-## P0/P1 – Phase 6: safe Mission continuation after reconciliation
+## P0/P1 – Phase 6: safe Mission continuation after verified reconciliation
 
-- [ ] Add a controlled read-only postcondition-verification executor that can produce the bounded verification evidence required before `verified` is recorded.
-- [ ] Define explicit recovery transitions for queued, ready, blocked, running-at-crash, failed, cancelled, succeeded-but-unverified, verification-failed and verified work.
-- [ ] Support Mission/task pause and controlled resume only after reconciliation and required postcondition verification pass.
-- [ ] Add controlled retry with per-task/per-mission attempt limits; preserve existing cancel semantics and make the new durable counters authoritative for those limits.
+- [ ] Define a deterministic recovery transition planner/state machine for queued, ready, blocked, running-at-crash, failed, cancelled, succeeded-but-unverified, verification-failed and verified work.
+- [ ] Define dependency-aware continuation eligibility: a task may become resumable/retryable only when its own reconciliation/verification state and all dependency postconditions permit it.
+- [ ] Add explicit per-task/per-Mission attempt limits using durable `AttemptCount`/`RetryCount` without changing historical accepted usage.
+- [ ] Support Mission/task pause and controlled resume only after the transition planner authorizes a non-mutating continuation plan.
+- [ ] Add controlled retry preserving existing cancel semantics, Scheduler admission/resource limits and no double-counting of prior usage.
 - [ ] Preserve Mission/task resource and budget accounting across restart/resume and prevent double-counting accepted usage.
-- [ ] Add crash/restart tests for queued, ready, running, failed, verification-failed and partially completed Mission work, including Git drift between process death and restart.
+- [ ] Add crash/restart tests for queued, ready, running, failed, verification-failed, verified and partially completed Mission work, including Git drift between process death and restart.
 - [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
