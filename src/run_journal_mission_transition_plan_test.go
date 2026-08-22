@@ -89,7 +89,9 @@ func TestMissionRecoveryTransitionPlanDoesNotReuseMalformedVerifiedEvidence(t *t
 		{name: "missing verification attempt", mutate: func(e *MissionTaskCompletionEvidence) { e.VerificationAttemptCount = 0 }},
 		{name: "missing verification digest", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationEvidenceSHA256 = "" }},
 		{name: "missing verification checks", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationCheckCount = 0 }},
-		{name: "too many verification checks", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationCheckCount = maxMissionVerificationChecks + 1 }},
+		{name: "too many verification checks", mutate: func(e *MissionTaskCompletionEvidence) {
+			e.LastVerificationCheckCount = maxMissionVerificationChecks + 1
+		}},
 		{name: "invalid result digest", mutate: func(e *MissionTaskCompletionEvidence) { e.ResultSHA256 = "not-a-sha256" }},
 		{name: "non-success result status", mutate: func(e *MissionTaskCompletionEvidence) { e.ResultStatus = AgentResultStatus("failed") }},
 		{name: "verification predates completion", mutate: func(e *MissionTaskCompletionEvidence) { e.VerificationUpdatedAt = e.CompletedAt.Add(-time.Second) }},
