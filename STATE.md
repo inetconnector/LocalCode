@@ -5,7 +5,9 @@
 **Default branch:** `master`  
 **Current authoritative merged master:** `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
 **Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
-**Active work:** documentation synchronization on branch `docs/finalize-desktop-mission-recovery`; PR not yet opened at this checkpoint  
+**Active work:** draft PR #70 `docs: finalize desktop mission recovery state`, branch `docs/finalize-desktop-mission-recovery`  
+**Last checked PR #70 head before this STATE write:** `6efb3bbe3b295500dbd5220104f4056c3187cbb6`; this STATE commit advances the branch once more and the final exact head must be read from PR metadata before merge  
+**PR #70 validation:** final exact-head Quality/review/thread gates pending  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
@@ -114,10 +116,11 @@ Mobile boundary: `src/remote_server.go`, `src/remote_mission_status_contract.md`
 
 ## 7. Exact next development direction
 
-1. Finish this documentation synchronization on a fully green exact head and merge it into `master`.
-2. Add **bounded Mission Memory/Knowledge** for architecture decisions, subsystem contracts, known failures and test evidence without creating a second recovery authority.
-3. Define retention, size, schema-version and privacy/redaction limits before Mission Memory persistence is enabled.
-4. Only after bounded read-only Mission memory/recovery remains sound, proceed to mutation-capable Builder agents in isolated Git worktrees, followed by Integrator/Test-Agent stages.
+1. Finish PR #70 on one exact fully green Quality head, inspect reviews/threads, mark Ready and squash-merge with an expected-head guard.
+2. Verify the resulting authoritative `master` SHA.
+3. Add **bounded Mission Memory/Knowledge** for architecture decisions, subsystem contracts, known failures and test evidence without creating a second recovery authority.
+4. Define retention, size, schema-version and privacy/redaction limits before Mission Memory persistence is enabled.
+5. Only after bounded read-only Mission memory/recovery remains sound, proceed to mutation-capable Builder agents in isolated Git worktrees, followed by Integrator/Test-Agent stages.
 
 ## 8. Cleanup rule
 
