@@ -8,18 +8,18 @@ const (
 	missionRecoveryMaxTaskAttempts    = 3
 	missionRecoveryMaxMissionAttempts = maxReadOnlyMissionTasks * missionRecoveryMaxTaskAttempts
 
-	missionRecoveryTransitionReuseVerified          = "reuse_verified"
-	missionRecoveryTransitionVerifyPostconditions   = "verify_postconditions"
-	missionRecoveryTransitionResumeCandidate        = "resume_candidate"
-	missionRecoveryTransitionRetryCandidate         = "retry_candidate"
-	missionRecoveryTransitionInterruptedReview      = "interrupted_review_required"
-	missionRecoveryTransitionPreserveTerminal       = "preserve_terminal"
-	missionRecoveryTransitionBlockedReconciliation  = "blocked_reconciliation"
-	missionRecoveryTransitionBlockedDependency      = "blocked_dependency"
-	missionRecoveryTransitionTaskAttemptLimit       = "task_attempt_limit_reached"
-	missionRecoveryTransitionMissionAttemptLimit    = "mission_attempt_limit_reached"
-	missionRecoveryTransitionInsufficientLifecycle  = "insufficient_lifecycle_evidence"
-	missionRecoveryTransitionInvalidRecoveryState   = "invalid_recovery_state"
+	missionRecoveryTransitionReuseVerified         = "reuse_verified"
+	missionRecoveryTransitionVerifyPostconditions  = "verify_postconditions"
+	missionRecoveryTransitionResumeCandidate       = "resume_candidate"
+	missionRecoveryTransitionRetryCandidate        = "retry_candidate"
+	missionRecoveryTransitionInterruptedReview     = "interrupted_review_required"
+	missionRecoveryTransitionPreserveTerminal      = "preserve_terminal"
+	missionRecoveryTransitionBlockedReconciliation = "blocked_reconciliation"
+	missionRecoveryTransitionBlockedDependency     = "blocked_dependency"
+	missionRecoveryTransitionTaskAttemptLimit      = "task_attempt_limit_reached"
+	missionRecoveryTransitionMissionAttemptLimit   = "mission_attempt_limit_reached"
+	missionRecoveryTransitionInsufficientLifecycle = "insufficient_lifecycle_evidence"
+	missionRecoveryTransitionInvalidRecoveryState  = "invalid_recovery_state"
 )
 
 type MissionRecoveryTaskTransition struct {
@@ -35,14 +35,16 @@ type MissionRecoveryTaskTransition struct {
 }
 
 type MissionRecoveryTransitionPlan struct {
-	MissionID             string                          `json:"mission_id"`
-	ReconciliationState   string                          `json:"reconciliation_state"`
-	ObservedAt            time.Time                       `json:"observed_at"`
-	MaxTaskAttempts       int                             `json:"max_task_attempts"`
-	MaxMissionAttempts    int                             `json:"max_mission_attempts"`
-	ObservedMissionAttempts int                           `json:"observed_mission_attempts"`
-	ReservedNewAttempts   int                             `json:"reserved_new_attempts"`
-	Tasks                 []MissionRecoveryTaskTransition `json:"tasks"`
+	MissionID               string                          `json:"mission_id"`
+	ReconciliationState     string                          `json:"reconciliation_state"`
+	ObservedAt              time.Time                       `json:"observed_at"`
+	Valid                   bool                            `json:"valid"`
+	InvalidReason           string                          `json:"invalid_reason,omitempty"`
+	MaxTaskAttempts         int                             `json:"max_task_attempts"`
+	MaxMissionAttempts      int                             `json:"max_mission_attempts"`
+	ObservedMissionAttempts int                             `json:"observed_mission_attempts"`
+	ReservedNewAttempts     int                             `json:"reserved_new_attempts"`
+	Tasks                   []MissionRecoveryTaskTransition `json:"tasks"`
 }
 
 func missionRecoveryTaskAttemptCounts(task MissionRecoveryTaskState) (attempts, retries int, lifecycleKnown bool) {
@@ -58,6 +60,64 @@ func missionRecoveryTaskAttemptCounts(task MissionRecoveryTaskState) (attempts, 
 		retries = 0
 	}
 	return attempts, retries, true
+}
+
+func missionRecoveryTransitionGraphValid(mission *MissionRecoveryState) bool {
+	if mission == nil || len(mission.Tasks) == 0 || len(mission.Tasks) > maxReadOnlyMissionTasks {
+		return false
+	}
+	graph := AgentTaskGraph{
+		MissionID: mission.MissionID,
+		Tasks:     make([]AgentTask, 0, len(mission.Tasks)),
+	}
+	for _, task := range mission.Tasks {
+		graph.Tasks = append(graph.Tasks, AgentTask{
+			ID:                    task.ID,
+			ParentID:              task.ParentID,
+			MissionID:             mission.MissionID,
+			Role:                  task.Role,
+			Objective:             task.Objective,
+			Dependencies:          append([]string(nil), task.Dependencies...),
+			State:                 task.State,
+			RequestedCapabilities: append([]AgentCapability(nil), task.RequestedCapabilities...),
+		})
+	}
+	return validateAgentTaskGraph(graph) == nil
+}
+
+func invalidMissionRecoveryTransitionPlan(mission *MissionRecoveryState, observedAt time.Time, reason string) MissionRecoveryTransitionPlan {
+	plan := MissionRecoveryTransitionPlan{
+		ObservedAt:         observedAt,
+		Valid:              false,
+		InvalidReason:      reason,
+		MaxTaskAttempts:    missionRecoveryMaxTaskAttempts,
+		MaxMissionAttempts: missionRecoveryMaxMissionAttempts,
+	}
+	if observedAt.IsZero() {
+		plan.ObservedAt = time.Now()
+	}
+	if mission == nil {
+		return plan
+	}
+	plan.MissionID = mission.MissionID
+	if mission.Reconciliation != nil {
+		plan.ReconciliationState = mission.Reconciliation.State
+	}
+	plan.Tasks = make([]MissionRecoveryTaskTransition, 0, len(mission.Tasks))
+	for _, task := range mission.Tasks {
+		attempts, retries, _ := missionRecoveryTaskAttemptCounts(task)
+		plan.ObservedMissionAttempts += attempts
+		plan.Tasks = append(plan.Tasks, MissionRecoveryTaskTransition{
+			TaskID:       task.ID,
+			DurableState: task.State,
+			Action:       missionRecoveryTransitionInvalidRecoveryState,
+			Reason:       reason,
+			AttemptCount: attempts,
+			RetryCount:   retries,
+			Dependencies: append([]string(nil), task.Dependencies...),
+		})
+	}
+	return plan
 }
 
 func initialMissionRecoveryTaskTransition(task MissionRecoveryTaskState, reconciliationState string) MissionRecoveryTaskTransition {
@@ -156,18 +216,19 @@ func transitionNeedsDependencyGate(transition MissionRecoveryTaskTransition) boo
 }
 
 func planMissionRecoveryTransitions(mission *MissionRecoveryState, observedAt time.Time) MissionRecoveryTransitionPlan {
+	if !missionRecoveryTransitionGraphValid(mission) {
+		return invalidMissionRecoveryTransitionPlan(mission, observedAt, "invalid_recovery_task_graph")
+	}
 	plan := MissionRecoveryTransitionPlan{
+		MissionID:          mission.MissionID,
 		ObservedAt:         observedAt,
+		Valid:              true,
 		MaxTaskAttempts:    missionRecoveryMaxTaskAttempts,
 		MaxMissionAttempts: missionRecoveryMaxMissionAttempts,
 	}
 	if observedAt.IsZero() {
 		plan.ObservedAt = time.Now()
 	}
-	if mission == nil {
-		return plan
-	}
-	plan.MissionID = mission.MissionID
 	if mission.Reconciliation != nil {
 		plan.ReconciliationState = mission.Reconciliation.State
 	}
