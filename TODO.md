@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `8e779852b98d83a8315a798c4c319de751fbe344`
-**Active work:** branch `feat/mission-recovery-atomic-admission`; functional head before the cleanup documentation refresh was `e76c6fadc455`, with documentation commits on top. No open PR was present during the 2026-08-22 cleanup check.
+**Authoritative merged base for this slice:** master `8e779852b98d83a8315a798c4c319de751fbe344`  
+**Active work:** draft PR #68 `feat: atomically admit mission recovery continuation`, branch `feat/mission-recovery-atomic-admission`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -13,25 +13,20 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Before material implementation, read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md`.
 - [ ] Verify current master, active PR/head, CI, reviews and review threads before merging.
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
-- [ ] After each merge, delete obsolete feature branches and obsolete workflow runs; never treat stale refs or historical Actions entries as active work.
+- [ ] After each merge, delete obsolete feature branches and obsolete workflow runs when supported; never treat stale refs or historical Actions entries as active work.
 
-## P0 – next Phase 6 slice: atomic continuation admission and execution
+## P0 – finish PR #68 atomic continuation admission/execution
 
-- [ ] Recompute the #67 materialization immediately at the actual continuation boundary; a previously returned materialization or snapshot must never authorize execution.
-- [ ] Couple final journal/reconciliation/active-run validation to Scheduler admission so stale-state TOCTOU cannot occur between authorization and dispatch.
-- [ ] Persist the new attempt at the scheduler-authoritative transition without losing prior `AttemptCount`/`RetryCount` evidence; enforce three attempts/task and 192 attempts/Mission.
-- [ ] Carry historical scheduler-accepted Usage/Accounting into the continued Mission exactly once; late/cancelled results must remain non-authoritative and prior work must never be double-counted.
-- [ ] Preserve Mission and child budget limits across continuation; continuation may constrain remaining budgets but must never widen the original limits.
-- [ ] Preserve existing Scheduler resource limits, detached-task execution, lease ownership and cancellation-vs-finalization race semantics.
-- [ ] Define the new execution-scoped `RunID`/journal transition while preserving stable `MissionID` and explicit linkage to the interrupted run evidence.
-- [ ] Add crash/restart tests for repeated restarts, drift between materialization/admission, cancellation during continuation, attempt-limit exhaustion and accounting continuity.
-- [ ] Keep startup passive; no automatic Mission resume/retry/replay.
-- [ ] Keep canonical docs synchronized; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
+- [ ] Obtain one complete exact-head Quality success after the final source/test/documentation commit: format, Vet, frontend syntax, PowerShell, Android, vulnerability scan, full-stack loopback integration, Go tests, race detector, >=80.0% coverage, native Windows builds and clean Git diff.
+- [ ] Inspect PR #68 reviews and inline review threads; resolve any blocking feedback without weakening recovery, accounting, concurrency or safety invariants.
+- [ ] Mark PR #68 Ready only after the exact head is green, re-check that the head did not move, then squash-merge with an expected-head guard.
+- [ ] Verify the resulting `master` SHA and treat only merged `master` as authoritative.
 
-## P0/P1 – later Phase 6 recovery product surface
+## P0/P1 – next Phase 6 recovery product surface
 
-- [ ] Add a narrow explicit Desktop recovery inspection/control transport only after the atomic execution boundary is sound; it must call trusted AppState governance, inherit loopback/CSRF protections and add no Mobile endpoint.
-- [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
+- [ ] Add a narrow explicit Desktop recovery inspection/control transport only after PR #68 is merged; it must call trusted AppState recovery governance, inherit loopback/origin/CSRF protections and add no Mobile recovery-control authority.
+- [ ] Keep every recovery action explicit by RunID/MissionID/task identity; startup remains passive and must never automatically resume/retry/replay a Mission.
+- [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence without creating a second durable recovery authority.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
 
@@ -74,4 +69,4 @@ This file contains unfinished functional work only. Completed PR history belongs
 ## Documentation/cleanup acceptance gates
 
 - [ ] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
-- [ ] Keep stale merged feature branch refs and obsolete non-master GitHub Actions runs deleted after cleanup; current 2026-08-22 GitHub state is only `master` plus `feat/mission-recovery-atomic-admission`, with completed non-master runs removed.
+- [ ] Keep stale merged feature branch refs and obsolete non-master GitHub Actions runs from being treated as current development state.
