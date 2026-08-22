@@ -1,8 +1,9 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `fd5c7e38788b0485f0548f01de89fe25f320ec7f`  
-**Active work:** draft PR #69 `feat: add explicit desktop mission recovery controls`, branch `feat/desktop-mission-recovery-control`  
+**Authoritative merged base for this slice:** master `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
+**Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
+**Active work:** documentation synchronization on branch `docs/finalize-desktop-mission-recovery`; PR not yet opened at this checkpoint  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.
@@ -17,23 +18,24 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Keep startup passive; recovery must never automatically resume/retry/replay work.
 - [ ] Keep Mobile/Remote authority narrower than Desktop.
 
-## P0 – finish PR #69 Desktop recovery control
+## P0 – finish post-#69 documentation synchronization
 
-- [ ] Obtain one complete exact-head Quality success after the final source/test/documentation commit: format, Vet, frontend syntax, PowerShell, Android, vulnerability scan, full-stack loopback integration, Go tests, race detector, >=80.0% coverage, native Windows builds and clean Git diff.
-- [ ] Inspect PR #69 reviews and inline review threads; resolve blocking feedback without weakening recovery, stale-state, accounting, concurrency or Desktop/Remote boundaries.
-- [ ] Confirm the Desktop inspection DTO remains bounded: no project paths, objectives, capabilities, raw Child/model output, Usage or accounting.
-- [ ] Confirm POST admission remains explicit by Run/Mission/task/action, strictly decoded and bound to the inspected journal fingerprint while fresh project/Git recovery governance is recomputed at admission.
-- [ ] Confirm `202 Accepted` is returned only after durable #68 reservation plus AppState ownership, and accepted execution remains cancellable through existing `StopAgent` semantics.
-- [ ] Confirm both recovery routes inherit Desktop loopback Host/Origin/`Sec-Fetch-Site` protections and no Remote/Mobile recovery route exists.
-- [ ] Confirm the bilingual Desktop card never auto-posts; only explicit Resume/Retry candidate buttons may start continuation.
-- [ ] Mark PR #69 Ready only after the exact head is fully green, re-check that the head did not move, then squash-merge with `expected_head_sha`.
-- [ ] Verify the resulting authoritative `master` SHA after merge.
+- [ ] Correct README, Architecture and Security text that still describes controlled Mission resume/retry as unimplemented.
+- [ ] Record #69 as merged on `master` and Quality #608 as the exact-tree fully green validation evidence.
+- [ ] Keep the Desktop recovery trust boundary explicit: loopback-only control, fresh admission revalidation, no reusable UI authorization token, no Remote/Mobile recovery route, no automatic startup continuation.
+- [ ] Obtain a complete exact-head Quality success for the final documentation head.
+- [ ] Inspect reviews and review threads; merge only the exact green head and verify the resulting `master` SHA.
 
-## P0/P1 – remaining Phase 6 recovery/memory work
+## P0/P1 – bounded Mission Memory / Knowledge
 
-- [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence without creating a second recovery authority.
-- [ ] Define retention/size/privacy limits for Mission Memory before persistence is introduced.
-- [ ] Keep recovery inspection/control Desktop-only unless a separately reviewed security design explicitly changes the Remote trust boundary.
+- [ ] Define a versioned, bounded Mission Memory schema for architecture decisions, subsystem contracts, known failures and test/verification evidence.
+- [ ] Define explicit retention limits: maximum entries, maximum bytes, per-field limits and deterministic eviction/compaction behavior.
+- [ ] Define privacy/redaction rules before persistence: no secrets, credentials, raw Child/model transcripts, arbitrary tool output or unrestricted file content.
+- [ ] Keep Mission Memory **separate from execution authority**. Memory may inform context/planning but cannot grant capabilities, satisfy postconditions, authorize recovery, mint Scheduler leases or bypass current project/Git reconciliation.
+- [ ] Decide the durable storage relationship without creating a second active-Mission recovery authority. If Mission Memory is persisted alongside a Mission, `run_journal.go` remains the only active recovery authority and recovery decisions must continue to rely on canonical recovery evidence rather than narrative memory.
+- [ ] Add validation, corruption/fail-closed behavior, schema-version handling and backward-compatible absence semantics.
+- [ ] Add deterministic tests for size caps, redaction, eviction, malformed entries and proof that memory cannot change admission/capability decisions.
+- [ ] Document the final Memory/Recovery boundary in README, Architecture, Security, STATE and TODO.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
 
