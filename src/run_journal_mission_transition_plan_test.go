@@ -32,7 +32,7 @@ func verifiedRecoveryTransitionEvidence(t *testing.T, at time.Time) *MissionTask
 }
 
 func matchedRecoveryTransitionMission(tasks ...MissionRecoveryTaskState) *MissionRecoveryState {
-	return &MissionRecoveryState{
+	mission := &MissionRecoveryState{
 		MissionID: "mission-transition-plan",
 		Tasks:     tasks,
 		Reconciliation: &MissionRestartReconciliation{
@@ -40,6 +40,16 @@ func matchedRecoveryTransitionMission(tasks ...MissionRecoveryTaskState) *Missio
 			Reason: "project_and_git_match_baseline",
 		},
 	}
+	checks := missionRecoveryVerifiedPostconditionChecks()
+	for index := range mission.Tasks {
+		evidence := mission.Tasks[index].CompletionEvidence
+		if evidence == nil || evidence.VerificationState != missionVerificationVerified {
+			continue
+		}
+		evidence.LastVerificationCheckCount = len(checks)
+		evidence.LastVerificationEvidenceSHA256 = missionTaskPostconditionEvidenceDigest(mission.MissionID, mission.Tasks[index], mission.Reconciliation, checks)
+	}
+	return mission
 }
 
 func TestMissionRecoveryTransitionPlanRequiresVerifiedDependencies(t *testing.T) {
@@ -88,6 +98,9 @@ func TestMissionRecoveryTransitionPlanDoesNotReuseMalformedVerifiedEvidence(t *t
 	}{
 		{name: "missing verification attempt", mutate: func(e *MissionTaskCompletionEvidence) { e.VerificationAttemptCount = 0 }},
 		{name: "missing verification digest", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationEvidenceSHA256 = "" }},
+		{name: "mismatched canonical verification digest", mutate: func(e *MissionTaskCompletionEvidence) {
+			e.LastVerificationEvidenceSHA256 = missionSHA256String("wrong-verification")
+		}},
 		{name: "missing verification checks", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationCheckCount = 0 }},
 		{name: "too many verification checks", mutate: func(e *MissionTaskCompletionEvidence) {
 			e.LastVerificationCheckCount = maxMissionVerificationChecks + 1
@@ -102,10 +115,11 @@ func TestMissionRecoveryTransitionPlanDoesNotReuseMalformedVerifiedEvidence(t *t
 		t.Run(test.name, func(t *testing.T) {
 			foundation := recoveryTransitionTask("foundation", AgentTaskSucceeded)
 			foundation.CompletionEvidence = verifiedRecoveryTransitionEvidence(t, now.Add(-time.Minute))
-			test.mutate(foundation.CompletionEvidence)
 			child := recoveryTransitionTask("child", AgentTaskPending, "foundation")
+			mission := matchedRecoveryTransitionMission(foundation, child)
+			test.mutate(mission.Tasks[0].CompletionEvidence)
 
-			plan := planMissionRecoveryTransitions(matchedRecoveryTransitionMission(foundation, child), now)
+			plan := planMissionRecoveryTransitions(mission, now)
 			if !plan.Valid {
 				t.Fatalf("malformed evidence should require re-verification without corrupting the task graph: %#v", plan)
 			}
