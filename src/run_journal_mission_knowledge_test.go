@@ -208,7 +208,7 @@ func TestMissionKnowledgeMalformedStateFailsClosed(t *testing.T) {
 func TestMissionKnowledgeCannotChangeRecoveryTransitionPlan(t *testing.T) {
 	at := time.Now()
 	state, _ := admissionTestRetryState(t, at)
-	before := planMissionRecoveryTransitions(*state.Mission, at)
+	before := planMissionRecoveryTransitions(state.Mission, at)
 
 	entry, err := buildMissionKnowledgeEntry(
 		missionKnowledgeArchitectureDecision,
@@ -223,7 +223,7 @@ func TestMissionKnowledgeCannotChangeRecoveryTransitionPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	state.Mission.Knowledge = &MissionKnowledgeState{SchemaVersion: missionKnowledgeSchemaVersion, Entries: []MissionKnowledgeEntry{entry}}
-	after := planMissionRecoveryTransitions(*state.Mission, at)
+	after := planMissionRecoveryTransitions(state.Mission, at)
 	if !reflect.DeepEqual(before, after) {
 		t.Fatalf("informational knowledge changed recovery authority\nbefore=%#v\nafter=%#v", before, after)
 	}
