@@ -54,6 +54,7 @@ type MissionRecoveryState struct {
 	Baseline          *MissionProjectBaseline       `json:"baseline,omitempty"`
 	Reconciliation    *MissionRestartReconciliation `json:"reconciliation,omitempty"`
 	Tasks             []MissionRecoveryTaskState    `json:"tasks"`
+	Knowledge         *MissionKnowledgeState         `json:"knowledge,omitempty"`
 	Accounting        *AgentMissionAccounting       `json:"accounting,omitempty"`
 	StartedAt         time.Time                     `json:"started_at"`
 	UpdatedAt         time.Time                     `json:"updated_at"`
@@ -108,6 +109,11 @@ func cloneMissionRecoveryState(state *MissionRecoveryState) *MissionRecoveryStat
 		reconciliationCopy.Tasks = append([]MissionRecoveryTaskReconciliation(nil), state.Reconciliation.Tasks...)
 		copyState.Reconciliation = &reconciliationCopy
 	}
+	if state.Knowledge != nil {
+		knowledgeCopy := *state.Knowledge
+		knowledgeCopy.Entries = append([]MissionKnowledgeEntry(nil), state.Knowledge.Entries...)
+		copyState.Knowledge = &knowledgeCopy
+	}
 	if state.Accounting != nil {
 		accountingCopy := *state.Accounting
 		copyState.Accounting = &accountingCopy
@@ -155,6 +161,7 @@ func newMissionRecoveryState(req AgentReadOnlyMissionRequest, graph AgentTaskGra
 		Budget:          req.Budget,
 		State:           missionRecoveryRunning,
 		Tasks:           missionRecoveryTasksFromGraph(graph),
+		Knowledge:       initialMissionKnowledgeState(req.Knowledge, started),
 		StartedAt:       started,
 		UpdatedAt:       started,
 	}
@@ -222,6 +229,7 @@ func (s *AppState) journalMissionSchedulerCheckpoint(runID string, snapshot Agen
 	s.updateRunJournal(runID, func(state *RunRecoveryState) {
 		applyMissionSchedulerSnapshot(state.Mission, snapshot)
 		applyMissionCompletionEvidence(state.Mission, graph, time.Now())
+		applyMissionKnowledgeFromGraph(state.Mission, graph, time.Now())
 	})
 }
 
@@ -267,6 +275,7 @@ func (s *AppState) finishMissionRunJournal(runID string, result AgentReadOnlyMis
 		}
 		applyMissionSchedulerSnapshot(state.Mission, result.Run.Snapshot)
 		applyMissionCompletionEvidence(state.Mission, &result.Graph, time.Now())
+		applyMissionKnowledgeFromGraph(state.Mission, &result.Graph, time.Now())
 		accountingCopy := result.Accounting
 		state.Mission.Accounting = &accountingCopy
 		state.Mission.UpdatedAt = time.Now()
