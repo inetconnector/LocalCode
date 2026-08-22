@@ -100,6 +100,7 @@ func TestMissionRecoveryContinuationMaterializesRetryCandidate(t *testing.T) {
 	state, current := prepareMissionRecoveryContinuationTestState(t, at)
 	state.Mission.Tasks[1].State = AgentTaskFailed
 	state.Mission.Tasks[1].Lifecycle = &MissionTaskLifecycle{AttemptCount: 1, RetryCount: 0}
+	state.Mission.Tasks[1].BudgetSnapshot = &AgentBudgetSnapshot{Usage: AgentUsage{}}
 	fingerprint, snapshot := buildMissionRecoveryContinuationTestSnapshot(t, state, current, at)
 
 	materialized, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, "child")
@@ -143,6 +144,17 @@ func TestMissionRecoveryContinuationRejectsConflictingUsageAndExhaustedBudget(t 
 	fingerprint, snapshot = buildMissionRecoveryContinuationTestSnapshot(t, state, current, at)
 	if _, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, "child"); !errors.Is(err, errMissionRecoveryContinuationBudget) {
 		t.Fatalf("budget error=%v want exhausted budget", err)
+	}
+}
+
+func TestMissionRecoveryContinuationRejectsAttemptWithoutUsageEvidence(t *testing.T) {
+	at := time.Now()
+	state, current := prepareMissionRecoveryContinuationTestState(t, at)
+	state.Mission.Tasks[1].State = AgentTaskFailed
+	state.Mission.Tasks[1].Lifecycle = &MissionTaskLifecycle{AttemptCount: 1, RetryCount: 0}
+	fingerprint, snapshot := buildMissionRecoveryContinuationTestSnapshot(t, state, current, at)
+	if _, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, "child"); err == nil {
+		t.Fatal("attempted task without scheduler budget-snapshot usage evidence was accepted")
 	}
 }
 
