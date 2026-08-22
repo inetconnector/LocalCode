@@ -16,15 +16,16 @@ const maxReadOnlyMissionTasks = 64
 var errAgentMissionBusy = errors.New("agent is already running")
 
 type AgentReadOnlyMissionRequest struct {
-	MissionID       string              `json:"mission_id"`
-	ParentTaskID    string              `json:"parent_task_id,omitempty"`
-	Objective       string              `json:"objective,omitempty"`
-	Project         string              `json:"project"`
-	Model           string              `json:"model,omitempty"`
-	Constraints     []string            `json:"constraints,omitempty"`
-	SuccessCriteria []string            `json:"success_criteria,omitempty"`
-	Budget          AgentBudget         `json:"budget,omitempty"`
-	Tasks           []AgentTaskProposal `json:"tasks"`
+	MissionID       string                     `json:"mission_id"`
+	ParentTaskID    string                     `json:"parent_task_id,omitempty"`
+	Objective       string                     `json:"objective,omitempty"`
+	Project         string                     `json:"project"`
+	Model           string                     `json:"model,omitempty"`
+	Constraints     []string                   `json:"constraints,omitempty"`
+	SuccessCriteria []string                   `json:"success_criteria,omitempty"`
+	Budget          AgentBudget                `json:"budget,omitempty"`
+	Knowledge       []MissionKnowledgeProposal `json:"knowledge,omitempty"`
+	Tasks           []AgentTaskProposal        `json:"tasks"`
 }
 
 type AgentReadOnlyMissionResult struct {
@@ -66,6 +67,9 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		return result, err
 	}
 	if err := validateAgentMissionBudget(req.Budget); err != nil {
+		return result, err
+	}
+	if err := validateMissionKnowledgeProposals(req.Knowledge); err != nil {
 		return result, err
 	}
 
