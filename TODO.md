@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `21a00ee24c729b4c46653041941168c59a69a11f`  
-**Active work:** draft PR #66 `feat: add read-only mission recovery control boundary`, branch `feat/mission-recovery-control-boundary`  
+**Authoritative merged base for this slice:** master `bcd17f6975ce63dd28b23dbdeea34d42e1d53ad4`  
+**Active work:** draft PR #67 `feat: materialize safe mission recovery continuation`, branch `feat/mission-recovery-dispatch-gate`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -15,30 +15,38 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
 
-## P0 – finish PR #66 read-only Mission recovery-control boundary
+## P0 – finish PR #67 bounded Mission continuation materialization
 
-- [ ] Keep `run_journal.go` as the single durable recovery authority; never use cached startup `AppState.Recovery` as decision authority.
-- [ ] Load the exact requested nonterminal read-only Mission by execution `run_id` and bind authority-relevant journal state to a canonical SHA-256 fingerprint.
-- [ ] Freshly observe current project/Git state and recompute reconciliation for every control snapshot.
-- [ ] Use the merged transition planner to identify only tasks requiring `verify_postconditions`; evaluate those fixed postconditions without model/Child execution.
-- [ ] Apply successful postcondition evidence only to a cloned transient Mission and recompute the final transition plan from that clone; do not repair or mutate durable evidence in this slice.
-- [ ] Re-read the journal after observation and retry at most three times when its fingerprint changes; fail closed if a stable snapshot cannot be obtained.
-- [ ] Expose a trusted `AppState` recovery-control method that refuses snapshots while another agent run is active, including a race where a run becomes active during snapshot construction.
-- [ ] Keep the snapshot explicitly non-authoritative for execution: `read_only=true`, `execution_authorized=false`, `scheduler_lease_granted=false`, `persistent_state_modified=false`.
-- [ ] Treat the returned snapshot SHA as observation binding only, never as a Scheduler lease, capability grant or dispatch token.
-- [ ] Keep startup passive and Mobile unchanged; no automatic Mission resume/retry/replay and no new Remote recovery-control authority.
-- [ ] Cover transient verification, malformed historical `verified` evidence, current drift, byte-identical journal before/after, concurrent journal changes, wrong/terminal run IDs, and active-run races.
-- [ ] Keep canonical docs consistent; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
+- [ ] Materialize only an explicit current `resume_candidate` or `retry_candidate`; never select work implicitly.
+- [ ] Reuse the #66 fresh project/Git reconciliation and transient verification path against the same stable durable journal fingerprint.
+- [ ] Include only the selected candidate plus its transitively `reuse_verified` dependency closure; unrelated ready work must never leak into the continuation DAG.
+- [ ] Regenerate executable read-only capabilities from the canonical Explorer/Planner/Reviewer role envelope; never trust persisted granted capability data as execution authority.
+- [ ] Revalidate persisted requested capabilities and model identity; fail closed on capability escalation, unsupported roles or silent model drift.
+- [ ] Preserve scheduler-adjacent historical usage from BudgetSnapshot evidence and reject negative/conflicting accounting facts.
+- [ ] If a task has a recorded execution attempt, require BudgetSnapshot usage evidence; missing historical accounting must not be interpreted as zero usage.
+- [ ] Reject materialization when the recovered Mission budget is already exhausted by historical accepted usage or the durably observed active wall time through the last journal checkpoint; offline/crash downtime must not consume execution-time budget.
+- [ ] Reject impossible durable timing evidence such as a Mission checkpoint timestamp later than the fresh recovery observation.
+- [ ] Keep the materialization explicitly non-authoritative: no Child/model execution, no Scheduler admission/lease, no journal write, `execution_authorized=false`.
+- [ ] Re-read the durable journal after observation; retry boundedly on fingerprint changes and fail closed when stability cannot be proven.
+- [ ] Reject already-active runs and a run that becomes active during materialization; do not claim this closes the future dispatch-time TOCTOU window.
+- [ ] Cover resume/retry, dependency closure, unrelated-work exclusion, capability regeneration/escalation rejection, model/usage corruption, exhausted budget, missing attempted-task usage evidence, offline-downtime time-budget preservation, invalid future checkpoint timing, no-write behavior and active-run races.
+- [ ] Keep canonical docs synchronized; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
 
-## P0/P1 – Phase 6: controlled Mission continuation after verified control snapshot
+## P0 – next Phase 6 slice: atomic continuation admission and execution
 
-- [ ] Add a narrow explicit Desktop transport for recovery-control inspection only if/when the product needs it; transport must call the trusted AppState boundary rather than duplicate recovery logic, remain loopback/CSRF protected, and add no Mobile endpoint.
-- [ ] Define controlled pause/resume for eligible nonterminal read-only tasks only after a fresh recovery-control snapshot is recomputed immediately at the dispatch boundary.
-- [ ] Define controlled retry for eligible failed/retryable tasks; enforce durable per-task/per-Mission attempt limits and preserve existing cancellation semantics.
-- [ ] Preserve Scheduler admission/resource limits; a recovery plan, snapshot or prospective attempt reservation is never an execution lease.
-- [ ] Preserve historical scheduler-accepted usage and Mission accounting across continuation without double-counting prior attempts.
-- [ ] Revalidate journal fingerprint, current reconciliation, verification evidence, dependencies and attempt budgets immediately before resumed/retried dispatch; stale snapshots must fail closed.
-- [ ] Add crash/restart tests for partially completed Missions, repeated restarts, drift between snapshot and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
+- [ ] Recompute the #67 materialization immediately at the actual continuation boundary; a previously returned materialization or snapshot must never authorize execution.
+- [ ] Couple final journal/reconciliation/active-run validation to Scheduler admission so stale-state TOCTOU cannot occur between authorization and dispatch.
+- [ ] Persist the new attempt at the scheduler-authoritative transition without losing prior `AttemptCount`/`RetryCount` evidence; enforce three attempts/task and 192 attempts/Mission.
+- [ ] Carry historical scheduler-accepted Usage/Accounting into the continued Mission exactly once; late/cancelled results must remain non-authoritative and prior work must never be double-counted.
+- [ ] Preserve Mission and child budget limits across continuation; continuation may constrain remaining budgets but must never widen the original limits.
+- [ ] Preserve existing Scheduler resource limits, detached-task execution, lease ownership and cancellation-vs-finalization race semantics.
+- [ ] Define the new execution-scoped `RunID`/journal transition while preserving stable `MissionID` and explicit linkage to the interrupted run evidence.
+- [ ] Add crash/restart tests for repeated restarts, drift between materialization/admission, cancellation during continuation, attempt-limit exhaustion and accounting continuity.
+- [ ] Keep startup passive; no automatic Mission resume/retry/replay.
+
+## P0/P1 – later Phase 6 recovery product surface
+
+- [ ] Add a narrow explicit Desktop recovery inspection/control transport only after the atomic execution boundary is sound; it must call trusted AppState governance, inherit loopback/CSRF protections and add no Mobile endpoint.
 - [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
