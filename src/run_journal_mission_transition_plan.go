@@ -78,7 +78,21 @@ func missionRecoveryTaskLifecycleValid(task MissionRecoveryTaskState) bool {
 	return retries == expectedRetries
 }
 
-func missionRecoveryTaskVerifiedEvidenceReusable(task MissionRecoveryTaskState) bool {
+func missionRecoveryVerifiedPostconditionChecks() []MissionTaskPostconditionCheck {
+	return []MissionTaskPostconditionCheck{
+		{Name: missionPostconditionCheckReconciliation, Passed: true},
+		{Name: missionPostconditionCheckNotRunning, Passed: true},
+		{Name: missionPostconditionCheckDurableSuccess, Passed: true},
+		{Name: missionPostconditionCheckEvidence, Passed: true},
+		{Name: missionPostconditionCheckResultStatus, Passed: true},
+		{Name: missionPostconditionCheckResultDigest, Passed: true},
+	}
+}
+
+func missionRecoveryTaskVerifiedEvidenceReusable(mission *MissionRecoveryState, task MissionRecoveryTaskState) bool {
+	if mission == nil || mission.Reconciliation == nil || mission.Reconciliation.State != missionReconcileMatched {
+		return false
+	}
 	evidence := task.CompletionEvidence
 	if evidence == nil || evidence.VerificationState != missionVerificationVerified {
 		return false
@@ -89,18 +103,18 @@ func missionRecoveryTaskVerifiedEvidenceReusable(task MissionRecoveryTaskState) 
 	if !validMissionVerificationDigest(evidence.ResultSHA256) || !validMissionVerificationDigest(evidence.LastVerificationEvidenceSHA256) {
 		return false
 	}
-	if evidence.VerificationAttemptCount <= 0 || evidence.LastVerificationCheckCount <= 0 || evidence.LastVerificationCheckCount > maxMissionVerificationChecks {
+	checks := missionRecoveryVerifiedPostconditionChecks()
+	if evidence.VerificationAttemptCount <= 0 || evidence.LastVerificationCheckCount != len(checks) {
 		return false
 	}
 	if evidence.CompletedAt.IsZero() || evidence.VerificationUpdatedAt.IsZero() || evidence.VerificationUpdatedAt.Before(evidence.CompletedAt) {
 		return false
 	}
-	return evidence.FindingCount >= 0 &&
-		evidence.ChangedFileCount >= 0 &&
-		evidence.CommitCount >= 0 &&
-		evidence.TestCount >= 0 &&
-		evidence.RiskCount >= 0 &&
-		evidence.SuggestedTaskCount >= 0
+	if evidence.FindingCount < 0 || evidence.ChangedFileCount < 0 || evidence.CommitCount < 0 || evidence.TestCount < 0 || evidence.RiskCount < 0 || evidence.SuggestedTaskCount < 0 {
+		return false
+	}
+	expectedDigest := missionTaskPostconditionEvidenceDigest(mission.MissionID, task, mission.Reconciliation, checks)
+	return validMissionVerificationDigest(expectedDigest) && evidence.LastVerificationEvidenceSHA256 == expectedDigest
 }
 
 func missionRecoveryTransitionGraphValid(mission *MissionRecoveryState) bool {
@@ -164,7 +178,7 @@ func invalidMissionRecoveryTransitionPlan(mission *MissionRecoveryState, observe
 	return plan
 }
 
-func initialMissionRecoveryTaskTransition(task MissionRecoveryTaskState, reconciliationState string) MissionRecoveryTaskTransition {
+func initialMissionRecoveryTaskTransition(mission *MissionRecoveryState, task MissionRecoveryTaskState) MissionRecoveryTaskTransition {
 	attempts, retries, lifecycleKnown := missionRecoveryTaskAttemptCounts(task)
 	transition := MissionRecoveryTaskTransition{
 		TaskID:       task.ID,
@@ -172,6 +186,10 @@ func initialMissionRecoveryTaskTransition(task MissionRecoveryTaskState, reconci
 		AttemptCount: attempts,
 		RetryCount:   retries,
 		Dependencies: append([]string(nil), task.Dependencies...),
+	}
+	reconciliationState := ""
+	if mission != nil && mission.Reconciliation != nil {
+		reconciliationState = mission.Reconciliation.State
 	}
 
 	if task.Running || task.State == AgentTaskRunning {
@@ -199,7 +217,7 @@ func initialMissionRecoveryTaskTransition(task MissionRecoveryTaskState, reconci
 
 	switch task.State {
 	case AgentTaskSucceeded, AgentTaskCompleted:
-		if missionRecoveryTaskVerifiedEvidenceReusable(task) {
+		if missionRecoveryTaskVerifiedEvidenceReusable(mission, task) {
 			transition.Action = missionRecoveryTransitionReuseVerified
 			transition.Reason = "durable_success_verified_against_current_match"
 			return transition
@@ -317,7 +335,7 @@ func planMissionRecoveryTransitions(mission *MissionRecoveryState, observedAt ti
 		attempts, _, _ := missionRecoveryTaskAttemptCounts(task)
 		plan.ObservedMissionAttempts += attempts
 		indexByID[task.ID] = len(plan.Tasks)
-		plan.Tasks = append(plan.Tasks, initialMissionRecoveryTaskTransition(task, plan.ReconciliationState))
+		plan.Tasks = append(plan.Tasks, initialMissionRecoveryTaskTransition(mission, task))
 	}
 
 	// Dependency safety is stricter than mere task readiness: any task that
