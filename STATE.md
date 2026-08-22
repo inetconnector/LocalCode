@@ -5,7 +5,7 @@
 **Default branch:** `master`  
 **Current authoritative merged master:** `8e779852b98d83a8315a798c4c319de751fbe344`
 **Last merged functional PR:** #67 `feat: materialize safe mission recovery continuation`
-**Active work:** branch `feat/mission-recovery-atomic-admission`, remote head `e76c6fadc455`; no open PR was present during the 2026-08-22 cleanup check.
+**Active work:** branch `feat/mission-recovery-atomic-admission`; functional head before the cleanup documentation refresh was `e76c6fadc455`, with documentation commits on top. No open PR was present during the 2026-08-22 cleanup check.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -88,7 +88,7 @@ The final #67 head was merged to `master` as `8e779852b98d83a8315a798c4c319de751
 
 ## 4. Active branch – atomic continuation admission
 
-`feat/mission-recovery-atomic-admission` is four commits ahead of `master` and starts the first execution-capable recovery boundary in `src/run_journal_mission_admission.go`.
+`feat/mission-recovery-atomic-admission` starts the first execution-capable recovery boundary in `src/run_journal_mission_admission.go`. Its functional work began as four commits ahead of `master`; cleanup documentation commits may sit on top.
 
 The active branch currently:
 
@@ -154,4 +154,4 @@ Desktop/Mobile boundary: `src/server.go`, `src/remote_server.go`, `src/remote_mi
 
 Only `master` is authoritative after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted after each merge cleanup and must never be treated as active development.
 
-2026-08-22 cleanup result: GitHub remote branches are only `master` and `feat/mission-recovery-atomic-admission`. Twenty-three stale remote branch refs were deleted, including merged PR carriers, two closed superseded draft predecessors, and `feat/mission-verification-evidence` which matched merged `master` history. Completed non-`master` GitHub Actions runs were also deleted; 56 completed `master` runs remain as merge/Quality audit history. Current workflow files are only `.github/workflows/quality.yml` and `.github/workflows/release.yml`.
+2026-08-22 cleanup result: GitHub remote branches are only `master` and `feat/mission-recovery-atomic-admission`. Twenty-three stale remote branch refs were deleted, including merged PR carriers, two closed superseded draft predecessors, and `feat/mission-verification-evidence` which matched merged `master` history. Historical completed non-`master` GitHub Actions runs were also deleted; at cleanup verification, only 56 completed `master` runs remained as merge/Quality audit history. Current workflow files are only `.github/workflows/quality.yml` and `.github/workflows/release.yml`.

@@ -2,7 +2,7 @@
 
 **Verified:** 2026-08-22 Europe/Berlin  
 **Authoritative merged base for this slice:** master `8e779852b98d83a8315a798c4c319de751fbe344`
-**Active work:** branch `feat/mission-recovery-atomic-admission`, remote head `e76c6fadc455`; no open PR was present during the 2026-08-22 cleanup check.
+**Active work:** branch `feat/mission-recovery-atomic-admission`; functional head before the cleanup documentation refresh was `e76c6fadc455`, with documentation commits on top. No open PR was present during the 2026-08-22 cleanup check.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
