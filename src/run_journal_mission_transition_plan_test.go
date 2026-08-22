@@ -24,7 +24,10 @@ func verifiedRecoveryTransitionEvidence(t *testing.T, at time.Time) *MissionTask
 	if evidence == nil {
 		t.Fatal("completion evidence is nil")
 	}
-	evidence.VerificationState = missionVerificationVerified
+	verificationDigest := missionTaskResultDigest(AgentResult{Status: AgentResultCompleted})
+	if err := recordMissionTaskVerificationOutcome(evidence, missionVerificationVerified, verificationDigest, 1, at.Add(time.Second)); err != nil {
+		t.Fatalf("record verified completion evidence: %v", err)
+	}
 	return evidence
 }
 
@@ -74,6 +77,46 @@ func TestMissionRecoveryTransitionPlanRequiresVerifiedDependencies(t *testing.T)
 	}
 	if blockedPlan.ReservedNewAttempts != 0 {
 		t.Fatalf("blocked dependency reserved an attempt: %#v", blockedPlan)
+	}
+}
+
+func TestMissionRecoveryTransitionPlanDoesNotReuseMalformedVerifiedEvidence(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name   string
+		mutate func(*MissionTaskCompletionEvidence)
+	}{
+		{name: "missing verification attempt", mutate: func(e *MissionTaskCompletionEvidence) { e.VerificationAttemptCount = 0 }},
+		{name: "missing verification digest", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationEvidenceSHA256 = "" }},
+		{name: "missing verification checks", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationCheckCount = 0 }},
+		{name: "too many verification checks", mutate: func(e *MissionTaskCompletionEvidence) { e.LastVerificationCheckCount = maxMissionVerificationChecks + 1 }},
+		{name: "invalid result digest", mutate: func(e *MissionTaskCompletionEvidence) { e.ResultSHA256 = "not-a-sha256" }},
+		{name: "non-success result status", mutate: func(e *MissionTaskCompletionEvidence) { e.ResultStatus = AgentResultStatus("failed") }},
+		{name: "verification predates completion", mutate: func(e *MissionTaskCompletionEvidence) { e.VerificationUpdatedAt = e.CompletedAt.Add(-time.Second) }},
+		{name: "negative structural count", mutate: func(e *MissionTaskCompletionEvidence) { e.FindingCount = -1 }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			foundation := recoveryTransitionTask("foundation", AgentTaskSucceeded)
+			foundation.CompletionEvidence = verifiedRecoveryTransitionEvidence(t, now.Add(-time.Minute))
+			test.mutate(foundation.CompletionEvidence)
+			child := recoveryTransitionTask("child", AgentTaskPending, "foundation")
+
+			plan := planMissionRecoveryTransitions(matchedRecoveryTransitionMission(foundation, child), now)
+			if !plan.Valid {
+				t.Fatalf("malformed evidence should require re-verification without corrupting the task graph: %#v", plan)
+			}
+			if plan.Tasks[0].Action != missionRecoveryTransitionVerifyPostconditions || plan.Tasks[0].Reason != "verified_evidence_invalid_requires_recheck" {
+				t.Fatalf("malformed verified evidence was trusted: %#v", plan.Tasks[0])
+			}
+			if plan.Tasks[1].Action != missionRecoveryTransitionBlockedDependency || len(plan.Tasks[1].BlockedBy) != 1 || plan.Tasks[1].BlockedBy[0] != "foundation" {
+				t.Fatalf("child was unlocked by malformed verified dependency evidence: %#v", plan.Tasks[1])
+			}
+			if plan.ReservedNewAttempts != 0 {
+				t.Fatalf("malformed verified dependency reserved execution budget: %#v", plan)
+			}
+		})
 	}
 }
 
