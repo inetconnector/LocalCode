@@ -174,6 +174,20 @@ func newRecoveryMissionBudgetTracker(limit AgentBudget, historical AgentUsage, a
 	return tracker, nil
 }
 
+func writeMissionRecoveryJournalAtVersion(state RunRecoveryState, expected fileVersion) error {
+	state.SchemaVersion = runJournalSchemaVersion
+	state.UpdatedAt = time.Now()
+	if len(state.Events) > 64 {
+		state.Events = append([]RunJournalEvent(nil), state.Events[len(state.Events)-64:]...)
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return atomicWriteFileIfVersion(runJournalPath(), data, 0o600, expected)
+}
+
 func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuationMaterialization, executionRunID string, admittedAt time.Time) error {
 	executionRunID = strings.TrimSpace(executionRunID)
 	if executionRunID == "" || admittedAt.IsZero() || !materialized.RequiresNewAttempt || !validMissionVerificationDigest(materialized.JournalSHA256) {
@@ -232,6 +246,9 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 	if candidate.Lifecycle.AttemptCount < 0 || candidate.Lifecycle.AttemptCount >= missionRecoveryMaxTaskAttempts || missionAttempts >= missionRecoveryMaxMissionAttempts {
 		return errMissionRecoveryContinuationCandidate
 	}
+	if candidate.Lifecycle.AttemptReserved != !candidate.Lifecycle.AttemptReservedAt.IsZero() {
+		return errMissionRecoveryContinuationCandidate
+	}
 	// Persist admission intent before any Scheduler exists, but do not consume
 	// retry budget yet. AttemptCount advances only at the first durable Running
 	// checkpoint. A crash in this gap therefore leaves a reusable reservation.
@@ -268,19 +285,31 @@ func reserveMissionRecoveryContinuation(materialized MissionRecoveryContinuation
 			400,
 		),
 	})
-	if len(state.Events) > 64 {
-		state.Events = append([]RunJournalEvent(nil), state.Events[len(state.Events)-64:]...)
-	}
-	state.SchemaVersion = runJournalSchemaVersion
-	data, err := json.MarshalIndent(*state, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if err := atomicWriteFileIfVersion(path, data, 0o600, expected); err != nil {
+	if err := writeMissionRecoveryJournalAtVersion(*state, expected); err != nil {
 		return fmt.Errorf("%w: %v", errMissionRecoveryAdmissionStale, err)
 	}
 	return nil
+}
+
+func cancelUnfinishedMissionRecoveryTasks(mission *MissionRecoveryState) {
+	if mission == nil {
+		return
+	}
+	for index := range mission.Tasks {
+		task := &mission.Tasks[index]
+		switch task.State {
+		case AgentTaskSucceeded, AgentTaskCompleted, AgentTaskFailed, AgentTaskCancelled:
+			continue
+		}
+		task.State = AgentTaskCancelled
+		task.Running = false
+		task.QueuePosition = 0
+		task.AdmissionBlockedReason = ""
+		if task.Lifecycle != nil {
+			task.Lifecycle.AttemptReserved = false
+			task.Lifecycle.AttemptReservedAt = time.Time{}
+		}
+	}
 }
 
 func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGraph, run AgentScheduledRun, finishedAt time.Time, runErr error) error {
@@ -292,9 +321,17 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 	}
 	runJournalFileMu.Lock()
 	defer runJournalFileMu.Unlock()
+	path := runJournalPath()
+	expected, err := readFileVersion(path)
+	if err != nil {
+		return err
+	}
 	state, err := loadRunJournal()
 	if err != nil {
 		return err
+	}
+	if err := verifyFileVersion(path, expected); err != nil {
+		return fmt.Errorf("%w: %v", errMissionRecoveryAdmissionStale, err)
 	}
 	if state == nil || state.Terminal || state.Mission == nil || state.RunID != executionRunID || state.Mission.MissionID != graph.MissionID {
 		return errMissionRecoveryContinuationUnavailable
@@ -313,11 +350,21 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 		if task, ok := graphByID[durable.ID]; ok {
 			durable.State = task.State
 			durable.Running = false
-			if usage, exists := run.UsageByTask[durable.ID]; exists {
-				durable.Usage = usage
+		}
+		usage, exists := run.UsageByTask[durable.ID]
+		if exists {
+			if !missionRecoveryUsageValid(usage) {
+				return fmt.Errorf("task %q has invalid continued usage", durable.ID)
+			}
+			durable.Usage = usage
+		} else {
+			var usageErr error
+			usage, usageErr = missionRecoveryAcceptedTaskUsage(*durable)
+			if usageErr != nil {
+				return usageErr
 			}
 		}
-		usageByTask[durable.ID] = durable.Usage
+		usageByTask[durable.ID] = usage
 		if !isSuccessfulAgentTaskState(durable.State) {
 			allSucceeded = false
 		}
@@ -327,6 +374,21 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 	state.Mission.UpdatedAt = finishedAt
 	state.UpdatedAt = finishedAt
 
+	if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		cancelUnfinishedMissionRecoveryTasks(state.Mission)
+		state.Mission.State = string(AgentMissionCancelled)
+		state.Mission.Reason = string(AgentMissionReasonCancelled)
+		state.Mission.BudgetExhaustedBy = ""
+		state.Phase = "idle"
+		state.Terminal = true
+		state.Outcome = string(AgentMissionCancelled) + ":" + string(AgentMissionReasonCancelled)
+		state.Events = append(state.Events, RunJournalEvent{At: finishedAt, Type: "mission_end", Action: missionRecoveryKindReadOnly, Message: state.Outcome})
+		if err := writeMissionRecoveryJournalAtVersion(*state, expected); err != nil {
+			return fmt.Errorf("%w: %v", errMissionRecoveryAdmissionStale, err)
+		}
+		return nil
+	}
+
 	if runErr == nil && allSucceeded {
 		state.Mission.State = string(AgentMissionSucceeded)
 		state.Mission.Reason = string(AgentMissionReasonCompleted)
@@ -335,7 +397,10 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 		state.Terminal = true
 		state.Outcome = string(AgentMissionSucceeded) + ":" + string(AgentMissionReasonCompleted)
 		state.Events = append(state.Events, RunJournalEvent{At: finishedAt, Type: "mission_end", Action: missionRecoveryKindReadOnly, Message: state.Outcome})
-		return writeRunJournalUnlocked(*state)
+		if err := writeMissionRecoveryJournalAtVersion(*state, expected); err != nil {
+			return fmt.Errorf("%w: %v", errMissionRecoveryAdmissionStale, err)
+		}
+		return nil
 	}
 
 	state.Mission.State = missionRecoveryRunning
@@ -352,7 +417,10 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 		message = sanitizeRunJournalText(runErr.Error(), 200)
 	}
 	state.Events = append(state.Events, RunJournalEvent{At: finishedAt, Type: "mission_continuation_checkpoint", Action: missionRecoveryKindReadOnly, Message: message})
-	return writeRunJournalUnlocked(*state)
+	if err := writeMissionRecoveryJournalAtVersion(*state, expected); err != nil {
+		return fmt.Errorf("%w: %v", errMissionRecoveryAdmissionStale, err)
+	}
+	return nil
 }
 
 func (s *AppState) runMissionRecoveryContinuationWithExecutor(ctx context.Context, runID, taskID string, execute scheduledReadOnlyAgentExecutor) (MissionRecoveryContinuationExecution, error) {
