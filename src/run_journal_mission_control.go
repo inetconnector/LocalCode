@@ -130,7 +130,6 @@ func applyMissionRecoveryControlVerification(mission *MissionRecoveryState, resu
 		}
 		evidence.LastVerificationEvidenceSHA256 = result.EvidenceSHA256
 		evidence.LastVerificationCheckCount = result.CheckCount
-		evidence.LastVerificationFailure = ""
 		evidence.VerificationUpdatedAt = result.ObservedAt
 		mission.Tasks[index].CompletionEvidence = &evidence
 		return
