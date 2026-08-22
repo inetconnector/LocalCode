@@ -38,6 +38,33 @@ func scheduledAgentTaskTerminalState(result AgentResult, runErr error) AgentTask
 	}
 }
 
+func cloneAgentUsageByTask(seed map[string]AgentUsage) (map[string]AgentUsage, error) {
+	out := make(map[string]AgentUsage, len(seed))
+	for taskID, usage := range seed {
+		if strings.TrimSpace(taskID) == "" || !missionRecoveryUsageValid(usage) {
+			return nil, fmt.Errorf("invalid seeded scheduler usage for task %q", taskID)
+		}
+		out[taskID] = usage
+	}
+	return out, nil
+}
+
+func addAgentUsage(base, delta AgentUsage) (AgentUsage, error) {
+	if !missionRecoveryUsageValid(base) || !missionRecoveryUsageValid(delta) {
+		return AgentUsage{}, fmt.Errorf("agent usage must be non-negative")
+	}
+	out := AgentUsage{
+		ModelCalls:      base.ModelCalls + delta.ModelCalls,
+		ToolCalls:       base.ToolCalls + delta.ToolCalls,
+		EstimatedTokens: base.EstimatedTokens + delta.EstimatedTokens,
+		ElapsedMillis:   base.ElapsedMillis + delta.ElapsedMillis,
+	}
+	if out.ModelCalls < base.ModelCalls || out.ToolCalls < base.ToolCalls || out.EstimatedTokens < base.EstimatedTokens || out.ElapsedMillis < base.ElapsedMillis {
+		return AgentUsage{}, fmt.Errorf("agent usage overflow")
+	}
+	return out, nil
+}
+
 // runScheduledReadOnlyAgentGraph connects the Scheduler/Resource Manager to the
 // existing isolated Native read-only child runtime. It intentionally does not
 // grant capabilities: only tasks already authorized by the trusted parent can
@@ -62,7 +89,20 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutor(project string, cf
 // snapshots only after scheduler-owned state transitions. The callback is
 // observation-only: it cannot affect admission, capabilities or task state.
 func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor, checkpoint scheduledReadOnlyAgentCheckpoint) (AgentScheduledRun, error) {
-	run := AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}
+	return s.runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded(project, cfg, graph, scheduler, execute, checkpoint, nil)
+}
+
+// runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded is the recovery
+// accounting boundary. Historical durable usage is copied into the run before
+// admission and every newly observed task usage is accumulated onto that seed;
+// a continuation therefore cannot reset a task budget by starting a new
+// scheduler invocation.
+func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor, checkpoint scheduledReadOnlyAgentCheckpoint, seed map[string]AgentUsage) (AgentScheduledRun, error) {
+	usageByTask, err := cloneAgentUsageByTask(seed)
+	if err != nil {
+		return AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}, err
+	}
+	run := AgentScheduledRun{UsageByTask: usageByTask}
 	if s == nil {
 		return run, fmt.Errorf("app state is nil")
 	}
@@ -139,7 +179,12 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(proje
 			return run, finalizeErr
 		}
 		if finalized.Applied {
-			run.UsageByTask[executionTask.ID] = result.Usage
+			cumulative, usageErr := addAgentUsage(run.UsageByTask[executionTask.ID], result.Usage)
+			if usageErr != nil {
+				publishCheckpoint()
+				return run, fmt.Errorf("task %q usage: %w", executionTask.ID, usageErr)
+			}
+			run.UsageByTask[executionTask.ID] = cumulative
 			run.Results = append(run.Results, AgentScheduledTaskResult{TaskID: executionTask.ID, Role: executionTask.Role, Result: result})
 		}
 		publishCheckpoint()
