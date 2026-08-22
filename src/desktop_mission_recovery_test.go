@@ -23,9 +23,8 @@ func desktopRecoveryTestControlSnapshot() MissionRecoveryControlSnapshot {
 		SnapshotSHA256:      strings.Repeat("b", 64),
 		ReconciliationState: missionReconcileMatched,
 		Plan: MissionRecoveryTransitionPlan{
-			RunID:     "interrupted-run",
 			MissionID: "mission-1",
-			Runnable:  true,
+			Valid:     true,
 			Tasks: []MissionRecoveryTaskTransition{
 				{TaskID: "foundation", DurableState: AgentTaskSucceeded, Action: missionRecoveryTransitionReuseVerified},
 				{TaskID: "child", DurableState: AgentTaskFailed, Action: missionRecoveryTransitionRetryCandidate, RequiresNewAttempt: true},
