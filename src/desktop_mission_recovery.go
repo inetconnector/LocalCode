@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	errDesktopMissionRecoveryNotFound     = errors.New("desktop mission recovery is not available")
+	errDesktopMissionRecoveryNotFound       = errors.New("desktop mission recovery is not available")
 	errMissionRecoveryAdmissionPrecondition = errors.New("mission recovery admission precondition changed")
 )
 
@@ -136,7 +136,12 @@ func validateMissionRecoveryContinuationPreconditions(materialized MissionRecove
 	if expected.MissionID == "" || (expected.Action != missionRecoveryTransitionResumeCandidate && expected.Action != missionRecoveryTransitionRetryCandidate) || !validMissionVerificationDigest(expected.JournalSHA256) || !validMissionVerificationDigest(expected.SnapshotSHA256) {
 		return errMissionRecoveryAdmissionPrecondition
 	}
-	if materialized.MissionID != expected.MissionID || materialized.Action != expected.Action || materialized.JournalSHA256 != expected.JournalSHA256 || materialized.SnapshotSHA256 != expected.SnapshotSHA256 {
+	// SnapshotSHA256 deliberately includes ObservedAt, so a correctly fresh
+	// re-observation gets a new snapshot digest even when durable state is
+	// unchanged. It proves what the UI inspected but is never an authorization
+	// token. Durable staleness is bound by JournalSHA256, while Mission/action
+	// equality plus the newly recomputed materialization bind semantic intent.
+	if materialized.MissionID != expected.MissionID || materialized.Action != expected.Action || materialized.JournalSHA256 != expected.JournalSHA256 {
 		return errMissionRecoveryAdmissionPrecondition
 	}
 	return nil
