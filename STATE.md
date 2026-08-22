@@ -3,10 +3,9 @@
 **Verified:** 2026-08-22 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `74f0a50ca8d62696340677479e5d3e8e44fd99bb`  
-**Last merged functional PR:** #64 `feat: verify recovered mission postconditions`  
-**Active work:** PR #65 `feat: plan safe mission recovery transitions`, branch `feat/mission-recovery-transition-planner`  
-**Active head:** the exact PR head is verified from GitHub immediately before Quality/merge.  
+**Current authoritative merged master:** `21a00ee24c729b4c46653041941168c59a69a11f`  
+**Last merged functional PR:** #65 `feat: plan safe mission recovery transitions`  
+**Active work:** draft PR #66 `feat: add read-only mission recovery control boundary`, branch `feat/mission-recovery-control-boundary`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -29,58 +28,61 @@ Desktop Mission telemetry is bounded and ephemeral. `/api/status` attaches riche
 
 ### Android / Mobile Remote
 
-Mobile Remote exposes only the narrow active read-only Mission indicator derived from authenticated `running` and `run_phase`. It receives no Desktop Mission/task IDs, scheduler/resource/budget/accounting detail or new Mission-control authority. Existing Remote stop behavior is unchanged.
+Mobile Remote exposes only the narrow active read-only Mission indicator derived from authenticated `running` and `run_phase`. It receives no Desktop Mission/task IDs, scheduler/resource/budget/accounting detail or Mission-recovery control authority. Existing Remote stop behavior is unchanged.
 
 ### Native Agent Teams / completed Phase 5
 
 Executable child roles remain read-only **Explorer**, **Planner** and **Reviewer**. Child schemas permit project-tree/file/text/LSP reads and structured finish only. Mutation, shell, Git, network/web, MCP tool calls, installation, memory writes, approvals and recursive spawning remain absent.
 
-Merged orchestration layers include structured Agent contracts, deterministic Task DAG, bounded Scheduler/Resource Manager, scheduled read-only dispatch, race-safe finalization/cancellation, governed Mission entry, Mission budgets/accounting, stable `MissionID` separated from execution `RunID`, scheduler fairness/saturation coverage, Desktop/Mobile observation, orchestration diagnostics and reproducible synthetic/opt-in Ollama parallelism benchmarks.
+Merged orchestration layers include structured Agent contracts, deterministic Task DAG, bounded Scheduler/Resource Manager, scheduled read-only dispatch, race-safe finalization/cancellation, governed Mission entry, Mission budgets/accounting, stable `MissionID` separated from execution `RunID`, scheduler fairness/saturation coverage, Desktop/Mobile observation, diagnostics and reproducible synthetic/opt-in Ollama parallelism benchmarks.
 
 Current scheduled Child dispatch is synchronous; higher configured model-slot limits alone do not create or prove parallel Child model execution. Benchmark output never automatically changes Scheduler limits.
 
-## 3. Phase 6 recovery foundation merged through PR #64
+## 3. Phase 6 recovery foundation merged through PR #65
 
-`run_journal.go` remains the single durable recovery authority. A read-only Mission stores bounded structured metadata in the existing `active-run.json`, not in a second journal.
+`run_journal.go` remains the single durable recovery authority. A read-only Mission stores bounded structured metadata in the existing `active-run.json`; no second Mission journal exists.
 
-PR #61 added restart reconciliation using bounded canonical project/Git identity evidence: hashed project/root identity, exact `HEAD`, hashed porcelain worktree state and timestamp. Interrupted Missions are classified as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable`, or `insufficient_evidence`. Crash-running work is always `interrupted_unknown`.
+PR #61 added restart reconciliation using bounded canonical project/Git identity evidence: hashed project/root identity, exact `HEAD`, hashed porcelain worktree state and timestamp. Interrupted Missions are classified as `matched`, `project_unavailable`, `project_mismatch`, `git_changed`, `git_unavailable`, or `insufficient_evidence`. Crash-running work is always unknown/non-successful.
 
-PR #62 added immutable successful-task completion evidence at scheduler-authoritative checkpoints. The journal stores only result status, SHA-256 result digest, fixed structure counts, verification state and timestamps. Raw Child/model result text, findings, file paths, test details, risk text and suggested-task objectives are not copied into recovery evidence.
+PR #62 added immutable successful-task completion evidence at scheduler-authoritative checkpoints. The journal stores result status, SHA-256 result digest, fixed structure counts, verification state and timestamps. Raw Child/model result text, findings, file paths, test details, risk text and suggested-task objectives are not copied into recovery evidence.
 
-PR #63 added durable task lifecycle counters/timestamps and typed verification-state records. `AttemptCount` increments only on a genuine not-running -> running transition; repeated running snapshots do not double-count. `RetryCount = max(AttemptCount-1, 0)`. Completion evidence starts `unverified`; bounded verification outcomes may become `failed` or terminal `verified` only with canonical SHA-256 evidence and bounded check counts.
+PR #63 added durable task lifecycle counters/timestamps and typed verification-state records. `AttemptCount` increments only on a genuine not-running -> running transition; repeated snapshots do not double-count. Failed/retryable legacy work without lifecycle evidence cannot prove remaining retry budget.
 
-PR #64 added an internal deterministic **read-only** postcondition verifier. It calls no model and reruns no Child. Before successful durable work can be marked `verified`, it freshly observes current project/Git state through the existing fixed read-only observer and checks current `matched` reconciliation, non-running state, durable success, completion evidence, successful result status and a canonical completion digest. Verification evidence binds Mission/task identity and current hashed/HEAD Git observation. Raw paths, Child/model output and raw verification output are not persisted.
+PR #64 added a deterministic read-only postcondition verifier. It freshly observes project/Git state and checks current matched reconciliation, non-running state, durable success, completion evidence, successful result status and canonical completion digest. Verification evidence binds Mission/task identity to current hashed/HEAD Git observation and fixed check results. Raw paths, Child/model output and raw verification output are excluded.
 
-A historical `verified` state never overrides current drift. `verified` work is reusable only while the **current** project/Git reconciliation remains `matched`. Verification uses an optimistic journal precondition so a concurrent Mission-recovery change prevents a stale verification write.
+PR #65 added the deterministic recovery transition planner. It validates the durable DAG and lifecycle counters, enforces three attempts/task and 192 attempts/Mission, requires currently reusable verified dependencies, keeps crash-running work `interrupted_review_required`, and emits classification only: `reuse_verified`, `verify_postconditions`, `resume_candidate`, `retry_candidate`, terminal/blocking outcomes or fail-closed `invalid_recovery_state`.
 
-No automatic Mission resume, retry or replay is merged through PR #64.
+Historical `verified` is not sufficient. Reuse requires successful result metadata, canonical result/verification SHA-256 values, exact six-check verification evidence, positive verification attempt evidence, nonnegative structure counts and monotonic timestamps. The persisted verification SHA must equal the canonical digest for the **current matched** reconciliation and the six successful fixed postcondition checks. A well-formed but semantically wrong SHA cannot unlock a task or dependency.
 
-## 4. Active PR #65 – deterministic recovery transition planner
+No automatic Mission resume, retry or replay is merged through PR #65.
 
-PR #65 adds a pure recovery planner. It classifies possible next recovery actions but executes **nothing**, grants no capabilities and performs no Scheduler admission.
+## 4. Active PR #66 – trusted read-only recovery-control boundary
 
-The planner emits per-task actions such as:
+PR #66 adds an explicit internal control/observation boundary on top of the merged recovery primitives. The implementation is split between `src/run_journal_mission_control.go` and the trusted AppState entry point in `src/agent_mission_recovery_control.go`.
 
-- `reuse_verified` for currently matched, verified durable success,
-- `verify_postconditions` for successful but unverified/verification-failed work,
-- `resume_candidate` for eligible nonterminal work,
-- `retry_candidate` for eligible failed/retryable work,
-- `interrupted_review_required` for crash-running work,
-- `preserve_terminal` for states that must remain terminal,
-- blocking outcomes for reconciliation mismatch, unsatisfied dependencies, missing lifecycle evidence or attempt limits,
-- `invalid_recovery_state` for malformed durable recovery structures.
+The snapshot layer:
 
-Dependency safety is deliberately stricter than normal DAG readiness: any task that could later be reused or executed requires every dependency to be a **currently matched, verified durable success**. An unverified or drift-blocked dependency prevents downstream continuation.
+- loads the exact requested nonterminal read-only Mission from the single durable run journal rather than trusting cached startup `AppState.Recovery`,
+- fingerprints authority-relevant journal state with SHA-256,
+- freshly observes project/Git state and reconstructs current reconciliation,
+- runs the #65 planner once to identify only tasks requiring `verify_postconditions`,
+- evaluates those fixed postconditions read-only and applies successful verification only to a cloned transient Mission snapshot,
+- recomputes the final transition plan from that fresh transient evidence,
+- re-reads the journal and retries up to three times if its fingerprint changed during observation,
+- fails closed with `mission recovery state changed during observation` if the journal cannot be observed stably within that fixed bound,
+- returns an opaque snapshot SHA binding the journal fingerprint, current reconciliation, transient verification summaries and final plan.
 
-A historical `verified` flag is not sufficient for reuse. `reuse_verified` additionally requires coherent durable evidence: a successful persisted result status, canonical result and verification SHA-256 digests, a positive bounded verification check count and attempt record, nonnegative structure counts, and non-zero monotonic completion/verification timestamps. Malformed historical verification evidence is downgraded to `verify_postconditions` and cannot satisfy downstream dependencies until freshly re-verified.
+The trusted `AppState.MissionRecoveryControlSnapshot(runID)` boundary refuses control snapshots whenever another agent run is already active and checks `AppState.Running` again after snapshot construction. A run that starts during observation therefore invalidates the result rather than allowing it to escape the governance boundary.
 
-Fixed planning bounds are `3` execution attempts per task and `192` aggregate Mission attempts (`64` maximum read-only Mission tasks × `3`). Existing lifecycle counters are authoritative evidence for these bounds; repeated snapshots never create attempts. Failed/retryable legacy work without lifecycle evidence is not made retryable because the remaining attempt budget cannot be proven.
+The control snapshot explicitly reports `read_only=true`, `execution_authorized=false`, `scheduler_lease_granted=false`, and `persistent_state_modified=false`. It does not write verification state, reconciliation or plan data back to `active-run.json`; tests compare the journal bytes before/after a stable snapshot.
 
-Before producing any candidate action, #65 reconstructs and validates the durable task graph using the existing DAG validator. Duplicate IDs, missing dependencies, cycles, unsupported states, invalid task metadata, more than 64 tasks, negative/inconsistent lifecycle counters or counters above the fixed per-task limit make the plan invalid. Invalid plans produce only `invalid_recovery_state`, never executable candidates.
+Malformed historical `verified` evidence bridges safely into this boundary: #65 first classifies it as `verify_postconditions`; #66 freshly evaluates the six direct postconditions and may update only the transient clone. The durable malformed record remains unchanged. Unknown verification states and historical `verified` records without a positive verification-attempt record are not normalized into reusable evidence. Structural evidence that still violates #65 invariants remains non-reusable even when the six direct checks pass.
 
-The aggregate Mission attempt bound is represented explicitly in the plan together with observed attempts and bounded prospective reservations. Reservations are planning facts only: they are not execution leases and cannot authorize a task.
+The snapshot SHA is observation binding only. It is not an execution token, Scheduler lease, capability grant or permission to dispatch. Any later pause/resume/retry slice must recompute/revalidate current journal state, reconciliation, verification evidence, dependencies and budgets immediately at its separately governed dispatch boundary.
 
-Focused tests cover verified/unverified dependencies, malformed historical `verified` evidence, current Git drift, stale crash-running flags, retry eligibility and task limits, missing legacy lifecycle evidence, malformed/cyclic recovery DAGs, inconsistent lifecycle counters and the exact 64×3 Mission bound.
+Focused tests cover transient verification without input mutation, malformed historical verified evidence, unknown verification states, missing verification-attempt evidence, current Git drift, zero durable journal writes, successful bounded retry after a concurrent journal change, fail-closed exhaustion after three continuing changes, wrong/terminal run IDs, already-active runs and a run that starts during observation.
+
+The deliberate #66 scope stops at the trusted internal AppState boundary. No Desktop HTTP/UI endpoint is added here, avoiding a premature public control surface and avoiding duplicated recovery logic. A later Desktop inspection transport, if needed, must call the trusted AppState method and inherit existing loopback/origin protections. Mobile receives no new endpoint or authority.
 
 ## 5. Safety and correctness invariants
 
@@ -95,36 +97,40 @@ Focused tests cover verified/unverified dependencies, malformed historical `veri
 - Read-only Child schemas remain mutation-free until a separately reviewed Builder/worktree phase.
 - No unsupervised concurrent mutation of the same workspace.
 - `run_journal.go` is the single durable recovery authority; no second Mission journal may be introduced.
-- Durable Mission metadata is bounded operational state, not a second transcript or authority source.
 - Current project/Git reconciliation always outranks historical verification for reuse eligibility.
 - A crash-running task is never treated as successful or directly resumable.
 - Repeated scheduler snapshots must not double-count task attempts.
-- Verification records must not persist raw verification output; `verified` may not silently regress.
+- Verification records must not persist raw verification output; durable `verified` may not silently regress.
 - A malformed historical `verified` record must never authorize reuse or satisfy a dependency without fresh postcondition verification.
-- Recovery transition plans are classification only, never Scheduler admission or execution authority.
+- Recovery transition plans and #66 control snapshots are observation/classification only, never Scheduler admission or execution authority.
+- A #66 snapshot must never mutate `active-run.json`; transient verification exists only on a clone.
+- Unknown/corrupt verification metadata must not be normalized into reusable evidence by the read-only control layer.
 - Reusable/executable candidates require currently verified reusable dependencies.
-- Malformed recovery graphs/counters must fail closed to `invalid_recovery_state`.
+- Malformed recovery graphs/counters fail closed to `invalid_recovery_state`.
 - Raw Git porcelain paths and raw Child/model result content are not persisted in recovery evidence.
 - Child/Mission usage is not double-counted and cancelled late results are non-authoritative.
 - Mission budgets only constrain Child budgets, never widen them.
 - Stable Mission identity is separate from execution-scoped run/journal identity.
-- No automatic Mission resume/retry/replay exists.
-- Statement coverage Quality gate remains >=80.0%; safety/test gates are not weakened merely to make CI pass.
+- Startup remains passive: no automatic Mission resume/retry/replay.
+- Statement coverage Quality gate remains >=80.0%; safety/test gates are never weakened merely to make CI pass.
 
 ## 6. Important continuation files
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
-Mission/recovery: `src/agent_mission.go`, `src/run_journal_mission.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_transition_plan_test.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal.go`, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
+Mission/recovery: `src/agent_mission.go`, `src/agent_mission_recovery_control.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, their focused tests, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
+
+Desktop/Mobile boundary: `src/server.go`, `src/remote_server.go`, `src/remote_mission_status_contract.md`.
 
 ## 7. Exact next development direction
 
-1. Finish PR #65 on one exact head: require complete Quality success, inspect reviews/threads, mark Ready and merge automatically.
-2. Add an explicit controlled read-only Mission recovery-control boundary that recomputes fresh reconciliation/verification/transition state before any pause/resume/retry decision; no automatic startup continuation.
-3. Preserve Scheduler admission/resource limits, cancellation semantics, durable attempt limits and historical accepted usage without double-counting across controlled continuation.
-4. Expand crash/restart coverage for partially completed Missions and controlled resume/retry before any mutation-capable Builder/worktree phase.
-5. Only after durable Mission continuation is sound, proceed to Builder/worktree and later Integrator/Test-Agent stages.
+1. Finish PR #66 on one exact fully green Quality head, inspect reviews/threads, mark Ready and merge.
+2. After #66 is merged, define the dispatch-time continuation boundary for controlled pause/resume of eligible nonterminal read-only tasks. It must obtain a fresh `AppState.MissionRecoveryControlSnapshot` and then revalidate again before Scheduler admission; the snapshot itself never authorizes dispatch.
+3. Add controlled retry for eligible failed/retryable tasks while preserving durable task/Mission attempt limits, Scheduler admission/resource limits, cancellation semantics and historical accepted usage/accounting without double-counting.
+4. Add crash/restart tests for partially completed Missions, repeated restarts, drift between snapshot and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
+5. Add a narrow Desktop-only recovery inspection transport only if it materially helps control/diagnostics; it must call the trusted AppState boundary and must not create a Mobile recovery-control surface.
+6. Only after durable Mission continuation is sound, proceed to mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
 ## 8. Cleanup rule
 
-Only `master` is authoritative after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted when the GitHub integration exposes delete operations; the current connector still lacks branch-ref/workflow-run deletion, so stale refs must never be treated as active development.
+Only `master` is authoritative after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted when the GitHub integration exposes delete operations; until then, stale refs must never be treated as active development.
