@@ -16,12 +16,12 @@ import (
 
 func desktopRecoveryTestControlSnapshot() MissionRecoveryControlSnapshot {
 	return MissionRecoveryControlSnapshot{
-		RunID:                "interrupted-run",
-		MissionID:            "mission-1",
-		ObservedAt:           time.Unix(123, 0),
-		JournalSHA256:        strings.Repeat("a", 64),
-		SnapshotSHA256:       strings.Repeat("b", 64),
-		ReconciliationState:  missionReconcileMatched,
+		RunID:               "interrupted-run",
+		MissionID:           "mission-1",
+		ObservedAt:          time.Unix(123, 0),
+		JournalSHA256:       strings.Repeat("a", 64),
+		SnapshotSHA256:      strings.Repeat("b", 64),
+		ReconciliationState: missionReconcileMatched,
 		Plan: MissionRecoveryTransitionPlan{
 			RunID:     "interrupted-run",
 			MissionID: "mission-1",
