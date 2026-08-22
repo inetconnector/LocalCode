@@ -158,6 +158,42 @@ func TestMissionRecoveryContinuationRejectsAttemptWithoutUsageEvidence(t *testin
 	}
 }
 
+func TestMissionRecoveryContinuationOfflineDowntimeDoesNotConsumeTimeBudget(t *testing.T) {
+	at := time.Now()
+	state, current := prepareMissionRecoveryContinuationTestState(t, at)
+	state.Mission.Budget.TimeSeconds = 90
+	observedAt := at.Add(2 * time.Hour)
+	current.CapturedAt = observedAt
+	fingerprint, snapshot := buildMissionRecoveryContinuationTestSnapshot(t, state, current, observedAt)
+
+	materialized, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, "child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantElapsed := state.Mission.UpdatedAt.Sub(state.Mission.StartedAt).Milliseconds()
+	if got := materialized.MissionBudgetSnapshot.Usage.ElapsedMillis; got != wantElapsed {
+		t.Fatalf("mission time usage=%dms want durable active time=%dms", got, wantElapsed)
+	}
+	if materialized.MissionBudgetSnapshot.Exhausted {
+		t.Fatalf("offline downtime exhausted mission time budget: %#v", materialized.MissionBudgetSnapshot)
+	}
+	if wantElapsed >= int64(state.Mission.Budget.TimeSeconds)*1000 {
+		t.Fatalf("test setup active time=%dms unexpectedly exhausts %ds budget", wantElapsed, state.Mission.Budget.TimeSeconds)
+	}
+}
+
+func TestMissionRecoveryContinuationRejectsFutureDurableCheckpoint(t *testing.T) {
+	at := time.Now()
+	state, current := prepareMissionRecoveryContinuationTestState(t, at)
+	observedAt := at.Add(time.Minute)
+	state.Mission.UpdatedAt = observedAt.Add(time.Second)
+	current.CapturedAt = observedAt
+	fingerprint, snapshot := buildMissionRecoveryContinuationTestSnapshot(t, state, current, observedAt)
+	if _, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, "child"); err == nil {
+		t.Fatal("future durable mission checkpoint was accepted")
+	}
+}
+
 func TestStableMissionRecoveryContinuationDoesNotWriteJournal(t *testing.T) {
 	withMissionRecoveryControlJournal(t)
 	at := time.Now()
