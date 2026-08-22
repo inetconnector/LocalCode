@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `bcd17f6975ce63dd28b23dbdeea34d42e1d53ad4`  
-**Active work:** draft PR #67 `feat: materialize safe mission recovery continuation`, branch `feat/mission-recovery-dispatch-gate`  
+**Authoritative merged base for this slice:** master `8e779852b98d83a8315a798c4c319de751fbe344`
+**Active work:** branch `feat/mission-recovery-atomic-admission`, remote head `e76c6fadc455`; no open PR was present during the 2026-08-22 cleanup check.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -13,24 +13,7 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Before material implementation, read `AGENTS.md`, `STATE.md`, `TODO.md`, `README.md`, `docs/ARCHITECTURE.md` and `docs/SECURITY.md`.
 - [ ] Verify current master, active PR/head, CI, reviews and review threads before merging.
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
-- [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
-
-## P0 – finish PR #67 bounded Mission continuation materialization
-
-- [ ] Materialize only an explicit current `resume_candidate` or `retry_candidate`; never select work implicitly.
-- [ ] Reuse the #66 fresh project/Git reconciliation and transient verification path against the same stable durable journal fingerprint.
-- [ ] Include only the selected candidate plus its transitively `reuse_verified` dependency closure; unrelated ready work must never leak into the continuation DAG.
-- [ ] Regenerate executable read-only capabilities from the canonical Explorer/Planner/Reviewer role envelope; never trust persisted granted capability data as execution authority.
-- [ ] Revalidate persisted requested capabilities and model identity; fail closed on capability escalation, unsupported roles or silent model drift.
-- [ ] Preserve scheduler-adjacent historical usage from BudgetSnapshot evidence and reject negative/conflicting accounting facts.
-- [ ] If a task has a recorded execution attempt, require BudgetSnapshot usage evidence; missing historical accounting must not be interpreted as zero usage.
-- [ ] Reject materialization when the recovered Mission budget is already exhausted by historical accepted usage or the durably observed active wall time through the last journal checkpoint; offline/crash downtime must not consume execution-time budget.
-- [ ] Reject impossible durable timing evidence such as a Mission checkpoint timestamp later than the fresh recovery observation.
-- [ ] Keep the materialization explicitly non-authoritative: no Child/model execution, no Scheduler admission/lease, no journal write, `execution_authorized=false`.
-- [ ] Re-read the durable journal after observation; retry boundedly on fingerprint changes and fail closed when stability cannot be proven.
-- [ ] Reject already-active runs and a run that becomes active during materialization; do not claim this closes the future dispatch-time TOCTOU window.
-- [ ] Cover resume/retry, dependency closure, unrelated-work exclusion, capability regeneration/escalation rejection, model/usage corruption, exhausted budget, missing attempted-task usage evidence, offline-downtime time-budget preservation, invalid future checkpoint timing, no-write behavior and active-run races.
-- [ ] Keep canonical docs synchronized; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
+- [ ] After each merge, delete obsolete feature branches and obsolete workflow runs; never treat stale refs or historical Actions entries as active work.
 
 ## P0 – next Phase 6 slice: atomic continuation admission and execution
 
@@ -43,6 +26,7 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Define the new execution-scoped `RunID`/journal transition while preserving stable `MissionID` and explicit linkage to the interrupted run evidence.
 - [ ] Add crash/restart tests for repeated restarts, drift between materialization/admission, cancellation during continuation, attempt-limit exhaustion and accounting continuity.
 - [ ] Keep startup passive; no automatic Mission resume/retry/replay.
+- [ ] Keep canonical docs synchronized; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
 
 ## P0/P1 – later Phase 6 recovery product surface
 
@@ -90,4 +74,4 @@ This file contains unfinished functional work only. Completed PR history belongs
 ## Documentation/cleanup acceptance gates
 
 - [ ] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
-- [ ] Delete stale merged feature branch refs and obsolete GitHub Actions runs once delete-capable GitHub access is available.
+- [ ] Keep stale merged feature branch refs and obsolete non-master GitHub Actions runs deleted after cleanup; current 2026-08-22 GitHub state is only `master` plus `feat/mission-recovery-atomic-admission`, with completed non-master runs removed.

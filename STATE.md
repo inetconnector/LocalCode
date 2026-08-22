@@ -3,9 +3,9 @@
 **Verified:** 2026-08-22 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `bcd17f6975ce63dd28b23dbdeea34d42e1d53ad4`  
-**Last merged functional PR:** #66 `feat: add read-only mission recovery control boundary`  
-**Active work:** draft PR #67 `feat: materialize safe mission recovery continuation`, branch `feat/mission-recovery-dispatch-gate`  
+**Current authoritative merged master:** `8e779852b98d83a8315a798c4c319de751fbe344`
+**Last merged functional PR:** #67 `feat: materialize safe mission recovery continuation`
+**Active work:** branch `feat/mission-recovery-atomic-admission`, remote head `e76c6fadc455`; no open PR was present during the 2026-08-22 cleanup check.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point for LocalCode. `TODO.md` contains unfinished work only; Git history and merged PRs remain the detailed implementation record.
@@ -38,7 +38,7 @@ Merged orchestration layers include structured Agent contracts, deterministic Ta
 
 Current scheduled Child dispatch is synchronous; higher configured model-slot limits alone do not create or prove parallel Child model execution. Benchmark output never automatically changes Scheduler limits.
 
-## 3. Phase 6 recovery foundation merged through PR #66
+## 3. Phase 6 recovery foundation merged through PR #67
 
 `run_journal.go` remains the single durable recovery authority. A read-only Mission stores bounded structured metadata in the existing `active-run.json`; no second Mission journal exists.
 
@@ -62,9 +62,7 @@ The trusted AppState boundary rejects snapshots while another agent run is activ
 
 No automatic Mission resume, retry or replay is merged through PR #66.
 
-## 4. Active PR #67 – bounded continuation materialization
-
-PR #67 adds the next non-executing boundary in `src/run_journal_mission_continuation.go`. It does **not** run a Child, call a model, mutate the journal or request Scheduler admission.
+PR #67 added the next non-executing boundary in `src/run_journal_mission_continuation.go`. It does **not** run a Child, call a model, mutate the journal or request Scheduler admission.
 
 For one explicit task ID it:
 
@@ -86,7 +84,23 @@ The returned `MissionRecoveryContinuationMaterialization` includes the stable jo
 
 Current focused #67 tests cover bounded dependency closure, exclusion of unrelated work, canonical capability regeneration, resume and retry candidates, capability escalation rejection, conflicting historical usage, missing usage evidence for attempted tasks, Mission-budget exhaustion, preservation of the time budget across offline downtime, rejection of future durable checkpoint timestamps, zero journal writes and AppState active-run races.
 
-The first #67 CI attempt (#578) stopped only at `gofmt` on the new production file before Vet/tests. Formatting was corrected and the missing-usage-evidence rule was added afterwards; the final exact head must pass the complete Quality workflow before merge.
+The final #67 head was merged to `master` as `8e779852b98d83a8315a798c4c319de751fbe344`.
+
+## 4. Active branch – atomic continuation admission
+
+`feat/mission-recovery-atomic-admission` is four commits ahead of `master` and starts the first execution-capable recovery boundary in `src/run_journal_mission_admission.go`.
+
+The active branch currently:
+
+- recomputes the #67 materialization while holding the AppState run gate,
+- caps recovered task budgets against historical durable usage before Scheduler admission,
+- durably reserves the next task attempt against the exact journal fingerprint and a fresh execution `RunID`,
+- marks reserved attempts so the later scheduler running transition does not double-increment lifecycle counters,
+- rebases the Mission active-time anchor so offline/crash downtime remains excluded while prior active time remains charged,
+- seeds Scheduler usage from historical durable usage and accumulates new observed usage instead of resetting accounting,
+- finishes continuation checkpoints back into the existing single `active-run.json` journal.
+
+Focused active-branch tests currently cover seeded scheduler usage accumulation/rejection and reserved attempt lifecycle behavior. This branch still needs full Quality, review, final documentation sync and merge before it becomes authoritative product behavior.
 
 ## 5. Safety and correctness invariants
 
@@ -124,19 +138,20 @@ The first #67 CI attempt (#578) stopped only at `gofmt` on the new production fi
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
-Mission/recovery: `src/agent_mission.go`, `src/agent_mission_recovery_control.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, `src/run_journal_mission_continuation.go`, their focused tests, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission_accounting.go`.
+Mission/recovery: `src/agent_mission.go`, `src/agent_mission_recovery_control.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, `src/run_journal_mission_continuation.go`, `src/run_journal_mission_admission.go`, their focused tests, `src/agent_scheduler.go`, `src/agent_scheduler_dispatch.go`, `src/agent_scheduler_recovery_usage_test.go`, `src/agent_scheduler_finalize.go`, `src/agent_mission_accounting.go`.
 
 Desktop/Mobile boundary: `src/server.go`, `src/remote_server.go`, `src/remote_mission_status_contract.md`.
 
 ## 7. Exact next development direction
 
-1. Finish PR #67 on one exact fully green Quality head; inspect reviews/threads, mark Ready and merge.
-2. After #67 is merged, implement the separately governed **atomic continuation admission/execution boundary**. It must recompute the #67 materialization immediately before execution and couple stale-state/active-run/journal checks to Scheduler admission; a previously returned materialization may never authorize dispatch.
-3. On actual continuation, persist the new execution attempt without losing prior lifecycle counters, carry historical scheduler-accepted Usage/Accounting forward without double-counting, and preserve Mission/task attempt limits and cancellation semantics.
-4. Add crash/restart tests for repeated restarts, drift between materialization and admission, cancel-vs-resume/retry races, attempt-counter persistence and budget/accounting continuity.
-5. Add a narrow Desktop-only recovery inspection/control transport only when the execution boundary is sound; it must call trusted AppState governance and must not create a Mobile recovery-control surface.
-6. Only after durable Mission continuation is sound, proceed to mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
+1. Finish `feat/mission-recovery-atomic-admission` on one exact fully green Quality head; inspect reviews/threads, mark Ready and merge.
+2. Strengthen the atomic admission slice with crash/restart tests for repeated restarts, drift between materialization/admission, cancel-vs-resume/retry races, attempt-counter persistence and budget/accounting continuity.
+3. Ensure actual continuation persists the new execution attempt without losing prior lifecycle counters, carries historical scheduler-accepted Usage/Accounting forward exactly once, and preserves Mission/task attempt limits and cancellation semantics.
+4. Add a narrow Desktop-only recovery inspection/control transport only when the execution boundary is sound; it must call trusted AppState governance and must not create a Mobile recovery-control surface.
+5. Only after durable Mission continuation is sound, proceed to mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
 ## 8. Cleanup rule
 
-Only `master` is authoritative after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted when the GitHub integration exposes delete operations; until then, stale refs must never be treated as active development.
+Only `master` is authoritative after merges. Superseded PR carriers are closed rather than reused. Obsolete merged branch refs and obsolete Actions runs should be physically deleted after each merge cleanup and must never be treated as active development.
+
+2026-08-22 cleanup result: GitHub remote branches are only `master` and `feat/mission-recovery-atomic-admission`. Twenty-three stale remote branch refs were deleted, including merged PR carriers, two closed superseded draft predecessors, and `feat/mission-verification-evidence` which matched merged `master` history. Completed non-`master` GitHub Actions runs were also deleted; 56 completed `master` runs remain as merge/Quality audit history. Current workflow files are only `.github/workflows/quality.yml` and `.github/workflows/release.yml`.
