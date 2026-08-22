@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+func withMissionRecoveryControlJournal(t *testing.T) {
+	t.Helper()
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+}
+
 func missionRecoveryControlTestState(t *testing.T, at time.Time) (*RunRecoveryState, MissionProjectBaseline) {
 	t.Helper()
 	project := t.TempDir()
@@ -155,7 +160,7 @@ func TestMissionRecoveryControlSnapshotCurrentDriftBlocksContinuation(t *testing
 }
 
 func TestMissionRecoveryControlStableSnapshotDoesNotWriteJournal(t *testing.T) {
-	withMissionVerificationJournal(t)
+	withMissionRecoveryControlJournal(t)
 	at := time.Now()
 	state, current := missionRecoveryControlTestState(t, at)
 	if err := writeRunJournal(*state); err != nil {
@@ -193,7 +198,7 @@ func TestMissionRecoveryControlStableSnapshotDoesNotWriteJournal(t *testing.T) {
 }
 
 func TestMissionRecoveryControlRetriesWhenJournalChangesDuringObservation(t *testing.T) {
-	withMissionVerificationJournal(t)
+	withMissionRecoveryControlJournal(t)
 	at := time.Now()
 	state, current := missionRecoveryControlTestState(t, at)
 	if err := writeRunJournal(*state); err != nil {
@@ -231,7 +236,7 @@ func TestMissionRecoveryControlRetriesWhenJournalChangesDuringObservation(t *tes
 }
 
 func TestMissionRecoveryControlRejectsWrongOrTerminalRun(t *testing.T) {
-	withMissionVerificationJournal(t)
+	withMissionRecoveryControlJournal(t)
 	at := time.Now()
 	state, _ := missionRecoveryControlTestState(t, at)
 	if err := writeRunJournal(*state); err != nil {
