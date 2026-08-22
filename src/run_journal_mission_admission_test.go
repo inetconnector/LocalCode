@@ -86,7 +86,8 @@ func TestRecoveryAdmissionReservationIsCrashReusableAndCountsOnlyOnRunning(t *te
 	state, current := admissionTestRetryState(t, at)
 	materialized := admissionTestMaterialization(t, state, current, "child")
 	firstRunID := "continuation-run-one"
-	if err := reserveMissionRecoveryContinuation(materialized, firstRunID, at.Add(time.Second)); err != nil {
+	firstAdmittedAt := time.Now()
+	if err := reserveMissionRecoveryContinuation(materialized, firstRunID, firstAdmittedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -121,7 +122,8 @@ func TestRecoveryAdmissionReservationIsCrashReusableAndCountsOnlyOnRunning(t *te
 		t.Fatal(err)
 	}
 	secondRunID := "continuation-run-two"
-	if err := reserveMissionRecoveryContinuation(recoveredMaterialized, secondRunID, at.Add(2*time.Second)); err != nil {
+	secondAdmittedAt := time.Now()
+	if err := reserveMissionRecoveryContinuation(recoveredMaterialized, secondRunID, secondAdmittedAt); err != nil {
 		t.Fatal(err)
 	}
 	reReserved, err := loadRunJournal()
@@ -166,7 +168,7 @@ func TestRecoveryAdmissionRejectsStaleFingerprintWithoutReservation(t *testing.T
 		currentState.Mission.Reason = "concurrent durable change"
 	})
 
-	err := reserveMissionRecoveryContinuation(materialized, "must-not-become-run", at.Add(time.Second))
+	err := reserveMissionRecoveryContinuation(materialized, "must-not-become-run", time.Now())
 	if !errors.Is(err, errMissionRecoveryAdmissionStale) {
 		t.Fatalf("stale reservation error=%v want stale admission", err)
 	}
@@ -221,7 +223,7 @@ func TestRecoveryContinuationFinalizerPreservesUnrelatedTasks(t *testing.T) {
 			}},
 		},
 	}
-	if err := finishMissionRecoveryContinuation("execution-run", &graph, run, at.Add(time.Second), nil); err != nil {
+	if err := finishMissionRecoveryContinuation("execution-run", &graph, run, time.Now(), nil); err != nil {
 		t.Fatal(err)
 	}
 	persisted, err := loadRunJournal()
@@ -264,7 +266,7 @@ func TestRecoveryContinuationFinalizerTerminalizesOnlyFullySuccessfulMission(t *
 		Result:    AgentResult{Status: AgentResultCompleted},
 	}}}
 	run := AgentScheduledRun{MissionID: state.Mission.MissionID, UsageByTask: map[string]AgentUsage{"child": {}}}
-	if err := finishMissionRecoveryContinuation("execution-run", &graph, run, at.Add(time.Second), nil); err != nil {
+	if err := finishMissionRecoveryContinuation("execution-run", &graph, run, time.Now(), nil); err != nil {
 		t.Fatal(err)
 	}
 	persisted, err := loadRunJournal()
