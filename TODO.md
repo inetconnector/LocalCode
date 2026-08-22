@@ -24,11 +24,12 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Revalidate persisted requested capabilities and model identity; fail closed on capability escalation, unsupported roles or silent model drift.
 - [ ] Preserve scheduler-adjacent historical usage from BudgetSnapshot evidence and reject negative/conflicting accounting facts.
 - [ ] If a task has a recorded execution attempt, require BudgetSnapshot usage evidence; missing historical accounting must not be interpreted as zero usage.
-- [ ] Reject materialization when the recovered Mission budget is already exhausted by historical accepted usage or elapsed wall time.
+- [ ] Reject materialization when the recovered Mission budget is already exhausted by historical accepted usage or the durably observed active wall time through the last journal checkpoint; offline/crash downtime must not consume execution-time budget.
+- [ ] Reject impossible durable timing evidence such as a Mission checkpoint timestamp later than the fresh recovery observation.
 - [ ] Keep the materialization explicitly non-authoritative: no Child/model execution, no Scheduler admission/lease, no journal write, `execution_authorized=false`.
 - [ ] Re-read the durable journal after observation; retry boundedly on fingerprint changes and fail closed when stability cannot be proven.
 - [ ] Reject already-active runs and a run that becomes active during materialization; do not claim this closes the future dispatch-time TOCTOU window.
-- [ ] Cover resume/retry, dependency closure, unrelated-work exclusion, capability regeneration/escalation rejection, model/usage corruption, exhausted budget, missing attempted-task usage evidence, no-write behavior and active-run races.
+- [ ] Cover resume/retry, dependency closure, unrelated-work exclusion, capability regeneration/escalation rejection, model/usage corruption, exhausted budget, missing attempted-task usage evidence, offline-downtime time-budget preservation, invalid future checkpoint timing, no-write behavior and active-run races.
 - [ ] Keep canonical docs synchronized; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
 
 ## P0 – next Phase 6 slice: atomic continuation admission and execution
