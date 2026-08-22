@@ -57,11 +57,11 @@ Die Desktop-Mission-Anzeige ist eine reine **Beobachtungsgrenze**:
 
 Damit kann Statusbeobachtung weder neue Arbeit starten noch bestehende Sicherheitsgrenzen umgehen. Durable Mission-Recovery-Metadaten sind davon getrennt und laufen ausschließlich über `run_journal.go`. Eine spätere Mission-Steuerung muss als eigene, separat geprüfte Governance-Grenze implementiert werden.
 
-### Durable Mission-Metadaten und Restart-Reconciliation
+### Durable Mission-Metadaten, Restart-Reconciliation und Transition-Planung
 
 `run_journal.go` bleibt die **einzige** dauerhafte Recovery-Autorität. Der vorhandene `RunRecoveryState` enthält für read-only Missions einen optionalen, begrenzten strukturierten Mission-Checkpoint; es wird kein zweites Mission-Journal erzeugt.
 
-Persistiert werden nur recovery-relevante strukturierte Fakten: Mission-ID, Objective, direkte Projekt-/Scope-Identität, Modell, begrenzte Constraints/Success Criteria, Mission-Budget, DAG-/Task-Identität und -Zustand, Requested-/Granted-Capabilities, Task-Budgets, Scheduler-Ressourcen-/Queue-/Running-/Budget-Snapshots sowie finaler Mission-State/-Reason, Accounting und ausschließlich scheduler-akzeptierte Usage.
+Persistiert werden nur recovery-relevante strukturierte Fakten: Mission-ID, Objective, direkte Projekt-/Scope-Identität, Modell, begrenzte Constraints/Success Criteria, Mission-Budget, DAG-/Task-Identität und -Zustand, Requested-/Granted-Capabilities, Task-Budgets, Scheduler-Ressourcen-/Queue-/Running-/Budget-Snapshots sowie Completion-/Lifecycle-/Verification-Evidenz, finaler Mission-State/-Reason, Accounting und ausschließlich scheduler-akzeptierte Usage.
 
 Zusätzlich wird beim Missionsstart eine begrenzte Projekt-/Git-Baseline gespeichert:
 
@@ -100,6 +100,18 @@ Weitere Grenzen:
 - Der normale Chat-Recovery-Pfad `Weiter`/`Continue` verweigert Mission-Journale ausdrücklich, damit eine strukturierte Mission nicht als normaler Prompt blind erneut ausgeführt wird.
 - Eine unterbrochene Mission bleibt als Recovery-Evidenz sichtbar, wenn das Projektverzeichnis fehlt; diese Situation wird blockierend als `project_unavailable` klassifiziert und erweitert keine Dateirechte.
 - Späte/stale Child-Resultate bleiben nicht autoritativ; finale Usage wird nur aus scheduler-akzeptierten Resultaten abgeleitet.
+
+Der Recovery-Transition-Planer bleibt strikt außerhalb der Ausführungsautorität:
+
+- Er führt keine Mission-/Task-Arbeit aus, ruft kein Modell oder Tool auf, vergibt keine Capability und beantragt keinen Scheduler-Lease.
+- Er rekonstruiert den durable DAG und verwendet vor jeder Kandidatur die bestehende Task-Graph-Validierung. Doppelte IDs, fehlende Dependencies, Zyklen, ungültige Task-Metadaten oder mehr als 64 Tasks invalidieren den Plan vollständig.
+- Vorhandene Lifecycle-Zähler müssen nichtnegativ, intern konsistent und höchstens drei Attempts pro Task sein. Fehlende Lifecycle-Evidenz bleibt für Legacy-Zustände zulässig, macht `failed`/`retryable` Arbeit aber nicht retryfähig.
+- Die feste Planungsobergrenze ist drei Attempts pro Task und 192 Attempts pro Mission (`64 × 3`). Prospektive Reservations sind nur Planungsfakten und niemals Scheduler-Leases.
+- Crash-running Arbeit wird `interrupted_review_required` und nie direkt `resume_candidate` oder `retry_candidate`.
+- `reuse_verified`, `resume_candidate` und `retry_candidate` setzen voraus, dass jede Dependency aktuell `verified` und wiederverwendbar ist; andernfalls gilt `blocked_dependency`.
+- Aktuelle Reconciliation ungleich `matched` blockiert potenziell wiederverwendbare oder fortsetzbare Arbeit auch bei historischem `verified`.
+- Manipulierte oder inkonsistente Recovery-Strukturen erzeugen ausschließlich `invalid_recovery_state`; fail-open Kandidaturen sind unzulässig.
+- Der Plan verändert weder historische scheduler-akzeptierte Usage noch Mission-Accounting und stellt keine Admission-/Ausführungsberechtigung dar.
 
 ### Orchestrierungsdiagnostik
 
@@ -166,7 +178,7 @@ MCP ist explizit konfiguriert. Stdio-/HTTP-Sitzungen laufen mit Timeouts und kon
 
 Mission-Persistenz und die Projekt-/Git-Baseline sind in diese bestehende Recovery-Autorität integriert. Ein konkurrierendes zweites Journal bleibt unzulässig. Die Desktop-Mission-Status-Registry, die Orchestrierungsdiagnostik und die Mobile-Mission-Anzeige sind weiterhin nicht autoritative Beobachtungsflächen und dürfen nicht als Recovery-Ersatz verwendet werden.
 
-Restart-Reconciliation und die interne Postcondition-Verifikation sind read-only Evidenzschichten. Automatisches Mission-Resume/Retry/Replay ist weiterhin nicht implementiert. Ein durable erfolgreicher Task darf nur dann als wiederverwendbar gelten, wenn seine begrenzte Verification-Evidenz `verified` ist **und** die aktuelle Projekt-/Git-Reconciliation weiterhin `matched` ist; blindes Replay bleibt unzulässig.
+Restart-Reconciliation, interne Postcondition-Verifikation und Transition-Planung sind read-only Evidenz-/Planungsschichten. Automatisches Mission-Resume/Retry/Replay ist weiterhin nicht implementiert. Ein durable erfolgreicher Task darf nur dann als wiederverwendbar gelten, wenn seine begrenzte Verification-Evidenz `verified` ist **und** die aktuelle Projekt-/Git-Reconciliation weiterhin `matched` ist. Eine spätere Recovery-Control-Grenze muss direkt vor jeder Ausführung Reconciliation, notwendige Verifikation, Dependency-Eignung und Attempt-Limits neu prüfen; blindes Replay bleibt unzulässig.
 
 ### Zukünftige Mutation-Agenten
 
@@ -225,11 +237,11 @@ The Desktop Mission display is an **observation-only boundary**:
 
 Status observation therefore cannot start new work or bypass existing safety boundaries. Durable Mission recovery metadata is separate and flows only through `run_journal.go`. Any future Mission-control surface must be a separate, reviewed governance boundary.
 
-### Durable Mission metadata and restart reconciliation
+### Durable Mission metadata, restart reconciliation and transition planning
 
 `run_journal.go` remains the **sole** durable recovery authority. The existing `RunRecoveryState` contains an optional bounded structured Mission checkpoint for read-only Missions; no second Mission journal is introduced.
 
-Persisted data is limited to recovery-relevant structured facts: Mission identity/objective/direct project scope/model/bounded constraints and success criteria, Mission budget, DAG/task identity and state, requested/granted capabilities, task budgets, Scheduler resource/queue/running/budget snapshots, final Mission state/reason/accounting and scheduler-accepted usage.
+Persisted data is limited to recovery-relevant structured facts: Mission identity/objective/direct project scope/model/bounded constraints and success criteria, Mission budget, DAG/task identity and state, requested/granted capabilities, task budgets, Scheduler resource/queue/running/budget snapshots, completion/lifecycle/verification evidence, final Mission state/reason/accounting and scheduler-accepted usage.
 
 Mission start also persists a bounded project/Git baseline:
 
@@ -268,6 +280,18 @@ Additional boundaries:
 - Normal chat `Continue` recovery explicitly rejects Mission journal entries so structured Mission work cannot be blindly replayed as an ordinary prompt.
 - An interrupted Mission remains visible as recovery evidence if the project directory disappeared; that case is blocking `project_unavailable` and grants no new filesystem authority.
 - Late/stale Child results remain non-authoritative; terminal usage is based only on Scheduler-accepted results.
+
+The recovery transition planner remains strictly outside execution authority:
+
+- It executes no Mission/task work, calls no model or tool, grants no capability and requests no Scheduler lease.
+- It reconstructs the durable DAG and runs existing graph validation before any candidate is emitted. Duplicate IDs, missing dependencies, cycles, invalid task metadata or more than 64 tasks invalidate the whole plan.
+- Present lifecycle counters must be nonnegative, internally consistent and no greater than three attempts per task. Missing lifecycle evidence remains allowed for legacy states but cannot make `failed`/`retryable` work retryable.
+- Fixed planning bounds are three attempts per task and 192 attempts per Mission (`64 × 3`). Prospective reservations are planning facts only and never Scheduler leases.
+- Crash-running work becomes `interrupted_review_required`, never directly `resume_candidate` or `retry_candidate`.
+- `reuse_verified`, `resume_candidate` and `retry_candidate` require every dependency to be currently `verified` and reusable; otherwise `blocked_dependency` applies.
+- Current reconciliation other than `matched` blocks potentially reusable/continuable work even when historical verification says `verified`.
+- Malformed or inconsistent recovery structures produce only `invalid_recovery_state`; fail-open candidates are forbidden.
+- The plan does not modify historical Scheduler-accepted usage or Mission accounting and grants no admission/execution authority.
 
 ### Orchestration diagnostics
 
@@ -335,7 +359,7 @@ MCP is explicitly configured. Stdio/HTTP sessions run with timeouts and controll
 
 Mission persistence and the project/Git baseline are integrated with this existing recovery authority. A competing second journal remains forbidden. The Desktop Mission status registry, orchestration diagnostics and Mobile Mission indicator remain non-authoritative observation surfaces and must not be used as recovery substitutes.
 
-Restart reconciliation and the internal postcondition verifier are read-only evidence layers. Automatic Mission resume/retry/replay remains unimplemented. A durable successful task may be considered reusable only when its bounded verification evidence is `verified` **and** current project/Git reconciliation remains `matched`; blind replay remains forbidden.
+Restart reconciliation, the internal postcondition verifier and transition planning are read-only evidence/planning layers. Automatic Mission resume/retry/replay remains unimplemented. A durable successful task may be considered reusable only when its bounded verification evidence is `verified` **and** current project/Git reconciliation remains `matched`. Any future recovery-control boundary must freshly re-evaluate reconciliation, required verification, dependency eligibility and attempt limits immediately before execution and must still obey normal Scheduler, budget and cancellation boundaries; blind replay remains forbidden.
 
 ### Future mutation agents
 
