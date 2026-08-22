@@ -56,28 +56,33 @@ Historical `verified` is not sufficient. Reuse requires successful result metada
 
 No automatic Mission resume, retry or replay is merged through PR #65.
 
-## 4. Active PR #66 – read-only recovery-control snapshot boundary
+## 4. Active PR #66 – trusted read-only recovery-control boundary
 
-PR #66 is building an explicit control/observation boundary on top of the merged recovery primitives. The current implementation in `src/run_journal_mission_control.go`:
+PR #66 adds an explicit internal control/observation boundary on top of the merged recovery primitives. The implementation is split between `src/run_journal_mission_control.go` and the trusted AppState entry point in `src/agent_mission_recovery_control.go`.
+
+The snapshot layer:
 
 - loads the exact requested nonterminal read-only Mission from the single durable run journal rather than trusting cached startup `AppState.Recovery`,
-- fingerprints the authority-relevant journal state with SHA-256,
+- fingerprints authority-relevant journal state with SHA-256,
 - freshly observes project/Git state and reconstructs current reconciliation,
 - runs the #65 planner once to identify only tasks requiring `verify_postconditions`,
-- evaluates those fixed postconditions read-only and applies successful verification **only to a cloned transient Mission snapshot**,
+- evaluates those fixed postconditions read-only and applies successful verification only to a cloned transient Mission snapshot,
 - recomputes the final transition plan from that fresh transient evidence,
 - re-reads the journal and retries up to three times if its fingerprint changed during observation,
-- returns an opaque snapshot SHA binding journal fingerprint, current reconciliation, transient verification summaries and final plan.
+- fails closed with `mission recovery state changed during observation` if the journal cannot be observed stably within that fixed bound,
+- returns an opaque snapshot SHA binding the journal fingerprint, current reconciliation, transient verification summaries and final plan.
+
+The trusted `AppState.MissionRecoveryControlSnapshot(runID)` boundary refuses control snapshots whenever another agent run is already active and checks `AppState.Running` again after snapshot construction. A run that starts during observation therefore invalidates the result rather than allowing it to escape the governance boundary.
 
 The control snapshot explicitly reports `read_only=true`, `execution_authorized=false`, `scheduler_lease_granted=false`, and `persistent_state_modified=false`. It does not write verification state, reconciliation or plan data back to `active-run.json`; tests compare the journal bytes before/after a stable snapshot.
 
-Malformed historical `verified` evidence bridges safely into this boundary: #65 first classifies it as `verify_postconditions`; #66 freshly evaluates the six postconditions and may repair only the **transient clone** for the current snapshot. The durable malformed record remains unchanged. Structural evidence that still violates #65 invariants remains non-reusable even if the six direct postconditions pass.
+Malformed historical `verified` evidence bridges safely into this boundary: #65 first classifies it as `verify_postconditions`; #66 freshly evaluates the six direct postconditions and may update only the transient clone. The durable malformed record remains unchanged. Unknown verification states and historical `verified` records without a positive verification-attempt record are not normalized into reusable evidence. Structural evidence that still violates #65 invariants remains non-reusable even when the six direct checks pass.
 
-The snapshot SHA is observation binding only. It is not an execution token, Scheduler lease, capability grant or permission to dispatch. Any later resume/retry slice must discard stale assumptions and recompute/revalidate immediately before Scheduler admission.
+The snapshot SHA is observation binding only. It is not an execution token, Scheduler lease, capability grant or permission to dispatch. Any later pause/resume/retry slice must recompute/revalidate current journal state, reconciliation, verification evidence, dependencies and budgets immediately at its separately governed dispatch boundary.
 
-Focused tests cover transient verification without input mutation, malformed historical verified evidence, current Git drift, zero durable journal writes, retry after a concurrent journal change, and rejection of wrong/terminal run IDs.
+Focused tests cover transient verification without input mutation, malformed historical verified evidence, unknown verification states, missing verification-attempt evidence, current Git drift, zero durable journal writes, successful bounded retry after a concurrent journal change, fail-closed exhaustion after three continuing changes, wrong/terminal run IDs, already-active runs and a run that starts during observation.
 
-Known active work in #66: expose the boundary through a narrow Desktop-only explicit control transport, reject use while an active agent run is in progress, update architecture/security documentation, then obtain one fully green exact Quality head. The first draft CI run #567 failed only because the new transient clone referenced a non-existent legacy field; that source error has been removed and subsequent CI must be evaluated on the final exact head.
+The deliberate #66 scope stops at the trusted internal AppState boundary. No Desktop HTTP/UI endpoint is added here, avoiding a premature public control surface and avoiding duplicated recovery logic. A later Desktop inspection transport, if needed, must call the trusted AppState method and inherit existing loopback/origin protections. Mobile receives no new endpoint or authority.
 
 ## 5. Safety and correctness invariants
 
@@ -99,6 +104,7 @@ Known active work in #66: expose the boundary through a narrow Desktop-only expl
 - A malformed historical `verified` record must never authorize reuse or satisfy a dependency without fresh postcondition verification.
 - Recovery transition plans and #66 control snapshots are observation/classification only, never Scheduler admission or execution authority.
 - A #66 snapshot must never mutate `active-run.json`; transient verification exists only on a clone.
+- Unknown/corrupt verification metadata must not be normalized into reusable evidence by the read-only control layer.
 - Reusable/executable candidates require currently verified reusable dependencies.
 - Malformed recovery graphs/counters fail closed to `invalid_recovery_state`.
 - Raw Git porcelain paths and raw Child/model result content are not persisted in recovery evidence.
@@ -112,17 +118,18 @@ Known active work in #66: expose the boundary through a narrow Desktop-only expl
 
 Rules/docs: `AGENTS.md`, `README.md`, `STATE.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/ORCHESTRATION_BENCHMARKS.md`, `.github/workflows/quality.yml`.
 
-Mission/recovery: `src/agent_mission.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, their focused tests, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
+Mission/recovery: `src/agent_mission.go`, `src/agent_mission_recovery_control.go`, `src/run_journal.go`, `src/run_journal_mission.go`, `src/run_journal_mission_reconcile.go`, `src/run_journal_mission_evidence.go`, `src/run_journal_mission_lifecycle.go`, `src/run_journal_mission_postcondition_verify.go`, `src/run_journal_mission_transition_plan.go`, `src/run_journal_mission_control.go`, their focused tests, `src/agent_scheduler_dispatch.go`, `src/agent_mission_accounting.go`.
 
 Desktop/Mobile boundary: `src/server.go`, `src/remote_server.go`, `src/remote_mission_status_contract.md`.
 
 ## 7. Exact next development direction
 
-1. Finish PR #66 as a strictly read-only Desktop recovery-control boundary: explicit transport, active-run exclusion, docs and one fully green exact Quality head.
-2. After #66 is merged, define controlled pause/resume for eligible nonterminal read-only tasks, but only after a fresh control snapshot is recomputed at the dispatch boundary.
+1. Finish PR #66 on one exact fully green Quality head, inspect reviews/threads, mark Ready and merge.
+2. After #66 is merged, define the dispatch-time continuation boundary for controlled pause/resume of eligible nonterminal read-only tasks. It must obtain a fresh `AppState.MissionRecoveryControlSnapshot` and then revalidate again before Scheduler admission; the snapshot itself never authorizes dispatch.
 3. Add controlled retry for eligible failed/retryable tasks while preserving durable task/Mission attempt limits, Scheduler admission/resource limits, cancellation semantics and historical accepted usage/accounting without double-counting.
-4. Expand crash/restart tests for partially completed Missions, repeated restarts, drift between plan and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
-5. Only after durable Mission continuation is sound, proceed to mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
+4. Add crash/restart tests for partially completed Missions, repeated restarts, drift between snapshot and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
+5. Add a narrow Desktop-only recovery inspection transport only if it materially helps control/diagnostics; it must call the trusted AppState boundary and must not create a Mobile recovery-control surface.
+6. Only after durable Mission continuation is sound, proceed to mutation-capable Builder/worktree and later Integrator/Test-Agent stages.
 
 ## 8. Cleanup rule
 
