@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `74f0a50ca8d62696340677479e5d3e8e44fd99bb`  
-**Active work:** PR #65 `feat: plan safe mission recovery transitions`, branch `feat/mission-recovery-transition-planner`  
+**Authoritative merged base for this slice:** master `21a00ee24c729b4c46653041941168c59a69a11f`  
+**Active work:** draft PR #66 `feat: add read-only mission recovery control boundary`, branch `feat/mission-recovery-control-boundary`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history, not in this backlog.
@@ -15,26 +15,30 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Merge only a green exact head; do not weaken the >=80.0% statement-coverage gate or safety rules.
 - [ ] After merge, delete obsolete feature branches and obsolete workflow runs when the available GitHub integration exposes those delete operations. Until then, never treat stale refs as active work.
 
-## P0 – finish current recovery-transition-planner slice
+## P0 – finish PR #66 read-only Mission recovery-control boundary
 
-- [ ] Finish PR #65 on one exact head: keep canonical docs synchronized; require complete Quality success; inspect reviews/threads; mark Ready and merge.
-- [ ] Classify recovery only; do not execute Mission/task work, grant capabilities, admit Scheduler leases, call models or invoke tools from the planner.
-- [ ] Keep crash-running work `interrupted_review_required`; never convert interruption directly into resume/retry.
-- [ ] Require every dependency of reusable/resumable/retryable work to be a currently matched, verified durable success.
-- [ ] Treat malformed historical `verified` completion/verification evidence as untrusted: require re-verification, keep dependents blocked and never reuse work from the verification flag alone.
-- [ ] Enforce fixed planning limits of 3 attempts/task and 192 attempts/Mission from durable lifecycle evidence; failed/retryable legacy work without lifecycle evidence must remain non-retryable.
-- [ ] Fail closed on malformed durable task graphs or lifecycle counters; invalid recovery structures may produce only `invalid_recovery_state`.
+- [ ] Keep `run_journal.go` as the single durable recovery authority; never use cached startup `AppState.Recovery` as decision authority.
+- [ ] Load the exact requested nonterminal read-only Mission by execution `run_id` and bind authority-relevant journal state to a canonical SHA-256 fingerprint.
+- [ ] Freshly observe current project/Git state and recompute reconciliation for every control snapshot.
+- [ ] Use the merged transition planner to identify only tasks requiring `verify_postconditions`; evaluate those fixed postconditions without model/Child execution.
+- [ ] Apply successful postcondition evidence only to a cloned transient Mission and recompute the final transition plan from that clone; do not repair or mutate durable evidence in this slice.
+- [ ] Re-read the journal after observation and retry at most three times when its fingerprint changes; fail closed if a stable snapshot cannot be obtained.
+- [ ] Expose a trusted `AppState` recovery-control method that refuses snapshots while another agent run is active, including a race where a run becomes active during snapshot construction.
+- [ ] Keep the snapshot explicitly non-authoritative for execution: `read_only=true`, `execution_authorized=false`, `scheduler_lease_granted=false`, `persistent_state_modified=false`.
+- [ ] Treat the returned snapshot SHA as observation binding only, never as a Scheduler lease, capability grant or dispatch token.
+- [ ] Keep startup passive and Mobile unchanged; no automatic Mission resume/retry/replay and no new Remote recovery-control authority.
+- [ ] Cover transient verification, malformed historical `verified` evidence, current drift, byte-identical journal before/after, concurrent journal changes, wrong/terminal run IDs, and active-run races.
+- [ ] Keep canonical docs consistent; require one fully green exact Quality head plus empty/resolved reviews and review threads before Ready/merge.
 
-## P0/P1 – Phase 6: controlled Mission continuation after verified planning
+## P0/P1 – Phase 6: controlled Mission continuation after verified control snapshot
 
-- [ ] Add an explicit read-only Mission recovery-control boundary that recomputes current reconciliation, required postcondition verification and the transition plan immediately before any control decision.
-- [ ] Keep startup passive: no automatic Mission resume/retry/replay.
-- [ ] Define controlled pause/resume for eligible nonterminal read-only tasks only after the fresh transition plan authorizes them.
+- [ ] Add a narrow explicit Desktop transport for recovery-control inspection only if/when the product needs it; transport must call the trusted AppState boundary rather than duplicate recovery logic, remain loopback/CSRF protected, and add no Mobile endpoint.
+- [ ] Define controlled pause/resume for eligible nonterminal read-only tasks only after a fresh recovery-control snapshot is recomputed immediately at the dispatch boundary.
 - [ ] Define controlled retry for eligible failed/retryable tasks; enforce durable per-task/per-Mission attempt limits and preserve existing cancellation semantics.
-- [ ] Preserve Scheduler admission/resource limits; a recovery plan/reservation is never an execution lease.
+- [ ] Preserve Scheduler admission/resource limits; a recovery plan, snapshot or prospective attempt reservation is never an execution lease.
 - [ ] Preserve historical scheduler-accepted usage and Mission accounting across continuation without double-counting prior attempts.
-- [ ] Revalidate dependencies immediately before resumed/retried dispatch; stale `verified` or stale plan data must not override current drift.
-- [ ] Add crash/restart tests for partially completed Missions, repeated restarts, verification drift between plan and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
+- [ ] Revalidate journal fingerprint, current reconciliation, verification evidence, dependencies and attempt budgets immediately before resumed/retried dispatch; stale snapshots must fail closed.
+- [ ] Add crash/restart tests for partially completed Missions, repeated restarts, drift between snapshot and dispatch, cancel-vs-resume/retry races and budget/accounting continuity.
 - [ ] Add bounded Mission Memory/Knowledge for architecture decisions, subsystem contracts, known failures and test evidence.
 
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
