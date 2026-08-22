@@ -234,6 +234,38 @@ func transitionNeedsDependencyGate(transition MissionRecoveryTaskTransition) boo
 	}
 }
 
+func applyMissionRecoveryDependencyGates(tasks []MissionRecoveryTaskTransition, indexByID map[string]int) {
+	// Actions only move from reusable/executable candidates to blocked. Repeating
+	// until stable makes dependency propagation independent of persisted task
+	// ordering while remaining bounded by the acyclic, <=64-task validated DAG.
+	for {
+		changed := false
+		for index := range tasks {
+			if !transitionNeedsDependencyGate(tasks[index]) {
+				continue
+			}
+			blocked := make([]string, 0)
+			for _, dependencyID := range tasks[index].Dependencies {
+				dependencyIndex, ok := indexByID[dependencyID]
+				if !ok || dependencyIndex == index || !transitionCanSatisfyDependency(tasks[dependencyIndex]) {
+					blocked = append(blocked, dependencyID)
+				}
+			}
+			if len(blocked) == 0 {
+				continue
+			}
+			tasks[index].Action = missionRecoveryTransitionBlockedDependency
+			tasks[index].Reason = "dependency_not_currently_verified_reusable"
+			tasks[index].RequiresNewAttempt = false
+			tasks[index].BlockedBy = blocked
+			changed = true
+		}
+		if !changed {
+			return
+		}
+	}
+}
+
 func planMissionRecoveryTransitions(mission *MissionRecoveryState, observedAt time.Time) MissionRecoveryTransitionPlan {
 	if !missionRecoveryTransitionGraphValid(mission) {
 		return invalidMissionRecoveryTransitionPlan(mission, observedAt, "invalid_recovery_task_graph")
@@ -263,26 +295,9 @@ func planMissionRecoveryTransitions(mission *MissionRecoveryState, observedAt ti
 
 	// Dependency safety is stricter than mere task readiness: any task that
 	// could later be reused or executed requires every dependency to be a
-	// currently matched, verified durable success.
-	for index := range plan.Tasks {
-		if !transitionNeedsDependencyGate(plan.Tasks[index]) {
-			continue
-		}
-		blocked := make([]string, 0)
-		for _, dependencyID := range plan.Tasks[index].Dependencies {
-			dependencyIndex, ok := indexByID[dependencyID]
-			if !ok || dependencyIndex == index || !transitionCanSatisfyDependency(plan.Tasks[dependencyIndex]) {
-				blocked = append(blocked, dependencyID)
-			}
-		}
-		if len(blocked) == 0 {
-			continue
-		}
-		plan.Tasks[index].Action = missionRecoveryTransitionBlockedDependency
-		plan.Tasks[index].Reason = "dependency_not_currently_verified_reusable"
-		plan.Tasks[index].RequiresNewAttempt = false
-		plan.Tasks[index].BlockedBy = blocked
-	}
+	// currently matched, verified durable success. The fixed point propagates
+	// blocks transitively regardless of durable task ordering.
+	applyMissionRecoveryDependencyGates(plan.Tasks, indexByID)
 
 	// Reserve the fixed mission-wide attempt budget deterministically in the
 	// durable task order. This is planning evidence only; no reservation is an
