@@ -62,7 +62,17 @@
       'model-inference':'Modell-Inferenz',
       'read-cpu':'Read-CPU',
       'build':'Build',
-      'exclusive-integration':'Exklusive Integration'
+      'exclusive-integration':'Exklusive Integration',
+      'Unterbrochene Mission':'Unterbrochene Mission',
+      'Explizite Wiederaufnahme':'Explizite Wiederaufnahme',
+      'Wiederaufnahme startet nie automatisch. Die ausgewählte Aufgabe wird unmittelbar vor der Ausführung erneut geprüft.':'Wiederaufnahme startet nie automatisch. Die ausgewählte Aufgabe wird unmittelbar vor der Ausführung erneut geprüft.',
+      'Abgleich':'Abgleich',
+      'Aufgabe fortsetzen':'Aufgabe fortsetzen',
+      'Aufgabe erneut versuchen':'Aufgabe erneut versuchen',
+      'Wird erneut geprüft…':'Wird erneut geprüft…',
+      'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.',
+      'Wiederaufnahme wurde angenommen.':'Wiederaufnahme wurde angenommen.',
+      'Wiederaufnahme konnte nicht gestartet werden.':'Wiederaufnahme konnte nicht gestartet werden.'
     });
     Object.assign(i18n.dictionaries.en, {
       'Mission':'Mission',
@@ -122,7 +132,17 @@
       'model-inference':'model inference',
       'read-cpu':'read CPU',
       'build':'build',
-      'exclusive-integration':'exclusive integration'
+      'exclusive-integration':'exclusive integration',
+      'Unterbrochene Mission':'Interrupted Mission',
+      'Explizite Wiederaufnahme':'Explicit recovery',
+      'Wiederaufnahme startet nie automatisch. Die ausgewählte Aufgabe wird unmittelbar vor der Ausführung erneut geprüft.':'Recovery never starts automatically. The selected task is revalidated again immediately before execution.',
+      'Abgleich':'Reconciliation',
+      'Aufgabe fortsetzen':'Resume task',
+      'Aufgabe erneut versuchen':'Retry task',
+      'Wird erneut geprüft…':'Revalidating…',
+      'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery state changed. Refreshing the view.',
+      'Wiederaufnahme wurde angenommen.':'Recovery continuation accepted.',
+      'Wiederaufnahme konnte nicht gestartet werden.':'Recovery continuation could not be started.'
     });
   }
 
@@ -131,6 +151,7 @@
   style.textContent = `
     .mission-status-card{border-color:#40536a;background:#1b232a}
     .orchestration-diagnostics-card{border-color:#3f4d59;background:#192126}
+    .mission-recovery-card{border-color:#725f32;background:#282317}
     .mission-status-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
     .mission-status-title{font-weight:750;min-width:0;flex:1;overflow-wrap:anywhere}
     .mission-status-state{font-size:10px;border:1px solid #4b617a;border-radius:99px;padding:2px 7px;white-space:nowrap;color:#bcd7f5}
@@ -141,11 +162,16 @@
     .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#94a1a8}
     .mission-status-section{margin-top:10px;padding-top:9px;border-top:1px solid #313c43}.mission-status-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#92a0a7;font-weight:700;margin-bottom:6px}
     .mission-task{border:1px solid #313c43;background:#171d21;border-radius:7px;padding:7px 8px;margin-top:5px}.mission-task-head{display:flex;gap:7px;align-items:center}.mission-task-id{min-width:0;flex:1;font:10.5px var(--code-font);overflow-wrap:anywhere}.mission-task-state{font-size:9.5px;color:#b5c4cc}.mission-task-sub{font-size:9.5px;color:#839198;margin-top:3px;overflow-wrap:anywhere}
+    .mission-recovery-copy{font-size:10.5px;color:#b9b09b;line-height:1.5;margin:4px 0 8px}.mission-recovery-action{margin-top:7px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid #776339;background:#332b1b;border-radius:7px;padding:6px 9px;font-size:10.5px;color:#f2dfad}.mission-recovery-btn:hover{background:#413622}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:10px;color:#d8c58f;margin-top:7px}
   `;
   document.head.appendChild(style);
 
   const tr = text => window.LocalCodeI18n?.t ? window.LocalCodeI18n.t(text) : text;
   const int = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  let recoverySnapshot = null;
+  let recoveryRefreshInFlight = false;
+  let recoveryActionInFlight = false;
+  let recoveryMessage = '';
 
   function stateLabel(value) {
     return tr(String(value || ''));
@@ -309,6 +335,106 @@
     return card;
   }
 
+  async function continueRecoveryTask(task) {
+    if (!recoverySnapshot || recoveryActionInFlight || !task?.can_continue) return;
+    recoveryActionInFlight = true;
+    recoveryMessage = tr('Wird erneut geprüft…');
+    renderInspector();
+    try {
+      const response = await fetch('/api/mission-recovery/continue', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          run_id: recoverySnapshot.run_id,
+          mission_id: recoverySnapshot.mission_id,
+          task_id: task.task_id,
+          action: task.action,
+          journal_sha256: recoverySnapshot.journal_sha256,
+          snapshot_sha256: recoverySnapshot.snapshot_sha256
+        })
+      });
+      if (response.status === 202) {
+        recoverySnapshot = null;
+        recoveryMessage = tr('Wiederaufnahme wurde angenommen.');
+        try {
+          state.status = await api('/api/status');
+        } catch (_) {}
+      } else if (response.status === 409) {
+        recoveryMessage = tr('Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.');
+        await refreshMissionRecovery(true);
+      } else {
+        recoveryMessage = tr('Wiederaufnahme konnte nicht gestartet werden.');
+      }
+    } catch (_) {
+      recoveryMessage = tr('Wiederaufnahme konnte nicht gestartet werden.');
+    } finally {
+      recoveryActionInFlight = false;
+      renderInspector();
+    }
+  }
+
+  function buildRecoveryCard(snapshot) {
+    const card = document.createElement('div');
+    card.className = 'output-card mission-status-card mission-recovery-card';
+    card.dataset.missionRecovery = '1';
+
+    const head = document.createElement('div');
+    head.className = 'mission-status-head';
+    const title = document.createElement('div');
+    title.className = 'mission-status-title';
+    title.textContent = `${tr('Unterbrochene Mission')}: ${snapshot.mission_id || ''}`;
+    const stateChip = document.createElement('div');
+    stateChip.className = 'mission-status-state';
+    stateChip.textContent = tr('Explizite Wiederaufnahme');
+    head.append(title, stateChip);
+    card.appendChild(head);
+
+    const copy = document.createElement('div');
+    copy.className = 'mission-recovery-copy';
+    copy.textContent = tr('Wiederaufnahme startet nie automatisch. Die ausgewählte Aufgabe wird unmittelbar vor der Ausführung erneut geprüft.');
+    card.appendChild(copy);
+    appendGrid(card, 'mission-status-meta', [
+      ['Abgleich', stateLabel(snapshot.reconciliation_state)],
+      ['Status', snapshot.runnable ? stateLabel('ready') : stateLabel('blocked')]
+    ]);
+
+    const tasks = section(card, 'Aufgaben');
+    for (const task of snapshot.tasks || []) {
+      const row = document.createElement('div');
+      row.className = 'mission-task';
+      const rowHead = document.createElement('div');
+      rowHead.className = 'mission-task-head';
+      const id = document.createElement('div');
+      id.className = 'mission-task-id';
+      id.textContent = task.task_id || '';
+      const taskState = document.createElement('div');
+      taskState.className = 'mission-task-state';
+      taskState.textContent = `${stateLabel(task.durable_state)} · ${stateLabel(task.action)}`;
+      rowHead.append(id, taskState);
+      row.appendChild(rowHead);
+      if (task.can_continue) {
+        const actions = document.createElement('div');
+        actions.className = 'mission-recovery-action';
+        const button = document.createElement('button');
+        button.className = 'mission-recovery-btn';
+        button.type = 'button';
+        button.disabled = recoveryActionInFlight;
+        button.textContent = task.action === 'retry_candidate' ? tr('Aufgabe erneut versuchen') : tr('Aufgabe fortsetzen');
+        button.addEventListener('click', () => continueRecoveryTask(task));
+        actions.appendChild(button);
+        row.appendChild(actions);
+      }
+      tasks.appendChild(row);
+    }
+    if (recoveryMessage) {
+      const message = document.createElement('div');
+      message.className = 'mission-recovery-message';
+      message.textContent = recoveryMessage;
+      card.appendChild(message);
+    }
+    return card;
+  }
+
   const originalRenderInspector = renderInspector;
   renderInspector = function() {
     originalRenderInspector();
@@ -318,6 +444,7 @@
     if (!body) return;
     body.querySelector('[data-mission-status]')?.remove();
     body.querySelector('[data-orchestration-diagnostics]')?.remove();
+    body.querySelector('[data-mission-recovery]')?.remove();
 
     const diagnostics = state.status?.orchestration;
     if (diagnostics) {
@@ -331,6 +458,11 @@
       if (list) list.prepend(card);
       else body.prepend(card);
     }
+    if (recoverySnapshot && !state.status?.running) {
+      const card = buildRecoveryCard(recoverySnapshot);
+      if (list) list.prepend(card);
+      else body.prepend(card);
+    }
   };
 
   let sawRunningMission = false;
@@ -338,7 +470,7 @@
   async function refreshMissionStatus() {
     if (refreshInFlight) return;
     const phase = state.runPhase || state.status?.run_phase || '';
-    if (phase !== 'mission-read-only' && !sawRunningMission) return;
+    if (phase !== 'mission-read-only' && phase !== 'mission-read-only-continuation' && !sawRunningMission) return;
     refreshInFlight = true;
     try {
       const status = await api('/api/status');
@@ -353,6 +485,34 @@
     }
   }
 
+  async function refreshMissionRecovery(force = false) {
+    if (recoveryRefreshInFlight || recoveryActionInFlight) return;
+    if (!force && state.status?.running) {
+      if (recoverySnapshot) {
+        recoverySnapshot = null;
+        renderInspector();
+      }
+      return;
+    }
+    recoveryRefreshInFlight = true;
+    try {
+      const response = await fetch('/api/mission-recovery', {method:'GET'});
+      if (response.status === 204) {
+        recoverySnapshot = null;
+      } else if (response.ok) {
+        recoverySnapshot = await response.json();
+        recoveryMessage = '';
+      } else if (response.status === 409) {
+        recoverySnapshot = null;
+      }
+      renderInspector();
+    } catch (_) {
+      // Recovery inspection is optional local Desktop state; connectivity is owned by the normal health monitor.
+    } finally {
+      recoveryRefreshInFlight = false;
+    }
+  }
+
   let initialized = false;
   function init() {
     if (initialized) return;
@@ -360,7 +520,9 @@
     const mission = state.status?.mission;
     sawRunningMission = !!mission && mission.state === 'running';
     renderInspector();
+    refreshMissionRecovery(true);
     setInterval(refreshMissionStatus, 1500);
+    setInterval(refreshMissionRecovery, 2000);
     document.addEventListener('localcode:language', () => setTimeout(renderInspector, 0));
   }
 
