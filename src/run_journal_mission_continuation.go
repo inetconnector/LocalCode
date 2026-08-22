@@ -17,38 +17,38 @@ var (
 )
 
 type MissionRecoveryContinuationMaterialization struct {
-	RunID                   string                     `json:"run_id"`
-	MissionID               string                     `json:"mission_id"`
-	TaskID                  string                     `json:"task_id"`
-	Action                  string                     `json:"action"`
-	DurableState            AgentTaskState             `json:"durable_state"`
-	ObservedAt              time.Time                  `json:"observed_at"`
-	JournalSHA256           string                     `json:"journal_sha256"`
-	SnapshotSHA256          string                     `json:"snapshot_sha256"`
-	Project                 string                     `json:"project"`
-	Model                   string                     `json:"model"`
-	MissionBudget           AgentBudget                `json:"mission_budget"`
-	MissionBudgetSnapshot   AgentBudgetSnapshot        `json:"mission_budget_snapshot"`
-	HistoricalUsageByTask   map[string]AgentUsage      `json:"historical_usage_by_task"`
-	HistoricalChildWorkMS   int64                      `json:"historical_child_work_millis"`
-	Graph                   AgentTaskGraph             `json:"graph"`
-	RequiresNewAttempt      bool                       `json:"requires_new_attempt"`
-	ReadOnly                bool                       `json:"read_only"`
-	ExecutionAuthorized     bool                       `json:"execution_authorized"`
-	SchedulerLeaseGranted   bool                       `json:"scheduler_lease_granted"`
-	PersistentStateModified bool                       `json:"persistent_state_modified"`
+	RunID                   string                `json:"run_id"`
+	MissionID               string                `json:"mission_id"`
+	TaskID                  string                `json:"task_id"`
+	Action                  string                `json:"action"`
+	DurableState            AgentTaskState        `json:"durable_state"`
+	ObservedAt              time.Time             `json:"observed_at"`
+	JournalSHA256           string                `json:"journal_sha256"`
+	SnapshotSHA256          string                `json:"snapshot_sha256"`
+	Project                 string                `json:"project"`
+	Model                   string                `json:"model"`
+	MissionBudget           AgentBudget           `json:"mission_budget"`
+	MissionBudgetSnapshot   AgentBudgetSnapshot   `json:"mission_budget_snapshot"`
+	HistoricalUsageByTask   map[string]AgentUsage `json:"historical_usage_by_task"`
+	HistoricalChildWorkMS   int64                 `json:"historical_child_work_millis"`
+	Graph                   AgentTaskGraph        `json:"graph"`
+	RequiresNewAttempt      bool                  `json:"requires_new_attempt"`
+	ReadOnly                bool                  `json:"read_only"`
+	ExecutionAuthorized     bool                  `json:"execution_authorized"`
+	SchedulerLeaseGranted   bool                  `json:"scheduler_lease_granted"`
+	PersistentStateModified bool                  `json:"persistent_state_modified"`
 }
 
-func missionRecoveryUsageValid(usage AgentUsage) bool {
-	return usage.ModelCalls >= 0 && usage.ToolCalls >= 0 && usage.EstimatedTokens >= 0 && usage.ElapsedMillis >= 0
+func missionRecoveryUsageValid(u AgentUsage) bool {
+	return u.ModelCalls >= 0 && u.ToolCalls >= 0 && u.EstimatedTokens >= 0 && u.ElapsedMillis >= 0
 }
 
-func missionRecoveryUsageZero(usage AgentUsage) bool {
-	return usage.ModelCalls == 0 && usage.ToolCalls == 0 && usage.EstimatedTokens == 0 && usage.ElapsedMillis == 0
+func missionRecoveryUsageZero(u AgentUsage) bool {
+	return u.ModelCalls == 0 && u.ToolCalls == 0 && u.EstimatedTokens == 0 && u.ElapsedMillis == 0
 }
 
-func missionRecoveryUsageEqual(left, right AgentUsage) bool {
-	return left.ModelCalls == right.ModelCalls && left.ToolCalls == right.ToolCalls && left.EstimatedTokens == right.EstimatedTokens && left.ElapsedMillis == right.ElapsedMillis
+func missionRecoveryUsageEqual(a, b AgentUsage) bool {
+	return a.ModelCalls == b.ModelCalls && a.ToolCalls == b.ToolCalls && a.EstimatedTokens == b.EstimatedTokens && a.ElapsedMillis == b.ElapsedMillis
 }
 
 func missionRecoveryAcceptedTaskUsage(task MissionRecoveryTaskState) (AgentUsage, error) {
@@ -56,7 +56,11 @@ func missionRecoveryAcceptedTaskUsage(task MissionRecoveryTaskState) (AgentUsage
 	if !missionRecoveryUsageValid(explicit) {
 		return AgentUsage{}, fmt.Errorf("task %q has invalid persisted usage", task.ID)
 	}
+	attempted := task.Lifecycle != nil && task.Lifecycle.AttemptCount > 0
 	if task.BudgetSnapshot == nil {
+		if attempted {
+			return AgentUsage{}, fmt.Errorf("task %q has attempts without budget-snapshot usage evidence", task.ID)
+		}
 		return explicit, nil
 	}
 	budgetUsage := task.BudgetSnapshot.Usage
@@ -179,7 +183,6 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 	if transition.AttemptCount >= missionRecoveryMaxTaskAttempts || snapshot.Plan.ObservedMissionAttempts >= snapshot.Plan.MaxMissionAttempts {
 		return out, errMissionRecoveryContinuationCandidate
 	}
-
 	closure, err := missionRecoveryContinuationClosure(snapshot.Plan, taskID)
 	if err != nil {
 		return out, fmt.Errorf("%w: %v", errMissionRecoveryContinuationCandidate, err)
@@ -203,9 +206,9 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 		if strings.TrimSpace(durable.Model) == "" || strings.TrimSpace(durable.Model) != strings.TrimSpace(mission.Model) {
 			return out, fmt.Errorf("task %q model does not match recovered mission model", durable.ID)
 		}
-		state := AgentTaskSucceeded
+		taskState := AgentTaskSucceeded
 		if durable.ID == taskID {
-			state = AgentTaskReady
+			taskState = AgentTaskReady
 		}
 		graph.Tasks = append(graph.Tasks, AgentTask{
 			ID:                    durable.ID,
@@ -214,7 +217,7 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 			Role:                  role,
 			Objective:             durable.Objective,
 			Dependencies:          append([]string(nil), durable.Dependencies...),
-			State:                 state,
+			State:                 taskState,
 			Workspace:             mission.Project,
 			RequestedCapabilities: append([]AgentCapability(nil), durable.RequestedCapabilities...),
 			Capabilities:          append([]AgentCapability(nil), capabilitiesForAgentRole(role)...),
@@ -256,8 +259,7 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 	if budgetSnapshot.Exhausted {
 		return out, fmt.Errorf("%w: %s", errMissionRecoveryContinuationBudget, budgetSnapshot.ExhaustedBy)
 	}
-
-	out = MissionRecoveryContinuationMaterialization{
+	return MissionRecoveryContinuationMaterialization{
 		RunID:                   state.RunID,
 		MissionID:               mission.MissionID,
 		TaskID:                  taskID,
@@ -278,8 +280,7 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 		ExecutionAuthorized:     false,
 		SchedulerLeaseGranted:   false,
 		PersistentStateModified: false,
-	}
-	return out, nil
+	}, nil
 }
 
 func buildStableMissionRecoveryContinuationWithObserver(runID, taskID string, observe func(string, time.Time) MissionProjectBaseline) (MissionRecoveryContinuationMaterialization, error) {
@@ -287,17 +288,17 @@ func buildStableMissionRecoveryContinuationWithObserver(runID, taskID string, ob
 		observe = observeMissionRecoveryControlProject
 	}
 	for attempt := 0; attempt < missionRecoveryControlMaxSnapshotAttempts; attempt++ {
-		state, journalFingerprint, err := loadMissionRecoveryControlState(runID)
+		state, fingerprint, err := loadMissionRecoveryControlState(runID)
 		if err != nil {
 			return MissionRecoveryContinuationMaterialization{}, err
 		}
 		observedAt := time.Now()
 		current := observe(state.Mission.Project, observedAt)
-		snapshot, err := buildMissionRecoveryControlSnapshot(state, journalFingerprint, current, observedAt)
+		snapshot, err := buildMissionRecoveryControlSnapshot(state, fingerprint, current, observedAt)
 		if err != nil {
 			return MissionRecoveryContinuationMaterialization{}, err
 		}
-		materialized, err := materializeMissionRecoveryContinuation(state, journalFingerprint, snapshot, taskID)
+		materialized, err := materializeMissionRecoveryContinuation(state, fingerprint, snapshot, taskID)
 		if err != nil {
 			return MissionRecoveryContinuationMaterialization{}, err
 		}
@@ -305,7 +306,7 @@ func buildStableMissionRecoveryContinuationWithObserver(runID, taskID string, ob
 		if err != nil {
 			return MissionRecoveryContinuationMaterialization{}, err
 		}
-		if currentFingerprint == journalFingerprint {
+		if currentFingerprint == fingerprint {
 			return materialized, nil
 		}
 	}
