@@ -250,11 +250,11 @@ func materializeMissionRecoveryContinuation(state *RunRecoveryState, journalFing
 	if err != nil {
 		return out, err
 	}
-	if mission.StartedAt.IsZero() || snapshot.ObservedAt.Before(mission.StartedAt) {
+	if mission.StartedAt.IsZero() || mission.UpdatedAt.IsZero() || mission.UpdatedAt.Before(mission.StartedAt) || mission.UpdatedAt.After(snapshot.ObservedAt) {
 		return out, fmt.Errorf("invalid recovered mission timing evidence")
 	}
 	budgetUsage := historicalUsage
-	budgetUsage.ElapsedMillis = snapshot.ObservedAt.Sub(mission.StartedAt).Milliseconds()
+	budgetUsage.ElapsedMillis = mission.UpdatedAt.Sub(mission.StartedAt).Milliseconds()
 	budgetSnapshot := agentBudgetSnapshot(mission.Budget, budgetUsage)
 	if budgetSnapshot.Exhausted {
 		return out, fmt.Errorf("%w: %s", errMissionRecoveryContinuationBudget, budgetSnapshot.ExhaustedBy)
