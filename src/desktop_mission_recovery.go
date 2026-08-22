@@ -81,11 +81,13 @@ func desktopMissionRecoverySnapshotFromControl(snapshot MissionRecoveryControlSn
 		JournalSHA256:       snapshot.JournalSHA256,
 		SnapshotSHA256:      snapshot.SnapshotSHA256,
 		ReconciliationState: snapshot.ReconciliationState,
-		Runnable:            snapshot.Plan.Runnable,
 		Tasks:               make([]DesktopMissionRecoveryTask, 0, len(snapshot.Plan.Tasks)),
 	}
 	for _, transition := range snapshot.Plan.Tasks {
-		canContinue := transition.RequiresNewAttempt && (transition.Action == missionRecoveryTransitionResumeCandidate || transition.Action == missionRecoveryTransitionRetryCandidate)
+		canContinue := snapshot.Plan.Valid && transition.RequiresNewAttempt && (transition.Action == missionRecoveryTransitionResumeCandidate || transition.Action == missionRecoveryTransitionRetryCandidate)
+		if canContinue {
+			out.Runnable = true
+		}
 		out.Tasks = append(out.Tasks, DesktopMissionRecoveryTask{
 			TaskID:             transition.TaskID,
 			DurableState:       transition.DurableState,
