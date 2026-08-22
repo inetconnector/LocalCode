@@ -185,7 +185,7 @@ func TestMissionRecoveryAsyncAdmissionRevalidatesAndOwnsCancellation(t *testing.
 		started <- struct{}{}
 		<-ctx.Done()
 		finished <- struct{}{}
-		return AgentResult{Status: AgentResultCancelled}, ctx.Err()
+		return AgentResult{}, ctx.Err()
 	}
 	expected := MissionRecoveryContinuationPreconditions{
 		MissionID:      control.MissionID,
