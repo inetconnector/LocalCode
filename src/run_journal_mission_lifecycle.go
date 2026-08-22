@@ -30,16 +30,18 @@ func updateMissionTaskLifecycle(task *MissionRecoveryTaskState, snapshot AgentTa
 		lifecycle.StateUpdatedAt = observedAt
 	}
 	if snapshot.Running && !task.Running {
-		if lifecycle.AttemptReserved {
-			lifecycle.AttemptReserved = false
-			lifecycle.AttemptReservedAt = time.Time{}
+		// A continuation reservation is durable admission intent, not an
+		// execution attempt. Count the attempt only once the Scheduler has
+		// actually transitioned the task to Running. If the process crashes
+		// after reservation but before this checkpoint, the reserved attempt can
+		// be reused without consuming retry budget.
+		lifecycle.AttemptReserved = false
+		lifecycle.AttemptReservedAt = time.Time{}
+		lifecycle.AttemptCount++
+		if lifecycle.AttemptCount > 1 {
+			lifecycle.RetryCount = lifecycle.AttemptCount - 1
 		} else {
-			lifecycle.AttemptCount++
-			if lifecycle.AttemptCount > 1 {
-				lifecycle.RetryCount = lifecycle.AttemptCount - 1
-			} else {
-				lifecycle.RetryCount = 0
-			}
+			lifecycle.RetryCount = 0
 		}
 		lifecycle.LastStartedAt = observedAt
 	}
