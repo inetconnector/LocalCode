@@ -21,6 +21,7 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Classify recovery only; do not execute Mission/task work, grant capabilities, admit Scheduler leases, call models or invoke tools from the planner.
 - [ ] Keep crash-running work `interrupted_review_required`; never convert interruption directly into resume/retry.
 - [ ] Require every dependency of reusable/resumable/retryable work to be a currently matched, verified durable success.
+- [ ] Treat malformed historical `verified` completion/verification evidence as untrusted: require re-verification, keep dependents blocked and never reuse work from the verification flag alone.
 - [ ] Enforce fixed planning limits of 3 attempts/task and 192 attempts/Mission from durable lifecycle evidence; failed/retryable legacy work without lifecycle evidence must remain non-retryable.
 - [ ] Fail closed on malformed durable task graphs or lifecycle counters; invalid recovery structures may produce only `invalid_recovery_state`.
 
