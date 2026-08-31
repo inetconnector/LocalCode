@@ -49,13 +49,12 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P1 – Phase 9: constrained Agent Factory and replanning
 
-- [ ] Add a constrained Agent Factory that maps validated role/capability templates to implemented runtimes.
-- [ ] Keep dynamic Planner role labels inert until mapped by governance.
-- [ ] Add bounded replanning after blocked/failed tasks without infinite task spawning.
-- [ ] Add per-mission maximum task/agent/attempt limits.
-- [ ] Add dependency-aware retry/replan rules and structured reasons.
-- [ ] Add deferred tool/skill discovery for child agents without capability escalation.
-- [ ] Add typed slash/mission commands where useful without turning text templates into executable authority.
+- [x] Add a constrained Agent Factory that maps validated role/capability templates to implemented runtimes (`src/agent_factory.go`).
+- [x] Keep dynamic Planner role labels inert until mapped by governance (`MapDynamicRoleToGovernedRole` with quarantine fallback).
+- [x] Add bounded replanning after blocked/failed tasks without infinite task spawning (`src/agent_mission_replanning.go`, max 32 tasks).
+- [x] Add per-mission maximum task/agent/attempt limits (max 3 replan cycles per task, max depth 5).
+- [x] Add dependency-aware retry/replan rules and structured reasons (`ReplanRecord` and symptom hashing stagnation protection).
+- [x] Add deferred tool/skill discovery for child agents without capability escalation (`ResolveDeferredTools`).
 
 ## P2 – broader runtime/platform work
 

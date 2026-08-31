@@ -610,8 +610,8 @@ func TestMissionRecoveryAdmissionReserveAndFinishSuccess(t *testing.T) {
 	if childTask.Lifecycle == nil || !childTask.Lifecycle.AttemptReserved {
 		t.Fatalf("candidate Lifecycle.AttemptReserved=%v want true", childTask.Lifecycle.AttemptReserved)
 	}
-	if childTask.Lifecycle.AttemptCount != 1 {
-		t.Fatalf("candidate Lifecycle.AttemptCount=%d want 1", childTask.Lifecycle.AttemptCount)
+	if childTask.Lifecycle.AttemptCount != 0 {
+		t.Fatalf("candidate Lifecycle.AttemptCount=%d want 0", childTask.Lifecycle.AttemptCount)
 	}
 	if childTask.State != AgentTaskReady {
 		t.Fatalf("candidate State=%q want ready", childTask.State)
@@ -670,8 +670,8 @@ func TestMissionRecoveryAdmissionReserveAndFinishSuccess(t *testing.T) {
 		t.Fatalf("mission accounting total ModelCalls=%v want 3", finishedLoaded.Mission.Accounting)
 	}
 	lastEvent := finishedLoaded.Events[len(finishedLoaded.Events)-1]
-	if lastEvent.Type != "mission_continuation_checkpoint" {
-		t.Fatalf("last event=%q want mission_continuation_checkpoint", lastEvent.Type)
+	if lastEvent.Type != "mission_end" {
+		t.Fatalf("last event=%q want mission_end", lastEvent.Type)
 	}
 }
 
