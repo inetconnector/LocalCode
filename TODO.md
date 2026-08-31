@@ -58,7 +58,7 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P2 – broader runtime/platform work
 
-- [ ] Optional backend-neutral local inference path such as llama.cpp/DMC without silent model/provider drift.
+- [x] Optional backend-neutral local inference path such as llama.cpp/DMC without silent model/provider drift (`src/inference_backend.go`).
 - [x] Stronger health/doctor diagnostics for local models, tools, engines, MCP, Android Remote and orchestration resources (`src/doctor.go`, `GET /api/doctor`).
 - [ ] Evaluate QEMU/VM/OS-building workflows only behind explicit sandbox/resource boundaries and reproducible tests.
 - [ ] Benchmark LocalCode Native against Aider/OpenCode/Claw on reproducible repository tasks before claiming superiority.
