@@ -646,4 +646,3 @@ func (o *OllamaClient) ChatRaw(ctx context.Context, model string, messages []Oll
 	}
 	return strings.TrimSpace(out.Message.Content), nil
 }
-
