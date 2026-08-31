@@ -92,6 +92,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/computemesh/status", s.handleComputeMeshStatus)
 	s.mux.HandleFunc("/api/computemesh/autodetect", s.handleComputeMeshAutoDetect)
 	s.mux.HandleFunc("/api/computemesh/test", s.handleComputeMeshTest)
+	s.mux.HandleFunc("/api/doctor", s.handleDoctor)
 }
 
 func loopbackRequestHost(value string) bool {
@@ -1557,4 +1558,21 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 		"model":    model,
 		"url":      gatewayURL,
 	})
+}
+
+func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	report := RunDoctorDiagnostics(ctx, cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, report)
 }
