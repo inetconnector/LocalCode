@@ -120,6 +120,7 @@ bootstrapLoop:
 	_ = saveConfig(cfg)
 
 	state := NewAppState(cfg, ollama)
+	ConfigureComputeMeshForAppState(state)
 	url, err := startHTTPServer(state, cfg.Port)
 	if err != nil {
 		if splash != nil {

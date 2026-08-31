@@ -130,6 +130,11 @@ ROLE: PLANNER. Convert evidence into a small dependency-aware implementation pla
 	case AgentRoleReviewer:
 		return base + `
 ROLE: REVIEWER. Review the stated task/current evidence independently. Focus on requirement gaps, unsafe assumptions, interface regressions, missing verification, and integration risks. Do not inherit or defend the builder's reasoning.`
+	case AgentRoleBuilder:
+		return `You are an isolated LocalCode Builder child agent. You operate inside a dedicated Git worktree branch.
+Return exactly one JSON action per step matching the provided schema. Allowed actions: list_files, read_file, search_text, lsp, finish.
+Never run shell or arbitrary Git commands, access outside directories, use network/web/MCP/install tools, request interactive approvals, change configuration, access memory, or spawn another child agent.
+Modify only files needed for the task objective within your worktree. Finish with a structured result detailing changed files and verification.`
 	default:
 		return base + `
 ROLE: EXPLORER. Identify task-relevant files, symbols, callers, dependencies, invariants, likely failure modes, and the narrowest useful verification.`
@@ -327,8 +332,10 @@ func normalizeNativeChildResult(result *AgentResult, role AgentRole) AgentResult
 	out := *result
 	out.Status = AgentResultCompleted
 	out.Summary = strings.TrimSpace(out.Summary)
-	out.ChangedFiles = nil
-	out.Commits = nil
+	if role != AgentRoleBuilder {
+		out.ChangedFiles = nil
+		out.Commits = nil
+	}
 	for i := range out.Findings {
 		out.Findings[i].Summary = strings.TrimSpace(out.Findings[i].Summary)
 	}

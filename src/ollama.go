@@ -22,6 +22,25 @@ type OllamaClient struct {
 	BaseURL       string
 	HTTP          *http.Client
 	ContextLength int
+	AuthToken     string
+	APIKey        string
+	CustomHeaders map[string]string
+}
+
+func (o *OllamaClient) applyAuth(req *http.Request) {
+	if o == nil || req == nil {
+		return
+	}
+	token := strings.TrimSpace(o.AuthToken)
+	if token == "" {
+		token = strings.TrimSpace(o.APIKey)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range o.CustomHeaders {
+		req.Header.Set(k, v)
+	}
 }
 
 type OllamaMessage struct {
@@ -164,6 +183,7 @@ func (o *OllamaClient) tagsAt(ctx context.Context, baseURL string) ([]ModelInfo,
 	if err != nil {
 		return nil, err
 	}
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -194,6 +214,7 @@ func (o *OllamaClient) Show(ctx context.Context, model string) ([]string, error)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -284,6 +305,7 @@ func (o *OllamaClient) PullWithProgress(ctx context.Context, model string, progr
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	client := &http.Client{Timeout: 2 * time.Hour}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -392,6 +414,7 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return "", err
@@ -546,6 +569,7 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return "", err

@@ -65,6 +65,11 @@ type Config struct {
 	OllamaAutoInstall                 bool    `json:"ollama_auto_install"`
 	OllamaAutoPull                    bool    `json:"ollama_auto_pull"`
 	OllamaDefaultModel                string  `json:"ollama_default_model"`
+	ComputeMeshEnabled                bool    `json:"computemesh_enabled"`
+	ComputeMeshURL                    string  `json:"computemesh_url"`
+	ComputeMeshAPIKey                 string  `json:"computemesh_api_key"`
+	ComputeMeshLocalNodeURL           string  `json:"computemesh_local_node_url"`
+	ComputeMeshAutoDetect             bool    `json:"computemesh_auto_detect"`
 	EditingEngine                     string  `json:"editing_engine"` // native | aider | claude | opencode | claw
 	AiderEnabled                      bool    `json:"aider_enabled"`
 	AiderAutoInstall                  bool    `json:"aider_auto_install"`
@@ -200,33 +205,40 @@ type ModelInfo struct {
 }
 
 type Status struct {
-	Version             string      `json:"version"`
-	OllamaOnline        bool        `json:"ollama_online"`
-	OllamaURL           string      `json:"ollama_url,omitempty"`
-	OllamaError         string      `json:"ollama_error,omitempty"`
-	EditingEngine       string      `json:"editing_engine"`
-	AiderInstalled      bool        `json:"aider_installed"`
-	AiderVersion        string      `json:"aider_version,omitempty"`
-	EngineInstalled     bool        `json:"engine_installed"`
-	EngineVersion       string      `json:"engine_version,omitempty"`
-	EngineExecutable    string      `json:"engine_executable,omitempty"`
-	EngineAuthenticated bool        `json:"engine_authenticated"`
-	EngineError         string      `json:"engine_error,omitempty"`
-	Models              []ModelInfo `json:"models"`
-	SelectedModel       string      `json:"selected_model"`
-	GPU                 string      `json:"gpu,omitempty"`
-	RootDir             string      `json:"root_dir"`
-	Project             string      `json:"project,omitempty"`
-	Running             bool        `json:"running"`
-	GitAvailable        bool        `json:"git_available"`
-	MCPCount            int         `json:"mcp_count"`
-	RunID               string      `json:"run_id,omitempty"`
-	RunPhase            string      `json:"run_phase,omitempty"`
-	RunStartedAt        time.Time   `json:"run_started_at,omitempty"`
-	LastProgressAt      time.Time   `json:"last_progress_at,omitempty"`
-	ResolvedLanguage    string      `json:"resolved_language"`
-	SystemLanguage      string      `json:"system_language"`
-	SupportedLanguages  []string    `json:"supported_languages"`
+	Version              string      `json:"version"`
+	OllamaOnline         bool        `json:"ollama_online"`
+	OllamaURL            string      `json:"ollama_url,omitempty"`
+	OllamaError          string      `json:"ollama_error,omitempty"`
+	ComputeMeshOnline    bool        `json:"computemesh_online"`
+	ComputeMeshURL       string      `json:"computemesh_url,omitempty"`
+	ComputeMeshNode      string      `json:"computemesh_node,omitempty"`
+	ComputeMeshGPU       string      `json:"computemesh_gpu,omitempty"`
+	ComputeMeshVRAM      string      `json:"computemesh_vram,omitempty"`
+	ComputeMeshKeyMasked string      `json:"computemesh_key_masked,omitempty"`
+	ComputeMeshError     string      `json:"computemesh_error,omitempty"`
+	EditingEngine        string      `json:"editing_engine"`
+	AiderInstalled       bool        `json:"aider_installed"`
+	AiderVersion         string      `json:"aider_version,omitempty"`
+	EngineInstalled      bool        `json:"engine_installed"`
+	EngineVersion        string      `json:"engine_version,omitempty"`
+	EngineExecutable     string      `json:"engine_executable,omitempty"`
+	EngineAuthenticated  bool        `json:"engine_authenticated"`
+	EngineError          string      `json:"engine_error,omitempty"`
+	Models               []ModelInfo `json:"models"`
+	SelectedModel        string      `json:"selected_model"`
+	GPU                  string      `json:"gpu,omitempty"`
+	RootDir              string      `json:"root_dir"`
+	Project              string      `json:"project,omitempty"`
+	Running              bool        `json:"running"`
+	GitAvailable         bool        `json:"git_available"`
+	MCPCount             int         `json:"mcp_count"`
+	RunID                string      `json:"run_id,omitempty"`
+	RunPhase             string      `json:"run_phase,omitempty"`
+	RunStartedAt         time.Time   `json:"run_started_at,omitempty"`
+	LastProgressAt       time.Time   `json:"last_progress_at,omitempty"`
+	ResolvedLanguage     string      `json:"resolved_language"`
+	SystemLanguage       string      `json:"system_language"`
+	SupportedLanguages   []string    `json:"supported_languages"`
 }
 
 type UIEvent struct {

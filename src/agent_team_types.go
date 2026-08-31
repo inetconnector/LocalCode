@@ -11,9 +11,12 @@ import (
 type AgentRole string
 
 const (
-	AgentRoleExplorer AgentRole = "explorer"
-	AgentRolePlanner  AgentRole = "planner"
-	AgentRoleReviewer AgentRole = "reviewer"
+	AgentRoleExplorer   AgentRole = "explorer"
+	AgentRolePlanner    AgentRole = "planner"
+	AgentRoleReviewer   AgentRole = "reviewer"
+	AgentRoleBuilder    AgentRole = "builder"
+	AgentRoleIntegrator AgentRole = "integrator"
+	AgentRoleTestAgent  AgentRole = "test_agent"
 )
 
 type AgentTaskState string
@@ -48,11 +51,45 @@ const (
 type AgentCapability string
 
 const (
-	AgentCapabilityRepositoryRead AgentCapability = "repository-read"
-	AgentCapabilityLSP            AgentCapability = "lsp"
-	AgentCapabilityPlanning       AgentCapability = "planning"
-	AgentCapabilityReview         AgentCapability = "review"
+	AgentCapabilityRepositoryRead  AgentCapability = "repository-read"
+	AgentCapabilityLSP             AgentCapability = "lsp"
+	AgentCapabilityPlanning        AgentCapability = "planning"
+	AgentCapabilityReview          AgentCapability = "review"
+	AgentCapabilityBuilderWorktree AgentCapability = "builder-worktree"
+	AgentCapabilityIntegration     AgentCapability = "integration"
+	AgentCapabilityTesting         AgentCapability = "testing"
 )
+
+type EvaluationDecision string
+
+const (
+	DecisionPass   EvaluationDecision = "PASS"
+	DecisionFail   EvaluationDecision = "FAIL"
+	DecisionRepair EvaluationDecision = "REPAIR"
+)
+
+type RepairProposal struct {
+	Summary         string   `json:"summary"`
+	FailingTests    []string `json:"failing_tests,omitempty"`
+	AffectedPaths   []string `json:"affected_paths,omitempty"`
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+type IntegrationStatus string
+
+const (
+	IntegrationSuccess  IntegrationStatus = "success"
+	IntegrationConflict IntegrationStatus = "conflict"
+	IntegrationFailed   IntegrationStatus = "failed"
+)
+
+type IntegrationResult struct {
+	Status       IntegrationStatus `json:"status"`
+	TargetBranch string            `json:"target_branch"`
+	MergedCommit string            `json:"merged_commit,omitempty"`
+	ChangedFiles []string          `json:"changed_files,omitempty"`
+	Detail       string            `json:"detail,omitempty"`
+}
 
 type AgentBudget struct {
 	ModelCalls           int   `json:"model_calls"`
@@ -134,8 +171,14 @@ func normalizeAgentRole(raw string) (AgentRole, error) {
 		return AgentRolePlanner, nil
 	case "reviewer", "review":
 		return AgentRoleReviewer, nil
+	case "builder", "build", "coder":
+		return AgentRoleBuilder, nil
+	case "integrator", "integration", "merge":
+		return AgentRoleIntegrator, nil
+	case "test_agent", "test", "tester", "testing":
+		return AgentRoleTestAgent, nil
 	default:
-		return "", fmt.Errorf("unsupported child-agent role %q; allowed roles: explorer, planner, reviewer", raw)
+		return "", fmt.Errorf("unsupported child-agent role %q; allowed roles: explorer, planner, reviewer, builder, integrator, test_agent", raw)
 	}
 }
 
@@ -146,6 +189,12 @@ func capabilitiesForAgentRole(role AgentRole) []AgentCapability {
 		return append(base, AgentCapabilityPlanning)
 	case AgentRoleReviewer:
 		return append(base, AgentCapabilityReview)
+	case AgentRoleBuilder:
+		return append(base, AgentCapabilityBuilderWorktree)
+	case AgentRoleIntegrator:
+		return append(base, AgentCapabilityIntegration)
+	case AgentRoleTestAgent:
+		return append(base, AgentCapabilityTesting)
 	default:
 		return base
 	}
@@ -158,6 +207,12 @@ func defaultAgentBudget(role AgentRole, cfg Config) AgentBudget {
 		budget = AgentBudget{ModelCalls: 6, ToolCalls: 8, EstimatedTokenBudget: 80000, TimeSeconds: 150}
 	case AgentRoleReviewer:
 		budget = AgentBudget{ModelCalls: 6, ToolCalls: 10, EstimatedTokenBudget: 85000, TimeSeconds: 150}
+	case AgentRoleBuilder:
+		budget = AgentBudget{ModelCalls: 10, ToolCalls: 16, EstimatedTokenBudget: 120000, TimeSeconds: 240}
+	case AgentRoleIntegrator:
+		budget = AgentBudget{ModelCalls: 6, ToolCalls: 10, EstimatedTokenBudget: 80000, TimeSeconds: 180}
+	case AgentRoleTestAgent:
+		budget = AgentBudget{ModelCalls: 8, ToolCalls: 12, EstimatedTokenBudget: 90000, TimeSeconds: 180}
 	}
 	if cfg.ModelTimeout > 0 {
 		maxSeconds := cfg.ModelTimeout * budget.ModelCalls

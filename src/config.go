@@ -117,6 +117,7 @@ func defaultConfig() Config {
 	return Config{
 		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: false, RemoteBindHost: "127.0.0.1", RemotePort: 32146, ProjectAliases: map[string]string{},
 		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
+		ComputeMeshEnabled: true, ComputeMeshURL: "https://computemesh.inetconnector.com", ComputeMeshLocalNodeURL: "http://localhost:8080", ComputeMeshAutoDetect: true,
 		EditingEngine: "native", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,

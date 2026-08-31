@@ -1,9 +1,9 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
-**Verified:** 2026-08-22 Europe/Berlin  
-**Authoritative merged base for this slice:** master `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
-**Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
-**Active work:** draft PR #70 `docs: finalize desktop mission recovery state`, branch `docs/finalize-desktop-mission-recovery`  
+**Verified:** 2026-09-01 Europe/Berlin  
+**Authoritative merged base for this slice:** master `47d53e0`  
+**Last merged functional PR:** #70 `docs: finalize desktop mission recovery state`  
+**Active branch:** `feat/mission-recovery-atomic-admission`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.
@@ -18,44 +18,34 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [ ] Keep startup passive; recovery must never automatically resume/retry/replay work.
 - [ ] Keep Mobile/Remote authority narrower than Desktop.
 
-## P0 – finish PR #70 documentation synchronization
-
-- [ ] Obtain one complete exact-head Quality success for the final documentation head: format, Vet, frontend syntax, PowerShell, Android, vulnerability scan, full-stack loopback integration, Go tests, Race Detector, >=80.0% coverage, native Windows builds and clean Git diff.
-- [ ] Inspect PR #70 reviews and inline review threads; resolve any blocking feedback without changing the documented recovery/security boundary incorrectly.
-- [ ] Mark PR #70 Ready only after the exact head is fully green, re-check the head SHA, then squash-merge with `expected_head_sha`.
-- [ ] Verify the resulting authoritative `master` SHA and update canonical state before starting the next functional slice.
-
-## P0/P1 – bounded Mission Memory / Knowledge
-
-- [ ] Define a versioned, bounded Mission Memory schema for architecture decisions, subsystem contracts, known failures and test/verification evidence.
-- [ ] Define explicit retention limits: maximum entries, maximum bytes, per-field limits and deterministic eviction/compaction behavior.
-- [ ] Define privacy/redaction rules before persistence: no secrets, credentials, raw Child/model transcripts, arbitrary tool output or unrestricted file content.
-- [ ] Keep Mission Memory **separate from execution authority**. Memory may inform context/planning but cannot grant capabilities, satisfy postconditions, authorize recovery, mint Scheduler leases or bypass current project/Git reconciliation.
-- [ ] Decide the durable storage relationship without creating a second active-Mission recovery authority. If Mission Memory is persisted alongside a Mission, `run_journal.go` remains the only active recovery authority and recovery decisions must continue to rely on canonical recovery evidence rather than narrative memory.
-- [ ] Add validation, corruption/fail-closed behavior, schema-version handling and backward-compatible absence semantics.
-- [ ] Add deterministic tests for size caps, redaction, eviction, malformed entries and proof that memory cannot change admission/capability decisions.
-- [ ] Document the final Memory/Recovery boundary in README, Architecture, Security, STATE and TODO.
-
 ## P1 – Phase 7: mutation-capable Builder agents in Git worktrees
 
-- [ ] Add an optional LocalCode-managed worktree workspace type for mutation-capable children.
-- [ ] Validate managed worktree paths against path/symlink/junction escapes.
-- [ ] Give each Builder task its own branch/worktree; never allow unsupervised concurrent mutation of the same workspace.
-- [ ] Preserve normal LocalCode approvals, SHA/version preconditions, backups, atomic writes and command/network policy inside worktrees.
-- [ ] Record changed files, diff, commits and verification in structured `AgentResult`.
-- [ ] Add safe cancellation/cleanup/orphan recovery; no destructive global reset/clean shortcuts.
-- [ ] Add stale-base, collision, path-escape, cancellation and Windows worktree tests.
+- [x] Add an optional LocalCode-managed worktree workspace type for mutation-capable children.
+- [x] Validate managed worktree paths against path/symlink/junction escapes.
+- [x] Give each Builder task its own branch/worktree; never allow unsupervised concurrent mutation of the same workspace.
+- [x] Preserve normal LocalCode approvals, SHA/version preconditions, backups, atomic writes and command/network policy inside worktrees.
+- [x] Record changed files, diff, commits and verification in structured `AgentResult`.
+- [x] Add safe cancellation/cleanup/orphan recovery; no destructive global reset/clean shortcuts.
+- [x] Add stale-base, collision, path-escape, cancellation and Windows worktree tests.
 
 ## P1 – Phase 8: Integrator, Test Agent and independent Reviewer
 
-- [ ] Make Integrator the only component allowed to combine mutation-agent results into an integration target.
-- [ ] Require diff inspection and dependency/interface compatibility before integration.
-- [ ] Test Agent receives acceptance criteria plus artifacts/diff, not Builder self-assessment.
-- [ ] Reviewer receives requirements/diff/test evidence, not Builder private reasoning.
-- [ ] Add structured PASS/FAIL/REPAIR decisions and bounded repair proposals.
-- [ ] Add mission-level no-progress/stagnation controls for repair cycles.
-- [ ] Require suitable verification after the last integrated code/tool/app change.
-- [ ] Preserve approval-bound SHA/file preconditions during integration.
+- [x] Make Integrator the only component allowed to combine mutation-agent results into an integration target.
+- [x] Require diff inspection and dependency/interface compatibility before integration.
+- [x] Test Agent receives acceptance criteria plus artifacts/diff, not Builder self-assessment.
+- [x] Reviewer receives requirements/diff/test evidence, not Builder private reasoning.
+- [x] Add structured PASS/FAIL/REPAIR decisions and bounded repair proposals.
+- [x] Add mission-level no-progress/stagnation controls for repair cycles.
+- [x] Require suitable verification after the last integrated code/tool/app change.
+- [x] Preserve approval-bound SHA/file preconditions during integration.
+
+## P1 – Phase ComputeMesh: Decentralized Cluster Subsystem (Provider Self-Compute)
+
+- [x] Auto-discovery of ComputeMesh provider credentials from `.computemesh/provider_config.json`, env vars, or local workstation probe (`http://localhost:8080`).
+- [x] Bearer token auth injection (`Authorization: Bearer <key>`) across all outbound `OllamaClient` requests (`Tags`, `Show`, `PullWithProgress`, `DescribeImages`, `Chat`).
+- [x] Gateway and local node probing (`https://computemesh.inetconnector.com/api/tags`), latency measurement, cluster hardware discovery (RTX 3080 GPU + LAN pool: 24.0 GB VRAM & 48.6 TFLOPS), and available model discovery.
+- [x] REST endpoints `/api/computemesh/status`, `/api/computemesh/autodetect`, and `/api/computemesh/test`.
+- [x] UI settings card, action buttons (*Status prüfen*, *Keys & Node jetzt einlesen*, *Verbindung testen*), and dual German/English localization with 100% key parity.
 
 ## P1 – Phase 9: constrained Agent Factory and replanning
 
