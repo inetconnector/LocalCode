@@ -733,8 +733,19 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			continue
 		}
 		if action.Action == "ask_user" && previousQuestion != "" && sameQuestion(action.Message, previousQuestion) {
+			repeatBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: "Wiederholte Rückfrage blockiert", Detail: "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren."})
-			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
+			if repeatBlocks >= 3 {
+				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Wiederholte Rückfragen sind blockiert. Alle Fragen wurden bereits beantwortet. Du darfst kein ask_user mehr verwenden. Führe jetzt die nächste konkrete Aktion (write_file, replace_text, run_tool) aus oder beende mit finish."})
+			} else {
+				messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
+			}
+			if repeatBlocks >= 5 {
+				s.AddEvent(UIEvent{Type: "final", Message: "Aufgabe nach wiederholten blockierten Rückfragen abgeschlossen. Die bisher erstellten Dateien stehen im Projektverzeichnis zur Verfügung."})
+				s.recordAction("Supervisor hat die Aufgabe nach Stagnation kontrolliert abgeschlossen")
+				s.UpdateProjectState("Supervisor-Abschluss")
+				return "done"
+			}
 			continue
 		}
 		if action.Action == "ask_user" {
@@ -840,6 +851,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 		}
 		completedActions[action.Action] = true
+		repeatBlocks = 0
 		toolFailed := agentToolResultFailed(result)
 		if actionMutatesProject(action) && !toolFailed {
 			for _, path := range mutatedActionPaths(action) {
