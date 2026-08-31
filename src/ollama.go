@@ -602,3 +602,48 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 		model, out.DoneReason, len(strings.TrimSpace(out.Message.Content)), len(strings.TrimSpace(out.Message.Thinking)), out.PromptEvalCount, out.EvalCount,
 	)
 }
+
+func (o *OllamaClient) ChatRaw(ctx context.Context, model string, messages []OllamaMessage, opts map[string]any) (string, error) {
+	if o == nil {
+		return "", errors.New("Ollama client is nil")
+	}
+	payload := map[string]any{
+		"model":    model,
+		"messages": messages,
+		"stream":   false,
+	}
+	if len(opts) > 0 {
+		payload["options"] = opts
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(o.BaseURL, "/")+"/api/chat", bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
+	resp, err := o.HTTP.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
+	}
+	var out OllamaChatResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", fmt.Errorf("ungültige Ollama-Antwort: %w; Body: %s", err, truncateText(string(body), 2000))
+	}
+	if out.Error != "" {
+		return "", errors.New(out.Error)
+	}
+	return strings.TrimSpace(out.Message.Content), nil
+}
+

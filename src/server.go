@@ -1539,7 +1539,7 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	reply, err := client.Chat(ctx, model, []OllamaMessage{{Role: "user", Content: prompt}}, nil)
+	reply, err := client.ChatRaw(ctx, model, []OllamaMessage{{Role: "user", Content: prompt}}, nil)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		_ = writeJSON(w, map[string]any{
