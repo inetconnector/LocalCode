@@ -87,7 +87,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/aider/setup", s.handleAiderSetup)
 	s.mux.HandleFunc("/api/aider/undo", s.handleAiderUndo)
 	s.mux.HandleFunc("/api/mission/recovery", s.handleMissionRecovery)
-	s.mux.HandleFunc("/api/mission/recovery/continuation", s.handleMissionRecoveryContinuation)
+	s.mux.HandleFunc("/api/mission/recovery/continue", s.handleMissionRecoveryContinue)
 	s.mux.HandleFunc("/api/mission/knowledge", s.handleMissionKnowledge)
 	s.mux.HandleFunc("/api/computemesh/status", s.handleComputeMeshStatus)
 	s.mux.HandleFunc("/api/computemesh/autodetect", s.handleComputeMeshAutoDetect)
@@ -1259,100 +1259,6 @@ func (s *Server) handleMCPSetup(w http.ResponseWriter, r *http.Request) {
 	status := mcpServerStatus(ctx, cfg, project, cfg.MCPServers[index], false)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true, "detail": detail, "status": status, "settings": cfg})
-}
-
-func (s *Server) handleMissionRecovery(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	runID := strings.TrimSpace(r.URL.Query().Get("run_id"))
-	if runID == "" {
-		s.state.mu.RLock()
-		if s.state.Recovery != nil {
-			runID = strings.TrimSpace(s.state.Recovery.RunID)
-		}
-		s.state.mu.RUnlock()
-	}
-	if runID == "" {
-		http.Error(w, "run_id is required", http.StatusBadRequest)
-		return
-	}
-
-	snapshot, err := s.state.MissionRecoveryControlSnapshot(runID)
-	if err != nil {
-		if errors.Is(err, errMissionRecoveryControlActiveRun) {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		if errors.Is(err, errMissionRecoveryControlUnavailable) || errors.Is(err, errMissionRecoveryControlInvalidRequest) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, snapshot)
-}
-
-func (s *Server) handleMissionRecoveryContinuation(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req struct {
-		RunID   string `json:"run_id"`
-		TaskID  string `json:"task_id"`
-		Preview bool   `json:"preview"`
-	}
-	if err := readJSON(r.Body, &req); err != nil {
-		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	req.RunID = strings.TrimSpace(req.RunID)
-	req.TaskID = strings.TrimSpace(req.TaskID)
-	if req.RunID == "" || req.TaskID == "" {
-		http.Error(w, "run_id and task_id are required", http.StatusBadRequest)
-		return
-	}
-
-	if req.Preview {
-		materialized, err := s.state.MissionRecoveryContinuationMaterialization(req.RunID, req.TaskID)
-		if err != nil {
-			if errors.Is(err, errMissionRecoveryControlActiveRun) {
-				http.Error(w, err.Error(), http.StatusConflict)
-				return
-			}
-			if errors.Is(err, errMissionRecoveryContinuationUnavailable) || errors.Is(err, errMissionRecoveryContinuationCandidate) || errors.Is(err, errMissionRecoveryContinuationBudget) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = writeJSON(w, map[string]any{"ok": true, "preview": true, "materialization": materialized})
-		return
-	}
-
-	execution, err := s.state.RunMissionRecoveryContinuation(r.Context(), req.RunID, req.TaskID)
-	if err != nil {
-		if errors.Is(err, errMissionRecoveryControlActiveRun) {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		if errors.Is(err, errMissionRecoveryContinuationUnavailable) || errors.Is(err, errMissionRecoveryContinuationCandidate) || errors.Is(err, errMissionRecoveryContinuationBudget) || errors.Is(err, errMissionRecoveryAdmissionStale) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "preview": false, "execution": execution})
 }
 
 func (s *Server) handleMissionKnowledge(w http.ResponseWriter, r *http.Request) {
