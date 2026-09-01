@@ -86,6 +86,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/aider/status", s.handleAiderStatus)
 	s.mux.HandleFunc("/api/aider/setup", s.handleAiderSetup)
 	s.mux.HandleFunc("/api/aider/undo", s.handleAiderUndo)
+	s.mux.HandleFunc("/api/mission/recovery", s.handleMissionRecovery)
+	s.mux.HandleFunc("/api/mission/recovery/continue", s.handleMissionRecoveryContinue)
+	s.mux.HandleFunc("/api/mission/knowledge", s.handleMissionKnowledge)
+	s.mux.HandleFunc("/api/computemesh/status", s.handleComputeMeshStatus)
+	s.mux.HandleFunc("/api/computemesh/autodetect", s.handleComputeMeshAutoDetect)
+	s.mux.HandleFunc("/api/computemesh/test", s.handleComputeMeshTest)
+	s.mux.HandleFunc("/api/doctor", s.handleDoctor)
 }
 
 func loopbackRequestHost(value string) bool {
@@ -193,10 +200,31 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	st.EngineExecutable = engineStatus.Executable
 	st.EngineAuthenticated = engineStatus.Authenticated
 	st.EngineError = engineStatus.Error
-	if cfg.AiderEnabled {
-		aider := codingEngineStatus(ctx, cfg, editingEngineAider)
-		st.AiderInstalled = aider.Installed
-		st.AiderVersion = aider.Version
+	if cfg.ComputeMeshEnabled {
+		meshStatus := CheckComputeMeshStatus(ctx, cfg)
+		st.ComputeMeshOnline = meshStatus.Online
+		st.ComputeMeshURL = meshStatus.URL
+		st.ComputeMeshNode = meshStatus.NodeID
+		st.ComputeMeshGPU = meshStatus.GPU
+		st.ComputeMeshVRAM = meshStatus.VRAMPool
+		st.ComputeMeshKeyMasked = meshStatus.ActiveKeyMasked
+		st.ComputeMeshError = meshStatus.Error
+		if meshStatus.Online && len(meshStatus.Models) > 0 {
+			if len(st.Models) == 0 {
+				st.Models = meshStatus.Models
+			} else {
+				seen := map[string]bool{}
+				for _, m := range st.Models {
+					seen[m.Name] = true
+				}
+				for _, m := range meshStatus.Models {
+					if !seen[m.Name] {
+						st.Models = append(st.Models, m)
+						seen[m.Name] = true
+					}
+				}
+			}
+		}
 	}
 	if err != nil {
 		st.OllamaError = err.Error()
@@ -1231,4 +1259,226 @@ func (s *Server) handleMCPSetup(w http.ResponseWriter, r *http.Request) {
 	status := mcpServerStatus(ctx, cfg, project, cfg.MCPServers[index], false)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true, "detail": detail, "status": status, "settings": cfg})
+}
+
+func (s *Server) handleMissionKnowledge(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		missionID := strings.TrimSpace(r.URL.Query().Get("mission_id"))
+		category := strings.TrimSpace(r.URL.Query().Get("category"))
+		tag := strings.TrimSpace(r.URL.Query().Get("tag"))
+		query := strings.TrimSpace(r.URL.Query().Get("query"))
+
+		items, err := s.state.ListMissionKnowledge(missionID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var cat MissionKnowledgeCategory
+		if category != "" {
+			var catErr error
+			cat, catErr = normalizeMissionKnowledgeCategory(category)
+			if catErr != nil {
+				http.Error(w, catErr.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		filtered := filterMissionKnowledge(items, cat, tag, query)
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "knowledge": filtered, "count": len(filtered)})
+
+	case http.MethodPost:
+		var req struct {
+			MissionID       string                   `json:"mission_id"`
+			Category        MissionKnowledgeCategory `json:"category"`
+			Title           string                   `json:"title"`
+			Summary         string                   `json:"summary"`
+			Tags            []string                 `json:"tags"`
+			CreatedByTaskID string                   `json:"created_by_task_id"`
+			SourcePath      string                   `json:"source_path"`
+		}
+		if err := readJSON(r.Body, &req); err != nil {
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		item := MissionKnowledgeItem{
+			Category:        req.Category,
+			Title:           req.Title,
+			Summary:         req.Summary,
+			Tags:            req.Tags,
+			CreatedByTaskID: req.CreatedByTaskID,
+			SourcePath:      req.SourcePath,
+		}
+		recorded, err := s.state.RecordMissionKnowledge(req.MissionID, item)
+		if err != nil {
+			if errors.Is(err, errMissionKnowledgeInvalidCategory) || errors.Is(err, errMissionKnowledgeMissingTitle) || errors.Is(err, errMissionKnowledgeMissingSummary) || errors.Is(err, errMissionKnowledgeLimitExceeded) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, errMissionKnowledgeNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "item": recorded})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleComputeMeshStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	status := CheckComputeMeshStatus(ctx, cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "status": status})
+}
+
+func (s *Server) handleComputeMeshAutoDetect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	apiKey, gatewayURL, account, nodeID, localNodeURL, source := AutoDetectComputeMeshCredentials()
+	s.state.mu.Lock()
+	if apiKey != "" {
+		s.state.Config.ComputeMeshEnabled = true
+		s.state.Config.ComputeMeshAPIKey = apiKey
+		if gatewayURL != "" {
+			s.state.Config.ComputeMeshURL = gatewayURL
+		}
+	}
+	if localNodeURL != "" {
+		s.state.Config.ComputeMeshLocalNodeURL = localNodeURL
+	}
+	cfg := s.state.Config
+	_ = saveConfig(cfg)
+	s.state.mu.Unlock()
+
+	ConfigureComputeMeshForAppState(s.state)
+
+	s.state.mu.RLock()
+	cfg = s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	status := CheckComputeMeshStatus(ctx, cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":       true,
+		"status":   status,
+		"source":   source,
+		"account":  account,
+		"node_id":  nodeID,
+		"detected": apiKey != "",
+	})
+}
+
+func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+		APIKey string `json:"api_key"`
+		URL    string `json:"url"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(cfg.ComputeMeshAPIKey)
+	}
+	if apiKey == "" {
+		detectedKey, _, _, _, _, _ := AutoDetectComputeMeshCredentials()
+		apiKey = detectedKey
+	}
+
+	gatewayURL := strings.TrimSpace(req.URL)
+	if gatewayURL == "" {
+		gatewayURL = strings.TrimSpace(cfg.ComputeMeshURL)
+	}
+	if gatewayURL == "" {
+		gatewayURL = defaultComputeMeshGatewayURL
+	}
+
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = "qwen/qwen2.5-7b-instruct"
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		prompt = "Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft."
+	}
+
+	client := &OllamaClient{
+		BaseURL:   gatewayURL,
+		AuthToken: apiKey,
+		HTTP:      &http.Client{Timeout: 30 * time.Second},
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	reply, err := client.ChatRaw(ctx, model, []OllamaMessage{{Role: "user", Content: prompt}}, nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+			"model": model,
+			"url":   gatewayURL,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":       true,
+		"response": reply,
+		"model":    model,
+		"url":      gatewayURL,
+	})
+}
+
+func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	report := RunDoctorDiagnostics(ctx, cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, report)
 }

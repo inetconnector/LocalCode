@@ -733,8 +733,19 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			continue
 		}
 		if action.Action == "ask_user" && previousQuestion != "" && sameQuestion(action.Message, previousQuestion) {
-			s.AddEvent(UIEvent{Type: "warning", Message: "Wiederholte Rückfrage blockiert", Detail: "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren."})
-			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort."})
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholte Rückfrage blockiert", "Repeated question blocked"), Detail: localizeConfigText(cfg, "Die Frage wurde bereits beantwortet. Der Agent muss die vorhandene Antwort auswerten und mit einer anderen Diagnose fortfahren.", "The question has already been answered. The agent must evaluate the existing answer and continue with a different action.")})
+			if repeatBlocks >= 3 {
+				messages = append(messages, OllamaMessage{Role: "user", Content: localizeConfigText(cfg, "SYSTEMHINWEIS: Wiederholte Rückfragen sind blockiert. Alle Fragen wurden bereits beantwortet. Du darfst kein ask_user mehr verwenden. Führe jetzt die nächste konkrete Aktion (write_file, replace_text, run_tool) aus oder beende mit finish.", "SYSTEM HINT: Repeated questions are blocked. All questions have been answered. You must not use ask_user anymore. Perform the next concrete action (write_file, replace_text, run_tool) now or conclude with finish.")})
+			} else {
+				messages = append(messages, OllamaMessage{Role: "user", Content: localizeConfigText(cfg, "SYSTEMHINWEIS: Diese Rückfrage wurde bereits beantwortet und darf nicht erneut gestellt werden. Nutze die Nutzerantwort, prüfe Werkzeugpfad, Exitcode, STDOUT und STDERR, verwende bei Bedarf discover_tool/run_tool und recherchiere offizielle Dokumentation. Fahre jetzt fort.", "SYSTEM HINT: This question was already answered and must not be asked again. Use the user's answer, check tool path, exit code, STDOUT and STDERR, use discover_tool/run_tool as needed and research official documentation. Continue now.")})
+			}
+			if repeatBlocks >= 5 {
+				s.AddEvent(UIEvent{Type: "final", Message: localizeConfigText(cfg, "Aufgabe nach wiederholten blockierten Rückfragen abgeschlossen. Die bisher erstellten Dateien stehen im Projektverzeichnis zur Verfügung.", "Task concluded after repeated blocked questions. Files created so far are available in the project directory.")})
+				s.recordAction(localizeConfigText(cfg, "Supervisor hat die Aufgabe nach Stagnation kontrolliert abgeschlossen", "Supervisor concluded task after stagnation"))
+				s.UpdateProjectState(localizeConfigText(cfg, "Supervisor-Abschluss", "Supervisor conclusion"))
+				return "done"
+			}
 			continue
 		}
 		if action.Action == "ask_user" {
@@ -840,6 +851,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 		}
 		completedActions[action.Action] = true
+		repeatBlocks = 0
 		toolFailed := agentToolResultFailed(result)
 		if actionMutatesProject(action) && !toolFailed {
 			for _, path := range mutatedActionPaths(action) {

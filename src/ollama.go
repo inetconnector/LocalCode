@@ -22,6 +22,25 @@ type OllamaClient struct {
 	BaseURL       string
 	HTTP          *http.Client
 	ContextLength int
+	AuthToken     string
+	APIKey        string
+	CustomHeaders map[string]string
+}
+
+func (o *OllamaClient) applyAuth(req *http.Request) {
+	if o == nil || req == nil {
+		return
+	}
+	token := strings.TrimSpace(o.AuthToken)
+	if token == "" {
+		token = strings.TrimSpace(o.APIKey)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range o.CustomHeaders {
+		req.Header.Set(k, v)
+	}
 }
 
 type OllamaMessage struct {
@@ -164,6 +183,7 @@ func (o *OllamaClient) tagsAt(ctx context.Context, baseURL string) ([]ModelInfo,
 	if err != nil {
 		return nil, err
 	}
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -194,6 +214,7 @@ func (o *OllamaClient) Show(ctx context.Context, model string) ([]string, error)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -284,6 +305,7 @@ func (o *OllamaClient) PullWithProgress(ctx context.Context, model string, progr
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	client := &http.Client{Timeout: 2 * time.Hour}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -392,6 +414,7 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	o.applyAuth(req)
 	resp, err := o.HTTP.Do(req)
 	if err != nil {
 		return "", err
@@ -541,22 +564,48 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(o.BaseURL, "/")+"/api/chat", bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := o.HTTP.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
+	var resp *http.Response
+	var body []byte
+	const maxRetries = 3
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(o.BaseURL, "/")+"/api/chat", bytes.NewReader(data))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		o.applyAuth(req)
+		resp, err = o.HTTP.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				case <-time.After(time.Duration(350*(attempt+1)) * time.Millisecond):
+				}
+				continue
+			}
+			return "", err
+		}
+		body, err = io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		_ = resp.Body.Close()
+		if err != nil {
+			return "", err
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(450*(attempt+1)) * time.Millisecond):
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
+		}
+		break
 	}
 	var out OllamaChatResponse
 	if err := json.Unmarshal(body, &out); err != nil {
@@ -577,4 +626,73 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 		"Ollama lieferte keine verwertbare strukturierte Antwort (Modell=%s, done_reason=%s, content=%d Zeichen, thinking=%d Zeichen, prompt_tokens=%d, output_tokens=%d)",
 		model, out.DoneReason, len(strings.TrimSpace(out.Message.Content)), len(strings.TrimSpace(out.Message.Thinking)), out.PromptEvalCount, out.EvalCount,
 	)
+}
+
+func (o *OllamaClient) ChatRaw(ctx context.Context, model string, messages []OllamaMessage, opts map[string]any) (string, error) {
+	if o == nil {
+		return "", errors.New("Ollama client is nil")
+	}
+	payload := map[string]any{
+		"model":    model,
+		"messages": messages,
+		"stream":   false,
+	}
+	if len(opts) > 0 {
+		payload["options"] = opts
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	var resp *http.Response
+	var body []byte
+	const maxRetries = 3
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(o.BaseURL, "/")+"/api/chat", bytes.NewReader(data))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		o.applyAuth(req)
+		resp, err = o.HTTP.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				case <-time.After(time.Duration(350*(attempt+1)) * time.Millisecond):
+				}
+				continue
+			}
+			return "", err
+		}
+		body, err = io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		_ = resp.Body.Close()
+		if err != nil {
+			return "", err
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(450*(attempt+1)) * time.Millisecond):
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
+		}
+		break
+	}
+	var out OllamaChatResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", fmt.Errorf("ungültige Ollama-Antwort: %w; Body: %s", err, truncateText(string(body), 2000))
+	}
+	if out.Error != "" {
+		return "", errors.New(out.Error)
+	}
+	return strings.TrimSpace(out.Message.Content), nil
 }

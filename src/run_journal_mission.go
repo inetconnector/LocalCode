@@ -54,6 +54,7 @@ type MissionRecoveryState struct {
 	Baseline          *MissionProjectBaseline       `json:"baseline,omitempty"`
 	Reconciliation    *MissionRestartReconciliation `json:"reconciliation,omitempty"`
 	Tasks             []MissionRecoveryTaskState    `json:"tasks"`
+	Knowledge         []MissionKnowledgeItem        `json:"knowledge,omitempty"`
 	Accounting        *AgentMissionAccounting       `json:"accounting,omitempty"`
 	StartedAt         time.Time                     `json:"started_at"`
 	UpdatedAt         time.Time                     `json:"updated_at"`
@@ -80,6 +81,9 @@ func cloneMissionRecoveryState(state *MissionRecoveryState) *MissionRecoveryStat
 	copyState := *state
 	copyState.Constraints = append([]string(nil), state.Constraints...)
 	copyState.SuccessCriteria = append([]string(nil), state.SuccessCriteria...)
+	if len(state.Knowledge) > 0 {
+		copyState.Knowledge = append([]MissionKnowledgeItem(nil), state.Knowledge...)
+	}
 	copyState.Tasks = make([]MissionRecoveryTaskState, len(state.Tasks))
 	for index := range state.Tasks {
 		copyState.Tasks[index] = state.Tasks[index]

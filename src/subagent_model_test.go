@@ -57,14 +57,14 @@ func TestNativeChildValidationRequiresInputsAndStructuredFinish(t *testing.T) {
 
 func TestAgentRolesAndBudgetsAreBounded(t *testing.T) {
 	cfg := defaultConfig()
-	for input, want := range map[string]AgentRole{"": AgentRoleExplorer, "explore": AgentRoleExplorer, "planner": AgentRolePlanner, "review": AgentRoleReviewer} {
+	for input, want := range map[string]AgentRole{"": AgentRoleExplorer, "explore": AgentRoleExplorer, "planner": AgentRolePlanner, "review": AgentRoleReviewer, "builder": AgentRoleBuilder} {
 		got, err := normalizeAgentRole(input)
 		if err != nil || got != want {
 			t.Fatalf("normalizeAgentRole(%q)=%q,%v want %q", input, got, err, want)
 		}
 	}
-	if _, err := normalizeAgentRole("builder"); err == nil {
-		t.Fatal("mutation-capable builder role must not exist in the read-only runtime yet")
+	if _, err := normalizeReadOnlyMissionRole("builder"); err == nil {
+		t.Fatal("mutation-capable builder role must not execute in a read-only mission")
 	}
 	budget := normalizeAgentBudget(AgentBudget{ModelCalls: 999, ToolCalls: 999, EstimatedTokenBudget: 1 << 40, TimeSeconds: 9999}, AgentRoleExplorer, cfg)
 	defaults := defaultAgentBudget(AgentRoleExplorer, cfg)

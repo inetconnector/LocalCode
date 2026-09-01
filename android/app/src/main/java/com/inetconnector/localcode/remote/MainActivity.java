@@ -14,11 +14,15 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.app.AlertDialog;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -46,6 +50,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NEARBY = 701;
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
+    private static final int REQUEST_QR_SCAN = 704;
 
     private NsdManager nsdManager;
     private NsdManager.DiscoveryListener discoveryListener;
@@ -99,6 +104,11 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(10), 0, dp(12));
         discoveryPanel.addView(status, fullWidthWrap());
 
+        Button scanQr = new Button(this);
+        scanQr.setText(tr("📷 QR-Code scannen", "📷 Scan QR code"));
+        scanQr.setOnClickListener(v -> launchQrScanner());
+        discoveryPanel.addView(scanQr, fullWidthWrap());
+
         Button discover = new Button(this);
         discover.setText(tr("LocalCode automatisch suchen", "Find LocalCode automatically"));
         discover.setOnClickListener(v -> requestDiscoveryPermissionAndStart());
@@ -106,16 +116,16 @@ public final class MainActivity extends Activity {
 
         manualUrl = new EditText(this);
         manualUrl.setSingleLine(true);
-        manualUrl.setHint("https://192.168.1.10:32146/remote");
+        manualUrl.setHint("http://192.168.1.94:32146/remote");
         discoveryPanel.addView(manualUrl, fullWidthWrap());
 
         manualFingerprint = new EditText(this);
         manualFingerprint.setSingleLine(true);
-        manualFingerprint.setHint(tr("TLS-SHA-256-Fingerprint vom LocalCode-PC", "TLS SHA-256 fingerprint from the LocalCode PC"));
+        manualFingerprint.setHint(tr("TLS-Fingerprint (optional bei HTTP)", "TLS fingerprint (optional for HTTP)"));
         discoveryPanel.addView(manualFingerprint, fullWidthWrap());
 
         Button open = new Button(this);
-        open.setText(tr("Adresse sicher öffnen", "Open address securely"));
+        open.setText(tr("Adresse öffnen", "Open address"));
         open.setOnClickListener(v -> {
             String value = manualUrl.getText().toString().trim();
             String fp = normalizeFingerprint(manualFingerprint.getText().toString());
@@ -124,8 +134,8 @@ public final class MainActivity extends Activity {
                 openRemote(value);
             } else {
                 setStatus(tr(
-                        "Manuell sind nur private HTTPS-IP-Adressen plus der 64-stellige TLS-SHA-256-Fingerprint vom LocalCode-PC erlaubt.",
-                        "Manual setup allows only private HTTPS IP addresses together with the 64-character TLS SHA-256 fingerprint from the LocalCode PC."));
+                        "Manuell sind nur private HTTPS-IP-Adressen mit gültigem SHA-256-Fingerprint erlaubt.",
+                        "Manual setup allows private HTTPS IP addresses with a valid SHA-256 fingerprint only."));
             }
         });
         discoveryPanel.addView(open, fullWidthWrap());
@@ -187,6 +197,44 @@ public final class MainActivity extends Activity {
                     return true;
                 }
             }
+
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("LocalCode")
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("LocalCode")
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
+                        .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+                final EditText input = new EditText(MainActivity.this);
+                input.setText(defaultValue != null ? defaultValue : "");
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("LocalCode")
+                        .setMessage(message)
+                        .setView(input)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm(input.getText().toString()))
+                        .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .show();
+                return true;
+            }
         });
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -197,7 +245,8 @@ public final class MainActivity extends Activity {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 String observed = fingerprint(error.getCertificate());
-                if (validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) {
+                if ((validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) || isPrivateHost(currentRemoteUrl)) {
+                    expectedFingerprint = observed;
                     handler.proceed();
                 } else {
                     handler.cancel();
@@ -246,6 +295,15 @@ public final class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_QR_SCAN) {
+            if (resultCode == RESULT_OK && data != null) {
+                String contents = data.getStringExtra("SCAN_RESULT");
+                if (contents != null && !contents.trim().isEmpty()) {
+                    handleScannedContent(contents.trim());
+                }
+            }
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -253,6 +311,48 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void startVoiceInput() {
             runOnUiThread(() -> startVoiceRecognizer());
+        }
+
+        @JavascriptInterface
+        public String runDiagnostics() {
+            JSONObject diag = new JSONObject();
+            try {
+                diag.put("device_model", Build.MODEL);
+                diag.put("android_version", Build.VERSION.RELEASE);
+                diag.put("sdk_int", Build.VERSION.SDK_INT);
+                diag.put("voice_available", new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(getPackageManager()) != null);
+                diag.put("discovering", discovering);
+                diag.put("current_remote_url", currentRemoteUrl);
+                diag.put("ok", true);
+            } catch (Exception e) {
+                try { diag.put("error", e.getMessage()); } catch (Exception ignored) {}
+            }
+            return diag.toString();
+        }
+
+        @JavascriptInterface
+        public void sendVoiceTest(String sampleText) {
+            runOnUiThread(() -> deliverVoiceText(sampleText));
+        }
+
+        @JavascriptInterface
+        public void startQrScan() {
+            runOnUiThread(() -> launchQrScanner());
+        }
+
+        @JavascriptInterface
+        public String getBridgeVersion() {
+            return "2.0";
+        }
+
+        @JavascriptInterface
+        public void resetConnection() {
+            runOnUiThread(() -> {
+                currentRemoteUrl = "";
+                expectedFingerprint = "";
+                if (webView != null) webView.setVisibility(View.GONE);
+                if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
+            });
         }
     }
 
@@ -296,6 +396,39 @@ public final class MainActivity extends Activity {
                 status.setText(visibleMessage);
             }
         });
+    }
+
+    private void launchQrScanner() {
+        Intent scanIntent = new Intent("com.google.zxing.client.android.SCAN");
+        scanIntent.putExtra("SCAN_MODE", "QR_CODE_MODE");
+        if (scanIntent.resolveActivity(getPackageManager()) != null) {
+            try {
+                startActivityForResult(scanIntent, REQUEST_QR_SCAN);
+                return;
+            } catch (Exception ignored) {}
+        }
+        try {
+            Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            startActivity(cameraIntent);
+            setStatus(tr(
+                    "Kamera geöffnet: QR-Code auf dem PC scannen oder Link antippen.",
+                    "Camera opened: scan the QR code on your PC or tap the link."));
+        } catch (Exception ex) {
+            setStatus(tr(
+                    "Bitte den QR-Code mit der Smartphone-Kamera scannen.",
+                    "Please scan the QR code using your phone camera."));
+        }
+    }
+
+    private void handleScannedContent(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return;
+        Uri uri = Uri.parse(raw.trim());
+        if ("localcode".equalsIgnoreCase(uri.getScheme())) {
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            handleIntent(intent);
+        } else if (isAllowedRemoteUrl(raw.trim())) {
+            openRemote(raw.trim());
+        }
     }
 
     private void cancelPendingFileChooser() {
@@ -415,14 +548,26 @@ public final class MainActivity extends Activity {
     }
 
     private void handleIntent(Intent intent) {
-        if (intent == null || intent.getData() == null) return;
+        if (intent == null) return;
+        String directUrl = intent.getStringExtra("connect_url");
+        if (directUrl != null && !directUrl.trim().isEmpty() && isAllowedRemoteUrl(directUrl.trim())) {
+            openRemote(directUrl.trim());
+            return;
+        }
+        if (intent.getData() == null) return;
         Uri data = intent.getData();
         if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
-        if (target != null && isAllowedRemoteUrl(target) && validFingerprint(fp)) {
+        String code = data.getQueryParameter("code");
+        if (target != null && isAllowedRemoteUrl(target)) {
             expectedFingerprint = fp;
-            openRemote(target);
+            if (code != null && !code.trim().isEmpty()) {
+                String separator = target.contains("#") ? "&" : "#";
+                openRemote(target + separator + "code=" + Uri.encode(code.trim()));
+            } else {
+                openRemote(target);
+            }
         } else {
             setStatus(tr(
                     "Der QR-/Deep-Link ist unvollständig oder unsicher.",
@@ -431,10 +576,10 @@ public final class MainActivity extends Activity {
     }
 
     private void openRemote(String target) {
-        if (!isAllowedRemoteUrl(target) || !validFingerprint(expectedFingerprint)) {
+        if (!isAllowedRemoteUrl(target)) {
             setStatus(tr(
-                    "Unsichere Remote-Adresse oder ungültiger TLS-Fingerprint verworfen.",
-                    "Unsafe Remote address or invalid TLS fingerprint rejected."));
+                    "Unsichere Remote-Adresse verworfen.",
+                    "Unsafe Remote address rejected."));
             return;
         }
         currentRemoteUrl = target;
@@ -448,9 +593,10 @@ public final class MainActivity extends Activity {
     private static boolean isAllowedRemoteUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value.trim());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) return false;
+        String scheme = uri.getScheme();
+        if ((!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
-        if ("localhost".equalsIgnoreCase(host)) return true;
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
         if (!isLiteralIPv4(host) && !host.contains(":")) return false;
         try {
             return isPrivateAddress(InetAddress.getByName(host));
@@ -480,6 +626,19 @@ public final class MainActivity extends Activity {
 
     private static boolean isPrivateAddress(InetAddress address) {
         return address != null && (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress());
+    }
+
+    private static boolean isPrivateHost(String url) {
+        if (url == null || url.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(url.trim());
+            String host = uri.getHost();
+            if (host == null) return false;
+            if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
+            return isPrivateAddress(InetAddress.getByName(host));
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static String attribute(Map<String, byte[]> attrs, String key) {

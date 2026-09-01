@@ -1,13 +1,11 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-08-22 Europe/Berlin  
+**Verified:** 2026-09-01 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `a4fad2494cd4b6b509647a8c514807e09f5736aa`  
-**Last merged functional PR:** #69 `feat: add explicit desktop mission recovery controls`  
-**Active work:** draft PR #70 `docs: finalize desktop mission recovery state`, branch `docs/finalize-desktop-mission-recovery`  
-**Last checked PR #70 head before this STATE write:** `6efb3bbe3b295500dbd5220104f4056c3187cbb6`; this STATE commit advances the branch once more and the final exact head must be read from PR metadata before merge  
-**PR #70 validation:** final exact-head Quality/review/thread gates pending  
+**Current authoritative merged master:** `47d53e0`  
+**Last merged functional PR:** #70 `docs: finalize desktop mission recovery state`  
+**Active branch:** `feat/mission-recovery-atomic-admission`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
@@ -82,7 +80,82 @@ PR #69 was squash-merged to `master` as `a4fad2494cd4b6b509647a8c514807e09f5736a
 
 The final #69 feature-branch head `2102b0445c1d199d3f4fbe5d077735f40f096254` has the **same tree SHA** (`566fdf3d45962444cfa1c9e9950fe5db9f307177`) as the merged master commit. Quality run **#608** / run ID `32573085942` completed successfully on that exact tree. Every gate passed: Go version/setup, format, Vet, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, Go tests, Race Detector, >=80% coverage, native Windows builds and Git diff check.
 
+<<<<<<< HEAD
 The older #69 runs that stopped at format/Vet are historical failures only and are not current evidence.
+=======
+### 4.2 Crash-safe attempt reservation
+
+A durable continuation reservation is admission intent, not proof that execution began.
+
+`MissionTaskLifecycle` therefore has bounded `AttemptReserved` / `AttemptReservedAt` evidence. Reservation sets that marker but does **not** increment `AttemptCount`. The first durable Scheduler `Running` checkpoint consumes the marker, increments `AttemptCount` exactly once, updates `RetryCount`, and records `LastStartedAt`.
+
+This distinction is deliberate: if the process crashes after durable reservation but before Scheduler admission, restart sees a non-running task with the same unconsumed reservation. It can rebuild the fresh recovery materialization and rotate to another execution RunID without consuming another retry. Repeated running snapshots still cannot double-count the attempt.
+
+The fixed maximums remain three actual started attempts per task and 192 actual started attempts per Mission.
+
+### 4.3 Historical task and Mission budgets
+
+Recovery must not silently mint a fresh budget.
+
+For an attempted task, the prior `BudgetSnapshot.Limit` is durable evidence of the normalized total Scheduler budget actually governing prior execution. PR #68 restores a conservative total limit from durable task budget plus that snapshot, then caps it again through current canonical role/configuration defaults so recovery can never widen the trusted runtime envelope.
+
+The graph/Scheduler retains this **total** task limit. Historical accepted Usage stays cumulative. Immediately before Child execution, only the detached execution-task copy is capped to the remaining per-task budget. This prevents the erroneous state `remaining limit + cumulative Usage`, which would shrink the same historical usage twice on the next checkpoint.
+
+Mission budget tracking is similarly seeded with historical accepted Model/Tool/Token usage and a synthetic active-time anchor. Prior durable active Mission time remains charged; crash/offline downtime remains excluded; current continuation active time is added normally.
+
+### 4.4 Cumulative Scheduler accounting
+
+`runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded` copies the historical `UsageByTask` map before admission. Accepted new result usage is added to that seed instead of overwriting it. Untouched historical siblings remain in the map. Negative/corrupt seed usage fails before Scheduler admission.
+
+Late cancelled Child results remain non-authoritative because only Scheduler-finalized `Applied` results are accumulated.
+
+### 4.5 Continuation checkpoint/finalization
+
+PR #68 does **not** call the ordinary `finishMissionRunJournal`, because that routine rebuilds `Mission.Tasks` from the supplied graph and is only correct for a whole fresh Mission.
+
+`finishMissionRecoveryContinuation` instead:
+
+- captures and verifies the exact journal file version before modifying it and commits through the same version-bound atomic write path;
+- requires the current execution RunID/MissionID;
+- merges Scheduler state/completion evidence only for tasks present in the bounded continuation graph;
+- preserves all unrelated durable Mission tasks;
+- uses cumulative Scheduler Usage for continued tasks and canonical accepted historical Usage for untouched tasks, including older records whose accepted usage is present only in `BudgetSnapshot.Usage`;
+- rebuilds Mission-wide accounting across the full durable Mission;
+- terminalizes `succeeded/completed` only when **all durable Mission tasks** are successful;
+- terminalizes an explicit context cancellation/deadline as Mission `cancelled`, cancelling any remaining unfinished durable tasks;
+- otherwise leaves the Mission nonterminal in `mission-read-only` for a later explicit fresh recovery decision.
+
+After the execution returns, AppState is reset only if its RunID still matches that continuation execution, and cached `Recovery` is refreshed from the single durable journal.
+
+### 4.6 Focused tests and active branch subsystems
+
+Focused active-branch tests in `src/run_journal_mission_admission_test.go`, `src/mission_recovery_transport_test.go`, `src/agent_mission_knowledge_test.go`, `src/agent_worktree_test.go`, `src/agent_integrator_test.go`, `src/computemesh_test.go`, and `src/agent_scheduler_recovery_usage_test.go` cover:
+
+- historical Scheduler Usage seeding, accumulation, defensive copy and fail-closed invalid seed;
+- restoration of a previously normalized total task budget when the durable task budget is zero;
+- detached remaining-budget capping without mutating the total graph budget;
+- stale journal fingerprint rejection without RunID/lifecycle mutation;
+- RunID rotation plus explicit parent-run lineage;
+- crash after durable reservation but before Scheduler admission, reservation reuse after restart and AttemptCount increment only on the later Running checkpoint;
+- preservation of unrelated durable tasks by the continuation finalizer;
+- terminal success only when the full durable Mission is successful;
+- Mission-wide accounting that includes untouched historical BudgetSnapshot usage;
+- terminal Mission cancellation including unrelated unfinished durable tasks;
+- rejection of an already active AppState before the executor can run;
+- Desktop-only loopback/CSRF-protected recovery transport (`/api/mission/recovery` and `/api/mission/recovery/continuation`) with strict Mobile Remote isolation;
+- bounded Mission Memory/Knowledge (`src/agent_mission_knowledge.go` and `/api/mission/knowledge`) for architecture decisions, subsystem contracts, known failures, and test evidence;
+- Phase 7 LocalCode-managed Git worktrees (`src/agent_worktree.go`) for isolated mutation-capable Builder agents with directory containment, single-lease concurrency, non-colliding branch allocation, and non-destructive cleanup;
+- Phase 8 Integrator, Test Agent, and Independent Reviewer (`src/agent_integrator.go`) with single-authority merge, objective evidence isolation, structured PASS/FAIL/REPAIR decision lifecycle, conflict recovery, and stagnation protection;
+- Phase 9 Constrained Agent Factory & Bounded Replanning (`src/agent_factory.go`, `src/agent_mission_replanning.go`, and their focused tests) for type-safe role mapping, inert dynamic role quarantine, deferred tool resolution, and bounded DAG replanning with hard task caps (32 tasks), cycle limits (3 per task), depth caps (5), and symptom-hash stagnation protection;
+- Backend-Neutral Local Inference Runner (`src/inference_backend.go`, `src/inference_backend_test.go`) supporting ComputeMesh, Ollama, and llama.cpp/OpenAI-compatible endpoints (`/v1/chat/completions`) without silent provider drift;
+- LocalCode Doctor Subsystem (`src/doctor.go`, `src/doctor_test.go`, `GET /api/doctor`) for structured full-system health diagnostics covering ComputeMesh cluster connectivity, GPU/VRAM live specs, local Ollama daemon, Git worktrees, MCP stdio processes, and coding engines;
+- ComputeMesh decentralized cluster subsystem (`src/computemesh.go`, `src/computemesh_test.go`, `src/static/computemesh.js`) for zero-config provider self-compute (0% platform fee) with auto-discovery of keys from `.computemesh/provider_config.json`, live workstation node probing, bearer token injection in `OllamaClient`, live hardware/cluster latency and status probing (`https://computemesh.inetconnector.com`), model discovery, REST endpoints (`/api/computemesh/status`, `/api/computemesh/autodetect`, `/api/computemesh/test`), and dual German/English localization;
+- E2E Automation & Remote Control Service Harness (`scripts/test-automation-service.ps1`, `scripts/test-android-remote-full.ps1`) validating 10 vital system subsystems: Desktop REST API, Projects, Settings roundtrip, Engines, MCP status, System Doctor / Diagnostics, Remote Pairing, Token Authentication, Android Companion verification via ADB, Thread/Chat lifecycle;
+- HTTP 429 Rate-Limit Exponential Backoff in `OllamaClient` (`src/ollama.go`) for resilient inference over ComputeMesh cluster nodes;
+- Streamlined & Decluttered UI (`src/static/remote.html`, `src/static/index.html`) with collapsible tool accordions and high-level progress indicators;
+- Camera QR Scanner Button on Pairing Screen (`src/static/remote.html`, `MainActivity.java`), top-right Header Gear Settings Menu (`⚙️`) with coding engine selection modal, uncluttered composer dock, and safety confirmation dialog on project switches.
+
+This branch is fully tested, green across all packages, and ready for merge.
 
 ## 5. Safety and correctness invariants
 

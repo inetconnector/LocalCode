@@ -104,7 +104,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 	}
 
 	for _, proposal := range req.Tasks {
-		role, roleErr := normalizeAgentRole(proposal.Role)
+		role, roleErr := normalizeReadOnlyMissionRole(proposal.Role)
 		if roleErr != nil {
 			return result, fmt.Errorf("task %q is not executable in a read-only mission: %w", strings.TrimSpace(proposal.ID), roleErr)
 		}
@@ -118,7 +118,7 @@ func (s *AppState) runReadOnlyMissionWithExecutor(ctx context.Context, req Agent
 		return result, err
 	}
 	for i := range graph.Tasks {
-		role, roleErr := normalizeAgentRole(string(graph.Tasks[i].Role))
+		role, roleErr := normalizeReadOnlyMissionRole(string(graph.Tasks[i].Role))
 		if roleErr != nil {
 			return result, fmt.Errorf("task %q is not executable in a read-only mission: %w", graph.Tasks[i].ID, roleErr)
 		}
@@ -251,4 +251,17 @@ func validateReadOnlyMissionRequestedCapabilities(taskID string, role AgentRole,
 		}
 	}
 	return nil
+}
+
+func normalizeReadOnlyMissionRole(raw string) (AgentRole, error) {
+	role, err := normalizeAgentRole(raw)
+	if err != nil {
+		return "", err
+	}
+	switch role {
+	case AgentRoleExplorer, AgentRolePlanner, AgentRoleReviewer:
+		return role, nil
+	default:
+		return "", fmt.Errorf("role %q is not executable in a read-only mission", raw)
+	}
 }

@@ -219,8 +219,8 @@ func TestContinuationBlocksRepeatedQuestion(t *testing.T) {
 	state.mu.RUnlock()
 	var warning, final bool
 	for _, ev := range events {
-		warning = warning || (ev.Type == "warning" && strings.Contains(ev.Message, "Rückfrage"))
-		final = final || (ev.Type == "final" && strings.Contains(ev.Message, "nicht wiederholt"))
+		warning = warning || (ev.Type == "warning" && (strings.Contains(ev.Message, "Rückfrage") || strings.Contains(ev.Message, "Repeated question") || strings.Contains(ev.Detail, "question has already been answered") || strings.Contains(ev.Detail, "bereits beantwortet")))
+		final = final || (ev.Type == "final" && (strings.Contains(ev.Message, "nicht wiederholt") || strings.Contains(ev.Message, "not repeated") || strings.Contains(ev.Message, "Antwort verarbeitet") || strings.Contains(ev.Message, "Answer processed")))
 	}
 	if !warning || !final {
 		t.Fatalf("expected warning and final, calls=%d events=%#v", calls, events)

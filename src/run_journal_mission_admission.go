@@ -350,6 +350,14 @@ func finishMissionRecoveryContinuation(executionRunID string, graph *AgentTaskGr
 		if task, ok := graphByID[durable.ID]; ok {
 			durable.State = task.State
 			durable.Running = false
+			if durable.Lifecycle != nil {
+				durable.Lifecycle.AttemptReserved = false
+				durable.Lifecycle.AttemptReservedAt = time.Time{}
+				if durable.Lifecycle.LastFinishedAt.IsZero() {
+					durable.Lifecycle.LastFinishedAt = finishedAt
+				}
+				durable.Lifecycle.StateUpdatedAt = finishedAt
+			}
 		}
 		usage, exists := run.UsageByTask[durable.ID]
 		if exists {

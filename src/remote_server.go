@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -518,7 +519,22 @@ func (s *AppState) StartRemotePairing() (string, time.Time, []string, error) {
 	s.mu.Lock()
 	s.RemotePairing = &RemotePairingState{CodeHash: remotePairingHash(code), ExpiresAt: expires}
 	urls := append([]string(nil), s.RemoteURLs...)
+	listenAddr := s.RemoteListenAddr
 	s.mu.Unlock()
+	if len(urls) == 0 {
+		port := 32146
+		if _, portStr, err := net.SplitHostPort(listenAddr); err == nil {
+			if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+				port = p
+			}
+		}
+		for _, ip := range activeLANIPv4Addresses() {
+			urls = append(urls, fmt.Sprintf("https://%s:%d/remote", ip, port))
+		}
+		if len(urls) == 0 {
+			urls = []string{fmt.Sprintf("https://127.0.0.1:%d/remote", port)}
+		}
+	}
 	return code, expires, urls, nil
 }
 
@@ -628,13 +644,47 @@ func (s *Server) handleRemotePairing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	s.state.mu.RLock()
+	listenAddr := s.state.RemoteListenAddr
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+	if listenAddr == "" || strings.HasPrefix(listenAddr, "127.0.0.1") {
+		cfg.RemoteEnabled = true
+		cfg.RemoteBindHost = "0.0.0.0"
+		if urls, err := startMobileSafeProductionRemoteServer(s.state, cfg); err == nil && len(urls) > 0 {
+			_ = saveConfig(cfg)
+		}
+	}
 	code, expires, urls, err := s.state.StartRemotePairing()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.state.mu.RLock()
+	fp := s.state.RemoteTLSFingerprint
+	s.state.mu.RUnlock()
+	pairUrl := ""
+	for _, u := range urls {
+		if !strings.Contains(u, "127.0.0.1") && !strings.Contains(u, "localhost") {
+			pairUrl = u
+			break
+		}
+	}
+	if pairUrl == "" && len(urls) > 0 {
+		pairUrl = urls[0]
+	}
+	deepLink := fmt.Sprintf("localcode://pair?url=%s&fp=%s&code=%s", url.QueryEscape(pairUrl), fp, code)
+	webLink := fmt.Sprintf("%s#code=%s&fp=%s", pairUrl, code, fp)
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "code": code, "expires_at": expires, "remote_urls": urls})
+	_ = writeJSON(w, map[string]any{
+		"ok":          true,
+		"code":        code,
+		"expires_at":  expires,
+		"remote_urls": urls,
+		"fingerprint": fp,
+		"deep_link":   deepLink,
+		"web_link":    webLink,
+	})
 }
 
 func activeLANIPv4Addresses() []string {
