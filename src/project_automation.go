@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -484,10 +485,195 @@ func deployAndroid(ctx context.Context, project string, cfg Config) (string, err
 		return buildOut + "\n\nMehrere Geräte sind verbunden:\n" + strings.Join(lines, "\n"), errors.New("multiple Android devices require an explicit serial")
 	}
 	apk := apks[0]
-	args := []string{"-s", ready[0].Serial, "install", "-r", apk}
+	args := []string{"-s", ready[0].Serial, "install", "-r", "-d", "-g", apk}
 	installOut, installErr := runResolvedTool(ctx, project, "adb", args, cfg)
 	result := buildOut + "\n\nAPK: " + apk + "\nGERÄT: " + ready[0].Line + "\n\nADB INSTALL:\n" + installOut
-	return result, installErr
+	if installErr != nil {
+		return result, installErr
+	}
+
+	manifestPath := findProjectManifest(project)
+	if manifestPath != "" {
+		if pkg, launcher, err := extractManifestPackageAndLauncher(manifestPath); err == nil && pkg != "" && launcher != "" {
+			component := pkg + "/" + launcher
+			if !strings.Contains(launcher, ".") {
+				component = pkg + "/." + launcher
+			}
+			startArgs := []string{"-s", ready[0].Serial, "shell", "am", "start", "-n", component}
+			startOut, startErr := runResolvedTool(ctx, project, "adb", startArgs, cfg)
+			result += "\n\nADB START:\n" + startOut
+			if startErr != nil {
+				return result, startErr
+			}
+		}
+	}
+	return result, nil
+}
+
+type androidManifestXML struct {
+	XMLName     xml.Name `xml:"manifest"`
+	Package     string   `xml:"package,attr"`
+	Application struct {
+		Activities []struct {
+			Name         string `xml:"name,attr"`
+			IntentFilter []struct {
+				Action []struct {
+					Name string `xml:"name,attr"`
+				} `xml:"action"`
+				Category []struct {
+					Name string `xml:"name,attr"`
+				} `xml:"category"`
+			} `xml:"intent-filter"`
+		} `xml:"activity"`
+	} `xml:"application"`
+}
+
+func findProjectManifest(project string) string {
+	candidates := []string{
+		filepath.Join(project, "AndroidManifest.xml"),
+		filepath.Join(project, "app", "src", "main", "AndroidManifest.xml"),
+		filepath.Join(project, "src", "main", "AndroidManifest.xml"),
+	}
+	for _, path := range candidates {
+		if st, err := os.Stat(path); err == nil && !st.IsDir() {
+			return path
+		}
+	}
+	return ""
+}
+
+func extractManifestPackageAndLauncher(manifestPath string) (pkg string, launcher string, err error) {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return "", "", err
+	}
+	var manifest androidManifestXML
+	if err := xml.Unmarshal(data, &manifest); err != nil {
+		return "", "", err
+	}
+	pkg = strings.TrimSpace(manifest.Package)
+	for _, act := range manifest.Application.Activities {
+		isMain := false
+		isLauncher := false
+		for _, filter := range act.IntentFilter {
+			for _, a := range filter.Action {
+				if strings.EqualFold(strings.TrimSpace(a.Name), "android.intent.action.MAIN") {
+					isMain = true
+				}
+			}
+			for _, c := range filter.Category {
+				if strings.EqualFold(strings.TrimSpace(c.Name), "android.intent.category.LAUNCHER") {
+					isLauncher = true
+				}
+			}
+		}
+		if isMain && isLauncher {
+			launcher = strings.TrimSpace(act.Name)
+			break
+		}
+	}
+	return pkg, launcher, nil
+}
+
+type adbActionRequest struct {
+	Action string `json:"action"` // "devices", "install", "launch", "stop", "logcat", "screenshot", "reverse", "tcpip", "connect"
+	Serial string `json:"serial,omitempty"`
+	Target string `json:"target,omitempty"` // component, package, IP, or apk path
+}
+
+func listConnectedADBDevices(ctx context.Context, project string, cfg Config) ([]adbDevice, error) {
+	adbInfo := discoverTool(project, "adb", cfg, false)
+	if !adbInfo.Available {
+		return nil, &ToolNotFoundError{Info: adbInfo, Detail: "ADB is required to list devices."}
+	}
+	res := runDirectTool(ctx, project, adbInfo.Path, []string{"devices", "-l"}, cfg)
+	res.Tool = "adb"
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return parseADBDevices(res.Stdout + "\n" + res.Stderr), nil
+}
+
+func runADBAction(ctx context.Context, project string, req adbActionRequest, cfg Config) (string, error) {
+	adbInfo := discoverTool(project, "adb", cfg, false)
+	if !adbInfo.Available {
+		return "", &ToolNotFoundError{Info: adbInfo, Detail: "ADB is required to execute action."}
+	}
+	var args []string
+	if strings.TrimSpace(req.Serial) != "" {
+		args = append(args, "-s", strings.TrimSpace(req.Serial))
+	}
+	switch strings.ToLower(strings.TrimSpace(req.Action)) {
+	case "devices":
+		args = []string{"devices", "-l"}
+	case "install":
+		apk := strings.TrimSpace(req.Target)
+		if apk == "" {
+			apks := findAPKs(project)
+			if len(apks) == 0 {
+				return "", errors.New("no APK found in project to install")
+			}
+			apk = apks[0]
+		}
+		args = append(args, "install", "-r", "-d", "-g", apk)
+	case "launch":
+		target := strings.TrimSpace(req.Target)
+		if target == "" {
+			manifestPath := findProjectManifest(project)
+			if manifestPath != "" {
+				pkg, launcher, _ := extractManifestPackageAndLauncher(manifestPath)
+				if pkg != "" && launcher != "" {
+					target = pkg + "/" + launcher
+					if !strings.Contains(launcher, ".") {
+						target = pkg + "/." + launcher
+					}
+				}
+			}
+		}
+		if target == "" {
+			return "", errors.New("target activity component is required to launch")
+		}
+		args = append(args, "shell", "am", "start", "-n", target)
+	case "stop":
+		pkg := strings.TrimSpace(req.Target)
+		if pkg == "" {
+			manifestPath := findProjectManifest(project)
+			if manifestPath != "" {
+				p, _, _ := extractManifestPackageAndLauncher(manifestPath)
+				pkg = p
+			}
+		}
+		if pkg == "" {
+			return "", errors.New("target package name is required to stop app")
+		}
+		args = append(args, "shell", "am", "force-stop", pkg)
+	case "logcat":
+		args = append(args, "logcat", "-d", "-v", "time", "-t", "150")
+		if strings.TrimSpace(req.Target) != "" {
+			args = append(args, "-s", strings.TrimSpace(req.Target))
+		}
+	case "reverse":
+		port := "32145"
+		if strings.TrimSpace(req.Target) != "" {
+			port = strings.TrimSpace(req.Target)
+		}
+		args = append(args, "reverse", "tcp:"+port, "tcp:"+port)
+	case "tcpip":
+		port := "5555"
+		if strings.TrimSpace(req.Target) != "" {
+			port = strings.TrimSpace(req.Target)
+		}
+		args = append(args, "tcpip", port)
+	case "connect":
+		if strings.TrimSpace(req.Target) == "" {
+			return "", errors.New("target host:port is required to connect")
+		}
+		args = []string{"connect", strings.TrimSpace(req.Target)}
+	default:
+		return "", fmt.Errorf("unsupported ADB action: %s", req.Action)
+	}
+
+	return runResolvedTool(ctx, project, "adb", args, cfg)
 }
 
 func appendFileToZipArchive(zipPath, filePath, entryName string) error {
