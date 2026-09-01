@@ -95,6 +95,7 @@
   const css = `
     :root{--rightW:280px}
     .sidebar{background:#182126}
+    .project-tree{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important}
     .section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-right:9px}
     .section-title-action{width:27px;height:27px;flex:0 0 auto;border:1px solid #36434a;border-radius:7px;background:#202b30;color:#b8c3c9;display:grid;place-items:center;font-size:18px;line-height:1;padding:0}
     .section-title-action.text{width:auto;padding:0 6px;font-size:10px;font-weight:700;white-space:nowrap}
