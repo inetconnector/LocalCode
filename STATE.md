@@ -3,8 +3,8 @@
 **Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `6d16af6`  
-**Last merged functional PR:** #75 `fix: project tree sidebar layout, escapeHtml alias, and test batch quoting` (Build pipeline: #74, Docs: #73)  
+**Current authoritative merged master:** `43e84a8`  
+**Last merged functional PR:** #76 `docs: sync canonical state and todo with merged PR #75` (Fixes: #75, Pipeline: #74)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 

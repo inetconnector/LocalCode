@@ -93,6 +93,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/computemesh/autodetect", s.handleComputeMeshAutoDetect)
 	s.mux.HandleFunc("/api/computemesh/test", s.handleComputeMeshTest)
 	s.mux.HandleFunc("/api/doctor", s.handleDoctor)
+	s.mux.HandleFunc("/api/adb/devices", s.handleADBDevices)
+	s.mux.HandleFunc("/api/adb/deploy", s.handleADBDeploy)
+	s.mux.HandleFunc("/api/adb/action", s.handleADBAction)
 }
 
 func loopbackRequestHost(value string) bool {
@@ -1481,4 +1484,83 @@ func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
 	report := RunDoctorDiagnostics(ctx, cfg)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, report)
+}
+
+func (s *Server) handleADBDevices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	project := s.state.Project
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	devices, err := listConnectedADBDevices(ctx, project, cfg)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "devices": []adbDevice{}})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "devices": devices})
+}
+
+func (s *Server) handleADBDeploy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	project := s.state.Project
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	if project == "" {
+		http.Error(w, "kein Projekt ausgewählt", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	out, err := deployAndroid(ctx, project, cfg)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "output": out})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "output": out})
+}
+
+func (s *Server) handleADBAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req adbActionRequest
+	if err := readJSONPermissive(r.Body, &req); err != nil {
+		http.Error(w, "ungültiger Request-Body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	project := s.state.Project
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	out, err := runADBAction(ctx, project, req, cfg)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "output": out})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "output": out})
 }
