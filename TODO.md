@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-09-02 Europe/Berlin  
-**Authoritative merged base for this slice:** master `43e84a8`  
-**Last merged functional PR:** #76 `docs: sync canonical state and todo with merged PR #75` (Fixes: #75, Pipeline: #74)  
+**Authoritative merged base for this slice:** master `0a83117` (Tag: `v6.5.0`)  
+**Last merged functional PR:** #77 `feat: complete ADB mastery, auto launcher detection, reverse tunneling, and REST API` (Docs: #76, Fixes: #75, Pipeline: #74)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
