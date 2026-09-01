@@ -1,9 +1,9 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-09-01 Europe/Berlin  
-**Authoritative merged base for this slice:** master `47d53e0`  
-**Last merged functional PR:** #70 `docs: finalize desktop mission recovery state`  
-**Active branch:** `feat/mission-recovery-atomic-admission`  
+**Authoritative merged base for this slice:** master `4aecbbd`  
+**Last merged functional PR:** #72 `feat: multi-agent architecture, ComputeMesh cluster, Doctor diagnostics, and bounded replanning`  
+**Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.
