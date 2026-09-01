@@ -3,9 +3,9 @@
 **Verified:** 2026-09-01 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `47d53e0`  
-**Last merged functional PR:** #70 `docs: finalize desktop mission recovery state`  
-**Active branch:** `feat/mission-recovery-atomic-admission`  
+**Current authoritative merged master:** `4aecbbd`  
+**Last merged functional PR:** #72 `feat: multi-agent architecture, ComputeMesh cluster, Doctor diagnostics, and bounded replanning`  
+**Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
