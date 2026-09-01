@@ -1,10 +1,10 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-09-01 Europe/Berlin  
+**Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `7da8724`  
-**Last merged functional PR:** #74 `feat: standalone Android SDK build pipeline, DEX packaging, and mobile dispatch tests` (Docs: #73)  
+**Current authoritative merged master:** `6d16af6`  
+**Last merged functional PR:** #75 `fix: project tree sidebar layout, escapeHtml alias, and test batch quoting` (Build pipeline: #74, Docs: #73)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
