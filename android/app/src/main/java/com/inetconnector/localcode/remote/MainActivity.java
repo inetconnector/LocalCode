@@ -293,6 +293,21 @@ public final class MainActivity extends Activity {
         public void sendVoiceTest(String sampleText) {
             runOnUiThread(() -> deliverVoiceText(sampleText));
         }
+
+        @JavascriptInterface
+        public String getBridgeVersion() {
+            return "2.0";
+        }
+
+        @JavascriptInterface
+        public void resetConnection() {
+            runOnUiThread(() -> {
+                currentRemoteUrl = "";
+                expectedFingerprint = "";
+                if (webView != null) webView.setVisibility(View.GONE);
+                if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
+            });
+        }
     }
 
     private void startVoiceRecognizer() {
