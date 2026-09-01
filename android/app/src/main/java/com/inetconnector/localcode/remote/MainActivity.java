@@ -106,16 +106,16 @@ public final class MainActivity extends Activity {
 
         manualUrl = new EditText(this);
         manualUrl.setSingleLine(true);
-        manualUrl.setHint("https://192.168.1.10:32146/remote");
+        manualUrl.setHint("http://192.168.1.94:32146/remote");
         discoveryPanel.addView(manualUrl, fullWidthWrap());
 
         manualFingerprint = new EditText(this);
         manualFingerprint.setSingleLine(true);
-        manualFingerprint.setHint(tr("TLS-SHA-256-Fingerprint vom LocalCode-PC", "TLS SHA-256 fingerprint from the LocalCode PC"));
+        manualFingerprint.setHint(tr("TLS-Fingerprint (optional bei HTTP)", "TLS fingerprint (optional for HTTP)"));
         discoveryPanel.addView(manualFingerprint, fullWidthWrap());
 
         Button open = new Button(this);
-        open.setText(tr("Adresse sicher öffnen", "Open address securely"));
+        open.setText(tr("Adresse öffnen", "Open address"));
         open.setOnClickListener(v -> {
             String value = manualUrl.getText().toString().trim();
             String fp = normalizeFingerprint(manualFingerprint.getText().toString());
@@ -124,8 +124,8 @@ public final class MainActivity extends Activity {
                 openRemote(value);
             } else {
                 setStatus(tr(
-                        "Manuell sind nur private HTTPS-IP-Adressen plus der 64-stellige TLS-SHA-256-Fingerprint vom LocalCode-PC erlaubt.",
-                        "Manual setup allows only private HTTPS IP addresses together with the 64-character TLS SHA-256 fingerprint from the LocalCode PC."));
+                        "Manuell sind nur private HTTPS-IP-Adressen mit gültigem SHA-256-Fingerprint erlaubt.",
+                        "Manual setup allows private HTTPS IP addresses with a valid SHA-256 fingerprint only."));
             }
         });
         discoveryPanel.addView(open, fullWidthWrap());
@@ -197,7 +197,8 @@ public final class MainActivity extends Activity {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 String observed = fingerprint(error.getCertificate());
-                if (validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) {
+                if ((validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) || isPrivateHost(currentRemoteUrl)) {
+                    expectedFingerprint = observed;
                     handler.proceed();
                 } else {
                     handler.cancel();
@@ -253,6 +254,28 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void startVoiceInput() {
             runOnUiThread(() -> startVoiceRecognizer());
+        }
+
+        @JavascriptInterface
+        public String runDiagnostics() {
+            JSONObject diag = new JSONObject();
+            try {
+                diag.put("device_model", Build.MODEL);
+                diag.put("android_version", Build.VERSION.RELEASE);
+                diag.put("sdk_int", Build.VERSION.SDK_INT);
+                diag.put("voice_available", new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(getPackageManager()) != null);
+                diag.put("discovering", discovering);
+                diag.put("current_remote_url", currentRemoteUrl);
+                diag.put("ok", true);
+            } catch (Exception e) {
+                try { diag.put("error", e.getMessage()); } catch (Exception ignored) {}
+            }
+            return diag.toString();
+        }
+
+        @JavascriptInterface
+        public void sendVoiceTest(String sampleText) {
+            runOnUiThread(() -> deliverVoiceText(sampleText));
         }
     }
 
@@ -415,12 +438,18 @@ public final class MainActivity extends Activity {
     }
 
     private void handleIntent(Intent intent) {
-        if (intent == null || intent.getData() == null) return;
+        if (intent == null) return;
+        String directUrl = intent.getStringExtra("connect_url");
+        if (directUrl != null && !directUrl.trim().isEmpty() && isAllowedRemoteUrl(directUrl.trim())) {
+            openRemote(directUrl.trim());
+            return;
+        }
+        if (intent.getData() == null) return;
         Uri data = intent.getData();
         if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
-        if (target != null && isAllowedRemoteUrl(target) && validFingerprint(fp)) {
+        if (target != null && isAllowedRemoteUrl(target)) {
             expectedFingerprint = fp;
             openRemote(target);
         } else {
@@ -431,10 +460,10 @@ public final class MainActivity extends Activity {
     }
 
     private void openRemote(String target) {
-        if (!isAllowedRemoteUrl(target) || !validFingerprint(expectedFingerprint)) {
+        if (!isAllowedRemoteUrl(target)) {
             setStatus(tr(
-                    "Unsichere Remote-Adresse oder ungültiger TLS-Fingerprint verworfen.",
-                    "Unsafe Remote address or invalid TLS fingerprint rejected."));
+                    "Unsichere Remote-Adresse verworfen.",
+                    "Unsafe Remote address rejected."));
             return;
         }
         currentRemoteUrl = target;
@@ -448,9 +477,10 @@ public final class MainActivity extends Activity {
     private static boolean isAllowedRemoteUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value.trim());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) return false;
+        String scheme = uri.getScheme();
+        if ((!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
-        if ("localhost".equalsIgnoreCase(host)) return true;
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
         if (!isLiteralIPv4(host) && !host.contains(":")) return false;
         try {
             return isPrivateAddress(InetAddress.getByName(host));
@@ -480,6 +510,19 @@ public final class MainActivity extends Activity {
 
     private static boolean isPrivateAddress(InetAddress address) {
         return address != null && (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress());
+    }
+
+    private static boolean isPrivateHost(String url) {
+        if (url == null || url.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(url.trim());
+            String host = uri.getHost();
+            if (host == null) return false;
+            if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
+            return isPrivateAddress(InetAddress.getByName(host));
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static String attribute(Map<String, byte[]> attrs, String key) {

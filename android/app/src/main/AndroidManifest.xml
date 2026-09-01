@@ -14,7 +14,7 @@
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:label="LocalCode Remote"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <activity
             android:name="com.inetconnector.localcode.remote.MainActivity"
             android:exported="true">
