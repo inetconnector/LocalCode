@@ -289,14 +289,15 @@ type AppState struct {
 	LastProgressAt time.Time
 	Recovery       *RunRecoveryState
 
-	Events           []UIEvent
-	Pending          *PendingAction
-	Continuation     *AgentContinuation
-	Threads          map[string]*ChatThread
-	CurrentThread    string
-	RemoteListenAddr string
-	RemoteURLs       []string
-	RemotePairing    *RemotePairingState
+	Events               []UIEvent
+	Pending              *PendingAction
+	Continuation         *AgentContinuation
+	Threads              map[string]*ChatThread
+	CurrentThread        string
+	RemoteListenAddr     string
+	RemoteURLs           []string
+	RemoteTLSFingerprint string
+	RemotePairing        *RemotePairingState
 
 	LastTask         string
 	LastSummary      string

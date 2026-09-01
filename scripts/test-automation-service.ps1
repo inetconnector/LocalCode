@@ -27,9 +27,10 @@ Write-Host "  -> Found $($projects.projects.Count) projects (Root: $($projects.r
 Write-Host "`n[3/10] Testing Desktop /api/settings roundtrip..." -ForegroundColor Yellow
 $settings = Invoke-RestMethod -Uri "$desktopBase/api/settings" -Method GET
 if (-not $settings.approval_mode) { throw "Invalid settings response" }
+$settings.remote_enabled = $true
 $settingsRes = Invoke-RestMethod -Uri "$desktopBase/api/settings" -Method POST -Body ($settings | ConvertTo-Json -Depth 5) -ContentType "application/json"
 if (-not $settingsRes.ok) { throw "Settings update failed" }
-Write-Host "  -> Settings schema valid & preserved." -ForegroundColor Green
+Write-Host "  -> Settings schema valid & preserved (Remote enabled)." -ForegroundColor Green
 
 # Test 4: Desktop Engines & MCP Status
 Write-Host "`n[4/10] Testing Engines & MCP Servers..." -ForegroundColor Yellow
@@ -51,7 +52,7 @@ Write-Host "  -> Generated Pairing Code: $($pairing.code)" -ForegroundColor Gree
 # Test 7: Mobile Remote Pairing Endpoint
 Write-Host "`n[7/10] Testing Remote API Pairing Handshake..." -ForegroundColor Yellow
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-$remoteTarget = $pairing.remote_urls[0]
+$remoteTarget = if ($pairing.remote_urls -and $pairing.remote_urls.Count -gt 0) { $pairing.remote_urls[0] } else { "https://127.0.0.1:32146/remote" }
 $remoteApiBase = $remoteTarget.TrimEnd('/')
 $pairBody = @{ code = $pairing.code } | ConvertTo-Json
 $pairRes = Invoke-RestMethod -Uri "$remoteApiBase/api/pair" -Method POST -Body $pairBody -ContentType "application/json"

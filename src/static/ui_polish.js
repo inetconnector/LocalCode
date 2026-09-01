@@ -39,7 +39,13 @@
       'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}',
       'Schließen':'Schließen',
       'Anzeigenamen bearbeiten':'Anzeigenamen bearbeiten',
-      'Claw Code (experimentell)':'Claw Code (experimentell)'
+      'Claw Code (experimentell)':'Claw Code (experimentell)',
+      'Remote koppeln':'Remote koppeln',
+      'Scanne den QR-Code mit der Smartphone-Kamera oder der LocalCode Remote App.':'Scanne den QR-Code mit der Smartphone-Kamera oder der LocalCode Remote App.',
+      'Pairing-Code':'Pairing-Code',
+      'Kopieren':'Kopieren',
+      'Code in die Zwischenablage kopiert.':'Code in die Zwischenablage kopiert.',
+      'Fertig':'Fertig'
     });
     Object.assign(i18n.dictionaries.en, {
       'Neues Projekt':'New project',
@@ -76,7 +82,13 @@
       'Dateien: {files} · Ordner: {dirs} · Bytes: {bytes}':'Files: {files} · Folders: {dirs} · Bytes: {bytes}',
       'Schließen':'Close',
       'Anzeigenamen bearbeiten':'Edit display name',
-      'Claw Code (experimentell)':'Claw Code (experimental)'
+      'Claw Code (experimentell)':'Claw Code (experimental)',
+      'Remote koppeln':'Pair Remote',
+      'Scanne den QR-Code mit der Smartphone-Kamera oder der LocalCode Remote App.':'Scan the QR code with your smartphone camera or the LocalCode Remote app.',
+      'Pairing-Code':'Pairing code',
+      'Kopieren':'Copy',
+      'Code in die Zwischenablage kopiert.':'Code copied to clipboard.',
+      'Fertig':'Done'
     });
   }
 

@@ -14,6 +14,7 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
@@ -46,6 +47,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NEARBY = 701;
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
+    private static final int REQUEST_QR_SCAN = 704;
 
     private NsdManager nsdManager;
     private NsdManager.DiscoveryListener discoveryListener;
@@ -98,6 +100,11 @@ public final class MainActivity extends Activity {
         status.setText(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
         status.setPadding(0, dp(10), 0, dp(12));
         discoveryPanel.addView(status, fullWidthWrap());
+
+        Button scanQr = new Button(this);
+        scanQr.setText(tr("📷 QR-Code scannen", "📷 Scan QR code"));
+        scanQr.setOnClickListener(v -> launchQrScanner());
+        discoveryPanel.addView(scanQr, fullWidthWrap());
 
         Button discover = new Button(this);
         discover.setText(tr("LocalCode automatisch suchen", "Find LocalCode automatically"));
@@ -247,6 +254,15 @@ public final class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_QR_SCAN) {
+            if (resultCode == RESULT_OK && data != null) {
+                String contents = data.getStringExtra("SCAN_RESULT");
+                if (contents != null && !contents.trim().isEmpty()) {
+                    handleScannedContent(contents.trim());
+                }
+            }
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -319,6 +335,39 @@ public final class MainActivity extends Activity {
                 status.setText(visibleMessage);
             }
         });
+    }
+
+    private void launchQrScanner() {
+        Intent scanIntent = new Intent("com.google.zxing.client.android.SCAN");
+        scanIntent.putExtra("SCAN_MODE", "QR_CODE_MODE");
+        if (scanIntent.resolveActivity(getPackageManager()) != null) {
+            try {
+                startActivityForResult(scanIntent, REQUEST_QR_SCAN);
+                return;
+            } catch (Exception ignored) {}
+        }
+        try {
+            Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            startActivity(cameraIntent);
+            setStatus(tr(
+                    "Kamera geöffnet: QR-Code auf dem PC scannen oder Link antippen.",
+                    "Camera opened: scan the QR code on your PC or tap the link."));
+        } catch (Exception ex) {
+            setStatus(tr(
+                    "Bitte den QR-Code mit der Smartphone-Kamera scannen.",
+                    "Please scan the QR code using your phone camera."));
+        }
+    }
+
+    private void handleScannedContent(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return;
+        Uri uri = Uri.parse(raw.trim());
+        if ("localcode".equalsIgnoreCase(uri.getScheme())) {
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            handleIntent(intent);
+        } else if (isAllowedRemoteUrl(raw.trim())) {
+            openRemote(raw.trim());
+        }
     }
 
     private void cancelPendingFileChooser() {
@@ -449,9 +498,15 @@ public final class MainActivity extends Activity {
         if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
+        String code = data.getQueryParameter("code");
         if (target != null && isAllowedRemoteUrl(target)) {
             expectedFingerprint = fp;
-            openRemote(target);
+            if (code != null && !code.trim().isEmpty()) {
+                String separator = target.contains("#") ? "&" : "#";
+                openRemote(target + separator + "code=" + Uri.encode(code.trim()));
+            } else {
+                openRemote(target);
+            }
         } else {
             setStatus(tr(
                     "Der QR-/Deep-Link ist unvollständig oder unsicher.",
