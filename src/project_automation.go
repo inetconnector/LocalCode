@@ -3,12 +3,15 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -40,8 +43,14 @@ func detectProjectPlan(project string) projectPlan {
 	if androidManifest == "" && exists(filepath.Join("app", "src", "main", "AndroidManifest.xml")) {
 		androidManifest = filepath.Join(project, "app", "src", "main", "AndroidManifest.xml")
 	}
-	if gradleWrapper && androidManifest != "" {
-		return projectPlan{Kind: "android-gradle", BuildTool: "gradle", BuildArgs: []string{"--no-daemon", "assembleDebug"}, Descriptor: "Android-Projekt mit Gradle Wrapper"}
+	if androidManifest == "" && exists("AndroidManifest.xml") {
+		androidManifest = filepath.Join(project, "AndroidManifest.xml")
+	}
+	if androidManifest != "" {
+		if gradleWrapper {
+			return projectPlan{Kind: "android-gradle", BuildTool: "gradle", BuildArgs: []string{"--no-daemon", "assembleDebug"}, Descriptor: "Android-Projekt mit Gradle Wrapper"}
+		}
+		return projectPlan{Kind: "android-sdk", BuildTool: "javac", Descriptor: "Android-Projekt mit Android SDK"}
 	}
 	if exists("go.mod") {
 		return projectPlan{Kind: "go", BuildTool: "go", BuildArgs: []string{"build", "./..."}, Descriptor: "Go-Modul"}
@@ -119,10 +128,225 @@ func projectInfo(project string, cfg Config) string {
 	return b.String()
 }
 
+func findAndroidJar() string {
+	sdk := os.Getenv("ANDROID_SDK_ROOT")
+	if sdk == "" {
+		sdk = os.Getenv("ANDROID_HOME")
+	}
+	if sdk == "" {
+		sdk = filepath.Join(os.Getenv("LOCALAPPDATA"), "Android", "Sdk")
+	}
+	platformsDir := filepath.Join(sdk, "platforms")
+	entries, err := os.ReadDir(platformsDir)
+	if err != nil {
+		return ""
+	}
+	var platforms []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(strings.ToLower(e.Name()), "android-") {
+			platforms = append(platforms, e.Name())
+		}
+	}
+	sort.Slice(platforms, func(i, j int) bool {
+		return platforms[i] > platforms[j]
+	})
+	for _, p := range platforms {
+		candidate := filepath.Join(platformsDir, p, "android.jar")
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func buildAndroidSDKProject(ctx context.Context, project string, cfg Config) (string, error) {
+	manifest := ""
+	for _, cand := range []string{
+		filepath.Join(project, "app", "src", "main", "AndroidManifest.xml"),
+		filepath.Join(project, "src", "main", "AndroidManifest.xml"),
+		filepath.Join(project, "AndroidManifest.xml"),
+	} {
+		if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+			manifest = cand
+			break
+		}
+	}
+	if manifest == "" {
+		return "", errors.New("AndroidManifest.xml nicht gefunden")
+	}
+	resDir := filepath.Join(filepath.Dir(manifest), "res")
+	if st, err := os.Stat(resDir); err != nil || !st.IsDir() {
+		resDir = filepath.Join(project, "res")
+	}
+	javaDir := filepath.Join(filepath.Dir(manifest), "java")
+	if st, err := os.Stat(javaDir); err != nil || !st.IsDir() {
+		javaDir = filepath.Join(project, "src")
+	}
+
+	androidJar := findAndroidJar()
+	if androidJar == "" {
+		return "", errors.New("Android platform android.jar nicht im Android SDK gefunden")
+	}
+
+	aapt2 := discoverTool(project, "aapt2", cfg, false)
+	if !aapt2.Available {
+		return "", &ToolNotFoundError{Info: aapt2, Detail: "aapt2 ist für das Kompilieren von Android-Ressourcen erforderlich."}
+	}
+	javac := discoverTool(project, "javac", cfg, false)
+	if !javac.Available {
+		return "", &ToolNotFoundError{Info: javac, Detail: "javac ist für das Kompilieren von Java-Quellcode erforderlich."}
+	}
+	d8 := discoverTool(project, "d8", cfg, false)
+	if !d8.Available {
+		return "", &ToolNotFoundError{Info: d8, Detail: "d8 ist für die DEX-Bytecode-Generierung erforderlich."}
+	}
+	zipalign := discoverTool(project, "zipalign", cfg, false)
+	if !zipalign.Available {
+		return "", &ToolNotFoundError{Info: zipalign, Detail: "zipalign ist für das Alignment des APKs erforderlich."}
+	}
+	apksigner := discoverTool(project, "apksigner", cfg, false)
+	if !apksigner.Available {
+		return "", &ToolNotFoundError{Info: apksigner, Detail: "apksigner ist für das Signieren des APKs erforderlich."}
+	}
+	keytool := discoverTool(project, "keytool", cfg, false)
+
+	buildDir := filepath.Join(project, "build", "outputs", "apk", "debug")
+	classesDir := filepath.Join(project, "build", "classes")
+	genDir := filepath.Join(project, "build", "gen")
+	compiledResDir := filepath.Join(project, "build", "compiled-res")
+
+	_ = os.RemoveAll(filepath.Join(project, "build"))
+	for _, d := range []string{buildDir, classesDir, genDir, compiledResDir} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return "", err
+		}
+	}
+
+	var logs []string
+
+	// 1. aapt2 compile
+	resZip := filepath.Join(compiledResDir, "resources.zip")
+	if st, err := os.Stat(resDir); err == nil && st.IsDir() {
+		compileOut, err := runResolvedTool(ctx, project, "aapt2", []string{"compile", "--dir", resDir, "-o", resZip}, cfg)
+		logs = append(logs, "AAPT2 COMPILE:\n"+compileOut)
+		if err != nil {
+			return strings.Join(logs, "\n\n"), err
+		}
+	}
+
+	// 2. aapt2 link
+	unalignedApk := filepath.Join(buildDir, "app-unaligned.apk")
+	linkArgs := []string{"link", "-I", androidJar, "--manifest", manifest, "-o", unalignedApk, "--java", genDir, "--auto-add-overlay"}
+	if _, err := os.Stat(resZip); err == nil {
+		linkArgs = append(linkArgs, resZip)
+	}
+	linkOut, err := runResolvedTool(ctx, project, "aapt2", linkArgs, cfg)
+	logs = append(logs, "AAPT2 LINK:\n"+linkOut)
+	if err != nil {
+		return strings.Join(logs, "\n\n"), err
+	}
+
+	// 3. Collect Java files + R.java
+	var javaSources []string
+	_ = filepath.WalkDir(javaDir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".java") {
+			javaSources = append(javaSources, p)
+		}
+		return nil
+	})
+	_ = filepath.WalkDir(genDir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".java") {
+			javaSources = append(javaSources, p)
+		}
+		return nil
+	})
+
+	if len(javaSources) == 0 {
+		return strings.Join(logs, "\n\n"), errors.New("keine Java-Quelldateien im Projekt gefunden")
+	}
+
+	// 4. javac
+	javacArgs := []string{"-encoding", "UTF-8", "-source", "17", "-target", "17", "-cp", androidJar, "-d", classesDir}
+	javacArgs = append(javacArgs, javaSources...)
+	javacOut, err := runResolvedTool(ctx, project, "javac", javacArgs, cfg)
+	logs = append(logs, "JAVAC:\n"+javacOut)
+	if err != nil {
+		return strings.Join(logs, "\n\n"), err
+	}
+
+	// 5. d8 DEX
+	var classFiles []string
+	_ = filepath.WalkDir(classesDir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".class") {
+			classFiles = append(classFiles, p)
+		}
+		return nil
+	})
+	d8Args := []string{"--output", buildDir, "--lib", androidJar}
+	d8Args = append(d8Args, classFiles...)
+	d8Out, err := runResolvedTool(ctx, project, "d8", d8Args, cfg)
+	logs = append(logs, "D8:\n"+d8Out)
+	if err != nil {
+		return strings.Join(logs, "\n\n"), err
+	}
+
+	// 6. Pack classes.dex into unaligned apk
+	dexFile := filepath.Join(buildDir, "classes.dex")
+	if st, err := os.Stat(dexFile); err != nil || st.IsDir() {
+		return strings.Join(logs, "\n\n"), errors.New("classes.dex was not generated by d8")
+	}
+	if err := appendFileToZipArchive(unalignedApk, dexFile, "classes.dex"); err != nil {
+		logs = append(logs, fmt.Sprintf("ZIP INJECT WARNING: %v", err))
+		if java := discoverTool(project, "java", cfg, false); java.Available {
+			jarTool := filepath.Join(filepath.Dir(java.Path), "jar.exe")
+			if runtime.GOOS != "windows" {
+				jarTool = filepath.Join(filepath.Dir(java.Path), "jar")
+			}
+			if st, err := os.Stat(jarTool); err == nil && !st.IsDir() {
+				runDirectTool(ctx, buildDir, jarTool, []string{"uf", unalignedApk, "classes.dex"}, cfg)
+			}
+		}
+	}
+
+	// 7. zipalign
+	alignedApk := filepath.Join(buildDir, "app-aligned.apk")
+	alignOut, err := runResolvedTool(ctx, project, "zipalign", []string{"-f", "-p", "4", unalignedApk, alignedApk}, cfg)
+	logs = append(logs, "ZIPALIGN:\n"+alignOut)
+	if err != nil {
+		return strings.Join(logs, "\n\n"), err
+	}
+
+	// 8. Keytool (if debug.keystore missing)
+	keystore := filepath.Join(buildDir, "debug.keystore")
+	if keytool.Available {
+		runResolvedTool(ctx, project, "keytool", []string{
+			"-genkeypair", "-v", "-keystore", keystore, "-alias", "androiddebugkey",
+			"-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
+			"-storepass", "android", "-keypass", "android", "-dname", "CN=Debug, O=LocalCode, C=DE",
+		}, cfg)
+	}
+
+	// 9. apksigner
+	finalApk := filepath.Join(buildDir, "app-debug.apk")
+	signerOut, err := runResolvedTool(ctx, project, "apksigner", []string{
+		"sign", "--ks", keystore, "--ks-pass", "pass:android", "--key-pass", "pass:android",
+		"--out", finalApk, alignedApk,
+	}, cfg)
+	logs = append(logs, "APKSIGNER:\n"+signerOut)
+	if err != nil {
+		return strings.Join(logs, "\n\n"), err
+	}
+
+	return "ERKANNTES PROJEKT:\n" + projectInfo(project, cfg) + "\n\n" + strings.Join(logs, "\n\n") + "\n\nFINAL APK: " + finalApk, nil
+}
+
 func buildProject(ctx context.Context, project string, cfg Config) (string, error) {
 	plan := detectProjectPlan(project)
 	if plan.Kind == "unknown" {
-		return projectInfo(project, cfg), errors.New("build system could not be detected")
+		return projectInfo(project, cfg), errors.New("Kein Buildsystem oder keine Quellcode-Dateien erkannt. Wenn dies ein neues Projekt oder eine neue Android-App ist, erstelle zuerst die erforderlichen Quellcode-Dateien (z.B. AndroidManifest.xml, res/ und Java-Quellen mit write_file) und führe build_project danach erneut aus.")
+	}
+	if plan.Kind == "android-sdk" {
+		return buildAndroidSDKProject(ctx, project, cfg)
 	}
 	if plan.Kind == "node" && plan.BuildTool == "" {
 		return projectInfo(project, cfg), errors.New("package.json has no build script")
@@ -221,8 +445,8 @@ func findAPKs(project string) []string {
 
 func deployAndroid(ctx context.Context, project string, cfg Config) (string, error) {
 	plan := detectProjectPlan(project)
-	if plan.Kind != "android-gradle" {
-		return projectInfo(project, cfg), errors.New("selected project is not recognized as an Android Gradle project")
+	if plan.Kind != "android-gradle" && plan.Kind != "android-sdk" {
+		return projectInfo(project, cfg), errors.New("selected project is not recognized as an Android project")
 	}
 	buildOut, err := buildProject(ctx, project, cfg)
 	if err != nil {
@@ -264,4 +488,85 @@ func deployAndroid(ctx context.Context, project string, cfg Config) (string, err
 	installOut, installErr := runResolvedTool(ctx, project, "adb", args, cfg)
 	result := buildOut + "\n\nAPK: " + apk + "\nGERÄT: " + ready[0].Line + "\n\nADB INSTALL:\n" + installOut
 	return result, installErr
+}
+
+func appendFileToZipArchive(zipPath, filePath, entryName string) error {
+	dexBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	tmpZip := zipPath + ".tmp"
+	outFile, err := os.Create(tmpZip)
+	if err != nil {
+		return err
+	}
+	zw := zip.NewWriter(outFile)
+
+	for _, f := range r.File {
+		if f.Name == entryName {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			_ = zw.Close()
+			_ = outFile.Close()
+			_ = os.Remove(tmpZip)
+			return err
+		}
+		header := f.FileHeader
+		w, err := zw.CreateHeader(&header)
+		if err != nil {
+			_ = rc.Close()
+			_ = zw.Close()
+			_ = outFile.Close()
+			_ = os.Remove(tmpZip)
+			return err
+		}
+		_, err = io.Copy(w, rc)
+		_ = rc.Close()
+		if err != nil {
+			_ = zw.Close()
+			_ = outFile.Close()
+			_ = os.Remove(tmpZip)
+			return err
+		}
+	}
+
+	dexHeader := &zip.FileHeader{
+		Name:   entryName,
+		Method: zip.Store,
+	}
+	dexHeader.Modified = time.Now()
+	w, err := zw.CreateHeader(dexHeader)
+	if err != nil {
+		_ = zw.Close()
+		_ = outFile.Close()
+		_ = os.Remove(tmpZip)
+		return err
+	}
+	if _, err := w.Write(dexBytes); err != nil {
+		_ = zw.Close()
+		_ = outFile.Close()
+		_ = os.Remove(tmpZip)
+		return err
+	}
+
+	if err := zw.Close(); err != nil {
+		_ = outFile.Close()
+		_ = os.Remove(tmpZip)
+		return err
+	}
+	if err := outFile.Close(); err != nil {
+		_ = os.Remove(tmpZip)
+		return err
+	}
+	_ = r.Close()
+
+	return os.Rename(tmpZip, zipPath)
 }

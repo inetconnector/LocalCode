@@ -1,8 +1,8 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
 **Verified:** 2026-09-01 Europe/Berlin  
-**Authoritative merged base for this slice:** master `4aecbbd`  
-**Last merged functional PR:** #72 `feat: multi-agent architecture, ComputeMesh cluster, Doctor diagnostics, and bounded replanning`  
+**Authoritative merged base for this slice:** master `ee0b5f6`  
+**Last merged functional PR:** #72 `feat: multi-agent architecture, ComputeMesh cluster, Doctor diagnostics, and bounded replanning` (Docs: #73)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
