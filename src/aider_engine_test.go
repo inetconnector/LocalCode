@@ -337,7 +337,7 @@ exit 0`
 	if runtime.GOOS == "windows" {
 		path += ".cmd"
 		body = `@echo off
-if "%1"=="--version" (echo aider 0.86.2& exit /b 0)
+if "%~1"=="--version" (echo aider 0.86.2& exit /b 0)
 ping 127.0.0.1 -n 20 >nul
 exit /b 0`
 	}
