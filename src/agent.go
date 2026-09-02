@@ -242,17 +242,26 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.Project = projectOverride
 	}
 	project := s.Project
-	if model == "" {
-		model = s.Model
-	}
 	if project == "" {
 		s.mu.Unlock()
 		return errors.New("no project selected")
 	}
 	if model == "" {
-		s.mu.Unlock()
-		return errors.New("no model selected")
+		model = s.Model
 	}
+	if model == "" {
+		model = s.Config.LastModel
+	}
+	if model == "" && s.Ollama != nil {
+		model = s.Ollama.DefaultModel
+	}
+	if model == "" && s.Ollama != nil && len(s.Ollama.Models) > 0 {
+		model = s.Ollama.Models[0].Name
+	}
+	if model == "" {
+		model = "qwen2.5-coder:14b"
+	}
+	s.Model = model
 
 	continuation := s.Continuation
 	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0 && likelyContinuationAnswer(continuation.Question, userMessage)
