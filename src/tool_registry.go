@@ -64,7 +64,7 @@ var toolProfiles = []toolProfile{
 	{Name: "keytool", DisplayName: "Java Keytool", Aliases: []string{"keytool", "keytool.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/keytool.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
 	{Name: "jarsigner", DisplayName: "Java JAR Signer", Aliases: []string{"jarsigner", "jarsigner.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://docs.oracle.com/en/java/javase/21/docs/specs/man/jarsigner.html", InstallHint: "JDK oder Android Studio JBR installieren.", InstallKind: "winget", WingetID: "Microsoft.OpenJDK.17"},
 	{Name: "git", DisplayName: "Git", Aliases: []string{"git", "git.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://git-scm.com/docs", InstallHint: "Git for Windows oder eine portable MinGit-Version installieren.", InstallKind: "mingit", WingetID: "Git.Git"},
-	{Name: "powershell", DisplayName: "PowerShell", Aliases: []string{"powershell", "powershell.exe", "pwsh", "pwsh.exe"}, VersionArgs: []string{"-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"}, DocsURL: "https://learn.microsoft.com/powershell/", InstallHint: "Windows PowerShell aktivieren oder PowerShell 7 installieren.", InstallKind: "winget", WingetID: "Microsoft.PowerShell"},
+	{Name: "powershell", DisplayName: "PowerShell", Aliases: []string{"powershell", "powershell.exe"}, VersionArgs: []string{"-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"}, DocsURL: "https://learn.microsoft.com/powershell/", InstallHint: "Windows PowerShell aktivieren oder PowerShell 7 installieren.", InstallKind: "winget", WingetID: "Microsoft.PowerShell"},
 	{Name: "gh", DisplayName: "GitHub CLI", Aliases: []string{"gh", "gh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://cli.github.com/manual/", InstallHint: "GitHub CLI installieren; Login interaktiv mit gh auth login.", InstallKind: "gh-portable", WingetID: "GitHub.cli"},
 	{Name: "node", DisplayName: "Node.js", Aliases: []string{"node", "node.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://nodejs.org/docs/latest/api/", InstallHint: "Node.js LTS installieren.", InstallKind: "node-portable", WingetID: "OpenJS.NodeJS.LTS"},
 	{Name: "npm", DisplayName: "npm", Aliases: []string{"npm", "npm.cmd"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.npmjs.com/cli/", InstallHint: "Wird mit Node.js installiert.", InstallKind: "node-portable", WingetID: "OpenJS.NodeJS.LTS"},
@@ -85,6 +85,16 @@ var toolProfiles = []toolProfile{
 	{Name: "devenv", DisplayName: "Visual Studio IDE", Aliases: []string{"devenv", "devenv.exe"}, VersionArgs: []string{"/Command", "File.Exit"}, DocsURL: "https://learn.microsoft.com/visualstudio/ide/reference/devenv-command-line-switches", InstallHint: "Visual Studio installieren."},
 	{Name: "vswhere", DisplayName: "Visual Studio Locator", Aliases: []string{"vswhere", "vswhere.exe"}, VersionArgs: []string{"-help"}, DocsURL: "https://github.com/microsoft/vswhere", InstallHint: "vswhere wird mit Visual Studio Installer installiert."},
 	{Name: "nuget", DisplayName: "NuGet CLI", Aliases: []string{"nuget", "nuget.exe"}, VersionArgs: []string{"help"}, DocsURL: "https://learn.microsoft.com/nuget/reference/nuget-exe-cli-reference", InstallHint: "NuGet CLI installieren oder dotnet restore verwenden."},
+	{Name: "cmd", DisplayName: "Windows Command Prompt", Aliases: []string{"cmd", "cmd.exe"}, VersionArgs: []string{"/c", "ver"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/cmd", InstallHint: "In Windows standardmäßig enthalten."},
+	{Name: "wsl", DisplayName: "Windows Subsystem for Linux", Aliases: []string{"wsl", "wsl.exe"}, VersionArgs: []string{"--status"}, DocsURL: "https://learn.microsoft.com/windows/wsl/", InstallHint: "WSL mit 'wsl --install' aktivieren.", InstallKind: "winget", WingetID: "Microsoft.WSL"},
+	{Name: "bash", DisplayName: "GNU Bash / Git Bash", Aliases: []string{"bash", "bash.exe", "sh", "sh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.gnu.org/software/bash/", InstallHint: "Git for Windows (enthält Git Bash) oder WSL installieren.", InstallKind: "mingit", WingetID: "Git.Git"},
+	{Name: "pwsh", DisplayName: "PowerShell 7", Aliases: []string{"pwsh", "pwsh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://learn.microsoft.com/powershell/", InstallHint: "PowerShell 7 installieren.", InstallKind: "winget", WingetID: "Microsoft.PowerShell"},
+	{Name: "winget", DisplayName: "Windows Package Manager", Aliases: []string{"winget", "winget.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://learn.microsoft.com/windows/package-manager/winget/", InstallHint: "App-Installer über Microsoft Store installieren.", InstallKind: "winget", WingetID: "Microsoft.AppInstaller"},
+	{Name: "make", DisplayName: "GNU Make", Aliases: []string{"make", "make.exe", "mingw32-make", "mingw32-make.exe", "gmake", "gmake.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.gnu.org/software/make/", InstallHint: "GNU Make oder MinGW/MSYS2 installieren.", InstallKind: "winget", WingetID: "GnuWin32.Make"},
+	{Name: "gcc", DisplayName: "GCC C/C++ Compiler", Aliases: []string{"gcc", "gcc.exe", "g++", "g++.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://gcc.gnu.org/", InstallHint: "MinGW-w64 oder MSYS2 installieren.", InstallKind: "winget", WingetID: "BrechtSanders.WinLibs.POSIX.UCRT"},
+	{Name: "clang", DisplayName: "LLVM Clang Compiler", Aliases: []string{"clang", "clang.exe", "clang++", "clang++.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://clang.llvm.org/", InstallHint: "LLVM installieren.", InstallKind: "winget", WingetID: "LLVM.LLVM"},
+	{Name: "tar", DisplayName: "Tar Archiver", Aliases: []string{"tar", "tar.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/tar", InstallHint: "In Windows standardmäßig enthalten."},
+	{Name: "7z", DisplayName: "7-Zip Archiver", Aliases: []string{"7z", "7z.exe", "7za", "7za.exe"}, VersionArgs: []string{"-h"}, DocsURL: "https://www.7-zip.org/", InstallHint: "7-Zip installieren.", InstallKind: "winget", WingetID: "7zip.7zip"},
 }
 
 func canonicalToolName(name string) string {
@@ -328,6 +338,41 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 					add(m, "Visual Studio")
 				}
 			}
+		case "cmd":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "cmd.exe"), "Windows System32")
+		case "wsl":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "wsl.exe"), "Windows System32")
+		case "bash":
+			add(filepath.Join(pf, "Git", "bin", "bash.exe"), "Git Bash")
+			add(filepath.Join(pf, "Git", "usr", "bin", "bash.exe"), "Git Bash")
+			add(filepath.Join(pf86, "Git", "bin", "bash.exe"), "Git Bash")
+			add(filepath.Join(local, "Programs", "Git", "bin", "bash.exe"), "Git Bash")
+		case "pwsh":
+			add(filepath.Join(pf, "PowerShell", "7", "pwsh.exe"), "PowerShell 7")
+			add(filepath.Join(pf, "PowerShell", "7-preview", "pwsh.exe"), "PowerShell 7")
+			add(filepath.Join(local, "Microsoft", "WindowsApps", "pwsh.exe"), "WindowsApps")
+		case "winget":
+			add(filepath.Join(local, "Microsoft", "WindowsApps", "winget.exe"), "WindowsApps")
+		case "make":
+			add(filepath.Join(pf, "GnuWin32", "bin", "make.exe"), "GnuWin32")
+			add(filepath.Join(pf86, "GnuWin32", "bin", "make.exe"), "GnuWin32")
+			add("C:\\msys64\\usr\\bin\\make.exe", "MSYS2")
+			add("C:\\msys64\\mingw64\\bin\\mingw32-make.exe", "MSYS2")
+			add("C:\\MinGW\\bin\\mingw32-make.exe", "MinGW")
+		case "gcc":
+			add("C:\\msys64\\mingw64\\bin\\gcc.exe", "MSYS2")
+			add("C:\\msys64\\ucrt64\\bin\\gcc.exe", "MSYS2")
+			add("C:\\MinGW\\bin\\gcc.exe", "MinGW")
+			add(filepath.Join(local, "Programs", "WinLibs", "bin", "gcc.exe"), "WinLibs")
+		case "clang":
+			add(filepath.Join(pf, "LLVM", "bin", "clang.exe"), "LLVM")
+			add(filepath.Join(pf86, "LLVM", "bin", "clang.exe"), "LLVM")
+			add("C:\\msys64\\clang64\\bin\\clang.exe", "MSYS2")
+		case "tar":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "tar.exe"), "Windows System32")
+		case "7z":
+			add(filepath.Join(pf, "7-Zip", "7z.exe"), "7-Zip")
+			add(filepath.Join(pf86, "7-Zip", "7z.exe"), "7-Zip")
 		}
 	}
 	seen := map[string]bool{}

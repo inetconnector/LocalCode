@@ -511,6 +511,39 @@ func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {
 	}
 }
 
+func TestNewShellAndLinuxToolProfiles(t *testing.T) {
+	tools := []string{"cmd", "wsl", "bash", "pwsh", "winget", "make", "gcc", "clang", "tar", "7z"}
+	for _, name := range tools {
+		profile := profileForTool(name)
+		if profile.Name != name {
+			t.Fatalf("profileForTool(%q) = %q, want %q", name, profile.Name, name)
+		}
+		if profile.DisplayName == "" {
+			t.Fatalf("profile %q missing DisplayName", name)
+		}
+		if len(profile.VersionArgs) == 0 {
+			t.Fatalf("profile %q missing VersionArgs", name)
+		}
+		if profile.DocsURL == "" {
+			t.Fatalf("profile %q missing DocsURL", name)
+		}
+	}
+
+	if canonicalToolName("wsl.exe") != "wsl" || canonicalToolName("bash.exe") != "bash" || canonicalToolName("mingw32-make.exe") != "make" || canonicalToolName("clang++.exe") != "clang" || canonicalToolName("7za.exe") != "7z" {
+		t.Fatalf("canonicalToolName failed for aliases")
+	}
+
+	cfg := normalizeConfig(Config{SchemaVersion: 4, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	project := t.TempDir()
+
+	if runtime.GOOS == "windows" {
+		cmdInfo := discoverTool(project, "cmd", cfg, false)
+		if !cmdInfo.Available {
+			t.Fatalf("cmd must be discovered on Windows: %#v", cmdInfo)
+		}
+	}
+}
+
 func TestDetectProjectPlanAndroid(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "gradlew"), []byte("#!/bin/sh\n"), 0o755); err != nil {
