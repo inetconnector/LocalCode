@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package com.inetconnector.localcode.remote;
+package com.inetconnector.localcode;
 
 import android.Manifest;
 import android.app.Activity;
@@ -68,6 +68,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(0xFF0D0D0D);
+            getWindow().setNavigationBarColor(0xFF0D0D0D);
+        }
         nsdManager = (NsdManager) getSystemService(Context.NSD_SERVICE);
         buildUi();
         handleIntent(getIntent());

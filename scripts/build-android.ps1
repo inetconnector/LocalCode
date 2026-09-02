@@ -8,7 +8,10 @@ Set-StrictMode -Version Latest
 $repo = Split-Path -Parent $PSScriptRoot
 $androidRoot = Join-Path $repo 'android\app\src\main'
 $manifest = Join-Path $androidRoot 'AndroidManifest.xml'
-$javaSource = Join-Path $androidRoot 'java\com\inetconnector\localcode\remote\MainActivity.java'
+$javaSource = Join-Path $androidRoot 'java\com\inetconnector\localcode\MainActivity.java'
+if (-not (Test-Path -LiteralPath $javaSource -PathType Leaf)) {
+    $javaSource = Join-Path $androidRoot 'java\com\inetconnector\localcode\remote\MainActivity.java'
+}
 $resDir = Join-Path $androidRoot 'res'
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "Android manifest missing: $manifest" }
 if (-not (Test-Path -LiteralPath $javaSource -PathType Leaf)) { throw "Android source missing: $javaSource" }
@@ -96,11 +99,16 @@ try {
 & $zipalign -f 4 $unsigned $aligned
 if ($LASTEXITCODE -ne 0) { throw "zipalign failed with exit code $LASTEXITCODE" }
 
-& $keytool -genkeypair -keystore $keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
-if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
-
-& $apksigner sign --ks $keystore --ks-pass pass:android --key-pass pass:android --out $signed $aligned
-if ($LASTEXITCODE -ne 0) { throw "apksigner sign failed with exit code $LASTEXITCODE" }
+$releaseKeystore = '\\diskstation\dani\apk-sign\4711Google!'
+if (Test-Path -LiteralPath $releaseKeystore -PathType Leaf) {
+    & $apksigner sign --ks $releaseKeystore --ks-pass "pass:4711Google!" --ks-key-alias "key0" --key-pass "pass:4711Google!" --out $signed $aligned
+    if ($LASTEXITCODE -ne 0) { throw "apksigner release sign failed with exit code $LASTEXITCODE" }
+} else {
+    & $keytool -genkeypair -keystore $keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
+    if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
+    & $apksigner sign --ks $keystore --ks-pass pass:android --key-pass pass:android --out $signed $aligned
+    if ($LASTEXITCODE -ne 0) { throw "apksigner debug sign failed with exit code $LASTEXITCODE" }
+}
 & $apksigner verify --verbose $signed
 if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed with exit code $LASTEXITCODE" }
 
