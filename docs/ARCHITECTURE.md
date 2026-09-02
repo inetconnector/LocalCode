@@ -29,6 +29,8 @@ LocalCode trennt **logische Task-Parallelität** von **tatsächlicher Modellinfe
 - `src/types.go` – `Config`, `AppState`, gemeinsame Laufzeittypen.
 - `src/server.go` – Desktop Loopback HTTP/SSE API.
 - `src/remote_server.go` – separater Mobile-Remote-Server.
+- `src/remote_secure_server.go` / `src/remote_firewall_windows.go` – LAN-Remote-HTTPS, Discovery und nicht-erhöhende Firewall-Prüfung.
+- `android/app/src/main/java/com/inetconnector/localcode/MainActivity.java` – Android-WebView-Hülle mit gespeicherter Wiederverbindung, mDNS und LAN-Fallback-Probe.
 - `src/agent.go` – LocalCode-Native-Hauptschleife und Werkzeugdispatch.
 - `src/agent_team_types.go` – Rollen, Capabilities, Budget, Usage, Tasks und `AgentResult`.
 - `src/agent_task_graph.go` – DAG-Validierung und Dependency-Zustände.
@@ -165,7 +167,7 @@ Logical task parallelism is deliberately separated from actual model-inference p
 
 ### Core components
 
-The main boundaries are `src/server.go` (Desktop loopback), `src/remote_server.go` (Mobile Remote), `src/agent_factory.go` (Agent Factory & governance), `src/agent_mission_replanning.go` (DAG repair & replanning), `src/computemesh.go` (decentralized cluster subsystem), `src/doctor.go` (system health diagnostics), `scripts/test-automation-service.ps1` (E2E automation harness), `src/agent_mission.go` (Mission governance), `src/agent_scheduler*.go` (queue/admission/finalization), `src/run_journal.go` plus `src/run_journal_mission*.go` (single durable recovery authority and recovery layers), `src/desktop_mission_recovery.go` (Desktop inspection/continue transport), and `src/static/mission_status.js` (Desktop Mission/recovery UI).
+The main boundaries are `src/server.go` (Desktop loopback), `src/remote_server.go` (Mobile Remote), `src/remote_secure_server.go` / `src/remote_firewall_windows.go` (LAN Remote HTTPS, discovery and non-elevating firewall checks), `android/app/src/main/java/com/inetconnector/localcode/MainActivity.java` (Android WebView shell with saved reconnection, mDNS and LAN fallback probing), `src/agent_factory.go` (Agent Factory & governance), `src/agent_mission_replanning.go` (DAG repair & replanning), `src/computemesh.go` (decentralized cluster subsystem), `src/doctor.go` (system health diagnostics), `scripts/test-automation-service.ps1` (E2E automation harness), `src/agent_mission.go` (Mission governance), `src/agent_scheduler*.go` (queue/admission/finalization), `src/run_journal.go` plus `src/run_journal_mission*.go` (single durable recovery authority and recovery layers), `src/desktop_mission_recovery.go` (Desktop inspection/continue transport), and `src/static/mission_status.js` (Desktop Mission/recovery UI).
 
 ### Native Agent Teams
 

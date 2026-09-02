@@ -242,17 +242,23 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.Project = projectOverride
 	}
 	project := s.Project
-	if model == "" {
-		model = s.Model
-	}
 	if project == "" {
 		s.mu.Unlock()
 		return errors.New("no project selected")
 	}
 	if model == "" {
-		s.mu.Unlock()
-		return errors.New("no model selected")
+		model = s.Model
 	}
+	if model == "" {
+		model = s.Config.LastModel
+	}
+	if model == "" && s.Config.OllamaDefaultModel != "" {
+		model = s.Config.OllamaDefaultModel
+	}
+	if model == "" {
+		model = "qwen2.5-coder:14b"
+	}
+	s.Model = model
 
 	continuation := s.Continuation
 	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0 && likelyContinuationAnswer(continuation.Question, userMessage)
@@ -550,6 +556,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	instructions := projectInstructionContext(project, userMessage)
 	s.mu.RLock()
 	cfg := s.Config
+	recentContext := recentThreadContextForAgent(s.Events, userMessage)
 	s.mu.RUnlock()
 	recoveryContext, recoveredTask := s.consumeRecoveryContextForTask(project, userMessage)
 	effectiveTask := userMessage
@@ -573,7 +580,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), effectiveTask, attachmentContext, qualityHint, automationHint)}}
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -589,6 +596,86 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 
 	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", effectiveTask)
 	runAfterHook = outcome == "done"
+}
+
+func recentThreadContextForAgent(events []UIEvent, currentUserMessage string) string {
+	currentUserMessage = strings.TrimSpace(currentUserMessage)
+	if len(events) == 0 {
+		return ""
+	}
+	items := []string{}
+	for i := len(events) - 1; i >= 0 && len(items) < 8; i-- {
+		ev := events[i]
+		if agentContextEventIsTransient(ev.Type) {
+			continue
+		}
+		text := strings.TrimSpace(ev.Message)
+		detail := strings.TrimSpace(ev.Detail)
+		if detail != "" && agentContextEventShouldIncludeDetail(ev.Type) {
+			if text != "" {
+				text += "\n" + detail
+			} else {
+				text = detail
+			}
+		}
+		if text == "" {
+			continue
+		}
+		if ev.Type == "user" && currentUserMessage != "" && strings.EqualFold(text, currentUserMessage) {
+			continue
+		}
+		items = append(items, agentContextEventLabel(ev)+": "+truncateText(text, 1800))
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+		items[left], items[right] = items[right], items[left]
+	}
+	return "\n\nTHREAD-KONTEXT:\n" + strings.Join(items, "\n\n") + "\n\nKurze Folgeaufgaben wie \"zeige Links\" oder \"mach das\" beziehen sich auf diesen sichtbaren Verlauf. Frage nur nach, wenn der Bezug auch mit diesem Kontext nicht bestimmbar ist."
+}
+
+func agentContextEventIsTransient(eventType string) bool {
+	switch eventType {
+	case "status", "progress", "action_running", "approval", "approval_required":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventShouldIncludeDetail(eventType string) bool {
+	switch eventType {
+	case "final", "question", "tool_result", "tool_error", "warning", "error", "action_done":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventLabel(ev UIEvent) string {
+	switch ev.Type {
+	case "user":
+		return "Nutzer"
+	case "final":
+		return "Letzte Antwort"
+	case "question":
+		return "Rueckfrage"
+	case "tool_result", "action_done":
+		if strings.TrimSpace(ev.Action) != "" {
+			return "Werkzeug " + ev.Action
+		}
+		return "Werkzeug"
+	case "tool_error", "error":
+		return "Fehler"
+	case "warning":
+		return "Warnung"
+	default:
+		if strings.TrimSpace(ev.Action) != "" {
+			return ev.Type + " " + ev.Action
+		}
+		return ev.Type
+	}
 }
 
 func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, model, userMessage string, attachments []Attachment, continuation *AgentContinuation) {

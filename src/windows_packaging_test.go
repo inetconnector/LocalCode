@@ -61,6 +61,30 @@ func TestStartBatchTracksPowerShellBuildDriver(t *testing.T) {
 	if !strings.Contains(strings.ToLower(string(checker)), `scripts\build.ps1`) {
 		t.Fatal("scripts\\needs-build.ps1 does not track scripts\\build.ps1")
 	}
+	for _, required := range []string{"build-state.json", "git_status_sha256", "Write-CheckLog"} {
+		if !strings.Contains(string(checker), required) {
+			t.Fatalf("scripts\\needs-build.ps1 is missing fast-start marker %q", required)
+		}
+	}
+}
+
+func TestStartBatchUsesFastLoggedDialogFreeLaunch(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "START.bat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{
+		`logs`,
+		`start.log`,
+		`LOCALCODE_FAST_START=1`,
+		`LOCALCODE_SUPPRESS_FATAL_DIALOGS=1`,
+		`-LogPath "%START_LOG%"`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("START.bat is missing fast logged launch marker %q", required)
+		}
+	}
 }
 
 func TestBuildBatchUsesPowerShellDriver(t *testing.T) {
@@ -84,6 +108,8 @@ func TestBuildBatchUsesPowerShellDriver(t *testing.T) {
 		"Building Windows GUI",
 		"LocalCode.exe",
 		"LocalCode-Debug.exe",
+		"build-state.json",
+		"git_status_sha256",
 	} {
 		if !strings.Contains(driverText, required) {
 			t.Errorf("build driver is missing %q", required)

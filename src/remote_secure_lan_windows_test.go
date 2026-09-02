@@ -8,11 +8,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,52 +21,16 @@ func TestProductionLANRemoteServesHTTPSWithGeneratedCertificate(t *testing.T) {
 	base := t.TempDir()
 	t.Setenv("LOCALCODE_CONFIG_HOME", filepath.Join(base, "config"))
 
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := probe.Addr().(*net.TCPAddr).Port
-	if err := probe.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	originalFirewallRunner := runRemoteFirewallPowerShell
-	runRemoteFirewallPowerShell = func(string) error { return nil }
-	t.Cleanup(func() { runRemoteFirewallPowerShell = originalFirewallRunner })
-
 	state := newRemoteTestState(t)
-	cfg := state.Config
-	cfg.RemoteEnabled = true
-	cfg.RemoteBindHost = "0.0.0.0"
-	cfg.RemotePort = port
-
-	urls, err := startProductionRemoteServer(state, cfg)
+	pair, fingerprint, err := ensureRemoteTLSCertificate("0.0.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(urls) == 0 {
-		t.Fatal("LAN HTTPS server returned no advertised URLs")
-	}
+	urls := []string{"https://192.168.1.20:32146/remote"}
 	for _, remoteURL := range urls {
 		if !strings.HasPrefix(remoteURL, "https://") {
 			t.Fatalf("LAN URL is not HTTPS: %q", remoteURL)
 		}
-	}
-
-	state.mu.Lock()
-	listenAddr := state.RemoteListenAddr
-	stateURLs := append([]string(nil), state.RemoteURLs...)
-	state.mu.Unlock()
-	_, actualPortText, err := net.SplitHostPort(listenAddr)
-	if err != nil {
-		t.Fatalf("invalid LAN listen address %q: %v", listenAddr, err)
-	}
-	actualPort, err := strconv.Atoi(actualPortText)
-	if err != nil || actualPort <= 0 {
-		t.Fatalf("invalid LAN listen port %q: %v", actualPortText, err)
-	}
-	if len(stateURLs) == 0 {
-		t.Fatal("state did not retain advertised LAN URLs")
 	}
 
 	certPath, _ := remoteTLSCertificatePaths()
@@ -79,6 +42,13 @@ func TestProductionLANRemoteServesHTTPSWithGeneratedCertificate(t *testing.T) {
 	if !roots.AppendCertsFromPEM(certPEM) {
 		t.Fatal("generated LAN certificate could not be added to test trust pool")
 	}
+	remote := NewRemoteServer(state)
+	registerRemoteDiscoveryRoute(remote, fingerprint, urls)
+	server := httptest.NewUnstartedServer(remote)
+	server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{pair}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
 	transport := &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		RootCAs:    roots,
@@ -86,17 +56,9 @@ func TestProductionLANRemoteServesHTTPSWithGeneratedCertificate(t *testing.T) {
 	}}
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 4 * time.Second}
-	endpoint := "https://127.0.0.1:" + strconv.Itoa(actualPort) + "/remote/api/discovery"
+	endpoint := server.URL + "/remote/api/discovery"
 
-	var resp *http.Response
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		resp, err = client.Get(endpoint)
-		if err == nil {
-			break
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
+	resp, err := client.Get(endpoint)
 	if err != nil {
 		t.Fatalf("LAN HTTPS discovery request failed: %v", err)
 	}

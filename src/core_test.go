@@ -1755,7 +1755,7 @@ func TestRemoteTabsSupportSwipeGestures(t *testing.T) {
 	}
 	html := string(data)
 	for _, required := range []string{
-		`const viewOrder=['tasks','projects','trash','approve','review','new'];`,
+		`const viewOrder=['new','tasks','projects','trash','review'];`,
 		`function swipeView(step)`,
 		`function bindSwipe()`,
 		`touchstart`,
@@ -1805,6 +1805,26 @@ func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
 	}
 	if strings.Contains(html, `accept="image/*`) {
 		t.Fatal("remote file picker should allow all file types")
+	}
+}
+
+func TestRecentThreadContextKeepsPriorResultsForShortFollowups(t *testing.T) {
+	events := []UIEvent{
+		{Type: "status", Message: "Agent arbeitet", Detail: "qwen2.5-coder:14b"},
+		{Type: "progress", Message: "Modellschritt 1 von 60"},
+		{Type: "final", Message: "Dachdecker in Veitshoechheim gefunden.", Detail: "https://example.invalid/dachdecker"},
+		{Type: "user", Message: "Zeige Links"},
+	}
+	got := recentThreadContextForAgent(events, "Zeige Links")
+	for _, want := range []string{"THREAD-KONTEXT", "Dachdecker in Veitshoechheim", "https://example.invalid/dachdecker", "zeige Links"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("recent context missing %q: %s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"Agent arbeitet", "Modellschritt 1 von 60", "Nutzer: Zeige Links"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("recent context retained transient/current event %q: %s", forbidden, got)
+		}
 	}
 }
 
