@@ -527,7 +527,11 @@ func runDirectTool(ctx context.Context, project, path string, args []string, cfg
 	} else {
 		cmd = exec.Command(path, args...)
 	}
-	cmd.Dir = project
+	if canonicalToolName(path) == "adb" && len(args) > 0 && (args[0] == "devices" || args[0] == "version" || args[0] == "start-server" || args[0] == "kill-server") {
+		cmd.Dir = os.TempDir()
+	} else {
+		cmd.Dir = project
+	}
 	cmd.Env = commandEnvironment(cfg)
 	hideCommandWindow(cmd)
 	var stdout, stderr bytes.Buffer
