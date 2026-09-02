@@ -3,8 +3,8 @@
 **Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `8032ff8` (Tag: `v6.6.0`)  
-**Last merged functional PR:** #80 `feat: complete QEMU/VM sandbox orchestration and doctor diagnostics` (Benchmarks: #79, Docs: #78, ADB: #77, Fixes: #75, Pipeline: #74)  
+**Current authoritative merged master:** `2c46afd` (Tag: `v6.7.0`)  
+**Last merged functional PR:** #82 `feat: overhaul Android Remote app to state-of-the-art OpenAI style and namespace com.inetconnector.localcode` (VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
