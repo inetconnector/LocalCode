@@ -43,6 +43,8 @@ func classifyTaskIntent(task string) taskIntent {
 		intent.GitRequested = true
 	case containsAny("implementiere", "baue", "bau ", "entwickle", "erstelle", "fixe", "behebe", "repariere", "ändere", "aendere", "ergänze", "ergaenze", "füge hinzu", "fuege hinzu", "kopiere", "verschiebe", "benenne um", "male", "zeichne", "generiere ein bild", "portiere", "refaktoriere", "übersetze", "uebersetze", "implement", "develop", "create", "fix", "repair", "change", "add feature", "copy", "move", "rename", "draw", "paint", "generate image", "refactor", "translate"):
 		intent.Kind = "edit"
+	case containsAny("was steht da", "was steht hier", "was steht auf dem bild", "was steht im bild", "was steht im screenshot", "was steht drauf", "lies den text", "lies das bild", "lies das", "lies mal", "lese den text", "lese das bild", "lies den screenshot", "text erkennen", "erkenne den text", "text auslesen", "was ist auf dem bild", "was ist auf dem screenshot", "was ist auf dem foto", "was zeigt das bild", "was zeigt der screenshot", "beschreibe das bild", "beschreibe den screenshot", "bild analysieren", "screenshot analysieren", "foto analysieren", "was siehst du", "was ist das", "was ist zu sehen", "erkläre das bild", "erklaere das bild", "bildinhalt", "ocr", "transkribiere", "transkription", "vorlesen", "entziffere", "entziffern", "in der tabelle", "auf dem zettel", "im dokument", "what is written", "what does it say", "what is that", "read this", "read the text", "read the image", "read the screenshot", "what is on the image", "what is on the screenshot", "describe the image", "what do you see", "explain the image", "image content", "read aloud", "decipher"):
+		intent.Kind = "image_query"
 	case containsAny("analysiere das projekt", "analysiere projekt", "pruefe das projekt", "untersuche das projekt", "projekt analysieren"):
 		intent.Kind = "analyze"
 	}
@@ -245,11 +247,43 @@ func actionAllowedForIntent(intent taskIntent, action AgentAction) (bool, string
 			return false, "Die aktuelle Aufgabe ist eine Internetrecherche. Verwende web_search und web_fetch, nicht Git-, Datei- oder Buildaktionen."
 		}
 	}
+	if intent.Kind == "image_query" {
+		switch action.Action {
+		case "finish", "ask_user":
+			return true, ""
+		default:
+			return false, "Die aktuelle Aufgabe ist eine Bild- oder Textanalyse des beigefügten Bildes. Lies keine unbeteiligten Projektdateien und verändere keine Dateien. Schließe die Aufgabe direkt mit finish und der Bildantwort ab."
+		}
+	}
 	return true, ""
+}
+
+func extractImageAnalysisFromMessages(messages []OllamaMessage) string {
+	for _, m := range messages {
+		if idx := strings.Index(m.Content, "BILDANALYSE ("); idx != -1 {
+			rem := m.Content[idx:]
+			endHeader := strings.Index(rem, "):\n")
+			if endHeader != -1 {
+				body := rem[endHeader+3:]
+				for _, stopMarker := range []string{"\n\nQUALITÄTSHINWEIS:", "\n\nAUTOMATISIERUNGSHINWEIS:", "\n\nPROJEKT:", "\n\nAUFGABE:", "\n\nENGINE-HINWEIS:"} {
+					if stopIdx := strings.Index(body, stopMarker); stopIdx != -1 {
+						body = body[:stopIdx]
+					}
+				}
+				return strings.TrimSpace(body)
+			}
+		}
+	}
+	return ""
 }
 
 func supervisedFallbackReport(intent taskIntent, project string, cfg Config, messages []OllamaMessage) string {
 	switch intent.Kind {
+	case "image_query":
+		if analysis := extractImageAnalysisFromMessages(messages); analysis != "" {
+			return analysis
+		}
+		return "Die Bildanalyse konnte nicht abgeschlossen werden."
 	case "analyze":
 		info := projectInfo(project, cfg)
 		tree, err := projectTree(project, "", 3, 220)

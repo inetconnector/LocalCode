@@ -1499,7 +1499,7 @@ func TestAgentUsesImageAnalysisBeforeCoding(t *testing.T) {
 				t.Fatal("vision call was not made")
 			}
 			for _, event := range events {
-				if event.Type == "final" && strings.Contains(event.Message, "Bild und Projekt") {
+				if event.Type == "final" && (strings.Contains(event.Message, "Screenshot: roter Fehlerdialog.") || strings.Contains(event.Message, "Bild und Projekt")) {
 					return
 				}
 			}

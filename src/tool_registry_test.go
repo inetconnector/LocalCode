@@ -594,6 +594,41 @@ func TestAnalyzeIntentDoesNotRequireGitOrWrites(t *testing.T) {
 	}
 }
 
+func TestImageQueryIntentAndImmediateCompletion(t *testing.T) {
+	queries := []string{
+		"was steht da",
+		"Was steht da?",
+		"lies den Text auf dem Bild",
+		"was ist auf dem bild zu sehen",
+		"ocr",
+		"what is written on the image",
+		"what does it say",
+		"lies das",
+		"beschreibe das bild",
+	}
+	for _, q := range queries {
+		intent := classifyTaskIntent(q)
+		if intent.Kind != "image_query" {
+			t.Fatalf("classifyTaskIntent(%q) = %q, want image_query", q, intent.Kind)
+		}
+		if allowed, _ := actionAllowedForIntent(intent, AgentAction{Action: "finish"}); !allowed {
+			t.Fatalf("finish must be allowed for image_query (%s)", q)
+		}
+		if allowed, _ := actionAllowedForIntent(intent, AgentAction{Action: "replace_text", Path: "README.md"}); allowed {
+			t.Fatalf("file mutation must not be allowed for image_query (%s)", q)
+		}
+	}
+
+	messages := []OllamaMessage{
+		{Role: "system", Content: "Du bist LocalCode."},
+		{Role: "user", Content: "PROJEKT: demo\n\nAUFGABE:\nwas steht da\n\nBILDANALYSE (gemma3:4b):\nAuf dem Bild steht: Willkommen bei LocalCode!\n\nQUALITÄTSHINWEIS:\n..."},
+	}
+	extracted := extractImageAnalysisFromMessages(messages)
+	if extracted != "Auf dem Bild steht: Willkommen bei LocalCode!" {
+		t.Fatalf("unexpected extracted analysis: %q", extracted)
+	}
+}
+
 func TestGitContextDoesNotExposeFatalStatusForAnalysis(t *testing.T) {
 	project := t.TempDir()
 	cfg := normalizeConfig(Config{SchemaVersion: 4, GitEnabled: true, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
