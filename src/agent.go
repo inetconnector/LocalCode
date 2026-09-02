@@ -252,11 +252,8 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	if model == "" {
 		model = s.Config.LastModel
 	}
-	if model == "" && s.Ollama != nil {
-		model = s.Ollama.DefaultModel
-	}
-	if model == "" && s.Ollama != nil && len(s.Ollama.Models) > 0 {
-		model = s.Ollama.Models[0].Name
+	if model == "" && s.Config.OllamaDefaultModel != "" {
+		model = s.Config.OllamaDefaultModel
 	}
 	if model == "" {
 		model = "qwen2.5-coder:14b"
