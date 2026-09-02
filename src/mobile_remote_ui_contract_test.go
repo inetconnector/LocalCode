@@ -79,10 +79,14 @@ func TestMobileRemoteComposerButtonsDoNotImplicitlySubmit(t *testing.T) {
 }
 
 func TestAndroidRemoteInputBridgeClosesCallbacksAndSurfacesErrors(t *testing.T) {
-	path := filepath.Join("..", "android", "app", "src", "main", "java", "com", "inetconnector", "localcode", "remote", "MainActivity.java")
+	path := filepath.Join("..", "android", "app", "src", "main", "java", "com", "inetconnector", "localcode", "MainActivity.java")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatal(err)
+		path = filepath.Join("..", "android", "app", "src", "main", "java", "com", "inetconnector", "localcode", "remote", "MainActivity.java")
+		data, err = os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	text := string(data)
 

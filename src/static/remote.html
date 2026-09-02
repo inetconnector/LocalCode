@@ -3,50 +3,721 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1626">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>LocalCode Remote</title>
 <style>
-:root{color-scheme:dark;--bg:#0f1626;--top:#0a111d;--panel:#202226;--card:#303642;--text:#f5f7fb;--muted:#a6aab3;--soft:#747984;--line:#343943;--accent:#06b6d4;--danger:#ef7070;--ok:#54d18c;--warn:#f7c65f;--font:Inter,"Segoe UI",system-ui,sans-serif;--code:"Cascadia Mono",Consolas,monospace}
-*{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:16px/1.45 var(--font)}button,input,textarea,select{font:inherit;color:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}.hidden{display:none!important}
-.app{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr);background:linear-gradient(#121a2b,#0f1626)}.top{height:calc(70px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 18px 0;background:var(--top);display:flex;align-items:center;gap:12px}.mark{width:34px;height:34px;display:grid;place-items:center}.mark svg{width:30px;height:30px;fill:currentColor}.title{min-width:0;flex:1}.title b{display:block;font-size:17px}.title span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.status-dot{width:10px;height:10px;border-radius:50%;background:var(--soft)}.status-dot.on{background:var(--ok)}.status-dot.warn{background:var(--warn)}
-.gear-btn{width:36px;height:36px;border:0;border-radius:10px;background:#202634;display:grid;place-items:center;font-size:18px;color:#d1d5db;margin-left:4px}.gear-btn:active{transform:scale(.95)}
-.tabs{height:48px;background:var(--top);display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #172033;overflow:auto}.tab{height:34px;border:0;border-radius:999px;background:transparent;color:var(--muted);padding:0 13px;white-space:nowrap}.tab.active{background:#273041;color:#fff}
-.main{min-height:0;overflow:hidden;position:relative}.view{height:100%;overflow:auto;padding:18px 16px 150px;scrollbar-width:none}.view::-webkit-scrollbar{display:none}.empty{height:100%;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}.empty h1{margin:0 0 12px;color:#fff;font-size:36px}.empty p{margin:0;font-size:18px;line-height:1.55}.section-title{font-size:12px;text-transform:uppercase;letter-spacing:.11em;color:var(--soft);font-weight:750;margin:16px 0 6px}
-.row{border:0;background:transparent;width:100%;min-height:58px;padding:10px 3px;display:flex;gap:12px;align-items:center;text-align:left;border-bottom:1px solid rgba(255,255,255,.06)}.row-icon{width:36px;height:36px;border-radius:12px;background:#252c3b;display:grid;place-items:center;color:#d9dde6;font-weight:700}.row-main{min-width:0;flex:1}.row-title{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-sub{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-meta{font-size:12px;color:var(--soft)}
-.action-card{background:#171f2e;border:1px solid #2b3547;border-radius:18px;padding:16px;margin:12px 0}.action-card h2{font-size:18px;margin:0 0 5px}.action-card p{font-size:13px;color:var(--muted);margin:0 0 14px}.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.action-grid button{min-height:46px;border:0;border-radius:13px;font-weight:750;padding:8px 10px;background:#303746}.action-grid .primary{background:var(--accent);color:#061319}.action-grid .danger{background:#4a2527;color:#ffd8d8;border:1px solid #744044}.action-grid .store{grid-column:1/-1;background:#235f9f;color:#fff}.action-grid .trash{grid-column:1/-1;background:#293746;color:#dce7ef}.selected-project{font:12px/1.5 var(--code);overflow-wrap:anywhere;color:#cbd2df;background:#090d15;border-radius:10px;padding:9px;margin-top:10px}.trash-card{background:#171f2e;border:1px solid #2b3547;border-radius:16px;padding:13px;margin:10px 0}.trash-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.trash-actions button{min-height:42px;border:1px solid #405063;border-radius:11px;background:#293746;font-weight:750}.trash-actions .purge{background:#4a2527;border-color:#744044;color:#ffd8d8}
-.bubble-row{display:flex;margin:20px 0;gap:10px}.bubble-row.user{justify-content:flex-end}.bubble{max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere}.bubble-row.user .bubble{background:#333947;border-radius:28px;padding:12px 17px;font-size:18px}.bubble-row.agent .bubble{font-size:20px;line-height:1.55}.event-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;color:var(--muted);font-size:13px}.event-chip{display:inline-flex;border-radius:9px;background:#303642;padding:4px 8px;color:#c7cad1}.code{margin-top:9px;background:#06080c;border:1px solid #242936;border-radius:10px;padding:10px;white-space:pre-wrap;font:12px/1.5 var(--code);color:#d8dde8;max-height:220px;overflow:auto}
-.approval-card{background:#211c11;border:1px solid #7c6030;border-radius:14px;padding:14px;margin:12px 0}.approval-card h2{font-size:17px;margin:0 0 8px}.approval-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.approval-actions button{height:42px;border-radius:12px;border:0;font-weight:700}.approve{background:#f3f5f4;color:#101215}.always{background:#235f9f;color:#fff}.reject{background:#3b2424;color:#ffd6d6;border:1px solid #704141!important}
-.tool-step{background:#181e2b;border:1px solid #273041;border-radius:14px;padding:8px 12px;margin:8px 0;font-size:14px}.event-summary{cursor:pointer;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px}.tool-step[open] .event-summary{color:var(--text);margin-bottom:8px}.tool-chevron{display:inline-block;transition:transform .2s}.tool-step[open] .tool-chevron{transform:rotate(90deg)}.final-result .bubble{border-left:3px solid var(--ok);background:#16241c}
-.composer{position:absolute;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#202226;border:1px solid #4a4d55;border-radius:34px;padding:14px 14px 12px;box-shadow:0 22px 70px rgba(0,0,0,.45)}.composer.drag{border-color:var(--accent);box-shadow:0 0 0 3px rgba(6,182,212,.24),0 22px 70px rgba(0,0,0,.45)}.attachments{display:flex;gap:8px;overflow:auto;padding:0 0 8px}.att{height:38px;max-width:180px;border-radius:12px;background:#30333a;display:flex;align-items:center;gap:7px;padding:0 10px;font-size:13px}.att span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.att button{width:22px;height:22px;border:0;border-radius:50%;background:#50545d}textarea{width:100%;min-height:62px;max-height:180px;resize:none;border:0;outline:0;background:transparent;padding:4px 40px 8px;font-size:22px;line-height:1.35}textarea::placeholder{color:#b1b1b1}.toolbar{display:flex;align-items:center;gap:10px}.round{width:48px;height:48px;border:0;border-radius:50%;background:#33363d;display:grid;place-items:center;flex:0 0 auto}.round svg{width:22px;height:22px}.round.primary{background:var(--accent)}.round.send{margin-left:auto;background:#a3a3a3;color:#171717}.round.send:disabled{opacity:.45}.model-chip{flex:1 1 140px;min-width:0;height:38px;border:0;border-radius:12px;background:#343842;padding:0 10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pair{height:100%;display:grid;place-items:start center;overflow:auto;-webkit-overflow-scrolling:touch;padding:48px 24px 24px;background:#0f1626}.pair-card{width:min(430px,100%);background:#101827;border:1px solid #2c3444;border-radius:24px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.35)}.pair-card form{margin:0}.pair-card h1{margin:0 0 8px;font-size:28px}.pair-card p{margin:0 0 18px;color:var(--muted)}
-.scan-qr-btn{width:100%;height:54px;border:0;border-radius:16px;background:linear-gradient(135deg,#06b6d4,#2563eb);color:#fff;font-size:18px;font-weight:750;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 24px rgba(6,182,212,.3);transition:transform .15s;margin-bottom:8px}.scan-qr-btn:active{transform:scale(.98)}.cam-icon{font-size:22px}
-.pair-divider{display:flex;align-items:center;text-align:center;color:var(--soft);font-size:13px;margin:18px 0 14px}.pair-divider::before,.pair-divider::after{content:'';flex:1;border-bottom:1px solid #283040}
+:root{
+  color-scheme:dark;
+  --bg:#0d0d0d;
+  --surface:#171717;
+  --panel:#212121;
+  --card:#2f2f2f;
+  --card-hover:#383838;
+  --border:rgba(255,255,255,0.08);
+  --border-focus:rgba(255,255,255,0.25);
+  --text:#f5f5f5;
+  --text-muted:#8e8e8e;
+  --text-soft:#666666;
+  --accent:#ffffff;
+  --accent-invert:#000000;
+  --openai-teal:#10a37f;
+  --danger:#ef4444;
+  --danger-bg:#3d1a1c;
+  --ok:#22c55e;
+  --warn:#f59e0b;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  --code:"Cascadia Mono","SF Mono",Consolas,Menlo,monospace;
+  --radius-pill:9999px;
+  --radius-lg:20px;
+  --radius-md:14px;
+  --radius-sm:8px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:16px/1.5 var(--font);touch-action:manipulation}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:transparent}
+.hidden{display:none!important}
+
+/* Main App Layout */
+.app{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr);background:var(--bg);position:relative;overflow:hidden}
+
+/* OpenAI-Style Header */
+.top{
+  height:calc(56px + env(safe-area-inset-top));
+  padding:env(safe-area-inset-top) 12px 0;
+  background:rgba(13,13,13,0.85);
+  -webkit-backdrop-filter:blur(16px);
+  backdrop-filter:blur(16px);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  z-index:20;
+}
+.header-btn{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:var(--text);
+  transition:background .15s;
+}
+.header-btn:active{background:var(--panel)}
+.header-btn svg{width:22px;height:22px;fill:currentColor}
+
+/* Model / Project Pill in Header */
+.model-pill-btn{
+  height:36px;
+  padding:0 14px;
+  border-radius:var(--radius-pill);
+  background:var(--surface);
+  border:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-weight:600;
+  font-size:14px;
+  color:var(--text);
+  max-width:200px;
+}
+.model-pill-btn:active{background:var(--panel)}
+.model-pill-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text-soft);flex-shrink:0}
+.status-dot.on{background:var(--ok)}
+.status-dot.warn{background:var(--warn)}
+.gear-btn{display:none} /* Backward compatibility ref */
+
+/* Navigation Tabs Bar (Desktop/Swipeable) */
+.tabs{
+  height:40px;
+  background:var(--surface);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 12px;
+  border-bottom:1px solid var(--border);
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  height:28px;
+  border-radius:var(--radius-pill);
+  background:transparent;
+  color:var(--text-muted);
+  font-size:13px;
+  font-weight:600;
+  padding:0 12px;
+  white-space:nowrap;
+  transition:all .15s;
+}
+.tab.active{background:var(--panel);color:var(--text)}
+
+/* Sidebar Drawer (ChatGPT-Style) */
+.drawer-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.65);
+  -webkit-backdrop-filter:blur(4px);
+  backdrop-filter:blur(4px);
+  z-index:90;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .25s ease;
+}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;
+  top:0;
+  bottom:0;
+  left:0;
+  width:min(320px,85vw);
+  background:#171717;
+  border-right:1px solid var(--border);
+  z-index:100;
+  transform:translateX(-100%);
+  transition:transform .28s cubic-bezier(0.16,1,0.3,1);
+  display:flex;
+  flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.drawer.open{transform:translateX(0)}
+.drawer-header{
+  padding:14px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.drawer-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.drawer-search{
+  margin:12px 14px 6px;
+  height:40px;
+  background:#212121;
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  padding:0 12px;
+  font-size:14px;
+  color:var(--text);
+  outline:none;
+}
+.drawer-search:focus{border-color:var(--border-focus)}
+.drawer-content{
+  flex:1;
+  overflow-y:auto;
+  padding:8px 12px;
+  scrollbar-width:none;
+}
+.drawer-content::-webkit-scrollbar{display:none}
+.drawer-section-title{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--text-soft);
+  margin:16px 8px 6px;
+}
+.drawer-item{
+  width:100%;
+  min-height:42px;
+  padding:8px 10px;
+  border-radius:var(--radius-md);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  text-align:left;
+  font-size:14px;
+  color:var(--text);
+  transition:background .12s;
+}
+.drawer-item:active,.drawer-item.active{background:#262626}
+.drawer-item-icon{font-size:16px;width:24px;text-align:center;color:var(--text-muted);flex-shrink:0}
+.drawer-item-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.drawer-item-meta{font-size:12px;color:var(--text-muted)}
+.drawer-footer{
+  padding:12px 14px;
+  border-top:1px solid var(--border);
+  background:#141414;
+}
+
+/* Chat & Views Container */
+.main{min-height:0;overflow:hidden;position:relative;height:100%}
+.view{
+  height:100%;
+  overflow-y:auto;
+  padding:16px 14px 160px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.view::-webkit-scrollbar{display:none}
+
+/* Empty State */
+.empty{
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:24px;
+  color:var(--text-muted);
+}
+.empty-logo{
+  width:48px;
+  height:48px;
+  border-radius:50%;
+  background:var(--surface);
+  border:1px solid var(--border);
+  display:grid;
+  place-items:center;
+  margin-bottom:14px;
+  color:var(--text);
+}
+.empty h1{margin:0 0 6px;color:#fff;font-size:24px;font-weight:700}
+.empty p{margin:0;font-size:15px;line-height:1.5;max-width:280px}
+
+/* Chat Bubbles (OpenAI Style) */
+.bubble-row{display:flex;margin:16px 0;gap:10px}
+.bubble-row.user{justify-content:flex-end}
+.bubble{max-width:86%;word-break:break-word;line-height:1.55}
+.bubble-row.user .bubble{
+  background:var(--card);
+  color:#ffffff;
+  border-radius:20px;
+  padding:11px 16px;
+  font-size:16px;
+}
+.bubble-row.agent .bubble{
+  font-size:16px;
+  color:#f0f0f0;
+  width:100%;
+  max-width:100%;
+}
+.code{
+  margin:10px 0;
+  background:#000000;
+  border:1px solid #2a2a2a;
+  border-radius:var(--radius-md);
+  padding:12px;
+  font:13px/1.45 var(--code);
+  color:#e0e0e0;
+  overflow-x:auto;
+  white-space:pre;
+  position:relative;
+}
+.code-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:8px;
+  padding-bottom:6px;
+  border-bottom:1px solid #222;
+  font-size:12px;
+  color:var(--text-muted);
+}
+.copy-code-btn{
+  font-size:11px;
+  padding:2px 8px;
+  border-radius:4px;
+  background:#262626;
+  color:#fff;
+}
+.event-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.event-chip{
+  display:inline-flex;
+  border-radius:var(--radius-sm);
+  background:var(--panel);
+  padding:3px 8px;
+  color:var(--text-muted);
+  font-size:12px;
+  border:1px solid var(--border);
+}
+
+/* Tool Accordion Step */
+.tool-step{
+  background:#141414;
+  border:1px solid #242424;
+  border-radius:var(--radius-md);
+  padding:8px 12px;
+  margin:8px 0;
+  font-size:13.5px;
+}
+.event-summary{
+  cursor:pointer;
+  color:var(--text-muted);
+  list-style:none;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-weight:500;
+}
+.tool-chevron{display:inline-block;transition:transform .2s;font-size:12px}
+.tool-step[open] .event-summary{color:var(--text);margin-bottom:8px}
+.tool-step[open] .tool-chevron{transform:rotate(90deg)}
+.final-result .bubble{
+  border-left:3px solid var(--ok);
+  background:rgba(34,197,94,0.06);
+  padding:10px 14px;
+  border-radius:var(--radius-md);
+}
+
+/* In-Stream Approval Card */
+.approval-card{
+  background:#1f190e;
+  border:1px solid #5a4216;
+  border-radius:var(--radius-lg);
+  padding:16px;
+  margin:14px 0;
+}
+.approval-card h2{font-size:16px;margin:0 0 6px;color:#fef08a}
+.approval-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.approval-actions button{height:42px;border-radius:var(--radius-md);font-weight:700;font-size:14px}
+.approve{background:#ffffff;color:#000000}
+.always{background:#2563eb;color:#ffffff}
+.reject{background:var(--danger-bg);color:#fca5a5;border:1px solid #7f1d1d!important}
+
+/* Project & Management Cards */
+.action-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  padding:16px;
+  margin:12px 0;
+}
+.action-card h2{font-size:17px;margin:0 0 4px}
+.action-card p{font-size:13px;color:var(--text-muted);margin:0 0 12px}
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.action-grid button{
+  min-height:44px;
+  border-radius:var(--radius-md);
+  font-weight:600;
+  font-size:13.5px;
+  padding:8px;
+  background:var(--panel);
+}
+.action-grid .primary{background:var(--accent);color:var(--accent-invert)}
+.action-grid .danger{background:var(--danger-bg);color:#fca5a5;border:1px solid #7f1d1d}
+.action-grid .store{grid-column:1/-1;background:#1e3a8a;color:#ffffff}
+.action-grid .trash{grid-column:1/-1;background:#262626;color:var(--text)}
+.selected-project{
+  font:12px/1.4 var(--code);
+  word-break:break-all;
+  color:#d4d4d4;
+  background:#090909;
+  border-radius:var(--radius-sm);
+  padding:8px 10px;
+  margin-top:10px;
+  border:1px solid var(--border);
+}
+.row{
+  border:0;
+  background:transparent;
+  width:100%;
+  min-height:54px;
+  padding:8px 6px;
+  display:flex;
+  gap:12px;
+  align-items:center;
+  text-align:left;
+  border-bottom:1px solid var(--border);
+  border-radius:var(--radius-md);
+}
+.row:active{background:var(--surface)}
+.row-icon{
+  width:36px;
+  height:36px;
+  border-radius:var(--radius-md);
+  background:var(--panel);
+  display:grid;
+  place-items:center;
+  font-weight:700;
+  font-size:13px;
+  color:var(--text-muted);
+  flex-shrink:0;
+}
+.row-main{min-width:0;flex:1}
+.row-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-sub{font-size:13px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-meta{font-size:12px;color:var(--text-soft)}
+
+/* Trash Cards */
+.trash-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  padding:14px;
+  margin:10px 0;
+}
+.trash-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.trash-actions button{min-height:40px;border-radius:var(--radius-md);background:var(--panel);font-weight:600}
+.trash-actions .purge{background:var(--danger-bg);color:#fca5a5;border:1px solid #7f1d1d}
+
+/* OpenAI Floating Pill Composer */
+.composer{
+  position:absolute;
+  left:12px;
+  right:12px;
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  background:#212121;
+  border:1px solid rgba(255,255,255,0.14);
+  border-radius:28px;
+  padding:8px 10px 8px 14px;
+  box-shadow:0 12px 40px rgba(0,0,0,0.6);
+  z-index:30;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  transition:border-color .15s,box-shadow .15s;
+}
+.composer:focus-within{
+  border-color:rgba(255,255,255,0.3);
+  box-shadow:0 14px 48px rgba(0,0,0,0.75);
+}
+.composer.drag{
+  border-color:var(--openai-teal);
+  box-shadow:0 0 0 3px rgba(16,163,127,0.25),0 12px 40px rgba(0,0,0,0.6);
+}
+.attachments{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:2px 0 6px;
+  scrollbar-width:none;
+}
+.attachments::-webkit-scrollbar{display:none}
+.att{
+  height:32px;
+  max-width:160px;
+  border-radius:var(--radius-pill);
+  background:#2f2f2f;
+  border:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 8px 0 10px;
+  font-size:12.5px;
+  flex-shrink:0;
+}
+.att span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att button{width:18px;height:18px;border-radius:50%;background:#444;color:#fff;font-size:11px;display:grid;place-items:center}
+textarea{
+  width:100%;
+  min-height:38px;
+  max-height:140px;
+  resize:none;
+  border:0;
+  outline:0;
+  background:transparent;
+  padding:6px 0;
+  font-size:16px;
+  line-height:1.4;
+  color:var(--text);
+}
+textarea::placeholder{color:var(--text-muted)}
+.toolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.round{
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  background:#2f2f2f;
+  display:grid;
+  place-items:center;
+  flex-shrink:0;
+  color:#d4d4d4;
+  transition:all .15s;
+}
+.round:active{transform:scale(0.92)}
+.round svg{width:18px;height:18px}
+.round.send{
+  margin-left:auto;
+  background:#ffffff;
+  color:#000000;
+}
+.round.send:disabled{
+  opacity:0.25;
+  background:#2f2f2f;
+  color:#8e8e8e;
+}
+.round.primary{
+  background:#ffffff;
+  color:#000000;
+}
+.model-chip{
+  flex:1 1 120px;
+  min-width:0;
+  height:34px;
+  border-radius:var(--radius-pill);
+  background:#2a2a2a;
+  border:1px solid var(--border);
+  padding:0 10px;
+  font-size:13px;
+  font-weight:600;
+  color:var(--text);
+  outline:0;
+}
+
+/* Pair Screen */
+.pair{height:100%;display:grid;place-items:start center;overflow:auto;-webkit-overflow-scrolling:touch;padding:48px 24px 24px;background:var(--bg)}
+.pair-card{
+  width:min(380px,100%);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:26px 22px;
+  box-shadow:0 24px 70px rgba(0,0,0,0.5);
+  text-align:center;
+}
+.pair-logo{
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:var(--panel);
+  border:1px solid var(--border);
+  display:grid;
+  place-items:center;
+  margin:0 auto 16px;
+  color:#fff;
+}
+.pair-card h1{margin:0 0 6px;font-size:22px;font-weight:700}
+.pair-card p{margin:0 0 18px;font-size:14px;color:var(--text-muted);line-height:1.45}
+.scan-qr-btn{
+  width:100%;
+  height:48px;
+  border-radius:var(--radius-md);
+  background:#ffffff;
+  color:#000000;
+  font-size:15px;
+  font-weight:700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:transform .12s;
+}
+.scan-qr-btn:active{transform:scale(0.98)}
+.pair-divider{
+  display:flex;
+  align-items:center;
+  text-align:center;
+  color:var(--text-soft);
+  font-size:12px;
+  margin:16px 0;
+}
+.pair-divider::before,.pair-divider::after{content:'';flex:1;border-bottom:1px solid var(--border)}
 .pair-divider span{padding:0 10px}
-.pair-card input{width:100%;height:52px;border-radius:16px;border:1px solid #3c4658;background:#080d16;padding:0 15px;outline:0;font-size:22px;letter-spacing:.1em;text-align:center}.pair-card button.submit-btn{width:100%;height:48px;border:0;border-radius:14px;background:#f3f5f4;color:#101215;font-weight:800;margin-top:12px}.pair-card button:disabled{opacity:.62}.pair-error{min-height:22px;color:#ff9e9e;margin-top:10px;font-size:13px}
-.settings-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99;display:grid;place-items:center;padding:20px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-.settings-card{width:min(440px,100%);background:#141c2c;border:1px solid #2d384c;border-radius:24px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-.settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-.settings-head h2{margin:0;font-size:20px}
-.close-btn{width:32px;height:32px;border:0;border-radius:50%;background:#273244;color:#fff;font-size:18px;display:grid;place-items:center}
-.settings-group{margin-bottom:16px}
-.settings-group label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
-.settings-select{width:100%;height:46px;border-radius:12px;border:1px solid #36445c;background:#0d1422;padding:0 12px;font-weight:700}
-.settings-val{font-size:14px;color:#d6dbe6;background:#0b101c;padding:10px 12px;border-radius:10px;border:1px solid #232d3f}
-.settings-action-btn{width:100%;height:44px;border:1px solid #3d4c66;border-radius:12px;background:#202b3d;font-weight:700;margin-top:12px}
-.danger-action-btn{width:100%;height:44px;border:1px solid #70383b;border-radius:12px;background:#441f22;color:#ffc7c7;font-weight:700;margin-top:10px}
-.diag-box{font:12px/1.4 var(--code);background:#070b12;border:1px solid #242f42;border-radius:10px;padding:10px;margin-top:10px;max-height:160px;overflow:auto}
-@media(min-width:760px){.app{max-width:520px;margin:0 auto;border-left:1px solid #273041;border-right:1px solid #273041}.composer{left:calc(50% - 244px);right:calc(50% - 244px)}}
+.pair-card input{
+  width:100%;
+  height:48px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--border);
+  background:#090909;
+  padding:0 12px;
+  outline:0;
+  font-size:20px;
+  letter-spacing:.12em;
+  text-align:center;
+  color:#fff;
+}
+.pair-card input:focus{border-color:var(--border-focus)}
+.pair-card button.submit-btn{
+  width:100%;
+  height:46px;
+  border-radius:var(--radius-md);
+  background:#262626;
+  color:#ffffff;
+  font-weight:700;
+  margin-top:12px;
+}
+.pair-card button.submit-btn:active{background:#333}
+.pair-card button:disabled{opacity:0.5}
+.pair-error{min-height:20px;color:#f87171;margin-top:8px;font-size:13px}
+
+/* Settings & Bottom Sheet Modals */
+.settings-modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.7);
+  z-index:99;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  padding:0;
+  -webkit-backdrop-filter:blur(8px);
+  backdrop-filter:blur(8px);
+}
+.settings-card{
+  width:100%;
+  max-width:540px;
+  margin:0 auto;
+  background:#171717;
+  border-top:1px solid var(--border);
+  border-radius:24px 24px 0 0;
+  padding:22px 20px calc(24px + env(safe-area-inset-bottom));
+  box-shadow:0 -16px 50px rgba(0,0,0,0.6);
+  max-height:85vh;
+  overflow-y:auto;
+}
+.settings-handle{
+  width:36px;
+  height:4px;
+  border-radius:2px;
+  background:#3a3a3a;
+  margin:0 auto 16px;
+}
+.settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.settings-head h2{margin:0;font-size:18px;font-weight:700}
+.close-btn{
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  background:#262626;
+  color:#fff;
+  font-size:16px;
+  display:grid;
+  place-items:center;
+}
+.settings-group{margin-bottom:14px}
+.settings-group label{display:block;font-size:12.5px;color:var(--text-muted);margin-bottom:6px;font-weight:600}
+.settings-select{
+  width:100%;
+  height:44px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--border);
+  background:#0d0d0d;
+  padding:0 12px;
+  font-weight:600;
+  font-size:14px;
+}
+.settings-val{
+  font-size:13.5px;
+  color:#e0e0e0;
+  background:#0d0d0d;
+  padding:10px 12px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--border);
+}
+.settings-action-btn{
+  width:100%;
+  height:44px;
+  border-radius:var(--radius-md);
+  background:#262626;
+  color:#fff;
+  font-weight:600;
+  font-size:14px;
+  margin-top:10px;
+}
+.danger-action-btn{
+  width:100%;
+  height:44px;
+  border-radius:var(--radius-md);
+  background:var(--danger-bg);
+  color:#fca5a5;
+  border:1px solid #7f1d1d;
+  font-weight:600;
+  font-size:14px;
+  margin-top:10px;
+}
+.diag-box{
+  font:11.5px/1.45 var(--code);
+  background:#090909;
+  border:1px solid #262626;
+  border-radius:var(--radius-md);
+  padding:10px;
+  margin-top:10px;
+  max-height:160px;
+  overflow:auto;
+  color:#a3a3a3;
+}
+
+@media(min-width:768px){
+  .app{max-width:540px;margin:0 auto;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .composer{left:calc(50% - 258px);right:calc(50% - 258px)}
+}
 </style>
 </head>
 <body>
+
+<!-- Pairing Screen -->
 <section id="pairScreen" class="pair hidden">
   <div class="pair-card">
-    <div class="mark"><svg viewBox="0 0 24 24"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div>
+    <div class="pair-logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg>
+    </div>
     <h1 data-i18n="pair_title">LocalCode koppeln</h1>
     <p data-i18n="pair_help">Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.</p>
-    <button id="scanQrBtn" type="button" class="scan-qr-btn"><span class="cam-icon">📷</span> <span data-i18n="scan_qr">QR-Code scannen</span></button>
+    <button id="scanQrBtn" type="button" class="scan-qr-btn">
+      <span>📷</span> <span data-i18n="scan_qr">QR-Code scannen</span>
+    </button>
     <div class="pair-divider"><span data-i18n="or_manual">oder Code manuell eingeben</span></div>
     <form id="pairForm">
       <input id="pairCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
@@ -55,13 +726,64 @@
     </form>
   </div>
 </section>
+
+<!-- Sidebar Drawer -->
+<div id="drawerBackdrop" class="drawer-backdrop"></div>
+<aside id="drawer" class="drawer">
+  <div class="drawer-header">
+    <div class="drawer-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg>
+      <span>LocalCode</span>
+    </div>
+    <button id="closeDrawerBtn" class="header-btn" type="button" aria-label="Schließen">✕</button>
+  </div>
+  <input id="drawerSearch" class="drawer-search" type="text" placeholder="Suche..." data-i18n-placeholder="search_placeholder">
+  <div class="drawer-content">
+    <button id="newChatDrawerBtn" class="drawer-item" type="button">
+      <span class="drawer-item-icon">＋</span>
+      <span class="drawer-item-title" data-i18n="new_task">Neue Aufgabe</span>
+    </button>
+    <div class="drawer-section-title" data-i18n="projects">Projekte</div>
+    <div id="drawerProjectsList"></div>
+    <div class="drawer-section-title" data-i18n="history">Verlauf</div>
+    <div id="drawerHistoryList"></div>
+  </div>
+  <div class="drawer-footer">
+    <button id="drawerApproveBtn" class="drawer-item" type="button">
+      <span class="drawer-item-icon">✓</span>
+      <span class="drawer-item-title" data-i18n="approve">Genehmigen</span>
+      <span id="drawerApproveBadge" class="drawer-item-meta"></span>
+    </button>
+    <button id="drawerTrashBtn" class="drawer-item" type="button">
+      <span class="drawer-item-icon">♲</span>
+      <span class="drawer-item-title" data-i18n="trash">Papierkorb</span>
+    </button>
+    <button id="drawerSettingsBtn" class="drawer-item" type="button">
+      <span class="drawer-item-icon">⚙</span>
+      <span class="drawer-item-title" data-i18n="settings">Einstellungen</span>
+    </button>
+  </div>
+</aside>
+
+<!-- Main App Surface -->
 <section id="app" class="app hidden">
   <header class="top">
-    <div class="mark"><svg viewBox="0 0 24 24"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div>
-    <div class="title"><b>LocalCode</b><span id="subtitle">Remote</span></div>
-    <div id="dot" class="status-dot"></div>
-    <button id="settingsBtn" class="gear-btn" type="button" data-i18n-title="settings" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
+    <button id="drawerToggleBtn" class="header-btn" type="button" aria-label="Menü">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 10h18v2H3v-2z"/></svg>
+    </button>
+    <button id="modelProjectPill" class="model-pill-btn" type="button">
+      <div id="dot" class="status-dot"></div>
+      <span id="modelPillText" class="model-pill-name">qwen2.5-coder:14b</span>
+      <span style="font-size:10px;opacity:0.6">▾</span>
+    </button>
+    <button id="newChatTopBtn" class="header-btn" type="button" aria-label="Neuer Chat">
+      <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    </button>
+    <!-- Hidden element kept for contract compatibility -->
+    <div id="subtitle" class="hidden">Remote</div>
+    <button id="settingsBtn" class="gear-btn" type="button" title="Einstellungen">⚙️</button>
   </header>
+
   <nav class="tabs">
     <button class="tab active" data-view="tasks" data-i18n="tasks">Tasks</button>
     <button class="tab" data-view="projects" data-i18n="projects">Projekte</button>
@@ -70,6 +792,7 @@
     <button class="tab" data-view="review" data-i18n="review">Review</button>
     <button class="tab" data-view="new" data-i18n="new_task">Neue Aufgabe</button>
   </nav>
+
   <main class="main">
     <div id="tasksView" class="view"></div>
     <div id="projectsView" class="view hidden"></div>
@@ -77,24 +800,31 @@
     <div id="approveView" class="view hidden"></div>
     <div id="reviewView" class="view hidden"></div>
     <div id="newView" class="view hidden"></div>
+
+    <!-- Floating Pill Composer -->
     <form id="composer" class="composer">
       <div id="attachments" class="attachments hidden"></div>
-      <textarea id="prompt" data-i18n-placeholder="placeholder" placeholder="Nachricht eingeben..."></textarea>
+      <textarea id="prompt" data-i18n-placeholder="placeholder" placeholder="Nachricht eingeben..." rows="1"></textarea>
       <div class="toolbar">
-        <button id="attachBtn" class="round" type="button" data-i18n-title="upload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.6 12 21a6 6 0 0 1-8.5-8.5l9.8-9.8a4.2 4.2 0 0 1 6 6l-9.9 9.9a2.4 2.4 0 0 1-3.4-3.4l8.8-8.8 1.4 1.4-8.8 8.8a.4.4 0 0 0 .6.6l9.9-9.9a2.2 2.2 0 0 0-3.2-3.2l-9.8 9.8a4 4 0 1 0 5.7 5.7l9.4-9.4z" fill="currentColor"/></svg></button>
+        <button id="attachBtn" class="round" type="button" data-i18n-title="upload" aria-label="Dateien anhängen">
+          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
+        </button>
         <input id="fileInput" class="hidden" type="file" multiple>
-        <button id="voiceBtn" class="round" type="button" data-i18n-title="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z" fill="currentColor"/></svg></button>
+        <button id="voiceBtn" class="round" type="button" data-i18n-title="voice" aria-label="Spracheingabe">
+          <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z" fill="currentColor"/></svg>
+        </button>
         <select id="projectSelect" class="model-chip"></select>
-        <button id="stopBtn" class="round primary hidden" type="button">■</button>
-        <button id="sendBtn" class="round send" type="button">↑</button>
+        <button id="stopBtn" class="round primary hidden" type="button" aria-label="Stop">■</button>
+        <button id="sendBtn" class="round send" type="button" aria-label="Senden">↑</button>
       </div>
     </form>
   </main>
 </section>
 
-<!-- Settings Modal (Gear Menu) -->
+<!-- Settings Bottom Sheet Modal -->
 <section id="settingsModal" class="settings-modal hidden">
   <div class="settings-card">
+    <div class="settings-handle"></div>
     <div class="settings-head">
       <h2 data-i18n="settings">Einstellungen</h2>
       <button id="closeSettingsBtn" class="close-btn" type="button">×</button>
@@ -129,8 +859,8 @@
 (() => {
 'use strict';
 const dict={
-de:{pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht eingeben...',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Einmal genehmigen',approve_project:'Immer für dieses Projekt',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?'},
-en:{pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Enter message...',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve once',approve_project:'Always for this project',reject:'Deny',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?'}
+de:{pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht an LocalCode...',search_placeholder:'Suche...',history:'Verlauf',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Einmal genehmigen',approve_project:'Immer für dieses Projekt',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?'},
+en:{pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Message LocalCode...',search_placeholder:'Search...',history:'History',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve once',approve_project:'Always for this project',reject:'Deny',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?'}
 };
 const lang=(navigator.language||'en').toLowerCase().startsWith('de')?'de':'en';
 const t=(k,v={})=>Object.entries(v).reduce((s,[a,b])=>s.replaceAll('{'+a+'}',String(b)),dict[lang][k]||k);
@@ -149,29 +879,60 @@ function showPair(){$('#pairScreen').classList.remove('hidden');$('#app').classL
 function showApp(){$('#pairScreen').classList.add('hidden');$('#app').classList.remove('hidden')}
 async function pair(ev){ev?.preventDefault();const btn=$('#pairBtn');try{btn.disabled=true;$('#pairError').textContent='';const r=await api('/remote/api/pair',{method:'POST',body:JSON.stringify({code:$('#pairCode').value.trim(),device_name:navigator.userAgent.slice(0,80)})});state.token=r.token;localStorage.setItem('localcodeRemoteToken',state.token);showApp();await refresh();connectEvents()}catch(e){$('#pairError').textContent=t('pair_failed')+' '+e.message}finally{btn.disabled=false}}
 async function refresh(){try{state.status=await api('/remote/api/status');await ensurePreferredEngine();const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';const q=await api('/remote/api/project-quarantine');state.quarantine=q.quarantine||[];const th=await api('/remote/api/threads');state.threads=th.threads||[];state.currentThread=th.current||state.status.current_thread||'';const snap=await api('/remote/api/snapshot'+(state.currentThread?`?thread_id=${encodeURIComponent(state.currentThread)}`:''));state.events=snap.events||[];state.pending=snap.pending||null;state.project=snap.project||state.status.project||state.project||'';render();$('#dot').className='status-dot on'}catch(e){$('#dot').className='status-dot warn';if(String(e.message).includes('token')){state.token='';localStorage.removeItem('localcodeRemoteToken');showPair()}else console.warn(e)}}
-function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#stopBtn').classList.toggle('hidden',!running);renderEngineSelect();renderProjectSelect();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
+function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#modelPillText').textContent=(state.status?.model||'qwen2.5-coder:14b').split(':')[0];$('#stopBtn').classList.toggle('hidden',!running);renderEngineSelect();renderProjectSelect();renderDrawer();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
 function updateSendState(){const running=!!state.status?.running;$('#sendBtn').disabled=state.sending||running||(!$('#prompt').value.trim()&&!state.files.length)}
 function renderEngineSelect(){const sel=$('#engineSelect');if(!sel)return;const selected=state.status?.editing_engine||state.preferredEngine||'native';sel.innerHTML=engineOptions.map(([value,label])=>`<option value="${value}"${value===selected?' selected':''}>${label}</option>`).join('');sel.disabled=!!state.status?.running}
 function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=`<option value="">${t('select_project')}</option>`+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('')}
 function updateSettingsView(){$('#settingsModel').textContent=state.status?.model||'qwen2.5-coder:14b';$('#settingsHost').textContent=window.location.host||'LocalCode LAN'}
-function renderTasks(){const host=$('#tasksView'),mission=!!state.status?.running&&state.status?.run_phase==='mission-read-only';let html=mission?`<div class="action-card"><h2>${t('mission')}</h2><p>${t('mission_running')}</p></div>`:'';if(!state.projects.length){host.innerHTML=html+`<div class="empty"><div><h1>LocalCode</h1><p>${t('no_projects')}</p></div></div>`;return}html+=`<div class="section-title">${t('projects')}</div>`;for(const p of state.projects){html+=`<button class="row" data-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div><div class="row-meta">${p.pinned?'Pinned':''}</div></button>`}html+='<div class="section-title">Today</div>';for(const th of state.threads.filter(x=>!x.archived).slice(0,40)){html+=`<button class="row" data-thread="${esc(th.id)}"><div class="row-icon">#</div><div class="row-main"><div class="row-title">${esc(th.title)}</div><div class="row-sub">${esc(projectName(th.project))}</div></div><div class="row-meta">${esc((th.model||'').split(':')[0])}</div></button>`}host.innerHTML=html;host.querySelectorAll('[data-thread]').forEach(b=>b.onclick=()=>selectThread(b.dataset.thread));host.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>{const newProj=b.dataset.project;if(newProj&&newProj!==state.project){const name=projectName(newProj);if(!window.confirm(t('switch_project_confirm',{project:name})))return}state.project=newProj;showView('projects');render()})}
-function renderProjectTools(){const host=$('#projectsView');const selected=state.projects.find(p=>p.path===state.project);host.innerHTML=`<div class="action-card"><h2>${t('project_tools')}</h2><p>${t('project_help')}</p><div class="action-grid"><button class="primary" id="createProjectBtn">＋ ${t('create_project')}</button><button id="createFolderBtn">▣＋ ${t('create_folder')}</button><button class="danger" id="deleteProjectBtn">⌫ ${t('delete_project')}</button><button class="trash" id="trashBtn">♲ ${t('trash')}</button><button class="store" id="playStoreBtn">▶ ${t('play_store')}</button></div><div class="selected-project">${selected?esc(selected.name+'\n'+selected.path):esc(t('nothing_selected'))}</div></div><div class="section-title">${t('projects')}</div>`+state.projects.map(p=>`<button class="row" data-manage-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div>${p.path===state.project?'<div class="row-meta">✓</div>':''}</button>`).join('');$('#createProjectBtn').onclick=createProject;$('#createFolderBtn').onclick=createFolder;$('#deleteProjectBtn').onclick=deleteSelectedProject;$('#trashBtn').onclick=()=>showView('trash');$('#playStoreBtn').onclick=playStoreBuild;host.querySelectorAll('[data-manage-project]').forEach(b=>b.onclick=()=>{const newProj=b.dataset.manageProject;if(newProj&&newProj!==state.project){const name=projectName(newProj);if(!window.confirm(t('switch_project_confirm',{project:name})))return}state.project=newProj;render()})}
-function projectName(path){return state.projects.find(p=>p.path===path)?.name||String(path||'').split(/[\\/]/).pop()||''}
+
+function renderDrawer(){
+  const pList=$('#drawerProjectsList');
+  if(pList){
+    pList.innerHTML=state.projects.map(p=>`<button class="drawer-item${p.path===state.project?' active':''}" data-drawer-project="${esc(p.path)}"><span class="drawer-item-icon">📁</span><span class="drawer-item-title">${esc(p.name)}</span>${p.path===state.project?'<span class="drawer-item-meta">✓</span>':''}</button>`).join('');
+    pList.querySelectorAll('[data-drawer-project]').forEach(b=>b.onclick=()=>{
+      const newProj=b.dataset.drawerProject;
+      if(newProj&&newProj!==state.project){
+        const name=projectName(newProj);
+        if(!window.confirm(t('switch_project_confirm',{project:name})))return;
+      }
+      state.project=newProj;
+      closeDrawer();
+      showView('projects');
+      render();
+    });
+  }
+  const hList=$('#drawerHistoryList');
+  if(hList){
+    hList.innerHTML=state.threads.filter(x=>!x.archived).slice(0,30).map(th=>`<button class="drawer-item${th.id===state.currentThread?' active':''}" data-drawer-thread="${esc(th.id)}"><span class="drawer-item-icon">💬</span><span class="drawer-item-title">${esc(th.title||'Aufgabe')}</span></button>`).join('');
+    hList.querySelectorAll('[data-drawer-thread]').forEach(b=>b.onclick=()=>{
+      closeDrawer();
+      selectThread(b.dataset.drawerThread);
+    });
+  }
+  const badge=$('#drawerApproveBadge');
+  if(badge){
+    badge.textContent=state.pending?'1':'';
+  }
+}
+
+function renderTasks(){const host=$('#tasksView'),mission=!!state.status?.running&&state.status?.run_phase==='mission-read-only';let html=mission?`<div class="action-card"><h2>${t('mission')}</h2><p>${t('mission_running')}</p></div>`:'';if(!state.projects.length){host.innerHTML=html+`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_projects')}</p></div>`;return}html+=`<div class="section-title">${t('projects')}</div>`;for(const p of state.projects){html+=`<button class="row" data-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div><div class="row-meta">${p.pinned?'Pinned':''}</div></button>`}html+='<div class="section-title">Today</div>';for(const th of state.threads.filter(x=>!x.archived).slice(0,40)){html+=`<button class="row" data-thread="${esc(th.id)}"><div class="row-icon">#</div><div class="row-main"><div class="row-title">${esc(th.title)}</div><div class="row-sub">${esc(projectName(th.project))}</div></div><div class="row-meta">${esc((th.model||'').split(':')[0])}</div></button>`}host.innerHTML=html;host.querySelectorAll('[data-thread]').forEach(b=>b.onclick=()=>selectThread(b.dataset.thread));host.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>{const newProj=b.dataset.project;if(newProj&&newProj!==state.project){const name=projectName(newProj);if(!window.confirm(t('switch_project_confirm',{project:name})))return}state.project=newProj;showView('projects');render()})}
+function renderProjectTools(){const host=$('#projectsView');const selected=state.projects.find(p=>p.path===state.project);host.innerHTML=`<div class="action-card"><h2>${t('project_tools')}</h2><p>${t('project_help')}</p><div class="action-grid"><button class="primary" id="createProjectBtn">＋ ${t('create_project')}</button><button id="createFolderBtn">▣＋ ${t('create_folder')}</button><button class="danger" id="deleteProjectBtn">⌫ ${t('delete_project')}</button><button class="trash" id="trashBtn">♲ ${t('trash')}</button><button class="store" id="playStoreBtn">▶ ${t('play_store')}</button></div><div class="selected-project">${selected?esc(selected.name+' - '+selected.path):esc(t('nothing_selected'))}</div></div><div class="section-title">${t('projects')}</div>`+state.projects.map(p=>`<button class="row" data-manage-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div>${p.path===state.project?'<div class="row-meta">✓</div>':''}</button>`).join('');$('#createProjectBtn').onclick=createProject;$('#createFolderBtn').onclick=createFolder;$('#deleteProjectBtn').onclick=deleteSelectedProject;$('#trashBtn').onclick=()=>showView('trash');$('#playStoreBtn').onclick=playStoreBuild;host.querySelectorAll('[data-manage-project]').forEach(b=>b.onclick=()=>{const newProj=b.dataset.manageProject;if(newProj&&newProj!==state.project){const name=projectName(newProj);if(!window.confirm(t('switch_project_confirm',{project:name})))return}state.project=newProj;render()})}
+function projectName(path){return state.projects.find(p=>p.path===path)?.name||String(path||'').split(/[\/]/).pop()||''}
 async function selectThread(id){await api('/remote/api/select-chat',{method:'POST',body:JSON.stringify({id})});state.currentThread=id;await refresh();showView('review')}
 async function ensurePreferredEngine(){if(state.engineSynced||!state.status||state.status.running||!state.preferredEngine||state.status.editing_engine===state.preferredEngine)return;state.engineSynced=true;try{const r=await api('/remote/api/editing-engine',{method:'POST',body:JSON.stringify({engine:state.preferredEngine})});state.status.editing_engine=r.engine}catch(e){state.engineSynced=false;console.warn(e)}}
 async function selectEditingEngine(engine){if(state.status?.running)return;state.preferredEngine=engine;localStorage.setItem('localcodeRemoteEngine',engine);state.engineSynced=true;try{const r=await api('/remote/api/editing-engine',{method:'POST',body:JSON.stringify({engine})});if(state.status)state.status.editing_engine=r.engine;await refresh()}catch(e){renderEngineSelect();window.alert(e.message)}}
 async function createProject(){if(state.status?.running)return;const name=window.prompt(t('project_name'),'');if(!name||!name.trim())return;try{const r=await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path:state.projectsRoot,action:'create_project',value:name.trim()})});state.project=r.project?.path||'';await refresh();showView('projects')}catch(e){window.alert(e.message)}}
 async function createFolder(){if(state.status?.running)return;const name=window.prompt(t('folder_name'),'');if(!name||!name.trim())return;try{await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path:state.projectsRoot,action:'create_folder',value:name.trim()})});await refresh();showView('projects')}catch(e){window.alert(e.message)}}
-async function deleteSelectedProject(){if(state.status?.running)return;const path=state.project||$('#projectSelect').value;if(!path){window.alert(t('nothing_selected'));return}try{const preview=await api('/remote/api/project-delete-preview?path='+encodeURIComponent(path));if(preview.empty){if(!window.confirm(t('delete_empty')))return;await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_empty',value:''})})}else{const message=t('delete_full',{files:preview.files,dirs:preview.directories,bytes:preview.bytes})+'\n\n'+preview.confirmation;const typed=window.prompt(message,'');if(typed===null)return;if(typed.trim()!==String(preview.confirmation)){window.alert(t('delete_mismatch'));return}await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_recursive',value:typed.trim()})});window.alert(t('quarantine_done'))}state.project='';state.currentThread='';await refresh();showView('projects')}catch(e){window.alert(e.message)}}
+async function deleteSelectedProject(){if(state.status?.running)return;const path=state.project||$('#projectSelect').value;if(!path){window.alert(t('nothing_selected'));return}try{const preview=await api('/remote/api/project-delete-preview?path='+encodeURIComponent(path));if(preview.empty){if(!window.confirm(t('delete_empty')))return;await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_empty',value:''})})}else{const message=t('delete_full',{files:preview.files,dirs:preview.directories,bytes:preview.bytes})+' '+(preview.confirmation||'');const typed=window.prompt(message,'');if(typed===null)return;if(typed.trim()!==String(preview.confirmation)){window.alert(t('delete_mismatch'));return}await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path,action:'delete_recursive',value:typed.trim()})});window.alert(t('quarantine_done'))}state.project='';state.currentThread='';await refresh();showView('projects')}catch(e){window.alert(e.message)}}
 function playStoreTask(){if(lang==='de')return `Erstelle für das ausgewählte Android-Projekt einen vollständigen lokalen Play-Store-Release-Build. Prüfe zuerst Projektstruktur, Gradle/SDK, applicationId/package, versionCode/versionName, Manifest, min/target SDK und die vorhandene Signing-Konfiguration. Verändere oder ersetze niemals Keystore, Upload-Key oder Zertifikat und gib niemals Passwörter, Tokens oder andere Secrets aus. Führe vorhandene Tests und Lint-Prüfungen aus. Erzeuge anschließend, sofern vom Projekt unterstützt, bundleRelease (.aab) und assembleRelease (.apk), verifiziere die Artefakte und nenne die exakten Pfade, Größen und SHA-256. Nutze vorhandene Gradle-Wrapper und keine globale Installation, wenn sie nicht ausdrücklich nötig und genehmigt ist. Wenn Signing, SDK, Gradle oder Store-Metadaten fehlen, behebe nur sichere lokale Konfiguration; geheime, destruktive, externe oder publizierende Schritte brauchen eine eigene Freigabe. Niemals automatisch zum Play Store hochladen, einen Release-Track verändern oder veröffentlichen.`;return `Create a complete local Play Store release build for the selected Android project. First inspect the project structure, Gradle/SDK, applicationId/package, versionCode/versionName, manifest, min/target SDK and existing signing configuration. Never create, replace or rotate a keystore, upload key or certificate, and never expose passwords, tokens or other secrets. Run existing tests and lint checks. Then, where supported, build bundleRelease (.aab) and assembleRelease (.apk), verify the artifacts and report exact paths, sizes and SHA-256 hashes. Use the project's Gradle wrapper and avoid global installs unless explicitly necessary and approved. If signing, SDK, Gradle or store metadata is missing, change only safe local configuration; secret, destructive, external or publishing steps require a separate approval. Never upload to Google Play, alter a release track or publish automatically.`}
 async function playStoreBuild(){if(state.status?.running)return;const path=state.project||$('#projectSelect').value;if(!path){window.alert(t('nothing_selected'));return}if(!window.confirm(t('store_confirm')))return;try{const r=await api('/remote/api/new-chat',{method:'POST',body:JSON.stringify({project:path})});const thread=r.thread?.id||'';state.currentThread=thread;state.project=path;await api('/remote/api/chat',{method:'POST',body:JSON.stringify({message:playStoreTask(),project:path,thread_id:thread,model:state.status?.model||'',attachments:[]})});await refresh();showView('review')}catch(e){window.alert(e.message)}}
-function renderTrash(){const host=$('#trashView');if(!state.quarantine.length){host.innerHTML=`<div class="empty"><div><h1>${t('trash')}</h1><p>${t('trash_empty')}</p></div></div>`;return}host.innerHTML=`<div class="section-title">${t('trash')}</div>`+state.quarantine.map(entry=>`<div class="trash-card"><div class="row-title">${esc(entry.name)}</div><div class="row-sub">${esc(t('trash_meta',{files:entry.files,dirs:entry.directories,bytes:entry.bytes}))}</div><div class="trash-actions"><button data-restore="${esc(entry.id)}">${t('restore')}</button><button class="purge" data-purge="${esc(entry.id)}" data-name="${esc(entry.name)}">${t('purge')}</button></div></div>`).join('');host.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreTrashProject(b.dataset.restore));host.querySelectorAll('[data-purge]').forEach(b=>b.onclick=()=>purgeTrashProject(b.dataset.purge,b.dataset.name))}
+function renderTrash(){const host=$('#trashView');if(!state.quarantine.length){host.innerHTML=`<div class="empty"><div class="empty-logo">♲</div><h1>${t('trash')}</h1><p>${t('trash_empty')}</p></div>`;return}host.innerHTML=`<div class="section-title">${t('trash')}</div>`+state.quarantine.map(entry=>`<div class="trash-card"><div class="row-title">${esc(entry.name)}</div><div class="row-sub">${esc(t('trash_meta',{files:entry.files,dirs:entry.directories,bytes:entry.bytes}))}</div><div class="trash-actions"><button data-restore="${esc(entry.id)}">${t('restore')}</button><button class="purge" data-purge="${esc(entry.id)}" data-name="${esc(entry.name)}">${t('purge')}</button></div></div>`).join('');host.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreTrashProject(b.dataset.restore));host.querySelectorAll('[data-purge]').forEach(b=>b.onclick=()=>purgeTrashProject(b.dataset.purge,b.dataset.name))}
 async function restoreTrashProject(id){if(state.status?.running)return;try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'restore',id})});await refresh();window.alert(t('restore_done'));showView('trash')}catch(e){window.alert(e.message)}}
-async function purgeTrashProject(id,name){if(state.status?.running)return;const expected='PURGE '+name;const typed=window.prompt(t('purge_prompt',{project:name})+'\n\n'+expected,'');if(typed===null)return;if(typed!==expected){window.alert(t('delete_mismatch'));return}try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'purge',id,confirmation:typed})});await refresh();window.alert(t('purge_done'));showView('trash')}catch(e){window.alert(e.message)}}
-function renderEvents(){const host=$('#reviewView');if(!state.events.length){host.innerHTML=`<div class="empty"><div><h1>LocalCode</h1><p>${t('no_events')}</p></div></div>`;return}const visible=state.events.filter(ev=>!(ev.type==='status'&&(ev.message==='Bereit'||ev.message==='Ready')));host.innerHTML=visible.map(eventHTML).join('');host.scrollTop=host.scrollHeight}
-function eventHTML(ev){const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning',isTool=['tool_result','action_done','action_running','agent_step','progress'].includes(ev.type);let detail=ev.detail?`<div class="code">${esc(ev.detail)}</div>`:'';if(ev.preview)detail+=`<div class="code">${esc(ev.preview)}</div>`;const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');if(isTool){return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`}return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${esc(ev.message||ev.type||'')}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`}
-function renderApproval(){const host=$('#approveView'),p=state.pending;if(!p){host.innerHTML=`<div class="empty"><div><h1>${t('approve')}</h1><p>${t('pending_none')}</p></div></div>`;return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
-function renderNew(){$('#newView').innerHTML=`<div class="empty"><div><h1>LocalCode</h1><p>${t('new_chat')}</p></div></div>`}
+async function purgeTrashProject(id,name){if(state.status?.running)return;const expected='PURGE '+name;const typed=window.prompt(t('purge_prompt',{project:name})+' '+expected,'');if(typed===null)return;if(typed!==expected){window.alert(t('delete_mismatch'));return}try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'purge',id,confirmation:typed})});await refresh();window.alert(t('purge_done'));showView('trash')}catch(e){window.alert(e.message)}}
+function renderEvents(){const host=$('#reviewView');if(!state.events.length){host.innerHTML=`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_events')}</p></div>`;return}const visible=state.events.filter(ev=>!(ev.type==='status'&&(ev.message==='Bereit'||ev.message==='Ready')));host.innerHTML=visible.map(eventHTML).join('');host.scrollTop=host.scrollHeight}
+function eventHTML(ev){const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning',isTool=['tool_result','action_done','action_running','agent_step','progress'].includes(ev.type);let detail=ev.detail?`<div class="code"><div class="code-header"><span>Output</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.detail)}</div>`:'';if(ev.preview)detail+=`<div class="code"><div class="code-header"><span>Preview</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.preview)}</div>`;const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');if(isTool){return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`}return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${esc(ev.message||ev.type||'')}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`}
+function renderApproval(){const host=$('#approveView'),p=state.pending;if(!p){host.innerHTML=`<div class="empty"><div class="empty-logo">✓</div><h1>${t('approve')}</h1><p>${t('pending_none')}</p></div>`;return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
+function renderNew(){$('#newView').innerHTML=`<div class="empty"><div class="empty-logo">＋</div><h1>LocalCode</h1><p>${t('new_chat')}</p></div>`}
 function renderFiles(){const box=$('#attachments');box.classList.toggle('hidden',!state.files.length);box.innerHTML=state.files.map((f,i)=>`<div class="att"><span>${esc(f.name)}</span><button type="button" data-remove="${i}">×</button></div>`).join('');box.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.files.splice(Number(b.dataset.remove),1);renderFiles()});updateSendState()}
 async function approve(decision){if(!state.pending)return;await api('/remote/api/approve',{method:'POST',body:JSON.stringify({id:state.pending.id,decision,approve:decision!=='reject'})});state.pending=null;await refresh()}
 function readFile(file){return new Promise((res,rej)=>{if(file.size>MAX_FILE_BYTES)return rej(new Error(t('file_too_large',{name:file.name})));const fr=new FileReader();fr.onerror=()=>rej(fr.error);fr.onload=()=>{const v=String(fr.result||''),i=v.indexOf(',');res({name:file.name,mime:file.type||'application/octet-stream',size:file.size,data:i>=0?v.slice(i+1):v})};fr.readAsDataURL(file)})}
@@ -185,6 +946,19 @@ function showView(name){state.view=name;$$('.tab').forEach(b=>b.classList.toggle
 function swipeView(step){const i=viewOrder.indexOf(state.view),next=viewOrder[Math.max(0,Math.min(viewOrder.length-1,i+step))];if(next&&next!==state.view)showView(next)}
 function bindSwipe(){const area=$('.main');let sx=0,sy=0,active=false;area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const tag=(e.target?.tagName||'').toUpperCase();if(['BUTTON','INPUT','TEXTAREA','SELECT','OPTION'].includes(tag))return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true},{passive:true});area.addEventListener('touchend',e=>{if(!active||!e.changedTouches.length)return;active=false;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.25)return;swipeView(dx<0?1:-1)},{passive:true});area.addEventListener('touchcancel',()=>{active=false},{passive:true})}
 async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required'){state.pending=ev;showView('approve')}if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+
+// Drawer Management
+function openDrawer(){$('#drawer').classList.add('open');$('#drawerBackdrop').classList.add('open')}
+function closeDrawer(){$('#drawer').classList.remove('open');$('#drawerBackdrop').classList.remove('open')}
+$('#drawerToggleBtn').onclick=openDrawer;
+$('#closeDrawerBtn').onclick=closeDrawer;
+$('#drawerBackdrop').onclick=closeDrawer;
+$('#newChatTopBtn').onclick=()=>{showView('new');$('#prompt').focus()};
+$('#newChatDrawerBtn').onclick=()=>{closeDrawer();showView('new');$('#prompt').focus()};
+$('#drawerApproveBtn').onclick=()=>{closeDrawer();showView('approve')};
+$('#drawerTrashBtn').onclick=()=>{closeDrawer();showView('trash')};
+$('#drawerSettingsBtn').onclick=()=>{closeDrawer();updateSettingsView();$('#settingsModal').classList.remove('hidden')};
+$('#modelProjectPill').onclick=()=>{updateSettingsView();$('#settingsModal').classList.remove('hidden')};
 
 // Event Handlers
 $('#scanQrBtn').onclick=triggerQrScan;
@@ -200,7 +974,12 @@ composer.ondragleave=()=>composer.classList.remove('drag');
 composer.ondrop=e=>{composer.classList.remove('drag');if(e.dataTransfer?.files?.length){e.preventDefault();addFiles(e.dataTransfer.files)}};
 $('#stopBtn').onclick=async()=>{await api('/remote/api/stop',{method:'POST'});await refresh()};
 $('#sendBtn').onclick=send;
-$('#prompt').oninput=updateSendState;
+$('#prompt').oninput=()=>{
+  const p=$('#prompt');
+  p.style.height='auto';
+  p.style.height=Math.min(140,Math.max(38,p.scrollHeight))+'px';
+  updateSendState();
+};
 $('#projectSelect').onchange=e=>{
   const newProj=e.target.value;
   if(!newProj||newProj===state.project)return;
