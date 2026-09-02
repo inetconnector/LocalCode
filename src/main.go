@@ -47,8 +47,15 @@ func main() {
 		}
 	}
 
+	var setup RuntimeBootstrapResult
+	var err error
+	limitedMode := false
+	fastStart := fastStartupRequested()
 	var splash *startupSplash
-	if started, splashErr := startStartupSplash(cfg, version); splashErr != nil {
+	if fastStart {
+		setup = fastStartupBootstrap(cfg)
+		log.Printf("Fast startup enabled; runtime dependency checks are deferred to status/doctor and first use")
+	} else if started, splashErr := startStartupSplash(cfg, version); splashErr != nil {
 		log.Printf("Startup splash could not be started: %v", splashErr)
 	} else if browserErr := openStartupBrowser(started.URL()); browserErr != nil {
 		log.Printf("Startup splash browser could not be opened: %v", browserErr)
@@ -56,12 +63,11 @@ func main() {
 	} else {
 		splash = started
 	}
-
-	var setup RuntimeBootstrapResult
-	var err error
-	limitedMode := false
 bootstrapLoop:
 	for {
+		if fastStart {
+			break
+		}
 		setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Hour)
 		reporter := BootstrapReporter(nil)
 		if splash != nil {
@@ -152,6 +158,24 @@ bootstrapLoop:
 	}
 
 	select {}
+}
+
+func fastStartupRequested() bool {
+	value := strings.TrimSpace(os.Getenv("LOCALCODE_FAST_START"))
+	return value != "" && value != "0" && !strings.EqualFold(value, "false")
+}
+
+func fastStartupBootstrap(cfg Config) RuntimeBootstrapResult {
+	client := NewOllamaClient()
+	if cfg.OllamaURL != "" {
+		client.BaseURL = cfg.OllamaURL
+	}
+	client.ContextLength = cfg.ContextLength
+	return RuntimeBootstrapResult{
+		Config:  cfg,
+		Ollama:  client,
+		Details: []string{"Fast startup: dependency checks deferred"},
+	}
 }
 
 func runDiagnostics() int {

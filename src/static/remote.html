@@ -327,13 +327,28 @@ button{cursor:pointer;border:0;background:transparent}
   border-radius:var(--radius-md);
 }
 
-/* In-Stream Approval Card */
+/* Approval Popup */
+.approval-modal{
+  position:fixed;
+  inset:0;
+  z-index:110;
+  display:grid;
+  place-items:center;
+  padding:24px 18px calc(24px + env(safe-area-inset-bottom));
+  background:rgba(0,0,0,0.68);
+  -webkit-backdrop-filter:blur(8px);
+  backdrop-filter:blur(8px);
+}
+.approval-dialog{
+  width:min(480px,100%);
+}
 .approval-card{
   background:#1f190e;
   border:1px solid #5a4216;
   border-radius:var(--radius-lg);
   padding:16px;
-  margin:14px 0;
+  margin:0;
+  box-shadow:0 18px 60px rgba(0,0,0,0.58);
 }
 .approval-card h2{font-size:16px;margin:0 0 6px;color:#fef08a}
 .approval-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
@@ -749,11 +764,6 @@ textarea::placeholder{color:var(--text-muted)}
     <div id="drawerHistoryList"></div>
   </div>
   <div class="drawer-footer">
-    <button id="drawerApproveBtn" class="drawer-item" type="button">
-      <span class="drawer-item-icon">✓</span>
-      <span class="drawer-item-title" data-i18n="approve">Genehmigen</span>
-      <span id="drawerApproveBadge" class="drawer-item-meta"></span>
-    </button>
     <button id="drawerTrashBtn" class="drawer-item" type="button">
       <span class="drawer-item-icon">♲</span>
       <span class="drawer-item-title" data-i18n="trash">Papierkorb</span>
@@ -785,21 +795,19 @@ textarea::placeholder{color:var(--text-muted)}
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-view="tasks" data-i18n="tasks">Tasks</button>
+    <button class="tab active" data-view="new" data-i18n="new_task">Neue Aufgabe</button>
+    <button class="tab" data-view="tasks" data-i18n="tasks">Tasks</button>
     <button class="tab" data-view="projects" data-i18n="projects">Projekte</button>
     <button class="tab" data-view="trash" data-i18n="trash">Papierkorb</button>
-    <button class="tab" data-view="approve" data-i18n="approve">Genehmigen</button>
     <button class="tab" data-view="review" data-i18n="review">Review</button>
-    <button class="tab" data-view="new" data-i18n="new_task">Neue Aufgabe</button>
   </nav>
 
   <main class="main">
-    <div id="tasksView" class="view"></div>
+    <div id="newView" class="view"></div>
+    <div id="tasksView" class="view hidden"></div>
     <div id="projectsView" class="view hidden"></div>
     <div id="trashView" class="view hidden"></div>
-    <div id="approveView" class="view hidden"></div>
     <div id="reviewView" class="view hidden"></div>
-    <div id="newView" class="view hidden"></div>
 
     <!-- Floating Pill Composer -->
     <form id="composer" class="composer">
@@ -819,6 +827,10 @@ textarea::placeholder{color:var(--text-muted)}
       </div>
     </form>
   </main>
+</section>
+
+<section id="approvalModal" class="approval-modal hidden" role="dialog" aria-modal="true">
+  <div id="approvalDialog" class="approval-dialog"></div>
 </section>
 
 <!-- Settings Bottom Sheet Modal -->
@@ -870,8 +882,8 @@ document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=t(
 document.querySelectorAll('[data-i18n-title]').forEach(e=>{const label=t(e.dataset.i18nTitle);e.title=label;e.setAttribute('aria-label',label)});
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const MAX_FILES=20, MAX_FILE_BYTES=32*1024*1024, MAX_TOTAL_BYTES=96*1024*1024;
-const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'tasks',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false};
-const viewOrder=['tasks','projects','trash','approve','review','new'];
+const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'new',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false};
+const viewOrder=['new','tasks','projects','trash','review'];
 const engineOptions=[['native','LocalCode Native'],['aider','Aider'],['opencode','OpenCode'],['claude','Claude Code'],['claw','Claw Code']];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function api(path,opts={}){const h={'Accept':'application/json',...(opts.headers||{})};if(state.token)h['X-LocalCode-Remote-Token']=state.token;if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';const r=await fetch(path,{...opts,headers:h});if(!r.ok)throw new Error((await r.text()).trim()||`HTTP ${r.status}`);return r.headers.get('content-type')?.includes('json')?r.json():r.text()}
@@ -909,10 +921,6 @@ function renderDrawer(){
       selectThread(b.dataset.drawerThread);
     });
   }
-  const badge=$('#drawerApproveBadge');
-  if(badge){
-    badge.textContent=state.pending?'1':'';
-  }
 }
 
 function renderTasks(){const host=$('#tasksView'),mission=!!state.status?.running&&state.status?.run_phase==='mission-read-only';let html=mission?`<div class="action-card"><h2>${t('mission')}</h2><p>${t('mission_running')}</p></div>`:'';if(!state.projects.length){host.innerHTML=html+`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_projects')}</p></div>`;return}html+=`<div class="section-title">${t('projects')}</div>`;for(const p of state.projects){html+=`<button class="row" data-project="${esc(p.path)}"><div class="row-icon">LC</div><div class="row-main"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.path)}</div></div><div class="row-meta">${p.pinned?'Pinned':''}</div></button>`}html+='<div class="section-title">Today</div>';for(const th of state.threads.filter(x=>!x.archived).slice(0,40)){html+=`<button class="row" data-thread="${esc(th.id)}"><div class="row-icon">#</div><div class="row-main"><div class="row-title">${esc(th.title)}</div><div class="row-sub">${esc(projectName(th.project))}</div></div><div class="row-meta">${esc((th.model||'').split(':')[0])}</div></button>`}host.innerHTML=html;host.querySelectorAll('[data-thread]').forEach(b=>b.onclick=()=>selectThread(b.dataset.thread));host.querySelectorAll('[data-project]').forEach(b=>b.onclick=()=>{const newProj=b.dataset.project;if(newProj&&newProj!==state.project){const name=projectName(newProj);if(!window.confirm(t('switch_project_confirm',{project:name})))return}state.project=newProj;showView('projects');render()})}
@@ -929,12 +937,13 @@ async function playStoreBuild(){if(state.status?.running)return;const path=state
 function renderTrash(){const host=$('#trashView');if(!state.quarantine.length){host.innerHTML=`<div class="empty"><div class="empty-logo">♲</div><h1>${t('trash')}</h1><p>${t('trash_empty')}</p></div>`;return}host.innerHTML=`<div class="section-title">${t('trash')}</div>`+state.quarantine.map(entry=>`<div class="trash-card"><div class="row-title">${esc(entry.name)}</div><div class="row-sub">${esc(t('trash_meta',{files:entry.files,dirs:entry.directories,bytes:entry.bytes}))}</div><div class="trash-actions"><button data-restore="${esc(entry.id)}">${t('restore')}</button><button class="purge" data-purge="${esc(entry.id)}" data-name="${esc(entry.name)}">${t('purge')}</button></div></div>`).join('');host.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreTrashProject(b.dataset.restore));host.querySelectorAll('[data-purge]').forEach(b=>b.onclick=()=>purgeTrashProject(b.dataset.purge,b.dataset.name))}
 async function restoreTrashProject(id){if(state.status?.running)return;try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'restore',id})});await refresh();window.alert(t('restore_done'));showView('trash')}catch(e){window.alert(e.message)}}
 async function purgeTrashProject(id,name){if(state.status?.running)return;const expected='PURGE '+name;const typed=window.prompt(t('purge_prompt',{project:name})+' '+expected,'');if(typed===null)return;if(typed!==expected){window.alert(t('delete_mismatch'));return}try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'purge',id,confirmation:typed})});await refresh();window.alert(t('purge_done'));showView('trash')}catch(e){window.alert(e.message)}}
-function renderEvents(){const host=$('#reviewView');if(!state.events.length){host.innerHTML=`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_events')}</p></div>`;return}const visible=state.events.filter(ev=>!(ev.type==='status'&&(ev.message==='Bereit'||ev.message==='Ready')));host.innerHTML=visible.map(eventHTML).join('');host.scrollTop=host.scrollHeight}
+function isTransientRunEvent(ev){return ['progress','action_running'].includes(ev.type)||ev.type==='status'}
+function renderEvents(){const host=$('#reviewView'),running=!!state.status?.running;const visible=state.events.filter(ev=>running||!isTransientRunEvent(ev));if(!visible.length){host.innerHTML=`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_events')}</p></div>`;return}host.innerHTML=visible.map(eventHTML).join('');host.scrollTop=host.scrollHeight}
 function eventHTML(ev){const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning',isTool=['tool_result','action_done','action_running','agent_step','progress'].includes(ev.type);let detail=ev.detail?`<div class="code"><div class="code-header"><span>Output</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.detail)}</div>`:'';if(ev.preview)detail+=`<div class="code"><div class="code-header"><span>Preview</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.preview)}</div>`;const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');if(isTool){return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`}return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${esc(ev.message||ev.type||'')}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`}
-function renderApproval(){const host=$('#approveView'),p=state.pending;if(!p){host.innerHTML=`<div class="empty"><div class="empty-logo">✓</div><h1>${t('approve')}</h1><p>${t('pending_none')}</p></div>`;return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
+function renderApproval(){const modal=$('#approvalModal'),host=$('#approvalDialog'),p=state.pending;if(!p){modal.classList.add('hidden');host.innerHTML='';return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;modal.classList.remove('hidden');host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
 function renderNew(){$('#newView').innerHTML=`<div class="empty"><div class="empty-logo">＋</div><h1>LocalCode</h1><p>${t('new_chat')}</p></div>`}
 function renderFiles(){const box=$('#attachments');box.classList.toggle('hidden',!state.files.length);box.innerHTML=state.files.map((f,i)=>`<div class="att"><span>${esc(f.name)}</span><button type="button" data-remove="${i}">×</button></div>`).join('');box.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.files.splice(Number(b.dataset.remove),1);renderFiles()});updateSendState()}
-async function approve(decision){if(!state.pending)return;await api('/remote/api/approve',{method:'POST',body:JSON.stringify({id:state.pending.id,decision,approve:decision!=='reject'})});state.pending=null;await refresh()}
+async function approve(decision){if(!state.pending)return;await api('/remote/api/approve',{method:'POST',body:JSON.stringify({id:state.pending.id,decision,approve:decision!=='reject'})});state.pending=null;renderApproval();await refresh()}
 function readFile(file){return new Promise((res,rej)=>{if(file.size>MAX_FILE_BYTES)return rej(new Error(t('file_too_large',{name:file.name})));const fr=new FileReader();fr.onerror=()=>rej(fr.error);fr.onload=()=>{const v=String(fr.result||''),i=v.indexOf(',');res({name:file.name,mime:file.type||'application/octet-stream',size:file.size,data:i>=0?v.slice(i+1):v})};fr.readAsDataURL(file)})}
 async function addFiles(files){const list=[...files].filter(Boolean);if(!list.length)return;let total=state.files.reduce((n,f)=>n+f.size,0),room=MAX_FILES-state.files.length;if(room<=0)return window.alert(t('max_files',{count:MAX_FILES}));try{for(const f of list.slice(0,room)){if(total+f.size>MAX_TOTAL_BYTES)throw new Error(t('total_too_large'));const item=await readFile(f);state.files.push(item);total+=item.size}renderFiles();$('#prompt').focus()}catch(e){window.alert(e.message)}}
 function appendPromptText(text){text=String(text||'').trim();if(!text)return;const prompt=$('#prompt'),prefix=prompt.value.trim()?' ':'';prompt.value+=prefix+text;prompt.focus();updateSendState()}
@@ -945,7 +954,7 @@ async function send(ev){ev?.preventDefault();if(state.sending)return;const msg=$
 function showView(name){state.view=name;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));for(const v of viewOrder)$('#'+v+'View').classList.toggle('hidden',v!==name);render()}
 function swipeView(step){const i=viewOrder.indexOf(state.view),next=viewOrder[Math.max(0,Math.min(viewOrder.length-1,i+step))];if(next&&next!==state.view)showView(next)}
 function bindSwipe(){const area=$('.main');let sx=0,sy=0,active=false;area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const tag=(e.target?.tagName||'').toUpperCase();if(['BUTTON','INPUT','TEXTAREA','SELECT','OPTION'].includes(tag))return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true},{passive:true});area.addEventListener('touchend',e=>{if(!active||!e.changedTouches.length)return;active=false;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.25)return;swipeView(dx<0?1:-1)},{passive:true});area.addEventListener('touchcancel',()=>{active=false},{passive:true})}
-async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required'){state.pending=ev;showView('approve')}if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required')state.pending=ev;if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
 
 // Drawer Management
 function openDrawer(){$('#drawer').classList.add('open');$('#drawerBackdrop').classList.add('open')}
@@ -955,7 +964,6 @@ $('#closeDrawerBtn').onclick=closeDrawer;
 $('#drawerBackdrop').onclick=closeDrawer;
 $('#newChatTopBtn').onclick=()=>{showView('new');$('#prompt').focus()};
 $('#newChatDrawerBtn').onclick=()=>{closeDrawer();showView('new');$('#prompt').focus()};
-$('#drawerApproveBtn').onclick=()=>{closeDrawer();showView('approve')};
 $('#drawerTrashBtn').onclick=()=>{closeDrawer();showView('trash')};
 $('#drawerSettingsBtn').onclick=()=>{closeDrawer();updateSettingsView();$('#settingsModal').classList.remove('hidden')};
 $('#modelProjectPill').onclick=()=>{updateSettingsView();$('#settingsModal').classList.remove('hidden')};

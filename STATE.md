@@ -3,12 +3,19 @@
 **Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `f9c171b` (Tag: `v6.7.1`)  
-**Last merged functional PR:** #84 `feat(ui,agent): Extras menu, Quick QR pairing button & direct image OCR answers` (Android OpenAI redesign: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
+**Current authoritative merged master:** `f9c171b` (Release: `v6.8.0`)  
+**Last merged functional PR:** #86 `feat(android,windows): native camera QR scanner, LAN discovery, and remote firewall elevation helper` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
+## 2.1 Merged runtime, Windows platform & Android remote improvements (v6.8.0)
+
+- **Android Mobile Remote App**: Starts on **Neue Aufgabe / New task** tab. Approval requests render dynamically as a modern popup over the active view. Transient status noise is cleanly filtered from history upon completion.
+- **Native Android Shell**: Persists last accepted Remote URL and TLS fingerprint; falls back to automatic mDNS and bounded parallel LAN discovery (`/remote/api/discovery` / `/remote/api/ping`).
+- **Windows Platform & Fast Start**: `START.bat` logs to `logs/start.log`, passes fast-start parameters to `scripts/needs-build.ps1`, and avoids blocking on non-critical startup checks. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
+- **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
+- **Thread Context Filtering**: `src/agent.go` passes compact filtered previous thread history to allow short follow-ups (e.g. "zeige links") without context explosion.
 
 ## 1. Product objective
 
@@ -185,6 +192,8 @@ Mission/recovery core: `src/agent_mission.go`, `src/run_journal.go`, `src/run_jo
 Desktop recovery surface: `src/desktop_mission_recovery.go`, `src/desktop_mission_recovery_observer.go`, `src/server.go`, `src/static/mission_status.js`, `src/desktop_mission_recovery_test.go`, `src/desktop_mission_recovery_server_test.go`, `src/desktop_mission_recovery_remote_test.go`.
 
 Mobile boundary: `src/remote_server.go`, `src/remote_mission_status_contract.md`.
+
+Startup/mobile local changes: `START.bat`, `scripts/needs-build.ps1`, `scripts/build.ps1`, `src/main.go`, `src/platform_windows.go`, `src/static/remote.html`, `android/README.md`, `src/mobile_remote_ui_contract_test.go`, `src/windows_packaging_test.go`.
 
 ## 7. Exact next development direction
 
