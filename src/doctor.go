@@ -224,6 +224,35 @@ func RunDoctorDiagnostics(ctx context.Context, cfg Config) DoctorReport {
 		addItem(item)
 	}()
 
+	// 6. Virtualization & VM Sandbox Diagnostics
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		item := DiagnosticItem{
+			Name:     "Virtualization & VM Sandbox",
+			Category: "vm_sandbox",
+		}
+		caps := discoverVMCapabilities(ctx, cfg)
+		item.Status = HealthStatusOK
+		details := []string{
+			fmt.Sprintf("Preferred Backend: %s", caps.Preferred),
+			fmt.Sprintf("Supported Isolation Modes: %s", strings.Join(caps.SupportedModes, ", ")),
+		}
+		if caps.QEMUAvailable {
+			details = append(details, fmt.Sprintf("QEMU: %s (%s)", caps.QEMUPath, caps.QEMUVersion))
+		}
+		if caps.WSLAvailable {
+			details = append(details, fmt.Sprintf("WSL: %s", caps.WSLPath))
+		}
+		item.Details = details
+		if caps.QEMUAvailable || caps.WSLAvailable {
+			item.Summary = fmt.Sprintf("Hardware isolation ready via %s (%s)", caps.Preferred, strings.Join(caps.SupportedModes, "/"))
+		} else {
+			item.Summary = "Process-level project isolation active (QEMU/WSL optional)"
+		}
+		addItem(item)
+	}()
+
 	wg.Wait()
 
 	report.SummaryText = fmt.Sprintf("LocalCode Doctor: %s (%d components checked)", strings.ToUpper(string(report.Overall)), len(report.Items))
