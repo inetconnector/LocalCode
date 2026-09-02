@@ -552,6 +552,9 @@ func extractManifestPackageAndLauncher(manifestPath string) (pkg string, launche
 		return "", "", err
 	}
 	pkg = strings.TrimSpace(manifest.Package)
+	if pkg == "" {
+		return "", "", errors.New("manifest missing package attribute")
+	}
 	for _, act := range manifest.Application.Activities {
 		isMain := false
 		isLauncher := false
@@ -571,6 +574,9 @@ func extractManifestPackageAndLauncher(manifestPath string) (pkg string, launche
 			launcher = strings.TrimSpace(act.Name)
 			break
 		}
+	}
+	if launcher == "" && len(manifest.Application.Activities) > 0 {
+		launcher = strings.TrimSpace(manifest.Application.Activities[0].Name)
 	}
 	return pkg, launcher, nil
 }
