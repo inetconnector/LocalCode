@@ -60,8 +60,8 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 - [x] Optional backend-neutral local inference path such as llama.cpp/DMC without silent model/provider drift (`src/inference_backend.go`).
 - [x] Stronger health/doctor diagnostics for local models, tools, engines, MCP, Android Remote and orchestration resources (`src/doctor.go`, `GET /api/doctor`).
+- [x] Benchmark LocalCode Native against Aider/OpenCode/Claw on reproducible repository tasks before claiming superiority (`src/benchharness/`, `src/cmd/localcode-bench-*`, `scripts/run-engine-benchmarks.ps1`).
 - [ ] Evaluate QEMU/VM/OS-building workflows only behind explicit sandbox/resource boundaries and reproducible tests.
-- [ ] Benchmark LocalCode Native against Aider/OpenCode/Claw on reproducible repository tasks before claiming superiority.
 
 ## Documentation/cleanup acceptance gates
 

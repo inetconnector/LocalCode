@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "string-calculator",
+  "repository": ".",
+  "base_ref": "master",
+  "task": "Implement a StringCalculator with Add(input string) (int, error) supporting custom delimiters and negative number detection.",
+  "engine": "localcode-native",
+  "model": "qwen2.5-coder:14b",
+  "engine_command": [
+    "cmd/localcode-bench-native"
+  ],
+  "allowed_paths": [
+    "pkg/calculator",
+    "calc"
+  ],
+  "checks": [
+    {
+      "name": "syntax-check",
+      "kind": "lint",
+      "command": ["go", "vet", "./..."],
+      "required": true,
+      "timeout_seconds": 60
+    }
+  ],
+  "timeout_seconds": 600
+}
