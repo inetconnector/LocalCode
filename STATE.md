@@ -3,8 +3,8 @@
 **Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `2c46afd` (Tag: `v6.7.0`)  
-**Last merged functional PR:** #82 `feat: overhaul Android Remote app to state-of-the-art OpenAI style and namespace com.inetconnector.localcode` (VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
+**Current authoritative merged master:** `f9c171b` (Tag: `v6.7.1`)  
+**Last merged functional PR:** #84 `feat(ui,agent): Extras menu, Quick QR pairing button & direct image OCR answers` (Android OpenAI redesign: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
