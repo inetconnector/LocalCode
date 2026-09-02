@@ -645,6 +645,17 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		maxSteps = 60
 	}
 	intent := classifyTaskIntent(originalTask)
+	if intent.Kind == "image_query" {
+		if analysis := extractImageAnalysisFromMessages(messages); analysis != "" {
+			s.mu.Lock()
+			s.LastSummary = analysis
+			s.mu.Unlock()
+			s.AddEvent(UIEvent{Type: "final", Message: analysis})
+			s.recordAction("Bildanalyse und Texterkennung abgeschlossen")
+			s.UpdateProjectState("Bildanalyse abgeschlossen")
+			return "done"
+		}
+	}
 	completedActions := map[string]bool{}
 	failedActions := map[string]int{}
 	changedPaths := map[string]bool{}
