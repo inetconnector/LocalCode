@@ -3,8 +3,8 @@
 **Verified:** 2026-09-02 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `0a83117` (Tag: `v6.5.0`)  
-**Last merged functional PR:** #77 `feat: complete ADB mastery, auto launcher detection, reverse tunneling, and REST API` (Docs: #76, Fixes: #75, Pipeline: #74)  
+**Current authoritative merged master:** `8032ff8` (Tag: `v6.6.0`)  
+**Last merged functional PR:** #80 `feat: complete QEMU/VM sandbox orchestration and doctor diagnostics` (Benchmarks: #79, Docs: #78, ADB: #77, Fixes: #75, Pipeline: #74)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
