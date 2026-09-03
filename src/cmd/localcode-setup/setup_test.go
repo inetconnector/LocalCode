@@ -53,4 +53,3 @@ func TestInstallerSilentExecutionInTempDir(t *testing.T) {
 		t.Errorf("expected %s to exist after install", installedExe)
 	}
 }
-

@@ -31,17 +31,17 @@ var (
 )
 
 const (
-	mbOK               = 0x00000000
-	mbOKCancel         = 0x00000001
-	mbYesNo            = 0x00000004
-	mbIconInformation  = 0x00000040
-	mbIconQuestion     = 0x00000020
-	mbIconWarning      = 0x00000030
-	mbIconError        = 0x00000010
-	idOK               = 1
-	idCancel           = 2
-	idYes              = 6
-	idNo               = 7
+	mbOK              = 0x00000000
+	mbOKCancel        = 0x00000001
+	mbYesNo           = 0x00000004
+	mbIconInformation = 0x00000040
+	mbIconQuestion    = 0x00000020
+	mbIconWarning     = 0x00000030
+	mbIconError       = 0x00000010
+	idOK              = 1
+	idCancel          = 2
+	idYes             = 6
+	idNo              = 7
 )
 
 func showMsgBox(title, message string, flags uint32) int {
@@ -220,7 +220,6 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 			return nil
 		}
 	}
-
 
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
