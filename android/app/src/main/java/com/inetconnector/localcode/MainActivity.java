@@ -3,8 +3,10 @@ package com.inetconnector.localcode;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.net.http.SslCertificate;
@@ -14,18 +16,20 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.app.AlertDialog;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -35,18 +39,45 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.Inet4Address;
+import java.net.InterfaceAddress;
+import java.net.NetworkInterface;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 @SuppressWarnings("deprecation")
 public final class MainActivity extends Activity {
     private static final String SERVICE_TYPE = "_localcode._tcp.";
+    private static final String PREFS_NAME = "localcode_remote";
+    private static final String PREF_REMOTE_URL = "remote_url";
+    private static final String PREF_TLS_FINGERPRINT = "tls_fingerprint";
+    private static final int DEFAULT_REMOTE_PORT = 32146;
     private static final int REQUEST_NEARBY = 701;
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
@@ -61,9 +92,11 @@ public final class MainActivity extends Activity {
     private EditText manualUrl;
     private EditText manualFingerprint;
     private ValueCallback<Uri[]> filePathCallback;
+    private SharedPreferences preferences;
     private String expectedFingerprint = "";
     private String currentRemoteUrl = "";
     private boolean discovering;
+    private volatile boolean scanningLan;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,9 +106,14 @@ public final class MainActivity extends Activity {
             getWindow().setNavigationBarColor(0xFF0D0D0D);
         }
         nsdManager = (NsdManager) getSystemService(Context.NSD_SERVICE);
+        preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         buildUi();
-        handleIntent(getIntent());
-        if (currentRemoteUrl.isEmpty()) {
+        boolean handled = handleIntent(getIntent());
+        if (handled) return;
+        loadSavedConnection();
+        if (!currentRemoteUrl.isEmpty()) {
+            openRemote(currentRemoteUrl);
+        } else {
             requestDiscoveryPermissionAndStart();
         }
     }
@@ -251,6 +289,7 @@ public final class MainActivity extends Activity {
                 String observed = fingerprint(error.getCertificate());
                 if ((validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) || isPrivateHost(currentRemoteUrl)) {
                     expectedFingerprint = observed;
+                    persistConnection(currentRemoteUrl, expectedFingerprint);
                     handler.proceed();
                 } else {
                     handler.cancel();
@@ -260,6 +299,20 @@ public final class MainActivity extends Activity {
                         setStatus(tr(
                                 "TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed),
                                 "TLS certificate not confirmed. Expected: " + printable(expectedFingerprint) + " · Received: " + printable(observed)));
+                    });
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request != null && request.isForMainFrame()) {
+                    runOnUiThread(() -> {
+                        webView.setVisibility(View.GONE);
+                        discoveryPanel.setVisibility(View.VISIBLE);
+                        setStatus(tr(
+                                "Gespeicherte Verbindung nicht erreichbar. Suche LocalCode erneut …",
+                                "Saved connection is not reachable. Searching for LocalCode again …"));
+                        requestDiscoveryPermissionAndStart();
                     });
                 }
             }
@@ -276,6 +329,8 @@ public final class MainActivity extends Activity {
                     Uri[] results = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
                     callback.onReceiveValue(results);
                 } catch (RuntimeException ex) {
+
+
                     callback.onReceiveValue(null);
                     showRemoteError(
                             "Die ausgewählten Dateien konnten nicht übernommen werden.",
@@ -346,7 +401,24 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getBridgeVersion() {
-            return "2.0";
+            return "2.1";
+        }
+
+        @JavascriptInterface
+        public void vibrate(int milliseconds) {
+            runOnUiThread(() -> {
+                try {
+                    Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                    if (v != null && v.hasVibrator()) {
+                        int dur = Math.max(1, Math.min(milliseconds, 500));
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            v.vibrate(VibrationEffect.createOneShot(dur, VibrationEffect.DEFAULT_AMPLITUDE));
+                        } else {
+                            v.vibrate(dur);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            });
         }
 
         @JavascriptInterface
@@ -354,6 +426,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 currentRemoteUrl = "";
                 expectedFingerprint = "";
+                clearSavedConnection();
                 if (webView != null) webView.setVisibility(View.GONE);
                 if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
             });
@@ -456,6 +529,7 @@ public final class MainActivity extends Activity {
     }
 
     private void requestDiscoveryPermissionAndStart() {
+        startLanProbeDiscovery();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY);
             return;
@@ -471,8 +545,8 @@ public final class MainActivity extends Activity {
                 startDiscovery();
             } else {
                 setStatus(tr(
-                        "Lokale Netzwerkerkennung wurde nicht freigegeben. Alternativ private HTTPS-IP und TLS-Fingerprint vom LocalCode-PC manuell eingeben.",
-                        "Local network discovery was not allowed. Alternatively enter the private HTTPS IP and TLS fingerprint from the LocalCode PC manually."));
+                        "mDNS nicht freigegeben. Prüfe bekannte LAN-Adressen direkt …",
+                        "mDNS was not allowed. Checking known LAN addresses directly …"));
             }
         }
     }
@@ -508,6 +582,201 @@ public final class MainActivity extends Activity {
             discovering = false;
             releaseMulticastLock();
             setStatus(tr("mDNS-Suche fehlgeschlagen: ", "mDNS discovery failed: ") + safeMessage(ex));
+        }
+    }
+
+    private void startLanProbeDiscovery() {
+        if (scanningLan) return;
+        scanningLan = true;
+        int port = discoveryPort();
+        setStatus(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
+        new Thread(() -> {
+            AtomicBoolean found = new AtomicBoolean(false);
+            ExecutorService pool = Executors.newFixedThreadPool(24);
+            try {
+                for (String host : lanProbeCandidates()) {
+                    pool.execute(() -> {
+                        if (found.get()) return;
+                        ProbeResult result = probeLocalCode(host, port);
+                        if (result != null && found.compareAndSet(false, true)) {
+                            runOnUiThread(() -> {
+                                expectedFingerprint = result.fingerprint;
+                                openRemote(result.url);
+                            });
+                        }
+                    });
+                }
+                pool.shutdown();
+                if (!pool.awaitTermination(8, TimeUnit.SECONDS)) pool.shutdownNow();
+                if (!found.get()) {
+                    setStatus(tr(
+                            "Keine LocalCode-Instanz gefunden. QR-Code scannen oder Adresse vom PC eingeben.",
+                            "No LocalCode instance found. Scan the QR code or enter the PC address."));
+                }
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } finally {
+                pool.shutdownNow();
+                scanningLan = false;
+            }
+        }, "LocalCodeLanProbe").start();
+    }
+
+    private int discoveryPort() {
+        int port = portFromText(manualUrl == null ? "" : manualUrl.getText().toString());
+        if (port <= 0) port = portFromText(currentRemoteUrl);
+        return port > 0 ? port : DEFAULT_REMOTE_PORT;
+    }
+
+    private static int portFromText(String value) {
+        if (value == null || value.trim().isEmpty()) return 0;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            return uri.getPort() > 0 ? uri.getPort() : 0;
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+
+    private ArrayList<String> lanProbeCandidates() {
+        ArrayList<String> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        addCandidateHost(out, seen, hostFromText(manualUrl == null ? "" : manualUrl.getText().toString()));
+        addCandidateHost(out, seen, hostFromText(currentRemoteUrl));
+        try {
+            for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!iface.isUp() || iface.isLoopback()) continue;
+                for (InterfaceAddress address : iface.getInterfaceAddresses()) {
+                    if (!(address.getAddress() instanceof Inet4Address)) continue;
+                    int prefix = address.getNetworkPrefixLength();
+                    if (prefix < 24 || prefix > 30) prefix = 24;
+                    addSubnetCandidates(out, seen, (Inet4Address) address.getAddress(), prefix);
+                    if (out.size() >= 512) return out;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private static String hostFromText(String value) {
+        if (value == null || value.trim().isEmpty()) return "";
+        try {
+            return Uri.parse(value.trim()).getHost();
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
+    private static void addSubnetCandidates(ArrayList<String> out, Set<String> seen, Inet4Address address, int prefix) {
+        byte[] raw = address.getAddress();
+        int ip = ((raw[0] & 0xff) << 24) | ((raw[1] & 0xff) << 16) | ((raw[2] & 0xff) << 8) | (raw[3] & 0xff);
+        int mask = prefix == 0 ? 0 : (int) (0xffffffffL << (32 - prefix));
+        int network = ip & mask;
+        int broadcast = network | ~mask;
+        for (int value = network + 1; value < broadcast && out.size() < 512; value++) {
+            if (value == ip) continue;
+            String host = ((value >>> 24) & 0xff) + "." + ((value >>> 16) & 0xff) + "." + ((value >>> 8) & 0xff) + "." + (value & 0xff);
+            addCandidateHost(out, seen, host);
+        }
+    }
+
+    private static void addCandidateHost(ArrayList<String> out, Set<String> seen, String host) {
+        if (host == null || host.trim().isEmpty()) return;
+        host = host.trim();
+        if (!isLiteralIPv4(host)) return;
+        try {
+            if (!isPrivateAddress(InetAddress.getByName(host))) return;
+        } catch (Exception ex) {
+            return;
+        }
+        if (seen.add(host)) out.add(host);
+    }
+
+    private ProbeResult probeLocalCode(String host, int port) {
+        ProbeResult result = probeLocalCodeEndpoint("https", host, port, true);
+        if (result != null) return result;
+        return probeLocalCodeEndpoint("http", host, port, false);
+    }
+
+    private ProbeResult probeLocalCodeEndpoint(String scheme, String host, int port, boolean trustDiscoveryCertificate) {
+        for (String path : new String[]{"/remote/api/discovery", "/remote/api/ping"}) {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(scheme + "://" + host + ":" + port + path);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(350);
+                connection.setReadTimeout(550);
+                connection.setRequestProperty("Accept", "application/json");
+                if (connection instanceof HttpsURLConnection && trustDiscoveryCertificate) {
+                    HttpsURLConnection https = (HttpsURLConnection) connection;
+                    https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
+                    https.setHostnameVerifier(discoveryHostnameVerifier());
+                }
+                int code = connection.getResponseCode();
+                if (code != 200) continue;
+                String body = readSmallResponse(connection.getInputStream());
+                JSONObject json = new JSONObject(body);
+                if (!json.optString("app", "").contains("LocalCode Remote")) continue;
+                String fingerprint = normalizeFingerprint(json.optString("tls_fingerprint", ""));
+                String target = discoveryURLFromJSON(json, scheme + "://" + host + ":" + port + "/remote");
+                if (target == null || !isAllowedRemoteUrl(target)) continue;
+                if ("https".equalsIgnoreCase(scheme) && path.endsWith("/discovery") && !validFingerprint(fingerprint)) continue;
+                return new ProbeResult(target, fingerprint);
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }
+        return null;
+    }
+
+    private static String discoveryURLFromJSON(JSONObject json, String fallback) {
+        JSONArray urls = json.optJSONArray("remote_urls");
+        if (urls != null) {
+            for (int i = 0; i < urls.length(); i++) {
+                String value = urls.optString(i, "");
+                if (isAllowedRemoteUrl(value)) return value;
+            }
+        }
+        return fallback;
+    }
+
+    private static String readSmallResponse(InputStream input) throws Exception {
+        try (InputStream in = input; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[1024];
+            int total = 0;
+            int n;
+            while ((n = in.read(buf)) >= 0 && total < 8192) {
+                out.write(buf, 0, n);
+                total += n;
+            }
+            return out.toString("UTF-8");
+        }
+    }
+
+    private static SSLContext discoverySSLContext() throws Exception {
+        TrustManager[] trustManagers = new TrustManager[]{new X509TrustManager() {
+            @Override public void checkClientTrusted(X509Certificate[] chain, String authType) { }
+            @Override public void checkServerTrusted(X509Certificate[] chain, String authType) { }
+            @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+        }};
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(null, trustManagers, new SecureRandom());
+        return context;
+    }
+
+    private static HostnameVerifier discoveryHostnameVerifier() {
+        return (hostname, session) -> true;
+    }
+
+    private static final class ProbeResult {
+        final String url;
+        final String fingerprint;
+
+        ProbeResult(String url, String fingerprint) {
+            this.url = url;
+            this.fingerprint = fingerprint;
         }
     }
 
@@ -551,16 +820,16 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void handleIntent(Intent intent) {
-        if (intent == null) return;
+    private boolean handleIntent(Intent intent) {
+        if (intent == null) return false;
         String directUrl = intent.getStringExtra("connect_url");
         if (directUrl != null && !directUrl.trim().isEmpty() && isAllowedRemoteUrl(directUrl.trim())) {
             openRemote(directUrl.trim());
-            return;
+            return true;
         }
-        if (intent.getData() == null) return;
+        if (intent.getData() == null) return false;
         Uri data = intent.getData();
-        if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return;
+        if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return false;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
         String code = data.getQueryParameter("code");
@@ -577,6 +846,7 @@ public final class MainActivity extends Activity {
                     "Der QR-/Deep-Link ist unvollständig oder unsicher.",
                     "The QR/deep link is incomplete or unsafe."));
         }
+        return true;
     }
 
     private void openRemote(String target) {
@@ -587,11 +857,35 @@ public final class MainActivity extends Activity {
             return;
         }
         currentRemoteUrl = target;
+        persistConnection(target, expectedFingerprint);
         runOnUiThread(() -> {
             discoveryPanel.setVisibility(View.GONE);
             webView.setVisibility(View.VISIBLE);
             webView.loadUrl(target);
         });
+    }
+
+    private void loadSavedConnection() {
+        if (preferences == null) return;
+        currentRemoteUrl = preferences.getString(PREF_REMOTE_URL, "");
+        expectedFingerprint = normalizeFingerprint(preferences.getString(PREF_TLS_FINGERPRINT, ""));
+        if (!isAllowedRemoteUrl(currentRemoteUrl)) {
+            currentRemoteUrl = "";
+            expectedFingerprint = "";
+        }
+    }
+
+    private void persistConnection(String target, String fingerprint) {
+        if (preferences == null || !isAllowedRemoteUrl(target)) return;
+        preferences.edit()
+                .putString(PREF_REMOTE_URL, target)
+                .putString(PREF_TLS_FINGERPRINT, normalizeFingerprint(fingerprint))
+                .apply();
+    }
+
+    private void clearSavedConnection() {
+        if (preferences == null) return;
+        preferences.edit().remove(PREF_REMOTE_URL).remove(PREF_TLS_FINGERPRINT).apply();
     }
 
     private static boolean isAllowedRemoteUrl(String value) {

@@ -163,6 +163,10 @@ Arbeitsweise:
 - Für einzelne Android-Diagnosen bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
+- Wenn der Nutzer zeitgesteuerte oder wiederkehrende Aufgaben (Scheduler/Cron) verlangt:
+  - Auf Windows: Verwende schtasks (z. B. schtasks /create /tn ... /tr ... /sc daily /st ...) oder PowerShell ScheduledTasks (Register-ScheduledTask, Get-ScheduledTask).
+  - Auf Linux/WSL: Verwende crontab (z. B. crontab -l, crontab -e), systemd-timer (systemctl list-timers) oder at für einmalige Verzögerungen.
+  - Prüfe vorher bestehende Aufgaben, verwende vollständige Pfade und verifiziere die Erstellung des geplanten Tasks.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
@@ -242,17 +246,23 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.Project = projectOverride
 	}
 	project := s.Project
-	if model == "" {
-		model = s.Model
-	}
 	if project == "" {
 		s.mu.Unlock()
 		return errors.New("no project selected")
 	}
 	if model == "" {
-		s.mu.Unlock()
-		return errors.New("no model selected")
+		model = s.Model
 	}
+	if model == "" {
+		model = s.Config.LastModel
+	}
+	if model == "" && s.Config.OllamaDefaultModel != "" {
+		model = s.Config.OllamaDefaultModel
+	}
+	if model == "" {
+		model = "qwen2.5-coder:14b"
+	}
+	s.Model = model
 
 	continuation := s.Continuation
 	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0 && likelyContinuationAnswer(continuation.Question, userMessage)
@@ -550,6 +560,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	instructions := projectInstructionContext(project, userMessage)
 	s.mu.RLock()
 	cfg := s.Config
+	recentContext := recentThreadContextForAgent(s.Events, userMessage)
 	s.mu.RUnlock()
 	recoveryContext, recoveredTask := s.consumeRecoveryContextForTask(project, userMessage)
 	effectiveTask := userMessage
@@ -573,7 +584,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), effectiveTask, attachmentContext, qualityHint, automationHint)}}
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -589,6 +600,86 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 
 	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", effectiveTask)
 	runAfterHook = outcome == "done"
+}
+
+func recentThreadContextForAgent(events []UIEvent, currentUserMessage string) string {
+	currentUserMessage = strings.TrimSpace(currentUserMessage)
+	if len(events) == 0 {
+		return ""
+	}
+	items := []string{}
+	for i := len(events) - 1; i >= 0 && len(items) < 8; i-- {
+		ev := events[i]
+		if agentContextEventIsTransient(ev.Type) {
+			continue
+		}
+		text := strings.TrimSpace(ev.Message)
+		detail := strings.TrimSpace(ev.Detail)
+		if detail != "" && agentContextEventShouldIncludeDetail(ev.Type) {
+			if text != "" {
+				text += "\n" + detail
+			} else {
+				text = detail
+			}
+		}
+		if text == "" {
+			continue
+		}
+		if ev.Type == "user" && currentUserMessage != "" && strings.EqualFold(text, currentUserMessage) {
+			continue
+		}
+		items = append(items, agentContextEventLabel(ev)+": "+truncateText(text, 1800))
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+		items[left], items[right] = items[right], items[left]
+	}
+	return "\n\nTHREAD-KONTEXT:\n" + strings.Join(items, "\n\n") + "\n\nKurze Folgeaufgaben wie \"zeige Links\" oder \"mach das\" beziehen sich auf diesen sichtbaren Verlauf. Frage nur nach, wenn der Bezug auch mit diesem Kontext nicht bestimmbar ist."
+}
+
+func agentContextEventIsTransient(eventType string) bool {
+	switch eventType {
+	case "status", "progress", "action_running", "approval", "approval_required":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventShouldIncludeDetail(eventType string) bool {
+	switch eventType {
+	case "final", "question", "tool_result", "tool_error", "warning", "error", "action_done":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventLabel(ev UIEvent) string {
+	switch ev.Type {
+	case "user":
+		return "Nutzer"
+	case "final":
+		return "Letzte Antwort"
+	case "question":
+		return "Rueckfrage"
+	case "tool_result", "action_done":
+		if strings.TrimSpace(ev.Action) != "" {
+			return "Werkzeug " + ev.Action
+		}
+		return "Werkzeug"
+	case "tool_error", "error":
+		return "Fehler"
+	case "warning":
+		return "Warnung"
+	default:
+		if strings.TrimSpace(ev.Action) != "" {
+			return ev.Type + " " + ev.Action
+		}
+		return ev.Type
+	}
 }
 
 func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, model, userMessage string, attachments []Attachment, continuation *AgentContinuation) {
@@ -893,7 +984,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {
 	models, err := s.Ollama.Tags(ctx)
 	if err != nil {
-		return []string{requested}
+		if requested != "" {
+			return []string{requested}
+		}
+		return []string{"qwen2.5-coder:14b"}
 	}
 	installed := map[string]bool{}
 	for _, m := range models {
@@ -901,24 +995,29 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 	}
 	seen := map[string]bool{}
 	out := []string{}
-	add := func(name string) {
+	add := func(name string, requireInstalled bool) {
 		name = strings.TrimSpace(name)
-		if name != "" && !seen[name] && installed[name] {
+		if name != "" && !seen[name] && (!requireInstalled || installed[name]) {
 			seen[name] = true
 			out = append(out, name)
 		}
 	}
-	add(requested)
-	add("qwen2.5-coder:14b")
-	add("qwen2.5-coder:7b")
-	add("gpt-oss:20b")
+	if requested != "" {
+		add(requested, false)
+	}
+	add("qwen2.5-coder:14b", true)
+	add("qwen2.5-coder:7b", true)
+	add("gpt-oss:20b", true)
 	for _, m := range models {
 		if strings.Contains(strings.ToLower(m.Name), "coder") {
-			add(m.Name)
+			add(m.Name, true)
 		}
 	}
 	for _, m := range models {
-		add(m.Name)
+		add(m.Name, true)
+	}
+	if len(out) == 0 && requested != "" {
+		out = append(out, requested)
 	}
 	return out
 }

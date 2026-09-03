@@ -472,11 +472,14 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		targetURL = meshStatus.LocalNodeURL
 	}
 
+	// Only override BaseURL if no explicit local URL was set by the user or if local node was discovered
 	s.mu.Lock()
 	if s.Ollama == nil {
 		s.Ollama = NewOllamaClient()
 	}
-	s.Ollama.BaseURL = targetURL
-	s.Ollama.AuthToken = apiKey
+	if cfg.OllamaURL == "" || cfg.OllamaURL == defaultComputeMeshGatewayURL || meshStatus.DirectLocal {
+		s.Ollama.BaseURL = targetURL
+		s.Ollama.AuthToken = apiKey
+	}
 	s.mu.Unlock()
 }

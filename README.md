@@ -11,12 +11,13 @@ LocalCode is a Windows-first, local-first coding-agent application centered on O
 ### Schnellstart
 
 1. Repository bzw. ZIP vollständig in einen neuen Ordner legen.
-2. `START.bat` oder `BUILD-AND-RUN.bat` starten.
-3. LocalCode prüft Windows-/Go-Laufzeit, Ollama, das konfigurierte Modell und die ausgewählte Coding-Agent-Engine.
-4. Fehlende unterstützte Komponenten können benutzerlokal installiert und danach verifiziert werden.
-5. Frische Installationen verwenden standardmäßig `qwen2.5-coder:14b` und **LocalCode Native**.
+2. `START.bat` starten. Der normale Start verwendet einen schnellen, geloggten Pfad und öffnet die UI ohne blockierende Runtime-Dialoge oder automatische Firewall-UAC-Abfrage.
+3. Falls der native Windows-Build fehlt oder veraltet ist, delegiert `START.bat` einmalig an `BUILD.bat`; danach nutzt die Frischeprüfung einen Build-State-/Git-Fingerprint.
+4. Ollama, Modelle und Coding-Agent-Engines werden im laufenden Produkt über Status/Doctor und bei erster Nutzung geprüft; vollständige Diagnose bleibt über `DIAGNOSE.bat` verfügbar.
+5. Für dauerhaften Handy-Remote-Zugriff im privaten LAN kann einmalig `scripts\install-remote-firewall-rule.ps1` als Administrator ausgeführt werden. `START.bat` löst diese Rechteabfrage nicht automatisch aus.
+6. Frische Installationen verwenden standardmäßig `qwen2.5-coder:14b` und **LocalCode Native**.
 
-Große Modelldownloads können beim ersten Start dauern. Diagnoseausgabe liegt im LocalCode-Log; `DIAGNOSE.bat` führt zusätzliche Prüfungen aus.
+Startprotokolle liegen in `logs/start.log`; Runtime-Details liegen im LocalCode-Log unter `%LOCALAPPDATA%\LocalCode\localcode.log`. Große Modelldownloads können beim ersten tatsächlichen Setup oder bei erster Nutzung dauern.
 
 ### Sprache
 
@@ -75,7 +76,7 @@ Die Desktop-Karte **Unterbrochene Mission** zeigt nur aktuelle Resume-/Retry-Kan
 
 ### Handy-Remote / Android
 
-LocalCode betreibt optional einen getrennten, token-geschützten Remote-Server für das lokale Netzwerk. Über **Hilfe → Remote koppeln** wird ein kurzlebiger Pairing-Code bzw. Pair-/QR-Link erzeugt. Die Android-Hülle unterstützt mDNS, TLS-Fingerprint-Pinning, WebView, nativen Dateipicker und Android-Spracheingabe.
+LocalCode betreibt optional einen getrennten, token-geschützten Remote-Server für das lokale Netzwerk. Über **Hilfe → Remote koppeln** wird ein kurzlebiger Pairing-Code bzw. Pair-/QR-Link erzeugt. Die Android-Hülle unterstützt gespeicherte Wiederverbindung, mDNS plus direkten LAN-Fallback-Scan, TLS-Fingerprint-Pinning, WebView, nativen Dateipicker und Android-Spracheingabe.
 
 Mobile bleibt absichtlich schmaler als Desktop. Die Remote zeigt bei einer aktiven read-only Mission nur **Mission · Läuft** auf Basis der bereits authentifizierten Felder `running` und `run_phase`. Es gibt **keine** Remote-Recovery-Route, keine Mission-/Task-Recovery-IDs, keine Scheduler-/Budget-/Accounting-Daten und keine Mobile Resume-/Retry-Autorität. Das bestehende Remote-Stop-Verhalten bleibt unverändert.
 
@@ -121,12 +122,13 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 ### Quick start
 
 1. Place the repository or extracted ZIP in a new directory.
-2. Run `START.bat` or `BUILD-AND-RUN.bat`.
-3. LocalCode verifies the Windows/Go runtime, Ollama, the configured model and the selected coding-agent engine.
-4. Missing supported components can be installed for the current user and verified afterwards.
-5. Fresh installs default to `qwen2.5-coder:14b` and **LocalCode Native**.
+2. Run `START.bat`. The normal launcher uses a fast, logged path and opens the UI without blocking runtime dialogs or automatic firewall UAC prompts.
+3. If the native Windows build is missing or stale, `START.bat` delegates once to `BUILD.bat`; after that the freshness check uses a build-state/Git fingerprint.
+4. Ollama, models and coding-agent engines are checked inside the running product through Status/Doctor and on first use; full diagnostics remain available through `DIAGNOSE.bat`.
+5. For durable phone Remote access on the private LAN, run `scripts\install-remote-firewall-rule.ps1` once as Administrator. `START.bat` does not trigger that elevation prompt automatically.
+6. Fresh installs default to `qwen2.5-coder:14b` and **LocalCode Native**.
 
-Large model downloads can take time on first startup. Diagnostics are written to the LocalCode log; `DIAGNOSE.bat` performs additional checks.
+Launcher logs are written to `logs/start.log`; runtime details are written to `%LOCALAPPDATA%\LocalCode\localcode.log`. Large model downloads can take time during the first actual setup or first use.
 
 ### Language
 
@@ -178,7 +180,7 @@ The Desktop **Interrupted Mission** card only offers explicit controls for curre
 
 ### Phone Remote / Android
 
-LocalCode can run a separate token-protected Remote server on the local network. **Help → Pair Remote** creates a short-lived pairing code or pair/QR link. The Android shell supports mDNS, TLS fingerprint pinning, WebView, native file picking and Android speech recognition.
+LocalCode can run a separate token-protected Remote server on the local network. **Help → Pair Remote** creates a short-lived pairing code or pair/QR link. The Android shell supports saved reconnection, mDNS plus a direct LAN fallback scan, TLS fingerprint pinning, WebView, native file picking and Android speech recognition.
 
 Mobile deliberately remains narrower than Desktop. While a read-only Mission is active, Remote shows only **Mission · Running** from the already-authenticated `running` and `run_phase` fields. There is **no** Remote recovery endpoint, no Mission/task recovery identifiers, no Scheduler/budget/accounting payload and no Mobile Resume/Retry authority. Existing Remote stop behavior is unchanged.
 

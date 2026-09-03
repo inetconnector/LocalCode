@@ -63,7 +63,15 @@ This file contains unfinished functional work only. Completed PR history belongs
 - [x] Benchmark LocalCode Native against Aider/OpenCode/Claw on reproducible repository tasks before claiming superiority (`src/benchharness/`, `src/cmd/localcode-bench-*`, `scripts/run-engine-benchmarks.ps1`).
 - [x] Evaluate QEMU/VM/OS-building workflows only behind explicit sandbox/resource boundaries and reproducible tests (`src/vm_sandbox.go`, `src/doctor.go`, `src/vm_sandbox_test.go`).
 
+## P1 – autonomous browser and desktop control
+
+- [ ] Turn browser automation into a first-class controlled capability: discover/enable the Playwright MCP server from Settings/Doctor, expose page inspection, navigation, click/type, screenshot and extraction actions through explicit agent tools, and keep public web research separate from authenticated/browser-session control.
+- [ ] Add a Windows desktop-control backend for visible applications using UI Automation or an equivalent inspectable accessibility tree. Required actions: list windows, inspect controls/text, click a named/located button, type text, read current UI state and capture screenshots.
+- [ ] Gate desktop/app control behind explicit configuration, foreground/allowlist boundaries, approvals, timeouts, cancellation and full action logging. Never allow prompts, memories, skills or webpage text to silently grant unrestricted OS control.
+- [ ] Add regression tests and an E2E smoke harness for browser navigation and a deterministic Windows test app so requests like "click the button in that program" can be verified reproducibly.
+
 ## Documentation/cleanup acceptance gates
 
 - [ ] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
 - [ ] Do not treat stale merged feature refs or historical non-current Actions runs as active development state.
+- [ ] Before merging the current local startup/mobile worktree changes, run the repository's full Windows quality gates: `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript syntax checks, browser UI smoke test for visible menus, Android APK build, and Windows-amd64 builds.
