@@ -28,7 +28,9 @@ This file is the self-contained restart point. Only merged `master` is authorita
 - **Model Fallback & Cluster Mesh**: Agent start falls back to `Config.LastModel`, `Config.OllamaDefaultModel`, or `qwen2.5-coder:14b` when no model is explicitly supplied. Local and remote Ollama tags are merged cleanly with automatic failover to local daemon if remote mesh endpoints encounter errors.
 - **Native Android Shell**: Persists last accepted Remote URL and TLS fingerprint; falls back to automatic mDNS and bounded parallel LAN discovery (`/remote/api/discovery` / `/remote/api/ping`).
 - **Windows Platform & Fast Start**: `START.bat` and `FAST-START.bat` provide instant startup with `LOCALCODE_FAST_START=1`. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
+- **Native Windows Setup Installer & Inno Setup Package**: Standalone Go-based Windows GUI installer and uninstaller (`dist\LocalCode-Setup.exe`, `INSTALL.bat`, `scripts/build-installer.ps1`) that installs to `%LOCALAPPDATA%\Programs\LocalCode`, creates Start Menu and Desktop shortcuts, configures User `PATH`, and registers in Windows Settings *Apps & Features* (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\LocalCode`) with quiet uninstall support. Includes classic Inno Setup compiler script (`installer/localcode-setup.iss`).
 - **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
+
 
 
 
