@@ -251,22 +251,37 @@ button{cursor:pointer;border:0;background:transparent}
   color:#ffffff;
   border-radius:20px;
   padding:11px 16px;
-  font-size:16px;
+  font-size:15.5px;
 }
 .bubble-row.agent .bubble{
-  font-size:16px;
-  color:#f0f0f0;
+  font-size:15.5px;
+  color:#f4f4f5;
   width:100%;
   max-width:100%;
 }
+.inline-code{
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.08);
+  padding:2px 6px;
+  border-radius:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:13px;
+  color:#38bdf8;
+}
+.bubble ul, .bubble ol{margin:6px 0;padding-left:22px}
+.bubble li{margin:3px 0}
+.bubble a{color:#38bdf8;text-decoration:underline;text-underline-offset:3px}
+.bubble strong{font-weight:700;color:#ffffff}
+.bubble em{font-style:italic;color:#e4e4e7}
+
 .code{
   margin:10px 0;
-  background:#000000;
-  border:1px solid #2a2a2a;
-  border-radius:var(--radius-md);
+  background:#09090b;
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:12px;
   padding:12px;
   font:13px/1.45 var(--code);
-  color:#e0e0e0;
+  color:#e4e4e7;
   overflow-x:auto;
   white-space:pre;
   position:relative;
@@ -277,17 +292,117 @@ button{cursor:pointer;border:0;background:transparent}
   align-items:center;
   margin-bottom:8px;
   padding-bottom:6px;
-  border-bottom:1px solid #222;
+  border-bottom:1px solid rgba(255,255,255,0.08);
   font-size:12px;
   color:var(--text-muted);
 }
 .copy-code-btn{
   font-size:11px;
-  padding:2px 8px;
-  border-radius:4px;
-  background:#262626;
+  padding:3px 8px;
+  border-radius:6px;
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.1);
+  color:#f4f4f5;
+  font-weight:500;
+  cursor:pointer;
+  transition:all .15s;
+}
+.copy-code-btn:active{transform:scale(0.95)}
+
+/* Colored Git Diff Box */
+.diff-box{
+  background:#09090b;
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:12px;
+  overflow-x:auto;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:12px;
+  line-height:1.5;
+  margin:10px 0;
+  padding:6px 0;
+}
+.diff-line{display:flex;padding:2px 10px;white-space:pre-wrap;word-break:break-all}
+.diff-line.diff-add{background:rgba(34,197,94,0.12);color:#4ade80}
+.diff-line.diff-del{background:rgba(239,68,68,0.12);color:#f87171}
+.diff-line.diff-hunk{background:rgba(56,189,248,0.08);color:#38bdf8;font-style:italic}
+.diff-line.diff-meta{color:#a1a1aa;font-weight:600;background:rgba(255,255,255,0.02)}
+.diff-line.diff-ctx{color:#d4d4d8}
+.diff-sign{width:16px;user-select:none;flex-shrink:0;opacity:0.8;font-weight:bold}
+.diff-text{flex:1;min-width:0}
+
+/* Starter Quick Cards */
+.new-hero{
+  text-align:center;
+  padding:20px 0 16px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.new-hero .empty-logo{
+  width:48px;
+  height:48px;
+  border-radius:50%;
+  background:var(--surface);
+  border:1px solid var(--border);
+  display:grid;
+  place-items:center;
+  margin-bottom:12px;
   color:#fff;
 }
+.new-hero h1{font-size:22px;font-weight:700;margin:0 0 6px;color:#fff;letter-spacing:-0.02em}
+.new-hero p{font-size:13.5px;color:#a1a1aa;margin:0}
+.starter-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:16px;
+  width:100%;
+}
+.starter-card{
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;
+  padding:12px;
+  text-align:left;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  transition:all .15s ease;
+  cursor:pointer;
+  color:inherit;
+}
+.starter-card:active{
+  background:rgba(255,255,255,0.08);
+  border-color:rgba(255,255,255,0.18);
+  transform:scale(0.98);
+}
+.starter-icon{font-size:20px}
+.starter-title{font-size:13px;font-weight:600;color:#f4f4f5}
+.starter-desc{font-size:11.5px;color:#71717a;line-height:1.35}
+
+/* Scroll To Bottom Button */
+.scroll-bottom-btn{
+  position:absolute;
+  bottom:92px;
+  right:20px;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  background:rgba(39,39,42,0.92);
+  backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.15);
+  color:#f4f4f5;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  cursor:pointer;
+  z-index:40;
+  transition:opacity .2s, transform .2s;
+}
+.scroll-bottom-btn.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+.scroll-bottom-btn:active{transform:scale(0.95)}
+
 .event-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .event-chip{
   display:inline-flex;
@@ -370,176 +485,258 @@ button{cursor:pointer;border:0;background:transparent}
 .action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .action-grid button{
   min-height:44px;
-  border-radius:var(--radius-md);
+  border-radius:12px;
   font-weight:600;
   font-size:13.5px;
-  padding:8px;
-  background:var(--panel);
+  padding:8px 12px;
+  background:rgba(255, 255, 255, 0.06);
+  border:1px solid rgba(255, 255, 255, 0.08);
+  color:#f4f4f5;
+  transition:all .15s;
 }
-.action-grid .primary{background:var(--accent);color:var(--accent-invert)}
-.action-grid .danger{background:var(--danger-bg);color:#fca5a5;border:1px solid #7f1d1d}
-.action-grid .store{grid-column:1/-1;background:#1e3a8a;color:#ffffff}
-.action-grid .trash{grid-column:1/-1;background:#262626;color:var(--text)}
+.action-grid button:active{transform:scale(0.98)}
+.action-grid .primary{
+  background:#ffffff;
+  border-color:#ffffff;
+  color:#000000;
+}
+.action-grid .danger{
+  background:rgba(239, 68, 68, 0.1);
+  color:#f87171;
+  border:1px solid rgba(239, 68, 68, 0.25);
+}
+.action-grid .store{
+  grid-column:1/-1;
+  background:rgba(56, 189, 248, 0.12);
+  border:1px solid rgba(56, 189, 248, 0.28);
+  color:#38bdf8;
+  font-weight:600;
+}
+.action-grid .trash{
+  background:rgba(255, 255, 255, 0.06);
+  border:1px solid rgba(255, 255, 255, 0.08);
+  color:#f4f4f5;
+}
 .selected-project{
-  font:12px/1.4 var(--code);
+  font-size:12.5px;
+  line-height:1.45;
   word-break:break-all;
-  color:#d4d4d4;
-  background:#090909;
-  border-radius:var(--radius-sm);
-  padding:8px 10px;
-  margin-top:10px;
-  border:1px solid var(--border);
+  color:#a1a1aa;
+  background:rgba(255, 255, 255, 0.03);
+  border-radius:12px;
+  padding:10px 12px;
+  margin-top:12px;
+  border:1px dashed rgba(255, 255, 255, 0.12);
+  text-align:center;
 }
 .row{
-  border:0;
-  background:transparent;
+  border:1px solid rgba(255, 255, 255, 0.04);
+  background:rgba(255, 255, 255, 0.02);
   width:100%;
   min-height:54px;
-  padding:8px 6px;
+  padding:10px 12px;
   display:flex;
   gap:12px;
   align-items:center;
   text-align:left;
-  border-bottom:1px solid var(--border);
-  border-radius:var(--radius-md);
+  border-radius:14px;
+  margin-bottom:6px;
+  transition:background .15s, border-color .15s;
 }
-.row:active{background:var(--surface)}
+.row:active{
+  background:rgba(255, 255, 255, 0.08);
+  border-color:rgba(255, 255, 255, 0.15);
+}
 .row-icon{
   width:36px;
   height:36px;
-  border-radius:var(--radius-md);
-  background:var(--panel);
+  border-radius:10px;
+  background:rgba(255, 255, 255, 0.08);
+  border:1px solid rgba(255, 255, 255, 0.06);
   display:grid;
   place-items:center;
   font-weight:700;
-  font-size:13px;
-  color:var(--text-muted);
+  font-size:12px;
+  color:#a1a1aa;
   flex-shrink:0;
 }
 .row-main{min-width:0;flex:1}
-.row-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row-sub{font-size:13px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row-meta{font-size:12px;color:var(--text-soft)}
+.row-title{font-weight:600;font-size:14.5px;color:#f4f4f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-sub{font-size:12px;color:#71717a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-meta{font-size:13px;font-weight:bold;color:#38bdf8}
 
 /* Trash Cards */
 .trash-card{
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  padding:14px;
-  margin:10px 0;
+  padding:16px;
+  margin:12px 0;
 }
-.trash-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.trash-actions button{min-height:40px;border-radius:var(--radius-md);background:var(--panel);font-weight:600}
-.trash-actions .purge{background:var(--danger-bg);color:#fca5a5;border:1px solid #7f1d1d}
+.trash-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.trash-actions button{
+  min-height:40px;
+  border-radius:10px;
+  background:rgba(255, 255, 255, 0.08);
+  border:1px solid rgba(255, 255, 255, 0.12);
+  color:#f4f4f5;
+  font-weight:600;
+  font-size:13px;
+  transition:all .15s;
+}
+.trash-actions button:active{transform:scale(0.98)}
+.trash-actions .purge{
+  background:rgba(239, 68, 68, 0.1);
+  color:#f87171;
+  border:1px solid rgba(239, 68, 68, 0.25);
+}
 
-/* OpenAI Floating Pill Composer */
+
+/* Codex-Style Floating Composer */
 .composer{
   position:absolute;
   left:12px;
   right:12px;
   bottom:calc(12px + env(safe-area-inset-bottom));
-  background:#212121;
-  border:1px solid rgba(255,255,255,0.14);
-  border-radius:28px;
-  padding:8px 10px 8px 14px;
-  box-shadow:0 12px 40px rgba(0,0,0,0.6);
+  background:rgba(28, 28, 30, 0.92);
+  -webkit-backdrop-filter:blur(24px);
+  backdrop-filter:blur(24px);
+  border:1px solid rgba(255, 255, 255, 0.12);
+  border-radius:26px;
+  padding:10px 12px 10px 14px;
+  box-shadow:0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 10px rgba(0, 0, 0, 0.4);
   z-index:30;
   display:flex;
   flex-direction:column;
   gap:6px;
-  transition:border-color .15s,box-shadow .15s;
+  transition:border-color .18s ease, box-shadow .18s ease;
 }
 .composer:focus-within{
-  border-color:rgba(255,255,255,0.3);
-  box-shadow:0 14px 48px rgba(0,0,0,0.75);
+  border-color:rgba(255, 255, 255, 0.28);
+  box-shadow:0 16px 44px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .composer.drag{
-  border-color:var(--openai-teal);
-  box-shadow:0 0 0 3px rgba(16,163,127,0.25),0 12px 40px rgba(0,0,0,0.6);
+  border-color:#10a37f;
+  box-shadow:0 0 0 3px rgba(16, 163, 127, 0.3), 0 12px 40px rgba(0, 0, 0, 0.7);
 }
 .attachments{
   display:flex;
-  gap:8px;
+  gap:6px;
   overflow-x:auto;
-  padding:2px 0 6px;
+  padding:2px 0 4px;
   scrollbar-width:none;
 }
 .attachments::-webkit-scrollbar{display:none}
 .att{
-  height:32px;
+  height:28px;
   max-width:160px;
-  border-radius:var(--radius-pill);
-  background:#2f2f2f;
-  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255, 255, 255, 0.08);
+  border:1px solid rgba(255, 255, 255, 0.1);
   display:flex;
   align-items:center;
   gap:6px;
   padding:0 8px 0 10px;
-  font-size:12.5px;
+  font-size:12px;
+  font-weight:500;
+  color:#e4e4e7;
   flex-shrink:0;
 }
 .att span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.att button{width:18px;height:18px;border-radius:50%;background:#444;color:#fff;font-size:11px;display:grid;place-items:center}
+.att button{width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,0.15);color:#fff;font-size:10px;display:grid;place-items:center;border:none;cursor:pointer}
 textarea{
   width:100%;
-  min-height:38px;
+  min-height:28px;
   max-height:140px;
   resize:none;
   border:0;
   outline:0;
   background:transparent;
-  padding:6px 0;
-  font-size:16px;
-  line-height:1.4;
-  color:var(--text);
+  padding:4px 0 6px;
+  font-size:15.5px;
+  line-height:1.45;
+  color:#f4f4f5;
+  font-family:inherit;
 }
-textarea::placeholder{color:var(--text-muted)}
+textarea::placeholder{
+  color:#71717a;
+  font-weight:400;
+}
 .toolbar{
   display:flex;
   align-items:center;
   gap:8px;
 }
 .round{
-  width:36px;
-  height:36px;
+  width:32px;
+  height:32px;
   border-radius:50%;
-  background:#2f2f2f;
+  background:rgba(255, 255, 255, 0.08);
+  border:1px solid rgba(255, 255, 255, 0.06);
   display:grid;
   place-items:center;
   flex-shrink:0;
-  color:#d4d4d4;
-  transition:all .15s;
+  color:#a1a1aa;
+  transition:transform .12s, background .15s, color .15s;
+  border:none;
+  cursor:pointer;
 }
 .round:active{transform:scale(0.92)}
-.round svg{width:18px;height:18px}
+.round svg{width:17px;height:17px;stroke:currentColor;fill:none}
+.round.icon-btn{
+  background:transparent;
+  border:none;
+}
+.round.icon-btn:hover,.round.icon-btn:active{
+  background:rgba(255, 255, 255, 0.1);
+  color:#ffffff;
+}
 .round.send{
   margin-left:auto;
   background:#ffffff;
   color:#000000;
+  border:none;
+  box-shadow:0 2px 8px rgba(0, 0, 0, 0.35);
 }
+.round.send svg{width:16px;height:16px;stroke:#000000;fill:none}
 .round.send:disabled{
-  opacity:0.25;
-  background:#2f2f2f;
-  color:#8e8e8e;
+  opacity:0.3;
+  background:rgba(255, 255, 255, 0.12);
+  color:#52525b;
+  box-shadow:none;
+  cursor:default;
 }
+.round.send:disabled svg{stroke:#52525b}
 .round.primary{
+  margin-left:auto;
   background:#ffffff;
   color:#000000;
+  box-shadow:0 2px 8px rgba(255, 255, 255, 0.3);
+  font-size:12px;
+  font-weight:bold;
 }
+
 .model-chip{
-  flex:1 1 120px;
-  min-width:0;
-  height:34px;
-  border-radius:var(--radius-pill);
-  background:#2a2a2a;
-  border:1px solid var(--border);
-  padding:0 10px;
-  font-size:13px;
-  font-weight:600;
-  color:var(--text);
+  height:28px;
+  border-radius:14px;
+  background:rgba(255, 255, 255, 0.06);
+  border:1px solid rgba(255, 255, 255, 0.1);
+  padding:0 24px 0 10px;
+  font-size:12px;
+  font-weight:500;
+  color:#d4d4d8;
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%23a1a1aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+  background-repeat:no-repeat;
+  background-position:right 8px center;
   outline:0;
+  max-width:160px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow:hidden;
 }
+
 
 /* Pair Screen */
 .pair{height:100%;display:grid;place-items:start center;overflow:auto;-webkit-overflow-scrolling:touch;padding:48px 24px 24px;background:var(--bg)}
@@ -714,11 +911,84 @@ textarea::placeholder{color:var(--text-muted)}
   color:#a3a3a3;
 }
 
+/* Approval Modal & Card */
+.approval-modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.78);
+  -webkit-backdrop-filter:blur(12px);
+  backdrop-filter:blur(12px);
+  z-index:999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+.approval-dialog{width:100%;display:flex;justify-content:center}
+.approval-card{
+  width:min(440px,100%);
+  background:#18181b;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:20px;
+  padding:20px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.85);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.approval-card h2{
+  font-size:16px;
+  font-weight:700;
+  color:#f4f4f5;
+  margin:0;
+  line-height:1.35;
+}
+.approval-sub{
+  font-size:12.5px;
+  color:var(--text-muted);
+}
+.approval-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:6px;
+}
+.approve-btn{
+  height:44px;
+  border-radius:var(--radius-md);
+  font-size:14px;
+  font-weight:600;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:transform .12s, background .15s;
+  border:none;
+}
+.approve-btn:active{transform:scale(0.97)}
+.approve-btn.primary{
+  background:#ffffff;
+  color:#000000;
+  font-weight:700;
+}
+.approve-btn.secondary{
+  background:#27272a;
+  color:#f4f4f5;
+  border:1px solid #3f3f46;
+}
+.approve-btn.reject{
+  grid-column:1 / -1;
+  background:rgba(239,68,68,0.12);
+  color:#f87171;
+  border:1px solid rgba(239,68,68,0.25);
+}
+
 @media(min-width:768px){
   .app{max-width:540px;margin:0 auto;border-left:1px solid var(--border);border-right:1px solid var(--border)}
   .composer{left:calc(50% - 258px);right:calc(50% - 258px)}
 }
 </style>
+
 </head>
 <body>
 
@@ -796,7 +1066,7 @@ textarea::placeholder{color:var(--text-muted)}
 
   <nav class="tabs">
     <button class="tab active" data-view="new" data-i18n="new_task">Neue Aufgabe</button>
-    <button class="tab" data-view="tasks" data-i18n="tasks">Tasks</button>
+    <button id="tasksTabBtn" class="tab hidden" data-view="tasks" data-i18n="tasks">Tasks</button>
     <button class="tab" data-view="projects" data-i18n="projects">Projekte</button>
     <button class="tab" data-view="trash" data-i18n="trash">Papierkorb</button>
     <button class="tab" data-view="review" data-i18n="review">Review</button>
@@ -815,18 +1085,27 @@ textarea::placeholder{color:var(--text-muted)}
       <textarea id="prompt" data-i18n-placeholder="placeholder" placeholder="Nachricht eingeben..." rows="1"></textarea>
       <div class="toolbar">
         <button id="attachBtn" class="round" type="button" data-i18n-title="upload" aria-label="Dateien anhängen">
-          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
         <input id="fileInput" class="hidden" type="file" multiple>
-        <button id="voiceBtn" class="round" type="button" data-i18n-title="voice" aria-label="Spracheingabe">
-          <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z" fill="currentColor"/></svg>
-        </button>
         <select id="projectSelect" class="model-chip"></select>
+        <div class="spacer" style="flex:1"></div>
+        <button id="voiceBtn" class="round" type="button" data-i18n-title="voice" aria-label="Spracheingabe">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+        </button>
         <button id="stopBtn" class="round primary hidden" type="button" aria-label="Stop">■</button>
-        <button id="sendBtn" class="round send" type="button" aria-label="Senden">↑</button>
+        <button id="sendBtn" class="round send" type="button" aria-label="Senden">
+          <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        </button>
       </div>
+
+
     </form>
+    <button id="scrollToBottomBtn" class="scroll-bottom-btn hidden" type="button" aria-label="Nach unten scrollen" data-i18n-title="scroll_to_bottom">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </button>
   </main>
+
 </section>
 
 <section id="approvalModal" class="approval-modal hidden" role="dialog" aria-modal="true">
@@ -853,6 +1132,12 @@ textarea::placeholder{color:var(--text-muted)}
         </select>
       </div>
       <div class="settings-group">
+        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;width:100%;">
+          <span data-i18n="show_tasks_tab">Tasks-Reiter anzeigen</span>
+          <input type="checkbox" id="showTasksTabToggle" style="width:18px;height:18px;accent-color:#38bdf8;cursor:pointer;">
+        </label>
+      </div>
+      <div class="settings-group">
         <label data-i18n="active_model">Aktives Modell</label>
         <div id="settingsModel" class="settings-val muted">qwen2.5-coder:14b</div>
       </div>
@@ -871,9 +1156,10 @@ textarea::placeholder{color:var(--text-muted)}
 (() => {
 'use strict';
 const dict={
-de:{pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht an LocalCode...',search_placeholder:'Suche...',history:'Verlauf',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Einmal genehmigen',approve_project:'Immer für dieses Projekt',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?'},
-en:{pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Message LocalCode...',search_placeholder:'Search...',history:'History',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve once',approve_project:'Always for this project',reject:'Deny',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?'}
+de:{show_tasks_tab:'Tasks-Reiter anzeigen',pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht an LocalCode...',search_placeholder:'Suche...',history:'Verlauf',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Genehmigen',approve_project:'Immer erlauben',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?',starter_analyze_title:'Architektur analysieren',starter_analyze_desc:'Dateien, Entrypoints & Aufbau erfassen',starter_test_title:'Tests ausführen',starter_test_desc:'Testsuite & Linting verifizieren',starter_git_title:'Git-Status prüfen',starter_git_desc:'Diffs & geänderte Dateien anzeigen',starter_build_title:'Release-Build erstellen',starter_build_desc:'Play Store / Projekt-Artefakte bauen',copy:'Kopieren',copied:'Kopiert!',scroll_to_bottom:'Nach unten scrollen'},
+en:{show_tasks_tab:'Show Tasks tab',pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Message LocalCode...',search_placeholder:'Search...',history:'History',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve',approve_project:'Always allow',reject:'Reject',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?',starter_analyze_title:'Analyze architecture',starter_analyze_desc:'Inspect files, entrypoints & structure',starter_test_title:'Run tests',starter_test_desc:'Verify test suite & lint checks',starter_git_title:'Check Git status',starter_git_desc:'View diffs & changed files',starter_build_title:'Create release build',starter_build_desc:'Build Play Store / project artifacts',copy:'Copy',copied:'Copied!',scroll_to_bottom:'Scroll to bottom'}
 };
+
 const lang=(navigator.language||'en').toLowerCase().startsWith('de')?'de':'en';
 const t=(k,v={})=>Object.entries(v).reduce((s,[a,b])=>s.replaceAll('{'+a+'}',String(b)),dict[lang][k]||k);
 document.documentElement.lang=lang;
@@ -882,25 +1168,95 @@ document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=t(
 document.querySelectorAll('[data-i18n-title]').forEach(e=>{const label=t(e.dataset.i18nTitle);e.title=label;e.setAttribute('aria-label',label)});
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const MAX_FILES=20, MAX_FILE_BYTES=32*1024*1024, MAX_TOTAL_BYTES=96*1024*1024;
-const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'new',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false};
+const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'new',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false,showTasksTab:localStorage.getItem('localcodeRemoteShowTasksTab')==='true'};
 const viewOrder=['new','tasks','projects','trash','review'];
 const engineOptions=[['native','LocalCode Native'],['aider','Aider'],['opencode','OpenCode'],['claude','Claude Code'],['claw','Claw Code']];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function haptic(ms=25){
+  try{
+    if(window.LocalCodeAndroid?.vibrate){
+      window.LocalCodeAndroid.vibrate(ms);
+    }else if(navigator.vibrate){
+      navigator.vibrate(ms);
+    }
+  }catch(e){}
+}
+
+function copyCode(btn){
+  const block=btn.closest('.code, .diff-box');
+  if(!block)return;
+  const target=block.querySelector('code')||block;
+  navigator.clipboard.writeText(target.innerText).then(()=>{
+    const old=btn.textContent;
+    btn.textContent=t('copied');
+    setTimeout(()=>btn.textContent=old,1500);
+  }).catch(()=>{});
+}
+
+function formatDiff(raw){
+  if(!raw)return '';
+  const lines=String(raw).split('\n');
+  const isDiff=lines.some(l=>l.startsWith('--- ')||l.startsWith('+++ ')||l.startsWith('@@ ')||(l.startsWith('+')&&!l.startsWith('+++'))||(l.startsWith('-')&&!l.startsWith('---')));
+  if(!isDiff){
+    return `<div class="code"><div class="code-header"><span>Output</span><button class="copy-code-btn" type="button" onclick="copyCode(this)">${t('copy')}</button></div><pre><code>${esc(raw)}</code></pre></div>`;
+  }
+  let html=`<div class="diff-box"><div class="code-header" style="margin:0 10px 6px;padding-top:4px;"><span>Diff</span><button class="copy-code-btn" type="button" onclick="copyCode(this)">${t('copy')}</button></div>`;
+  for(const line of lines){
+    if(line.startsWith('---')||line.startsWith('+++')){
+      html+=`<div class="diff-line diff-meta"><span class="diff-sign">·</span><span class="diff-text">${esc(line)}</span></div>`;
+    }else if(line.startsWith('@@')){
+      html+=`<div class="diff-line diff-hunk"><span class="diff-sign">↕</span><span class="diff-text">${esc(line)}</span></div>`;
+    }else if(line.startsWith('+')){
+      html+=`<div class="diff-line diff-add"><span class="diff-sign">+</span><span class="diff-text">${esc(line.slice(1))}</span></div>`;
+    }else if(line.startsWith('-')){
+      html+=`<div class="diff-line diff-del"><span class="diff-sign">-</span><span class="diff-text">${esc(line.slice(1))}</span></div>`;
+    }else{
+      const text=line.startsWith(' ')?line.slice(1):line;
+      html+=`<div class="diff-line diff-ctx"><span class="diff-sign"> </span><span class="diff-text">${esc(text)}</span></div>`;
+    }
+  }
+  html+='</div>';
+  return html;
+}
+
+function renderMarkdown(raw){
+  if(!raw)return '';
+  let str=String(raw);
+  str=str.replace(/```([a-zA-Z0-9_\-]*)\n([\s\S]*?)```/g,(_,lang,code)=>`___CODEBLOCK_${encodeURIComponent(JSON.stringify({lang:lang||'Code',code}))}___`);
+  str=str.replace(/`([^`\n]+)`/g,(_,c)=>`<code class="inline-code">${esc(c)}</code>`);
+  str=str.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  str=str.replace(/__([^_]+)__/g,'<strong>$1</strong>');
+  str=str.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  str=str.replace(/\n/g,'<br>');
+  str=str.replace(/___CODEBLOCK_([^ ]+)___/g,(_,payload)=>{
+    try{
+      const data=JSON.parse(decodeURIComponent(payload));
+      return `<div class="code"><div class="code-header"><span>${esc(data.lang)}</span><button class="copy-code-btn" type="button" onclick="copyCode(this)">${t('copy')}</button></div><pre><code>${esc(data.code)}</code></pre></div>`;
+    }catch(e){return ''}
+  });
+  return str;
+}
+
 async function api(path,opts={}){const h={'Accept':'application/json',...(opts.headers||{})};if(state.token)h['X-LocalCode-Remote-Token']=state.token;if(opts.body&&!h['Content-Type'])h['Content-Type']='application/json';const r=await fetch(path,{...opts,headers:h});if(!r.ok)throw new Error((await r.text()).trim()||`HTTP ${r.status}`);return r.headers.get('content-type')?.includes('json')?r.json():r.text()}
 function showPair(){$('#pairScreen').classList.remove('hidden');$('#app').classList.add('hidden');setTimeout(()=>$('#pairCode').focus(),30)}
 function showApp(){$('#pairScreen').classList.add('hidden');$('#app').classList.remove('hidden')}
 async function pair(ev){ev?.preventDefault();const btn=$('#pairBtn');try{btn.disabled=true;$('#pairError').textContent='';const r=await api('/remote/api/pair',{method:'POST',body:JSON.stringify({code:$('#pairCode').value.trim(),device_name:navigator.userAgent.slice(0,80)})});state.token=r.token;localStorage.setItem('localcodeRemoteToken',state.token);showApp();await refresh();connectEvents()}catch(e){$('#pairError').textContent=t('pair_failed')+' '+e.message}finally{btn.disabled=false}}
-async function refresh(){try{state.status=await api('/remote/api/status');await ensurePreferredEngine();const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';const q=await api('/remote/api/project-quarantine');state.quarantine=q.quarantine||[];const th=await api('/remote/api/threads');state.threads=th.threads||[];state.currentThread=th.current||state.status.current_thread||'';const snap=await api('/remote/api/snapshot'+(state.currentThread?`?thread_id=${encodeURIComponent(state.currentThread)}`:''));state.events=snap.events||[];state.pending=snap.pending||null;state.project=snap.project||state.status.project||state.project||'';render();$('#dot').className='status-dot on'}catch(e){$('#dot').className='status-dot warn';if(String(e.message).includes('token')){state.token='';localStorage.removeItem('localcodeRemoteToken');showPair()}else console.warn(e)}}
-function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#modelPillText').textContent=(state.status?.model||'qwen2.5-coder:14b').split(':')[0];$('#stopBtn').classList.toggle('hidden',!running);renderEngineSelect();renderProjectSelect();renderDrawer();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
+async function refresh(){try{state.status=await api('/remote/api/status');await ensurePreferredEngine();const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';if(!state.project&&state.projects.length)state.project=state.projects[0].path;const q=await api('/remote/api/project-quarantine');state.quarantine=q.quarantine||[];const th=await api('/remote/api/threads');state.threads=th.threads||[];state.currentThread=th.current||state.status.current_thread||'';const snap=await api('/remote/api/snapshot'+(state.currentThread?`?thread_id=${encodeURIComponent(state.currentThread)}`:''));state.events=snap.events||[];state.pending=snap.pending||null;state.project=snap.project||state.status.project||state.project||'';render();$('#dot').className='status-dot on'}catch(e){$('#dot').className='status-dot warn';if(String(e.message).includes('token')){state.token='';localStorage.removeItem('localcodeRemoteToken');showPair()}else console.warn(e)}}
+function renderNavTabs(){const btn=$('#tasksTabBtn')||document.querySelector('.tab[data-view="tasks"]');if(btn)btn.classList.toggle('hidden',!state.showTasksTab);const toggle=$('#showTasksTabToggle');if(toggle)toggle.checked=!!state.showTasksTab}
+function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#modelPillText').textContent=(state.status?.model||'qwen2.5-coder:14b').split(':')[0];$('#stopBtn').classList.toggle('hidden',!running);renderNavTabs();renderEngineSelect();renderProjectSelect();renderDrawer();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
 function updateSendState(){const running=!!state.status?.running;$('#sendBtn').disabled=state.sending||running||(!$('#prompt').value.trim()&&!state.files.length)}
 function renderEngineSelect(){const sel=$('#engineSelect');if(!sel)return;const selected=state.status?.editing_engine||state.preferredEngine||'native';sel.innerHTML=engineOptions.map(([value,label])=>`<option value="${value}"${value===selected?' selected':''}>${label}</option>`).join('');sel.disabled=!!state.status?.running}
-function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=`<option value="">${t('select_project')}</option>`+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('')}
+function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=(state.projects.length?'':`<option value="">${t('select_project')}</option>`)+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('')}
+
 function updateSettingsView(){$('#settingsModel').textContent=state.status?.model||'qwen2.5-coder:14b';$('#settingsHost').textContent=window.location.host||'LocalCode LAN'}
 
 function renderDrawer(){
+  const query=($('#drawerSearch')?.value||'').trim().toLowerCase();
   const pList=$('#drawerProjectsList');
   if(pList){
-    pList.innerHTML=state.projects.map(p=>`<button class="drawer-item${p.path===state.project?' active':''}" data-drawer-project="${esc(p.path)}"><span class="drawer-item-icon">📁</span><span class="drawer-item-title">${esc(p.name)}</span>${p.path===state.project?'<span class="drawer-item-meta">✓</span>':''}</button>`).join('');
+    const filteredProjects=query?state.projects.filter(p=>p.name.toLowerCase().includes(query)||p.path.toLowerCase().includes(query)):state.projects;
+    pList.innerHTML=filteredProjects.map(p=>`<button class="drawer-item${p.path===state.project?' active':''}" data-drawer-project="${esc(p.path)}"><span class="drawer-item-icon">📁</span><span class="drawer-item-title">${esc(p.name)}</span>${p.path===state.project?'<span class="drawer-item-meta">✓</span>':''}</button>`).join('');
     pList.querySelectorAll('[data-drawer-project]').forEach(b=>b.onclick=()=>{
       const newProj=b.dataset.drawerProject;
       if(newProj&&newProj!==state.project){
@@ -915,7 +1271,8 @@ function renderDrawer(){
   }
   const hList=$('#drawerHistoryList');
   if(hList){
-    hList.innerHTML=state.threads.filter(x=>!x.archived).slice(0,30).map(th=>`<button class="drawer-item${th.id===state.currentThread?' active':''}" data-drawer-thread="${esc(th.id)}"><span class="drawer-item-icon">💬</span><span class="drawer-item-title">${esc(th.title||'Aufgabe')}</span></button>`).join('');
+    const filteredThreads=state.threads.filter(x=>!x.archived).filter(th=>!query||(th.title||'').toLowerCase().includes(query)||(th.project||'').toLowerCase().includes(query));
+    hList.innerHTML=filteredThreads.slice(0,30).map(th=>`<button class="drawer-item${th.id===state.currentThread?' active':''}" data-drawer-thread="${esc(th.id)}"><span class="drawer-item-icon">💬</span><span class="drawer-item-title">${esc(th.title||'Aufgabe')}</span></button>`).join('');
     hList.querySelectorAll('[data-drawer-thread]').forEach(b=>b.onclick=()=>{
       closeDrawer();
       selectThread(b.dataset.drawerThread);
@@ -939,22 +1296,83 @@ async function restoreTrashProject(id){if(state.status?.running)return;try{await
 async function purgeTrashProject(id,name){if(state.status?.running)return;const expected='PURGE '+name;const typed=window.prompt(t('purge_prompt',{project:name})+' '+expected,'');if(typed===null)return;if(typed!==expected){window.alert(t('delete_mismatch'));return}try{await api('/remote/api/project-quarantine-action',{method:'POST',body:JSON.stringify({action:'purge',id,confirmation:typed})});await refresh();window.alert(t('purge_done'));showView('trash')}catch(e){window.alert(e.message)}}
 function isTransientRunEvent(ev){return ['progress','action_running'].includes(ev.type)||ev.type==='status'}
 function renderEvents(){const host=$('#reviewView'),running=!!state.status?.running;const visible=state.events.filter(ev=>running||!isTransientRunEvent(ev));if(!visible.length){host.innerHTML=`<div class="empty"><div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div><h1>LocalCode</h1><p>${t('no_events')}</p></div>`;return}host.innerHTML=visible.map(eventHTML).join('');host.scrollTop=host.scrollHeight}
-function eventHTML(ev){const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning',isTool=['tool_result','action_done','action_running','agent_step','progress'].includes(ev.type);let detail=ev.detail?`<div class="code"><div class="code-header"><span>Output</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.detail)}</div>`:'';if(ev.preview)detail+=`<div class="code"><div class="code-header"><span>Preview</span><button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(this.closest('.code').innerText)">Kopieren</button></div>${esc(ev.preview)}</div>`;const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');if(isTool){return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`}return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${esc(ev.message||ev.type||'')}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`}
-function renderApproval(){const modal=$('#approvalModal'),host=$('#approvalDialog'),p=state.pending;if(!p){modal.classList.add('hidden');host.innerHTML='';return}host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="row-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?`<div class="code">${esc(p.preview)}</div>`:''}<div class="approval-actions"><button class="approve" data-decision="once">${t('approve_once')}</button><button class="always" data-decision="project">${t('approve_project')}</button><button class="reject" data-decision="reject">${t('reject')}</button></div></div>`;modal.classList.remove('hidden');host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision))}
-function renderNew(){$('#newView').innerHTML=`<div class="empty"><div class="empty-logo">＋</div><h1>LocalCode</h1><p>${t('new_chat')}</p></div>`}
+function eventHTML(ev){
+  const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning',isTool=['tool_result','action_done','action_running','agent_step','progress'].includes(ev.type);
+  let detail=ev.detail?formatDiff(ev.detail):'';
+  if(ev.preview)detail+=formatDiff(ev.preview);
+  const meta=[ev.action,ev.path,ev.command].filter(Boolean).map(x=>`<span class="event-chip">${esc(x)}</span>`).join('');
+  if(isTool){
+    return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`;
+  }
+  const body=user?esc(ev.message||ev.type||''):renderMarkdown(ev.message||ev.type||'');
+  return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${body}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`;
+}
+function renderApproval(){
+  const modal=$('#approvalModal'),host=$('#approvalDialog'),p=state.pending;
+  if(!p){modal.classList.add('hidden');host.innerHTML='';return}
+  host.innerHTML=`<div class="approval-card"><h2>${esc(p.message||p.action||t('approve'))}</h2><div class="approval-sub">${esc([p.action,p.path,p.command].filter(Boolean).join(' · '))}</div>${p.preview?formatDiff(p.preview):''}<div class="approval-actions"><button class="approve-btn primary" data-decision="once">${t('approve_once')}</button><button class="approve-btn secondary" data-decision="project">${t('approve_project')}</button><button class="approve-btn reject" data-decision="reject">${t('reject')}</button></div></div>`;
+  modal.classList.remove('hidden');
+  host.querySelectorAll('[data-decision]').forEach(b=>b.onclick=()=>approve(b.dataset.decision));
+}
+
+
+function renderNew(){
+  $('#newView').innerHTML=`
+    <div class="new-hero">
+      <div class="empty-logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.8 2h8.4l-4 7h5.7L8 22l2.7-8H5.1z"/></svg></div>
+      <h1>LocalCode</h1>
+      <p>${t('new_chat')}</p>
+    </div>
+    <div class="starter-grid">
+      <button class="starter-card" type="button" data-prompt="Analysiere die Architektur, Dateien und Entrypoints dieses Projekts.">
+        <div class="starter-icon">🔍</div>
+        <div class="starter-title">${t('starter_analyze_title')}</div>
+        <div class="starter-desc">${t('starter_analyze_desc')}</div>
+      </button>
+      <button class="starter-card" type="button" data-prompt="Führe alle vorhandenen Tests und Linter aus und berichte Fehler oder Warnungen.">
+        <div class="starter-icon">🧪</div>
+        <div class="starter-title">${t('starter_test_title')}</div>
+        <div class="starter-desc">${t('starter_test_desc')}</div>
+      </button>
+      <button class="starter-card" type="button" data-prompt="Prüfe den Git-Status, ungesicherte Änderungen und offene Commits.">
+        <div class="starter-icon">🌿</div>
+        <div class="starter-title">${t('starter_git_title')}</div>
+        <div class="starter-desc">${t('starter_git_desc')}</div>
+      </button>
+      <button class="starter-card" type="button" data-action="store">
+        <div class="starter-icon">📦</div>
+        <div class="starter-title">${t('starter_build_title')}</div>
+        <div class="starter-desc">${t('starter_build_desc')}</div>
+      </button>
+    </div>
+  `;
+  $('#newView').querySelectorAll('.starter-card[data-prompt]').forEach(b=>b.onclick=()=>{
+    haptic(15);
+    $('#prompt').value=b.dataset.prompt;
+    $('#prompt').focus();
+    updateSendState();
+  });
+  $('#newView').querySelectorAll('.starter-card[data-action="store"]').forEach(b=>b.onclick=()=>{
+    haptic(15);
+    playStoreBuild();
+  });
+}
 function renderFiles(){const box=$('#attachments');box.classList.toggle('hidden',!state.files.length);box.innerHTML=state.files.map((f,i)=>`<div class="att"><span>${esc(f.name)}</span><button type="button" data-remove="${i}">×</button></div>`).join('');box.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.files.splice(Number(b.dataset.remove),1);renderFiles()});updateSendState()}
 async function approve(decision){if(!state.pending)return;await api('/remote/api/approve',{method:'POST',body:JSON.stringify({id:state.pending.id,decision,approve:decision!=='reject'})});state.pending=null;renderApproval();await refresh()}
 function readFile(file){return new Promise((res,rej)=>{if(file.size>MAX_FILE_BYTES)return rej(new Error(t('file_too_large',{name:file.name})));const fr=new FileReader();fr.onerror=()=>rej(fr.error);fr.onload=()=>{const v=String(fr.result||''),i=v.indexOf(',');res({name:file.name,mime:file.type||'application/octet-stream',size:file.size,data:i>=0?v.slice(i+1):v})};fr.readAsDataURL(file)})}
 async function addFiles(files){const list=[...files].filter(Boolean);if(!list.length)return;let total=state.files.reduce((n,f)=>n+f.size,0),room=MAX_FILES-state.files.length;if(room<=0)return window.alert(t('max_files',{count:MAX_FILES}));try{for(const f of list.slice(0,room)){if(total+f.size>MAX_TOTAL_BYTES)throw new Error(t('total_too_large'));const item=await readFile(f);state.files.push(item);total+=item.size}renderFiles();$('#prompt').focus()}catch(e){window.alert(e.message)}}
 function appendPromptText(text){text=String(text||'').trim();if(!text)return;const prompt=$('#prompt'),prefix=prompt.value.trim()?' ':'';prompt.value+=prefix+text;prompt.focus();updateSendState()}
-window.localCodeVoiceResult=text=>appendPromptText(text);
-function startVoiceInput(){if(window.LocalCodeAndroid?.startVoiceInput){window.LocalCodeAndroid.startVoiceInput();return}const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech)return window.alert(t('voice_unavailable'));try{const rec=new Speech();rec.lang=navigator.language||lang;rec.interimResults=false;rec.maxAlternatives=1;rec.onresult=e=>appendPromptText(e.results?.[0]?.[0]?.transcript||'');rec.onerror=e=>window.alert(t('voice_failed')+' '+(e.error||''));rec.start()}catch(e){window.alert(t('voice_failed')+' '+e.message)}}
+window.localCodeVoiceResult=text=>{appendPromptText(text);if(text&&text.trim()){setTimeout(()=>send(),150)}};
+function startVoiceInput(){if(window.LocalCodeAndroid?.startVoiceInput){window.LocalCodeAndroid.startVoiceInput();return}const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech)return window.alert(t('voice_unavailable'));try{const rec=new Speech();rec.lang=navigator.language||lang;rec.interimResults=false;rec.maxAlternatives=1;rec.onresult=e=>{const txt=e.results?.[0]?.[0]?.transcript||'';appendPromptText(txt);if(txt.trim()){setTimeout(()=>send(),150)}};rec.onerror=e=>window.alert(t('voice_failed')+' '+(e.error||''));rec.start()}catch(e){window.alert(t('voice_failed')+' '+e.message)}}
 function triggerQrScan(){if(window.LocalCodeAndroid?.startQrScan){window.LocalCodeAndroid.startQrScan();return}window.alert(t('pair_help'))}
-async function send(ev){ev?.preventDefault();if(state.sending)return;const msg=$('#prompt').value.trim();if(!msg&&!state.files.length)return;const project=$('#projectSelect').value||state.project;const attachments=state.files.map(({name,mime,size,data})=>({name,mime,size,data}));try{state.sending=true;updateSendState();await api('/remote/api/chat',{method:'POST',body:JSON.stringify({message:msg,project,thread_id:state.currentThread,model:state.status?.model||'',attachments})});$('#prompt').value='';state.files=[];renderFiles();await refresh();showView('review')}catch(e){window.alert(e.message)}finally{state.sending=false;updateSendState()}}
-function showView(name){state.view=name;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));for(const v of viewOrder)$('#'+v+'View').classList.toggle('hidden',v!==name);render()}
-function swipeView(step){const i=viewOrder.indexOf(state.view),next=viewOrder[Math.max(0,Math.min(viewOrder.length-1,i+step))];if(next&&next!==state.view)showView(next)}
+async function send(ev){ev?.preventDefault();if(state.sending)return;const msg=$('#prompt').value.trim();if(!msg&&!state.files.length)return;const project=$('#projectSelect').value||state.project||state.projects[0]?.path||'';if(!project){window.alert(t('nothing_selected'));return}state.project=project;const attachments=state.files.map(({name,mime,size,data})=>({name,mime,size,data}));try{state.sending=true;updateSendState();haptic(20);if(!state.currentThread){const r=await api('/remote/api/new-chat',{method:'POST',body:JSON.stringify({project})});state.currentThread=r.thread?.id||''}await api('/remote/api/chat',{method:'POST',body:JSON.stringify({message:msg,project,thread_id:state.currentThread,model:state.status?.model||'',attachments})});$('#prompt').value='';state.files=[];renderFiles();await refresh();showView('review')}catch(e){window.alert(e.message)}finally{state.sending=false;updateSendState()}}
+
+function effectiveViewOrder(){return state.showTasksTab?viewOrder:viewOrder.filter(v=>v!=='tasks')}
+function showView(name){if(!state.showTasksTab&&name==='tasks')name='new';state.view=name;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));for(const v of viewOrder)$('#'+v+'View').classList.toggle('hidden',v!==name);render()}
+function swipeView(step){const list=effectiveViewOrder(),i=list.indexOf(state.view),next=list[Math.max(0,Math.min(list.length-1,i+step))];if(next&&next!==state.view)showView(next)}
 function bindSwipe(){const area=$('.main');let sx=0,sy=0,active=false;area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const tag=(e.target?.tagName||'').toUpperCase();if(['BUTTON','INPUT','TEXTAREA','SELECT','OPTION'].includes(tag))return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true},{passive:true});area.addEventListener('touchend',e=>{if(!active||!e.changedTouches.length)return;active=false;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.25)return;swipeView(dx<0?1:-1)},{passive:true});area.addEventListener('touchcancel',()=>{active=false},{passive:true})}
-async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required')state.pending=ev;if(ev.type==='approval')state.pending=null;if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required')state.pending=ev;if(ev.type==='approval_required')haptic(50);if(ev.type==='approval')state.pending=null;if(ev.type==='final')haptic(40);if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+
 
 // Drawer Management
 function openDrawer(){$('#drawer').classList.add('open');$('#drawerBackdrop').classList.add('open')}
@@ -962,13 +1380,29 @@ function closeDrawer(){$('#drawer').classList.remove('open');$('#drawerBackdrop'
 $('#drawerToggleBtn').onclick=openDrawer;
 $('#closeDrawerBtn').onclick=closeDrawer;
 $('#drawerBackdrop').onclick=closeDrawer;
+$('#drawerSearch').oninput=renderDrawer;
 $('#newChatTopBtn').onclick=()=>{showView('new');$('#prompt').focus()};
 $('#newChatDrawerBtn').onclick=()=>{closeDrawer();showView('new');$('#prompt').focus()};
 $('#drawerTrashBtn').onclick=()=>{closeDrawer();showView('trash')};
 $('#drawerSettingsBtn').onclick=()=>{closeDrawer();updateSettingsView();$('#settingsModal').classList.remove('hidden')};
 $('#modelProjectPill').onclick=()=>{updateSettingsView();$('#settingsModal').classList.remove('hidden')};
 
+// Scroll To Bottom Listener
+const reviewView=$('#reviewView');
+const scrollBtn=$('#scrollToBottomBtn');
+if(reviewView&&scrollBtn){
+  reviewView.addEventListener('scroll',()=>{
+    const fromBottom=reviewView.scrollHeight-reviewView.scrollTop-reviewView.clientHeight;
+    scrollBtn.classList.toggle('hidden',fromBottom<120);
+  },{passive:true});
+  scrollBtn.onclick=()=>{
+    haptic(10);
+    reviewView.scrollTo({top:reviewView.scrollHeight,behavior:'smooth'});
+  };
+}
+
 // Event Handlers
+
 $('#scanQrBtn').onclick=triggerQrScan;
 $('#pairForm').onsubmit=pair;
 $$('.tab').forEach(b=>b.onclick=()=>showView(b.dataset.view));
@@ -991,20 +1425,29 @@ $('#prompt').oninput=()=>{
 $('#projectSelect').onchange=e=>{
   const newProj=e.target.value;
   if(!newProj||newProj===state.project)return;
-  const name=projectName(newProj);
-  if(!window.confirm(t('switch_project_confirm',{project:name}))){
-    renderProjectSelect();
-    return;
+  if(state.project){
+    const name=projectName(newProj);
+    if(!window.confirm(t('switch_project_confirm',{project:name}))){
+      renderProjectSelect();
+      return;
+    }
   }
   state.project=newProj;
   render();
 };
+
 
 // Settings Modal Handlers
 $('#settingsBtn').onclick=()=>{updateSettingsView();$('#settingsModal').classList.remove('hidden')};
 $('#closeSettingsBtn').onclick=()=>$('#settingsModal').classList.add('hidden');
 $('#settingsModal').onclick=e=>{if(e.target===$('#settingsModal'))$('#settingsModal').classList.add('hidden')};
 $('#engineSelect').onchange=e=>selectEditingEngine(e.target.value);
+$('#showTasksTabToggle').onchange=e=>{
+  state.showTasksTab=e.target.checked;
+  localStorage.setItem('localcodeRemoteShowTasksTab',state.showTasksTab?'true':'false');
+  if(!state.showTasksTab&&state.view==='tasks')showView('new');
+  render();
+};
 $('#disconnectBtn').onclick=()=>{
   if(!window.confirm(t('disconnect_confirm')))return;
   state.token='';
@@ -1023,6 +1466,7 @@ $('#diagBtn').onclick=async()=>{
 
 window.LocalCodeRemoteControl={
   showView:v=>{showView(v);return true},
+  setShowTasksTab:enable=>{state.showTasksTab=!!enable;localStorage.setItem('localcodeRemoteShowTasksTab',state.showTasksTab?'true':'false');if(!state.showTasksTab&&state.view==='tasks')showView('new');render();return true},
   selectProject:p=>{state.project=p;render();return true},
   selectThread:async id=>{await selectThread(id);return true},
   createProject:async name=>{if(state.status?.running)return null;const r=await api('/remote/api/project-action',{method:'POST',body:JSON.stringify({path:state.projectsRoot,action:'create_project',value:name})});state.project=r.project?.path||'';await refresh();return r},
@@ -1035,7 +1479,7 @@ window.LocalCodeRemoteControl={
   closeSettings:()=>{$('#settingsModal').classList.add('hidden');return true},
   injectVoice:text=>{appendPromptText(text);return true},
   triggerQrScan:()=>{triggerQrScan();return true},
-  getState:()=>({token:!!state.token,view:state.view,status:state.status,projects:state.projects.length,threads:state.threads.length,currentThread:state.currentThread,currentProject:state.project,events:state.events.length,pending:!!state.pending}),
+  getState:()=>({token:!!state.token,view:state.view,status:state.status,projects:state.projects.length,threads:state.threads.length,currentThread:state.currentThread,currentProject:state.project,events:state.events.length,pending:!!state.pending,showTasksTab:!!state.showTasksTab}),
   runSelfTest:async()=>{const res=[];try{const st=await api('/remote/api/status');res.push({check:'status',ok:!!st.version});const pr=await api('/remote/api/projects');res.push({check:'projects',ok:Array.isArray(pr.projects)});const th=await api('/remote/api/threads');res.push({check:'threads',ok:Array.isArray(th.threads)});const sn=await api('/remote/api/snapshot');res.push({check:'snapshot',ok:Array.isArray(sn.events)});const tk=await api('/remote/api/event-ticket',{method:'POST'});res.push({check:'event_ticket',ok:!!tk.ticket});return{ok:res.every(r=>r.ok),results:res}}catch(e){return{ok:false,error:e.message,results:res}}}
 };
 

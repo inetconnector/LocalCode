@@ -163,6 +163,10 @@ Arbeitsweise:
 - Für einzelne Android-Diagnosen bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
+- Wenn der Nutzer zeitgesteuerte oder wiederkehrende Aufgaben (Scheduler/Cron) verlangt:
+  - Auf Windows: Verwende schtasks (z. B. schtasks /create /tn ... /tr ... /sc daily /st ...) oder PowerShell ScheduledTasks (Register-ScheduledTask, Get-ScheduledTask).
+  - Auf Linux/WSL: Verwende crontab (z. B. crontab -l, crontab -e), systemd-timer (systemctl list-timers) oder at für einmalige Verzögerungen.
+  - Prüfe vorher bestehende Aufgaben, verwende vollständige Pfade und verifiziere die Erstellung des geplanten Tasks.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
@@ -980,7 +984,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {
 	models, err := s.Ollama.Tags(ctx)
 	if err != nil {
-		return []string{requested}
+		if requested != "" {
+			return []string{requested}
+		}
+		return []string{"qwen2.5-coder:14b"}
 	}
 	installed := map[string]bool{}
 	for _, m := range models {
@@ -988,24 +995,29 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 	}
 	seen := map[string]bool{}
 	out := []string{}
-	add := func(name string) {
+	add := func(name string, requireInstalled bool) {
 		name = strings.TrimSpace(name)
-		if name != "" && !seen[name] && installed[name] {
+		if name != "" && !seen[name] && (!requireInstalled || installed[name]) {
 			seen[name] = true
 			out = append(out, name)
 		}
 	}
-	add(requested)
-	add("qwen2.5-coder:14b")
-	add("qwen2.5-coder:7b")
-	add("gpt-oss:20b")
+	if requested != "" {
+		add(requested, false)
+	}
+	add("qwen2.5-coder:14b", true)
+	add("qwen2.5-coder:7b", true)
+	add("gpt-oss:20b", true)
 	for _, m := range models {
 		if strings.Contains(strings.ToLower(m.Name), "coder") {
-			add(m.Name)
+			add(m.Name, true)
 		}
 	}
 	for _, m := range models {
-		add(m.Name)
+		add(m.Name, true)
+	}
+	if len(out) == 0 && requested != "" {
+		out = append(out, requested)
 	}
 	return out
 }

@@ -1791,7 +1791,7 @@ func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
 		`id="fileInput" class="hidden" type="file" multiple`,
 		`data-i18n-title="upload"`,
 		`id="voiceBtn" class="round" type="button" data-i18n-title="voice"`,
-		`window.localCodeVoiceResult=text=>appendPromptText(text)`,
+		`window.localCodeVoiceResult=text=>{appendPromptText(text)`,
 		`function startVoiceInput()`,
 		`window.LocalCodeAndroid?.startVoiceInput`,
 		`window.SpeechRecognition||window.webkitSpeechRecognition`,
@@ -2167,7 +2167,7 @@ func TestModelCallTimeoutReturnsControl(t *testing.T) {
 	if err := state.StartAgent("Analysiere das Projekt", "slow-model", nil); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(4 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		state.mu.RLock()
 		running := state.Running

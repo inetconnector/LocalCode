@@ -46,7 +46,7 @@ func TestMobileRemoteAllInteractiveControlsAreWired(t *testing.T) {
 		`$('#sendBtn').onclick=send`,
 		`$('#engineSelect').onchange=e=>selectEditingEngine(e.target.value)`,
 		`$('#projectSelect').onchange=e=>`,
-		`window.localCodeVoiceResult=text=>appendPromptText(text)`,
+		`window.localCodeVoiceResult=text=>{appendPromptText(text)`,
 		`if(window.LocalCodeAndroid?.startVoiceInput)`,
 		`const attachments=state.files.map(({name,mime,size,data})=>({name,mime,size,data}))`,
 		`if(state.sending)return`,
@@ -206,6 +206,34 @@ func TestAndroidRemotePersistsConnectionAndUsesLanProbeFallback(t *testing.T) {
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Android Remote persistence/discovery marker missing %q", required)
+		}
+	}
+}
+
+func TestMobileRemoteTasksTabConfigurableAndHiddenByDefault(t *testing.T) {
+	path := filepath.Join("static", "remote.html")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(data)
+
+	for _, required := range []string{
+		`id="tasksTabBtn" class="tab hidden" data-view="tasks"`,
+		`id="showTasksTabToggle"`,
+		`show_tasks_tab:'Tasks-Reiter anzeigen'`,
+		`show_tasks_tab:'Show Tasks tab'`,
+		`showTasksTab:localStorage.getItem('localcodeRemoteShowTasksTab')==='true'`,
+		`function renderNavTabs()`,
+		`$('#tasksTabBtn')||document.querySelector('.tab[data-view="tasks"]')`,
+		`btn.classList.toggle('hidden',!state.showTasksTab)`,
+		`$('#showTasksTabToggle').onchange=`,
+		`localStorage.setItem('localcodeRemoteShowTasksTab',state.showTasksTab?'true':'false')`,
+		`function effectiveViewOrder(){return state.showTasksTab?viewOrder:viewOrder.filter(v=>v!=='tasks')}`,
+		`setShowTasksTab:enable=>`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile Remote tasks tab configurable contract missing %q", required)
 		}
 	}
 }

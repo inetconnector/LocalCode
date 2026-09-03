@@ -11,11 +11,22 @@
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
 ## 2.1 Merged runtime, Windows platform & Android remote improvements (v6.8.0)
 
-- **Android Mobile Remote App**: Starts on **Neue Aufgabe / New task** tab. Approval requests render dynamically as a modern popup over the active view. Transient status noise is cleanly filtered from history upon completion.
+- **Codex-Style Mobile Remote UI**: Redesigned floating pill composer with glassmorphic backdrop filter, border highlight on focus, sleek circular attachment (+) button, compact inline project selector chip, crisp outline microphone button on the far right, and modern high-contrast circular send and stop buttons.
+- **Quick Starter Prompt Cards**: 2x2 grid of modern starter cards on the *Neue Aufgabe* screen (Architektur analysieren 🔍, Tests ausführen 🧪, Git-Status prüfen 🌿, Release-Build erstellen 📦) for fast one-tap task initialization.
+- **Colored Syntax-Highlighted Git Diffs**: Line-by-line colored diff rendering (`.diff-box`, `.diff-add`, `.diff-del`, `.diff-hunk`, `.diff-meta`) with copy buttons across approval dialogs and review logs.
+- **Lightweight Markdown & Code Blocks**: Markdown formatting supporting bold, italic, inline code, lists, and fenced code blocks with language badge headers and one-tap clipboard copy buttons.
+- **Floating Scroll-To-Bottom Button**: Smooth auto-scrolling button (`#scrollToBottomBtn`) dynamically toggled when scrolled up >120px from the bottom.
+- **Android Haptic Feedback Bridge**: Native vibration bridge (`window.LocalCodeAndroid.vibrate(ms)`) integrated into `MainActivity.java` and `AndroidManifest.xml` with web fallback (`navigator.vibrate`) for approval triggers, card taps, and task completions.
+- **Modern Approval Dialog**: Concise bilingual buttons ("Genehmigen" / "Approve", "Immer erlauben" / "Always allow", "Ablehnen" / "Reject") with clean dark-surface styling, harmonious contrast, and code diff preview.
+- **Android Mobile Remote App**: Starts on **Neue Aufgabe / New task** tab. The **Tasks** tab is hidden by default and can be enabled dynamically in the Settings modal (`#showTasksTabToggle`). Navigation swipe and view switching dynamically adapt to active tabs. Approval requests render dynamically as a modern popup over the active view. Transient status noise is cleanly filtered from history upon completion.
+- **Voice Input & Fast Dispatch**: Microphone button is positioned on the far right across Desktop and Android Remote composers. Spoken input with speech recognition completion immediately triggers submission without requiring a manual click.
+- **Tool Profiles & Scheduler Capabilities**: Expanded `toolProfiles` and candidate search paths to include `cmd`, `wsl`, `bash`, `pwsh`, `winget`, `make`, `gcc`, `clang`, `tar`, `7z`, Windows Task Scheduler (`schtasks`), and Linux/WSL schedulers (`crontab`, `systemctl` timers, `at`). Agent system prompt provides structured scheduling instructions.
+- **Model Fallback & Cluster Mesh**: Agent start falls back to `Config.LastModel`, `Config.OllamaDefaultModel`, or `qwen2.5-coder:14b` when no model is explicitly supplied. Local and remote Ollama tags are merged cleanly with automatic failover to local daemon if remote mesh endpoints encounter errors.
 - **Native Android Shell**: Persists last accepted Remote URL and TLS fingerprint; falls back to automatic mDNS and bounded parallel LAN discovery (`/remote/api/discovery` / `/remote/api/ping`).
-- **Windows Platform & Fast Start**: `START.bat` logs to `logs/start.log`, passes fast-start parameters to `scripts/needs-build.ps1`, and avoids blocking on non-critical startup checks. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
+- **Windows Platform & Fast Start**: `START.bat` and `FAST-START.bat` provide instant startup with `LOCALCODE_FAST_START=1`. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
 - **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
-- **Thread Context Filtering**: `src/agent.go` passes compact filtered previous thread history to allow short follow-ups (e.g. "zeige links") without context explosion.
+
+
 
 ## 1. Product objective
 

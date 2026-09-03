@@ -3,6 +3,7 @@ package com.inetconnector.localcode;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,12 +16,13 @@ import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.app.AlertDialog;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
@@ -327,6 +329,8 @@ public final class MainActivity extends Activity {
                     Uri[] results = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
                     callback.onReceiveValue(results);
                 } catch (RuntimeException ex) {
+
+
                     callback.onReceiveValue(null);
                     showRemoteError(
                             "Die ausgewählten Dateien konnten nicht übernommen werden.",
@@ -397,7 +401,24 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getBridgeVersion() {
-            return "2.0";
+            return "2.1";
+        }
+
+        @JavascriptInterface
+        public void vibrate(int milliseconds) {
+            runOnUiThread(() -> {
+                try {
+                    Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                    if (v != null && v.hasVibrator()) {
+                        int dur = Math.max(1, Math.min(milliseconds, 500));
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            v.vibrate(VibrationEffect.createOneShot(dur, VibrationEffect.DEFAULT_AMPLITUDE));
+                        } else {
+                            v.vibrate(dur);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            });
         }
 
         @JavascriptInterface

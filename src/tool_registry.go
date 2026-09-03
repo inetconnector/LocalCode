@@ -95,6 +95,40 @@ var toolProfiles = []toolProfile{
 	{Name: "clang", DisplayName: "LLVM Clang Compiler", Aliases: []string{"clang", "clang.exe", "clang++", "clang++.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://clang.llvm.org/", InstallHint: "LLVM installieren.", InstallKind: "winget", WingetID: "LLVM.LLVM"},
 	{Name: "tar", DisplayName: "Tar Archiver", Aliases: []string{"tar", "tar.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/tar", InstallHint: "In Windows standardmäßig enthalten."},
 	{Name: "7z", DisplayName: "7-Zip Archiver", Aliases: []string{"7z", "7z.exe", "7za", "7za.exe"}, VersionArgs: []string{"-h"}, DocsURL: "https://www.7-zip.org/", InstallHint: "7-Zip installieren.", InstallKind: "winget", WingetID: "7zip.7zip"},
+	{Name: "schtasks", DisplayName: "Windows Task Scheduler CLI", Aliases: []string{"schtasks", "schtasks.exe"}, VersionArgs: []string{"/?"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/schtasks", InstallHint: "In Windows standardmäßig enthalten."},
+	{Name: "crontab", DisplayName: "Cron Task Scheduler", Aliases: []string{"crontab"}, VersionArgs: []string{"-V"}, DocsURL: "https://man7.org/linux/man-pages/man1/crontab.1.html", InstallHint: "In Linux/WSL über das Cron-Paket verfügbar."},
+	{Name: "systemctl", DisplayName: "Systemd Service & Timer Manager", Aliases: []string{"systemctl"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.freedesktop.org/software/systemd/man/systemctl.html", InstallHint: "In Linux/WSL mit Systemd verfügbar."},
+	{Name: "at", DisplayName: "At Queue Scheduler", Aliases: []string{"at", "atq", "atrm"}, VersionArgs: []string{"-V"}, DocsURL: "https://man7.org/linux/man-pages/man1/at.1.html", InstallHint: "Über 'apt install at' in Linux/WSL installierbar."},
+	{Name: "ollama", DisplayName: "Ollama Local LLM Server", Aliases: []string{"ollama", "ollama.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://ollama.com/", InstallHint: "Ollama installieren.", InstallKind: "winget", WingetID: "Ollama.Ollama"},
+	{Name: "uv", DisplayName: "Astral uv Python Manager", Aliases: []string{"uv", "uv.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.astral.sh/uv/", InstallHint: "uv über 'powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"' oder winget installieren.", InstallKind: "winget", WingetID: "astral-sh.uv"},
+	{Name: "pnpm", DisplayName: "pnpm Fast Package Manager", Aliases: []string{"pnpm", "pnpm.cmd", "pnpm.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://pnpm.io/", InstallHint: "pnpm über 'npm install -g pnpm' oder winget installieren.", InstallKind: "winget", WingetID: "pnpm.pnpm"},
+	{Name: "yarn", DisplayName: "Yarn Package Manager", Aliases: []string{"yarn", "yarn.cmd", "yarn.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://yarnpkg.com/", InstallHint: "Yarn über 'npm install -g yarn' oder winget installieren.", InstallKind: "winget", WingetID: "Yarn.Yarn"},
+	{Name: "bun", DisplayName: "Bun JavaScript/TypeScript Runtime", Aliases: []string{"bun", "bun.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://bun.sh/", InstallHint: "Bun über 'powershell -c \"irm bun.sh/install.ps1 | iex\"' oder winget installieren.", InstallKind: "winget", WingetID: "Oven-sh.Bun"},
+	{Name: "deno", DisplayName: "Deno JavaScript/TypeScript Runtime", Aliases: []string{"deno", "deno.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://deno.land/", InstallHint: "Deno installieren.", InstallKind: "winget", WingetID: "DenoLand.Deno"},
+	{Name: "flutter", DisplayName: "Flutter SDK", Aliases: []string{"flutter", "flutter.bat", "flutter.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://docs.flutter.dev/", InstallHint: "Flutter SDK installieren.", InstallKind: "winget", WingetID: "Google.Flutter"},
+	{Name: "dart", DisplayName: "Dart SDK", Aliases: []string{"dart", "dart.bat", "dart.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://dart.dev/", InstallHint: "Wird mit Flutter installiert oder separat beziehbar."},
+	{Name: "podman", DisplayName: "Podman Container Engine", Aliases: []string{"podman", "podman.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://podman.io/", InstallHint: "Podman Desktop installieren.", InstallKind: "winget", WingetID: "RedHat.Podman"},
+	{Name: "kubectl", DisplayName: "Kubernetes CLI", Aliases: []string{"kubectl", "kubectl.exe"}, VersionArgs: []string{"version", "--client=true"}, DocsURL: "https://kubernetes.io/docs/reference/kubectl/", InstallHint: "kubectl installieren.", InstallKind: "winget", WingetID: "Kubernetes.kubectl"},
+	{Name: "helm", DisplayName: "Helm Kubernetes Package Manager", Aliases: []string{"helm", "helm.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://helm.sh/", InstallHint: "Helm installieren.", InstallKind: "winget", WingetID: "Helm.Helm"},
+	{Name: "terraform", DisplayName: "HashiCorp Terraform", Aliases: []string{"terraform", "terraform.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://developer.hashicorp.com/terraform", InstallHint: "Terraform installieren.", InstallKind: "winget", WingetID: "Hashicorp.Terraform"},
+	{Name: "sqlite3", DisplayName: "SQLite CLI", Aliases: []string{"sqlite3", "sqlite3.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.sqlite.org/cli.html", InstallHint: "SQLite CLI installieren.", InstallKind: "winget", WingetID: "SQLite.SQLite"},
+	{Name: "psql", DisplayName: "PostgreSQL CLI", Aliases: []string{"psql", "psql.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.postgresql.org/docs/current/app-psql.html", InstallHint: "PostgreSQL Client Tools installieren.", InstallKind: "winget", WingetID: "PostgreSQL.PostgreSQL"},
+	{Name: "mysql", DisplayName: "MySQL CLI", Aliases: []string{"mysql", "mysql.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://dev.mysql.com/doc/refman/8.0/en/mysql.html", InstallHint: "MySQL Client installieren.", InstallKind: "winget", WingetID: "Oracle.MySQL"},
+	{Name: "redis-cli", DisplayName: "Redis CLI", Aliases: []string{"redis-cli", "redis-cli.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://redis.io/docs/connect/cli/", InstallHint: "Redis Client installieren."},
+	{Name: "mongosh", DisplayName: "MongoDB Shell", Aliases: []string{"mongosh", "mongosh.cmd", "mongosh.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.mongodb.com/docs/mongodb-shell/", InstallHint: "MongoDB Shell installieren.", InstallKind: "winget", WingetID: "MongoDB.Mongosh"},
+	{Name: "jq", DisplayName: "jq JSON Processor", Aliases: []string{"jq", "jq.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://jqlang.github.io/jq/", InstallHint: "jq installieren.", InstallKind: "winget", WingetID: "jqlang.jq"},
+	{Name: "yq", DisplayName: "yq YAML Processor", Aliases: []string{"yq", "yq.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://github.com/mikefarah/yq", InstallHint: "yq installieren.", InstallKind: "winget", WingetID: "MikeFarah.yq"},
+	{Name: "rg", DisplayName: "ripgrep Fast Search", Aliases: []string{"rg", "rg.exe", "ripgrep", "ripgrep.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://github.com/BurntSushi/ripgrep", InstallHint: "ripgrep installieren.", InstallKind: "winget", WingetID: "BurntSushi.ripgrep.MSVC"},
+	{Name: "fd", DisplayName: "fd Fast File Finder", Aliases: []string{"fd", "fd.exe", "fdfind"}, VersionArgs: []string{"--version"}, DocsURL: "https://github.com/sharkdp/fd", InstallHint: "fd-find installieren.", InstallKind: "winget", WingetID: "sharkdp.fd"},
+	{Name: "openssl", DisplayName: "OpenSSL Cryptography & TLS", Aliases: []string{"openssl", "openssl.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://www.openssl.org/docs/", InstallHint: "OpenSSL installieren.", InstallKind: "winget", WingetID: "ShiningLight.OpenSSL"},
+	{Name: "ffmpeg", DisplayName: "FFmpeg Media Transcoder", Aliases: []string{"ffmpeg", "ffmpeg.exe"}, VersionArgs: []string{"-version"}, DocsURL: "https://ffmpeg.org/documentation.html", InstallHint: "FFmpeg installieren.", InstallKind: "winget", WingetID: "Gyan.FFmpeg"},
+	{Name: "wget", DisplayName: "GNU Wget", Aliases: []string{"wget", "wget.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://www.gnu.org/software/wget/", InstallHint: "GNU Wget installieren.", InstallKind: "winget", WingetID: "JernejSimoncic.Wget"},
+	{Name: "zig", DisplayName: "Zig Compiler & Toolchain", Aliases: []string{"zig", "zig.exe"}, VersionArgs: []string{"version"}, DocsURL: "https://ziglang.org/documentation/", InstallHint: "Zig installieren.", InstallKind: "winget", WingetID: "zig.zig"},
+	{Name: "php", DisplayName: "PHP Interpreter", Aliases: []string{"php", "php.exe"}, VersionArgs: []string{"-v"}, DocsURL: "https://www.php.net/docs.php", InstallHint: "PHP installieren.", InstallKind: "winget", WingetID: "PHP.PHP"},
+	{Name: "composer", DisplayName: "Composer PHP Dependency Manager", Aliases: []string{"composer", "composer.bat", "composer.exe"}, VersionArgs: []string{"--version"}, DocsURL: "https://getcomposer.org/doc/", InstallHint: "Composer installieren.", InstallKind: "winget", WingetID: "Composer.Composer"},
+	{Name: "ruby", DisplayName: "Ruby Interpreter", Aliases: []string{"ruby", "ruby.exe"}, VersionArgs: []string{"-v"}, DocsURL: "https://www.ruby-lang.org/en/documentation/", InstallHint: "Ruby installieren.", InstallKind: "winget", WingetID: "RubyInstallerTeam.Ruby.3.3"},
+	{Name: "tasklist", DisplayName: "Windows Task List", Aliases: []string{"tasklist", "tasklist.exe"}, VersionArgs: []string{"/?"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist", InstallHint: "In Windows standardmäßig enthalten."},
+	{Name: "taskkill", DisplayName: "Windows Task Kill", Aliases: []string{"taskkill", "taskkill.exe"}, VersionArgs: []string{"/?"}, DocsURL: "https://learn.microsoft.com/windows-server/administration/windows-commands/taskkill", InstallHint: "In Windows standardmäßig enthalten."},
 }
 
 func canonicalToolName(name string) string {
@@ -373,6 +407,73 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 		case "7z":
 			add(filepath.Join(pf, "7-Zip", "7z.exe"), "7-Zip")
 			add(filepath.Join(pf86, "7-Zip", "7z.exe"), "7-Zip")
+		case "schtasks":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "schtasks.exe"), "Windows System32")
+		case "tasklist":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "tasklist.exe"), "Windows System32")
+		case "taskkill":
+			add(filepath.Join(os.Getenv("WINDIR"), "System32", "taskkill.exe"), "Windows System32")
+		case "ollama":
+			add(filepath.Join(local, "Programs", "Ollama", "ollama.exe"), "Standardpfad")
+			add(filepath.Join(pf, "Ollama", "ollama.exe"), "Standardpfad")
+		case "uv":
+			add(filepath.Join(home, ".cargo", "bin", "uv.exe"), "Cargo")
+			add(filepath.Join(local, "Programs", "uv", "uv.exe"), "Benutzerinstallation")
+			add(filepath.Join(home, ".local", "bin", "uv.exe"), "Benutzerinstallation")
+		case "pnpm":
+			add(filepath.Join(home, "AppData", "Roaming", "npm", "pnpm.cmd"), "npm global")
+			add(filepath.Join(local, "pnpm", "pnpm.exe"), "pnpm Home")
+		case "yarn":
+			add(filepath.Join(home, "AppData", "Roaming", "npm", "yarn.cmd"), "npm global")
+		case "bun":
+			add(filepath.Join(home, ".bun", "bin", "bun.exe"), "Bun Home")
+		case "deno":
+			add(filepath.Join(home, ".deno", "bin", "deno.exe"), "Deno Home")
+		case "flutter":
+			add(filepath.Join(home, "flutter", "bin", "flutter.bat"), "Flutter Home")
+			add("C:\\src\\flutter\\bin\\flutter.bat", "Standardpfad")
+		case "dart":
+			add(filepath.Join(home, "flutter", "bin", "dart.bat"), "Flutter Dart")
+			add("C:\\src\\flutter\\bin\\dart.bat", "Flutter Dart")
+		case "podman":
+			add(filepath.Join(pf, "RedHat", "Podman", "podman.exe"), "Standardpfad")
+		case "kubectl":
+			add(filepath.Join(local, "Microsoft", "WinGet", "Packages", "Kubernetes.kubectl*_Microsoft.Winget.Source_*", "kubectl.exe"), "WinGet")
+		case "terraform":
+			add(filepath.Join(local, "Microsoft", "WinGet", "Packages", "Hashicorp.Terraform*_Microsoft.Winget.Source_*", "terraform.exe"), "WinGet")
+		case "sqlite3":
+			add(filepath.Join(pf, "sqlite", "sqlite3.exe"), "Standardpfad")
+			add("C:\\sqlite\\sqlite3.exe", "Standardpfad")
+		case "jq":
+			add(filepath.Join(pf, "jq", "jq.exe"), "Standardpfad")
+			add(filepath.Join(pf, "Git", "usr", "bin", "jq.exe"), "Git Bash")
+		case "yq":
+			add(filepath.Join(pf, "yq", "yq.exe"), "Standardpfad")
+		case "rg":
+			add(filepath.Join(pf, "ripgrep", "rg.exe"), "Standardpfad")
+			add(filepath.Join(pf, "Git", "usr", "bin", "rg.exe"), "Git Bash")
+		case "fd":
+			add(filepath.Join(pf, "fd", "fd.exe"), "Standardpfad")
+		case "openssl":
+			add(filepath.Join(pf, "OpenSSL-Win64", "bin", "openssl.exe"), "OpenSSL-Win64")
+			add(filepath.Join(pf, "Git", "usr", "bin", "openssl.exe"), "Git Bash")
+		case "ffmpeg":
+			add(filepath.Join(pf, "ffmpeg", "bin", "ffmpeg.exe"), "Standardpfad")
+			add(filepath.Join(local, "Microsoft", "WinGet", "Packages", "Gyan.FFmpeg*_Microsoft.Winget.Source_*", "ffmpeg", "bin", "ffmpeg.exe"), "WinGet")
+		case "wget":
+			add(filepath.Join(pf, "GnuWin32", "bin", "wget.exe"), "GnuWin32")
+			add(filepath.Join(pf, "Git", "usr", "bin", "wget.exe"), "Git Bash")
+		case "zig":
+			add(filepath.Join(pf, "zig", "zig.exe"), "Standardpfad")
+		case "php":
+			add(filepath.Join(pf, "php", "php.exe"), "Standardpfad")
+			add("C:\\php\\php.exe", "Standardpfad")
+		case "composer":
+			add(filepath.Join(pf, "ComposerSetup", "bin", "composer.bat"), "ComposerSetup")
+			add(filepath.Join(home, "AppData", "Roaming", "Composer", "vendor", "bin", "composer.bat"), "Composer Home")
+		case "ruby":
+			add("C:\\Ruby33-x64\\bin\\ruby.exe", "RubyInstaller")
+			add("C:\\Ruby32-x64\\bin\\ruby.exe", "RubyInstaller")
 		}
 	}
 	seen := map[string]bool{}

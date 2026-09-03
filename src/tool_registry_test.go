@@ -512,7 +512,7 @@ func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {
 }
 
 func TestNewShellAndLinuxToolProfiles(t *testing.T) {
-	tools := []string{"cmd", "wsl", "bash", "pwsh", "winget", "make", "gcc", "clang", "tar", "7z"}
+	tools := []string{"cmd", "wsl", "bash", "pwsh", "winget", "make", "gcc", "clang", "tar", "7z", "schtasks", "crontab", "systemctl", "at"}
 	for _, name := range tools {
 		profile := profileForTool(name)
 		if profile.Name != name {
@@ -529,7 +529,7 @@ func TestNewShellAndLinuxToolProfiles(t *testing.T) {
 		}
 	}
 
-	if canonicalToolName("wsl.exe") != "wsl" || canonicalToolName("bash.exe") != "bash" || canonicalToolName("mingw32-make.exe") != "make" || canonicalToolName("clang++.exe") != "clang" || canonicalToolName("7za.exe") != "7z" {
+	if canonicalToolName("wsl.exe") != "wsl" || canonicalToolName("bash.exe") != "bash" || canonicalToolName("mingw32-make.exe") != "make" || canonicalToolName("clang++.exe") != "clang" || canonicalToolName("7za.exe") != "7z" || canonicalToolName("schtasks.exe") != "schtasks" {
 		t.Fatalf("canonicalToolName failed for aliases")
 	}
 
@@ -540,6 +540,10 @@ func TestNewShellAndLinuxToolProfiles(t *testing.T) {
 		cmdInfo := discoverTool(project, "cmd", cfg, false)
 		if !cmdInfo.Available {
 			t.Fatalf("cmd must be discovered on Windows: %#v", cmdInfo)
+		}
+		schtasksInfo := discoverTool(project, "schtasks", cfg, false)
+		if !schtasksInfo.Available {
+			t.Fatalf("schtasks must be discovered on Windows: %#v", schtasksInfo)
 		}
 	}
 }
@@ -760,6 +764,31 @@ func TestContextCompactionSettingsArePresentInUI(t *testing.T) {
 	for _, jsonField := range []string{"context_compaction_enabled", "context_compaction_threshold_percent", "context_compaction_keep_recent"} {
 		if !strings.Contains(html, jsonField) {
 			t.Fatalf("missing context compaction setting binding %s", jsonField)
+		}
+	}
+}
+
+func TestExpandedToolProfilesAndDiscovery(t *testing.T) {
+	requiredTools := []string{
+		"ollama", "uv", "pnpm", "yarn", "bun", "deno", "flutter", "dart",
+		"podman", "kubectl", "helm", "terraform", "sqlite3", "psql", "mysql",
+		"redis-cli", "mongosh", "jq", "yq", "rg", "fd", "openssl", "ffmpeg",
+		"wget", "zig", "php", "composer", "ruby", "tasklist", "taskkill",
+	}
+
+	for _, name := range requiredTools {
+		profile := profileForTool(name)
+		if profile.Name != name {
+			t.Fatalf("expected profile for tool %q, got %q", name, profile.Name)
+		}
+		if profile.DisplayName == "" {
+			t.Fatalf("tool %q is missing DisplayName", name)
+		}
+		if profile.DocsURL == "" {
+			t.Fatalf("tool %q is missing DocsURL", name)
+		}
+		if len(profile.Aliases) == 0 {
+			t.Fatalf("tool %q has no Aliases", name)
 		}
 	}
 }
