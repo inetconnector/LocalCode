@@ -1,16 +1,20 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-09-02 Europe/Berlin  
+**Verified:** 2026-09-03 Europe/Berlin  
 **Repository:** `inetconnector/LocalCode`  
 **Default branch:** `master`  
-**Current authoritative merged master:** `f9c171b` (Release: `v6.8.0`)  
-**Last merged functional PR:** #86 `feat(android,windows): native camera QR scanner, LAN discovery, and remote firewall elevation helper` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
+**Current authoritative merged master:** `f9c171b` (Release: `v6.9.0`)  
+**Last merged functional PR:** #87 `feat: autonomous browser automation, Windows UI desktop agent, and mobile TTS feedback` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
 **Active branch:** `master`  
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
-## 2.1 Merged runtime, Windows platform & Android remote improvements (v6.8.0)
 
+## 2.1 Merged runtime, Windows platform, Browser & Desktop Automation, & Android Remote (v6.9.0)
+
+- **Autonomous Browser Automation (Playwright MCP & Headless Chromium)**: First-class controlled browser automation backend (`src/browser_automation.go`) exposing `browser_navigate`, `browser_inspect`, `browser_click`, `browser_type`, `browser_screenshot`, and `browser_extract`. Dispatches to Playwright MCP (`@playwright/mcp@0.0.78`) when enabled, with automatic fallback to headless Chromium/Edge for DOM inspection, structured text/table extraction, and screenshots. Read operations are auto-approved in normal mode; mutations (`browser_click`, `browser_type`) require approval. Integrated into Doctor diagnostic item 7 ("Autonomous Browser Automation").
+- **Windows Desktop & UI Automation (Accessible GUI Agent Engine)**: Windows UI Automation engine (`src/desktop_automation_windows.go`, `src/desktop_automation_other.go`) enabling the agent to list visible top-level windows (`desktop_list_windows`), inspect accessibility control trees (`desktop_inspect`), invoke controls (`desktop_click`), enter text (`desktop_type`), and capture window/screen GDI screenshots (`desktop_screenshot`). Strict security guardrails block sensitive system windows (`Task Manager`, `Windows Security`, `LogonUI`, `Credential Prompt`, `UAC`). Integrated into Doctor diagnostic item 8 ("Windows Desktop & UI Automation").
+- **Audio / Speech Feedback (TTS) on Android Mobile Remote**: Native Android `TextToSpeech` bridge (`window.LocalCodeAndroid.speak(text)`, `window.LocalCodeAndroid.stopSpeaking()`, `isTtsAvailable()`) in `MainActivity.java` with Web Speech API fallback in `src/static/remote.html`. Includes a settings toggle (`#ttsToggle`) and on-demand read-aloud buttons (🔊) on agent response bubbles.
 - **Codex-Style Mobile Remote UI**: Redesigned floating pill composer with glassmorphic backdrop filter, border highlight on focus, sleek circular attachment (+) button, compact inline project selector chip, crisp outline microphone button on the far right, and modern high-contrast circular send and stop buttons.
 - **Quick Starter Prompt Cards**: 2x2 grid of modern starter cards on the *Neue Aufgabe* screen (Architektur analysieren 🔍, Tests ausführen 🧪, Git-Status prüfen 🌿, Release-Build erstellen 📦) for fast one-tap task initialization.
 - **Colored Syntax-Highlighted Git Diffs**: Line-by-line colored diff rendering (`.diff-box`, `.diff-add`, `.diff-del`, `.diff-hunk`, `.diff-meta`) with copy buttons across approval dialogs and review logs.
@@ -25,6 +29,7 @@ This file is the self-contained restart point. Only merged `master` is authorita
 - **Native Android Shell**: Persists last accepted Remote URL and TLS fingerprint; falls back to automatic mDNS and bounded parallel LAN discovery (`/remote/api/discovery` / `/remote/api/ping`).
 - **Windows Platform & Fast Start**: `START.bat` and `FAST-START.bat` provide instant startup with `LOCALCODE_FAST_START=1`. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
 - **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
+
 
 
 

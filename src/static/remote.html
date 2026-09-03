@@ -1138,7 +1138,14 @@ textarea::placeholder{
         </label>
       </div>
       <div class="settings-group">
+        <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;width:100%;">
+          <span data-i18n="voice_output_label">Sprachausgabe (TTS)</span>
+          <input type="checkbox" id="ttsToggle" style="width:18px;height:18px;accent-color:#38bdf8;cursor:pointer;">
+        </label>
+      </div>
+      <div class="settings-group">
         <label data-i18n="active_model">Aktives Modell</label>
+
         <div id="settingsModel" class="settings-val muted">qwen2.5-coder:14b</div>
       </div>
       <div class="settings-group">
@@ -1156,8 +1163,8 @@ textarea::placeholder{
 (() => {
 'use strict';
 const dict={
-de:{show_tasks_tab:'Tasks-Reiter anzeigen',pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht an LocalCode...',search_placeholder:'Suche...',history:'Verlauf',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Genehmigen',approve_project:'Immer erlauben',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?',starter_analyze_title:'Architektur analysieren',starter_analyze_desc:'Dateien, Entrypoints & Aufbau erfassen',starter_test_title:'Tests ausführen',starter_test_desc:'Testsuite & Linting verifizieren',starter_git_title:'Git-Status prüfen',starter_git_desc:'Diffs & geänderte Dateien anzeigen',starter_build_title:'Release-Build erstellen',starter_build_desc:'Play Store / Projekt-Artefakte bauen',copy:'Kopieren',copied:'Kopiert!',scroll_to_bottom:'Nach unten scrollen'},
-en:{show_tasks_tab:'Show Tasks tab',pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Message LocalCode...',search_placeholder:'Search...',history:'History',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve',approve_project:'Always allow',reject:'Reject',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?',starter_analyze_title:'Analyze architecture',starter_analyze_desc:'Inspect files, entrypoints & structure',starter_test_title:'Run tests',starter_test_desc:'Verify test suite & lint checks',starter_git_title:'Check Git status',starter_git_desc:'View diffs & changed files',starter_build_title:'Create release build',starter_build_desc:'Build Play Store / project artifacts',copy:'Copy',copied:'Copied!',scroll_to_bottom:'Scroll to bottom'}
+de:{show_tasks_tab:'Tasks-Reiter anzeigen',voice_output_label:'Sprachausgabe (TTS)',speak_aloud:'Vorlesen',stop_speech:'Stoppen',pair_title:'LocalCode koppeln',pair_help:'Scanne den QR-Code auf deinem Desktop-Bildschirm oder gib den 8-stelligen Code ein.',scan_qr:'QR-Code scannen',or_manual:'oder Code manuell eingeben',pair_button:'Verbinden',pair_failed:'Kopplung fehlgeschlagen.',tasks:'Tasks',projects:'Projekte',trash:'Papierkorb',approve:'Genehmigen',review:'Review',new_task:'Neue Aufgabe',placeholder:'Nachricht an LocalCode...',search_placeholder:'Suche...',history:'Verlauf',upload:'Dateien anhängen',voice:'Spracheingabe',voice_unavailable:'Spracheingabe ist auf diesem Gerät nicht verfügbar.',voice_failed:'Spracheingabe fehlgeschlagen.',no_projects:'Keine Projekte gefunden.',no_events:'Noch kein Verlauf.',pending_none:'Keine offene Genehmigung.',approve_once:'Genehmigen',approve_project:'Immer erlauben',reject:'Ablehnen',running:'Läuft',ready:'Bereit',mission:'Mission',mission_running:'Read-only-Mission läuft auf dem Windows-Rechner.',select_project:'Projekt auswählen',new_chat:'Neue Aufgabe starten',create_project:'Neues Projekt',create_folder:'Neuer Ordner',delete_project:'Projekt/Ordner löschen…',play_store:'Play-Store-Build',project_tools:'Projektverwaltung',project_help:'Neues Projekt erstellt README.md, AGENTS.md und STATE.md. Neuer Ordner bleibt absichtlich leer. Nichtleere Projekte werden in den LocalCode-Papierkorb verschoben und können wiederhergestellt werden.',project_name:'Name des neuen Projekts',folder_name:'Name des neuen leeren Ordners',created:'Projekt angelegt',folder_created:'Leerer Ordner angelegt',nothing_selected:'Bitte zuerst ein Projekt oder einen Ordner auswählen.',delete_empty:'Der Ordner ist leer und wird nach dieser Bestätigung direkt gelöscht. Wirklich löschen?',delete_full:'Dieser Projektordner enthält {files} Dateien, {dirs} Unterordner und {bytes} Bytes. Er wird in den LocalCode-Papierkorb verschoben und kann wiederhergestellt werden. Gib exakt den Projektnamen ein:',delete_mismatch:'Name stimmt nicht exakt. Es wurde nichts gelöscht.',quarantine_done:'Projekt wurde in den Papierkorb verschoben und kann wiederhergestellt werden.',trash_empty:'Papierkorb ist leer.',restore:'Wiederherstellen',restore_done:'Projekt wiederhergestellt.',purge:'Dauerhaft löschen…',purge_prompt:'Dauerhaftes Löschen kann nicht rückgängig gemacht werden. Gib exakt PURGE {project} ein.',purge_done:'Projekt wurde dauerhaft aus dem Papierkorb gelöscht.',trash_meta:'{files} Dateien · {dirs} Ordner · {bytes} Bytes',store_confirm:'Release-Build für dieses Android-Projekt starten? LocalCode darf lokal testen und AAB/APK bauen, aber keine Schlüssel ersetzen und nichts veröffentlichen.',store_started:'Play-Store-Release-Auftrag gestartet.',file_too_large:'{name} ist größer als 32 MiB.',max_files:'Maximal {count} Dateien.',total_too_large:'Anhänge überschreiten zusammen 96 MiB.',settings:'Einstellungen',engine_label:'Coding-Engine',active_model:'Aktives Modell',server_url:'Host-Adresse',run_diag:'Systemdiagnose prüfen',disconnect:'Verbindung trennen',disconnect_confirm:'Möchtest du diese Kopplung wirklich trennen?',switch_project_confirm:'Möchtest du wirklich zum Projekt "{project}" wechseln?',starter_analyze_title:'Architektur analysieren',starter_analyze_desc:'Dateien, Entrypoints & Aufbau erfassen',starter_test_title:'Tests ausführen',starter_test_desc:'Testsuite & Linting verifizieren',starter_git_title:'Git-Status prüfen',starter_git_desc:'Diffs & geänderte Dateien anzeigen',starter_build_title:'Release-Build erstellen',starter_build_desc:'Play Store / Projekt-Artefakte bauen',copy:'Kopieren',copied:'Kopiert!',scroll_to_bottom:'Nach unten scrollen'},
+en:{show_tasks_tab:'Show Tasks tab',voice_output_label:'Voice output (TTS)',speak_aloud:'Read aloud',stop_speech:'Stop',pair_title:'Pair LocalCode',pair_help:'Scan the QR code on your desktop screen or enter the 8-digit code.',scan_qr:'Scan QR code',or_manual:'or enter code manually',pair_button:'Connect',pair_failed:'Pairing failed.',tasks:'Tasks',projects:'Projects',trash:'Trash',approve:'Approve',review:'Review',new_task:'New task',placeholder:'Message LocalCode...',search_placeholder:'Search...',history:'History',upload:'Attach files',voice:'Voice input',voice_unavailable:'Voice input is not available on this device.',voice_failed:'Voice input failed.',no_projects:'No projects found.',no_events:'No history yet.',pending_none:'No pending approval.',approve_once:'Approve',approve_project:'Always allow',reject:'Reject',running:'Running',ready:'Ready',mission:'Mission',mission_running:'Read-only Mission is running on the Windows host.',select_project:'Select project',new_chat:'Start new task',create_project:'New project',create_folder:'New folder',delete_project:'Delete project/folder…',play_store:'Play Store build',project_tools:'Project management',project_help:'New project creates README.md, AGENTS.md and STATE.md. New folder stays intentionally empty. Non-empty projects are moved to LocalCode Trash and can be restored.',project_name:'Name of the new project',folder_name:'Name of the new empty folder',created:'Project created',folder_created:'Empty folder created',nothing_selected:'Select a project or folder first.',delete_empty:'The folder is empty and will be deleted directly after this confirmation. Delete it now?',delete_full:'This project folder contains {files} files, {dirs} subfolders and {bytes} bytes. It will be moved to LocalCode Trash and can be restored. Type the exact project name:',delete_mismatch:'The name did not match exactly. Nothing was deleted.',quarantine_done:'Project moved to Trash and can be restored.',trash_empty:'Trash is empty.',restore:'Restore',restore_done:'Project restored.',purge:'Permanently purge…',purge_prompt:'Permanent purge cannot be undone. Type exactly PURGE {project}.',purge_done:'Project permanently purged from Trash.',trash_meta:'{files} files · {dirs} folders · {bytes} bytes',store_confirm:'Start a release build for this Android project? LocalCode may test and build AAB/APK locally, but may not replace keys or publish anything.',store_started:'Play Store release task started.',file_too_large:'{name} is larger than 32 MiB.',max_files:'Up to {count} files are allowed.',total_too_large:'Attachments exceed the combined 96 MiB limit.',settings:'Settings',engine_label:'Coding engine',active_model:'Active model',server_url:'Host address',run_diag:'Check system diagnostics',disconnect:'Disconnect',disconnect_confirm:'Do you really want to disconnect this pairing?',switch_project_confirm:'Do you really want to switch to project "{project}"?',starter_analyze_title:'Analyze architecture',starter_analyze_desc:'Inspect files, entrypoints & structure',starter_test_title:'Run tests',starter_test_desc:'Verify test suite & lint checks',starter_git_title:'Check Git status',starter_git_desc:'View diffs & changed files',starter_build_title:'Create release build',starter_build_desc:'Build Play Store / project artifacts',copy:'Copy',copied:'Copied!',scroll_to_bottom:'Scroll to bottom'}
 };
 
 const lang=(navigator.language||'en').toLowerCase().startsWith('de')?'de':'en';
@@ -1168,10 +1175,11 @@ document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=t(
 document.querySelectorAll('[data-i18n-title]').forEach(e=>{const label=t(e.dataset.i18nTitle);e.title=label;e.setAttribute('aria-label',label)});
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const MAX_FILES=20, MAX_FILE_BYTES=32*1024*1024, MAX_TOTAL_BYTES=96*1024*1024;
-const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'new',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false,showTasksTab:localStorage.getItem('localcodeRemoteShowTasksTab')==='true'};
+const state={token:localStorage.getItem('localcodeRemoteToken')||'',status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:'',files:[],view:'new',es:null,sending:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false,showTasksTab:localStorage.getItem('localcodeRemoteShowTasksTab')==='true',ttsEnabled:localStorage.getItem('localcodeRemoteTTS')==='true'};
 const viewOrder=['new','tasks','projects','trash','review'];
 const engineOptions=[['native','LocalCode Native'],['aider','Aider'],['opencode','OpenCode'],['claude','Claude Code'],['claw','Claw Code']];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
 
 function haptic(ms=25){
   try{
@@ -1183,6 +1191,36 @@ function haptic(ms=25){
   }catch(e){}
 }
 
+function speakText(rawText){
+  if(!rawText)return;
+  let clean=String(rawText)
+    .replace(/```[\s\S]*?```/g,' Codeblock ')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .replace(/[*_#~>]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  if(!clean)return;
+  if(window.LocalCodeAndroid?.speak){
+    window.LocalCodeAndroid.speak(clean);
+  }else if('speechSynthesis' in window){
+    window.speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(clean);
+    u.lang=lang==='de'?'de-DE':'en-US';
+    window.speechSynthesis.speak(u);
+  }
+}
+window.speakText=speakText;
+
+function stopSpeech(){
+  if(window.LocalCodeAndroid?.stopSpeaking){
+    window.LocalCodeAndroid.stopSpeaking();
+  }else if('speechSynthesis' in window){
+    window.speechSynthesis.cancel();
+  }
+}
+window.stopSpeech=stopSpeech;
+
 function copyCode(btn){
   const block=btn.closest('.code, .diff-box');
   if(!block)return;
@@ -1193,6 +1231,7 @@ function copyCode(btn){
     setTimeout(()=>btn.textContent=old,1500);
   }).catch(()=>{});
 }
+
 
 function formatDiff(raw){
   if(!raw)return '';
@@ -1249,7 +1288,13 @@ function updateSendState(){const running=!!state.status?.running;$('#sendBtn').d
 function renderEngineSelect(){const sel=$('#engineSelect');if(!sel)return;const selected=state.status?.editing_engine||state.preferredEngine||'native';sel.innerHTML=engineOptions.map(([value,label])=>`<option value="${value}"${value===selected?' selected':''}>${label}</option>`).join('');sel.disabled=!!state.status?.running}
 function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=(state.projects.length?'':`<option value="">${t('select_project')}</option>`)+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('')}
 
-function updateSettingsView(){$('#settingsModel').textContent=state.status?.model||'qwen2.5-coder:14b';$('#settingsHost').textContent=window.location.host||'LocalCode LAN'}
+function updateSettingsView(){
+  $('#settingsModel').textContent=state.status?.model||'qwen2.5-coder:14b';
+  $('#settingsHost').textContent=window.location.host||'LocalCode LAN';
+  const ttsBox=$('#ttsToggle');
+  if(ttsBox)ttsBox.checked=!!state.ttsEnabled;
+}
+
 
 function renderDrawer(){
   const query=($('#drawerSearch')?.value||'').trim().toLowerCase();
@@ -1305,8 +1350,10 @@ function eventHTML(ev){
     return`<details class="bubble-row agent tool-step"><summary class="event-summary"><span class="tool-chevron">›</span> <b>${esc(ev.action||ev.type||'Aktion')}</b>: ${esc(ev.message||'')}</summary>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</details>`;
   }
   const body=user?esc(ev.message||ev.type||''):renderMarkdown(ev.message||ev.type||'');
-  return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${body}</div>${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`;
+  const speakBtn=isFinal&&ev.message?`<div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="copy-code-btn" type="button" onclick="speakText(decodeURIComponent('${encodeURIComponent(ev.message)}'));event.stopPropagation();">🔊 ${t('speak_aloud')}</button></div>`:'';
+  return`<div class="bubble-row ${user?'user':'agent'}${isFinal?' final-result':''}${isErr?' error':''}${isWarn?' warning':''}"><div class="bubble"><div>${body}</div>${speakBtn}${detail}${meta?`<div class="event-meta">${meta}</div>`:''}</div></div>`;
 }
+
 function renderApproval(){
   const modal=$('#approvalModal'),host=$('#approvalDialog'),p=state.pending;
   if(!p){modal.classList.add('hidden');host.innerHTML='';return}
@@ -1371,7 +1418,8 @@ function effectiveViewOrder(){return state.showTasksTab?viewOrder:viewOrder.filt
 function showView(name){if(!state.showTasksTab&&name==='tasks')name='new';state.view=name;$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));for(const v of viewOrder)$('#'+v+'View').classList.toggle('hidden',v!==name);render()}
 function swipeView(step){const list=effectiveViewOrder(),i=list.indexOf(state.view),next=list[Math.max(0,Math.min(list.length-1,i+step))];if(next&&next!==state.view)showView(next)}
 function bindSwipe(){const area=$('.main');let sx=0,sy=0,active=false;area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const tag=(e.target?.tagName||'').toUpperCase();if(['BUTTON','INPUT','TEXTAREA','SELECT','OPTION'].includes(tag))return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true},{passive:true});area.addEventListener('touchend',e=>{if(!active||!e.changedTouches.length)return;active=false;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.25)return;swipeView(dx<0?1:-1)},{passive:true});area.addEventListener('touchcancel',()=>{active=false},{passive:true})}
-async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required')state.pending=ev;if(ev.type==='approval_required')haptic(50);if(ev.type==='approval')state.pending=null;if(ev.type==='final')haptic(40);if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+async function connectEvents(){if(state.es)state.es.close();if(!state.token)return;try{const stream=await api('/remote/api/event-ticket',{method:'POST'});const es=new EventSource('/remote/api/events?ticket='+encodeURIComponent(stream.ticket));state.es=es;es.onmessage=e=>{const ev=JSON.parse(e.data);if(ev.thread_id&&state.currentThread&&ev.thread_id!==state.currentThread)return;state.events.push(ev);if(ev.type==='approval_required')state.pending=ev;if(ev.type==='approval_required')haptic(50);if(ev.type==='approval')state.pending=null;if(ev.type==='final'){haptic(40);if(state.ttsEnabled&&ev.message)speakText(ev.message)}if(ev.type==='status')refresh();render()};es.onerror=()=>{es.close();if(state.es===es)setTimeout(connectEvents,1800)}}catch(e){console.warn(e);setTimeout(connectEvents,1800)}}
+
 
 
 // Drawer Management
@@ -1448,6 +1496,15 @@ $('#showTasksTabToggle').onchange=e=>{
   if(!state.showTasksTab&&state.view==='tasks')showView('new');
   render();
 };
+const ttsInput=$('#ttsToggle');
+if(ttsInput){
+  ttsInput.onchange=e=>{
+    state.ttsEnabled=e.target.checked;
+    localStorage.setItem('localcodeRemoteTTS',state.ttsEnabled?'true':'false');
+    if(!state.ttsEnabled)stopSpeech();
+  };
+}
+
 $('#disconnectBtn').onclick=()=>{
   if(!window.confirm(t('disconnect_confirm')))return;
   state.token='';

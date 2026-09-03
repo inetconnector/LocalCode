@@ -65,13 +65,15 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 ## P1 – autonomous browser and desktop control
 
-- [ ] Turn browser automation into a first-class controlled capability: discover/enable the Playwright MCP server from Settings/Doctor, expose page inspection, navigation, click/type, screenshot and extraction actions through explicit agent tools, and keep public web research separate from authenticated/browser-session control.
-- [ ] Add a Windows desktop-control backend for visible applications using UI Automation or an equivalent inspectable accessibility tree. Required actions: list windows, inspect controls/text, click a named/located button, type text, read current UI state and capture screenshots.
-- [ ] Gate desktop/app control behind explicit configuration, foreground/allowlist boundaries, approvals, timeouts, cancellation and full action logging. Never allow prompts, memories, skills or webpage text to silently grant unrestricted OS control.
-- [ ] Add regression tests and an E2E smoke harness for browser navigation and a deterministic Windows test app so requests like "click the button in that program" can be verified reproducibly.
+- [x] Turn browser automation into a first-class controlled capability: discover/enable the Playwright MCP server from Settings/Doctor, expose page inspection, navigation, click/type, screenshot and extraction actions through explicit agent tools, and keep public web research separate from authenticated/browser-session control.
+- [x] Add a Windows desktop-control backend for visible applications using UI Automation or an equivalent inspectable accessibility tree. Required actions: list windows, inspect controls/text, click a named/located button, type text, read current UI state and capture screenshots.
+- [x] Gate desktop/app control behind explicit configuration, foreground/allowlist boundaries, approvals, timeouts, cancellation and full action logging. Never allow prompts, memories, skills or webpage text to silently grant unrestricted OS control.
+- [x] Add regression tests and an E2E smoke harness for browser navigation and a deterministic Windows test app so requests like "click the button in that program" can be verified reproducibly.
+- [x] Extended Mobile Remote with Android native TextToSpeech (TTS) bridge and Web Speech API fallback, on-demand read-aloud response buttons, and dynamic settings synchronization.
 
 ## Documentation/cleanup acceptance gates
 
-- [ ] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
-- [ ] Do not treat stale merged feature refs or historical non-current Actions runs as active development state.
-- [ ] Before merging the current local startup/mobile worktree changes, run the repository's full Windows quality gates: `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript syntax checks, browser UI smoke test for visible menus, Android APK build, and Windows-amd64 builds.
+- [x] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
+- [x] Do not treat stale merged feature refs or historical non-current Actions runs as active development state.
+- [x] Before merging the current local startup/mobile worktree changes, run the repository's full Windows quality gates: `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript syntax checks, browser UI smoke test for visible menus, Android APK build, and Windows-amd64 builds.
+

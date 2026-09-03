@@ -20,6 +20,7 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -93,10 +94,12 @@ public final class MainActivity extends Activity {
     private EditText manualFingerprint;
     private ValueCallback<Uri[]> filePathCallback;
     private SharedPreferences preferences;
+    private TextToSpeech tts;
     private String expectedFingerprint = "";
     private String currentRemoteUrl = "";
     private boolean discovering;
     private volatile boolean scanningLan;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -107,7 +110,13 @@ public final class MainActivity extends Activity {
         }
         nsdManager = (NsdManager) getSystemService(Context.NSD_SERVICE);
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS && tts != null) {
+                tts.setLanguage(Locale.getDefault());
+            }
+        });
         buildUi();
+
         boolean handled = handleIntent(getIntent());
         if (handled) return;
         loadSavedConnection();
@@ -422,6 +431,21 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void speak(String text) {
+            runOnUiThread(() -> startSpeaking(text));
+        }
+
+        @JavascriptInterface
+        public void stopSpeaking() {
+            runOnUiThread(() -> stopTts());
+        }
+
+        @JavascriptInterface
+        public boolean isTtsAvailable() {
+            return tts != null;
+        }
+
+        @JavascriptInterface
         public void resetConnection() {
             runOnUiThread(() -> {
                 currentRemoteUrl = "";
@@ -432,6 +456,25 @@ public final class MainActivity extends Activity {
             });
         }
     }
+
+    private void startSpeaking(String text) {
+        if (tts == null || text == null || text.trim().isEmpty()) return;
+        try {
+            String cleanText = text.trim();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                tts.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "LocalCodeTTS");
+            } else {
+                tts.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void stopTts() {
+        if (tts != null) {
+            try { tts.stop(); } catch (Exception ignored) {}
+        }
+    }
+
 
     private void startVoiceRecognizer() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -1024,6 +1067,13 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         stopDiscovery();
         cancelPendingFileChooser();
+        if (tts != null) {
+            try {
+                tts.stop();
+                tts.shutdown();
+            } catch (Exception ignored) {}
+            tts = null;
+        }
         if (webView != null) {
             webView.removeJavascriptInterface("LocalCodeAndroid");
             webView.stopLoading();
@@ -1032,3 +1082,4 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 }
+
