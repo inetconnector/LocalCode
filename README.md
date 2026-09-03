@@ -1,16 +1,59 @@
-# LocalCode 6.4.4
+# LocalCode 6.9.0
 
-[Deutsch](#deutsch) · [English](#english)
+[Deutsch](#deutsch) · [English](#english) · [Releases & Downloads](https://github.com/inetconnector/LocalCode/releases)
 
-LocalCode is a Windows-first, local-first coding-agent application centered on Ollama and controlled tool execution. It combines project/task management, a native coding-agent runtime, selectable external coding engines, Git/build tooling, MCP, web research, attachments, approvals, durable recovery, a Desktop UI and a deliberately narrower Android/phone Remote. LocalCode is an independent project and is not OpenAI Codex.
+LocalCode is a Windows-first, local-first coding-agent application centered on Ollama and controlled tool execution. It combines project/task management, a native coding-agent runtime, selectable external coding engines, autonomous browser and Windows desktop GUI automation, Git/build tooling, MCP, web research, attachments, approvals, durable recovery, a Desktop UI and a mobile Android Remote with TTS audio feedback. LocalCode is an independent project and is not OpenAI Codex.
+
+[![GitHub Releases](https://img.shields.io/github/v/release/inetconnector/LocalCode?include_prereleases&label=Latest%20Release)](https://github.com/inetconnector/LocalCode/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
 ## Deutsch
 
-### Schnellstart
+### Installation & Download
 
-1. Repository bzw. ZIP vollständig in einen neuen Ordner legen.
+Die aktuellen vorkompilierten Binärdateien und Installer stehen unter **[GitHub Releases](https://github.com/inetconnector/LocalCode/releases)** zum Download bereit:
+
+- **Windows Setup-Installer:** `LocalCode-Setup.exe` (in jedem Release-Asset oder über `INSTALL.bat`)
+- **Windows Portables Paket:** `LocalCode.exe` & `LocalCode-Debug.exe`
+- **Android Mobile Remote App:** `LocalCode-Remote-debug.apk`
+
+#### Option 1: Windows Setup-Installer (Empfohlen)
+
+1. Lade `LocalCode-Setup.exe` von den [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) herunter (oder führe `INSTALL.bat` im Repository aus).
+2. Starte den Installer. LocalCode wird standardmäßig in `%LOCALAPPDATA%\Programs\LocalCode` installiert (keine Administratorrechte erforderlich).
+3. Der Installer erstellt automatisch Verknüpfungen im **Startmenü** und auf dem **Desktop**, trägt `localcode` in den Benutzer-`PATH` ein und registriert sich sauber in den Windows-Einstellungen (*Installierte Apps / Apps & Features*).
+4. **Befehlszeilen-Optionen:**
+   ```powershell
+   # Stille / unbeaufsichtigte Installation und anschließender Start:
+   .\LocalCode-Setup.exe --silent --launch
+
+   # Benutzerdefiniertes Installationsverzeichnis:
+   .\LocalCode-Setup.exe --dir "C:\Tools\LocalCode"
+
+   # Deinstallation:
+   .\LocalCode-Setup.exe --uninstall
+   ```
+
+#### Option 2: Portabler Schnellstart
+
+1. Repository klonen oder Release-ZIP entpacken.
+2. `START.bat` oder `FAST-START.bat` starten. Der Start nutzt einen schnellen Pfad und öffnet die Desktop-UI im Browser.
+3. Falls Binärdateien fehlen, baut `BUILD.bat` die Anwendung automatisch lokal.
+
+#### Option 3: Android Mobile Remote App
+
+1. `dist\LocalCode-Remote-debug.apk` aus dem Release auf das Smartphone laden oder über ADB installieren:
+   ```powershell
+   adb install -r dist\LocalCode-Remote-debug.apk
+   ```
+2. App auf dem Smartphone öffnen und den auf dem PC unter *Hilfe → Remote koppeln* angezeigten QR-Code scannen.
+3. Bietet vollständige Steuerung, Audio-TTS-Sprachausgabe (`TextToSpeech`), Aufgabenstarter und Genehmigungs-Popups im privaten WLAN.
+
+### Schnellstart & Erste Schritte
+
+1. Repository bzw. ZIP vollständig in einen Ordner legen oder den Installer nutzen.
 2. `START.bat` starten. Der normale Start verwendet einen schnellen, geloggten Pfad und öffnet die UI ohne blockierende Runtime-Dialoge oder automatische Firewall-UAC-Abfrage.
 3. Falls der native Windows-Build fehlt oder veraltet ist, delegiert `START.bat` einmalig an `BUILD.bat`; danach nutzt die Frischeprüfung einen Build-State-/Git-Fingerprint.
 4. Ollama, Modelle und Coding-Agent-Engines werden im laufenden Produkt über Status/Doctor und bei erster Nutzung geprüft; vollständige Diagnose bleibt über `DIAGNOSE.bat` verfügbar.
@@ -18,6 +61,7 @@ LocalCode is a Windows-first, local-first coding-agent application centered on O
 6. Frische Installationen verwenden standardmäßig `qwen2.5-coder:14b` und **LocalCode Native**.
 
 Startprotokolle liegen in `logs/start.log`; Runtime-Details liegen im LocalCode-Log unter `%LOCALAPPDATA%\LocalCode\localcode.log`. Große Modelldownloads können beim ersten tatsächlichen Setup oder bei erster Nutzung dauern.
+
 
 ### Sprache
 
@@ -119,9 +163,49 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 
 ## English
 
-### Quick start
+### Installation & Downloads
 
-1. Place the repository or extracted ZIP in a new directory.
+Pre-built binaries and installers are available directly on **[GitHub Releases](https://github.com/inetconnector/LocalCode/releases)**:
+
+- **Windows Setup Installer:** `LocalCode-Setup.exe` (available in release assets or via `INSTALL.bat`)
+- **Windows Portable Executables:** `LocalCode.exe` & `LocalCode-Debug.exe`
+- **Android Mobile Remote App:** `LocalCode-Remote-debug.apk`
+
+#### Option 1: Windows Setup Installer (Recommended)
+
+1. Download `LocalCode-Setup.exe` from [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) (or execute `INSTALL.bat` in the repository).
+2. Run the installer. LocalCode is installed to `%LOCALAPPDATA%\Programs\LocalCode` by default (no Administrator privileges required).
+3. The installer automatically creates shortcuts in the **Start Menu** and on the **Desktop**, adds `localcode` to the User `PATH`, and registers cleanly in Windows Settings (*Installed Apps / Apps & Features*).
+4. **Command Line Options:**
+   ```powershell
+   # Silent installation and immediate launch:
+   .\LocalCode-Setup.exe --silent --launch
+
+   # Custom installation directory:
+   .\LocalCode-Setup.exe --dir "C:\Tools\LocalCode"
+
+   # Uninstallation:
+   .\LocalCode-Setup.exe --uninstall
+   ```
+
+#### Option 2: Portable Fast Startup
+
+1. Clone the repository or extract the release ZIP.
+2. Launch `START.bat` or `FAST-START.bat`. The launcher opens the Desktop UI in your browser.
+3. If binaries are missing, `BUILD.bat` automatically builds the application locally.
+
+#### Option 3: Android Mobile Remote App
+
+1. Transfer `dist\LocalCode-Remote-debug.apk` from the release to your Android device or install via ADB:
+   ```powershell
+   adb install -r dist\LocalCode-Remote-debug.apk
+   ```
+2. Open the app on your phone and scan the QR code shown on the desktop under *Help → Pair Remote*.
+3. Enjoy mobile task control, Text-to-Speech audio feedback, quick prompt cards, and review approval popups on your private LAN.
+
+### Quick Start & First Steps
+
+1. Place the repository or extracted ZIP in a new directory, or use the setup installer.
 2. Run `START.bat`. The normal launcher uses a fast, logged path and opens the UI without blocking runtime dialogs or automatic firewall UAC prompts.
 3. If the native Windows build is missing or stale, `START.bat` delegates once to `BUILD.bat`; after that the freshness check uses a build-state/Git fingerprint.
 4. Ollama, models and coding-agent engines are checked inside the running product through Status/Doctor and on first use; full diagnostics remain available through `DIAGNOSE.bat`.
@@ -129,6 +213,7 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 6. Fresh installs default to `qwen2.5-coder:14b` and **LocalCode Native**.
 
 Launcher logs are written to `logs/start.log`; runtime details are written to `%LOCALAPPDATA%\LocalCode\localcode.log`. Large model downloads can take time during the first actual setup or first use.
+
 
 ### Language
 
