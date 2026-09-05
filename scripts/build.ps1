@@ -8,6 +8,15 @@ $Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Version = (Get-Content -LiteralPath (Join-Path $Root 'VERSION.txt') -Raw).Trim()
 $Dist = Join-Path $Root 'dist'
 $Source = Join-Path $Root 'src'
+$BuildStatePath = Join-Path $Dist 'build-state.json'
+$BuildStateInputs = @(
+    'src',
+    'BUILD.bat',
+    'VERSION.txt',
+    'scripts\build.ps1',
+    'scripts\install-go.ps1',
+    'scripts\needs-build.ps1'
+)
 $TestRoot = Join-Path $env:TEMP ('LocalCode-Build-Test-' + [Guid]::NewGuid().ToString('N'))
 $OriginalLocation = (Get-Location).Path
 $OriginalEnvironment = @{}
@@ -58,6 +67,32 @@ function Get-SHA256Hex([string]$Path) {
         }
     } finally {
         $stream.Dispose()
+    }
+}
+
+function ConvertTo-SHA256Hex([string]$Text) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', '').ToUpperInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+function Get-GitSourceState([string]$Root, [string[]]$Paths) {
+    $git = Get-Command 'git.exe' -ErrorAction SilentlyContinue
+    if (-not $git) { $git = Get-Command 'git' -ErrorAction SilentlyContinue }
+    if (-not $git) { return $null }
+    $head = (& $git.Source -C $Root rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $args = @('-C', $Root, 'status', '--porcelain=v1', '--untracked-files=all', '--')
+    foreach ($path in $Paths) { $args += $path }
+    $status = (& $git.Source @args 2>$null) -join "`n"
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return [pscustomobject]@{
+        Head = ([string]$head).Trim()
+        StatusSHA256 = ConvertTo-SHA256Hex $status
     }
 }
 
@@ -146,6 +181,15 @@ try {
         ('LocalCode-Debug.exe  ' + (Get-SHA256Hex (Join-Path $Dist 'LocalCode-Debug.exe')))
     )
     Set-Content -LiteralPath (Join-Path $Root 'CHECKSUMS-SHA256.txt') -Value $checksums -Encoding Ascii
+    $gitState = Get-GitSourceState $Root $BuildStateInputs
+    $buildState = [ordered]@{
+        version = $Version
+        created_utc = [DateTime]::UtcNow.ToString('o')
+        source_paths = $BuildStateInputs
+        git_head = if ($gitState) { $gitState.Head } else { '' }
+        git_status_sha256 = if ($gitState) { $gitState.StatusSHA256 } else { '' }
+    }
+    $buildState | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $BuildStatePath -Encoding Ascii
     Remove-Item -LiteralPath (Join-Path $Dist 'REBUILD-NATIVE.txt') -Force -ErrorAction SilentlyContinue
 
     Write-Host ''

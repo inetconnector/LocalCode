@@ -61,6 +61,30 @@ func TestStartBatchTracksPowerShellBuildDriver(t *testing.T) {
 	if !strings.Contains(strings.ToLower(string(checker)), `scripts\build.ps1`) {
 		t.Fatal("scripts\\needs-build.ps1 does not track scripts\\build.ps1")
 	}
+	for _, required := range []string{"build-state.json", "git_status_sha256", "Write-CheckLog"} {
+		if !strings.Contains(string(checker), required) {
+			t.Fatalf("scripts\\needs-build.ps1 is missing fast-start marker %q", required)
+		}
+	}
+}
+
+func TestStartBatchUsesFastLoggedDialogFreeLaunch(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "START.bat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{
+		`logs`,
+		`start.log`,
+		`LOCALCODE_FAST_START=1`,
+		`LOCALCODE_SUPPRESS_FATAL_DIALOGS=1`,
+		`-LogPath "%START_LOG%"`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("START.bat is missing fast logged launch marker %q", required)
+		}
+	}
 }
 
 func TestBuildBatchUsesPowerShellDriver(t *testing.T) {
@@ -84,6 +108,8 @@ func TestBuildBatchUsesPowerShellDriver(t *testing.T) {
 		"Building Windows GUI",
 		"LocalCode.exe",
 		"LocalCode-Debug.exe",
+		"build-state.json",
+		"git_status_sha256",
 	} {
 		if !strings.Contains(driverText, required) {
 			t.Errorf("build driver is missing %q", required)
@@ -104,6 +130,50 @@ func TestWindowsWrapperLaunchersDelegateToCurrentBuildChecks(t *testing.T) {
 		}
 		if !strings.Contains(strings.ToLower(string(data)), strings.ToLower(target)) {
 			t.Errorf("%s does not delegate to %s", name, target)
+		}
+	}
+}
+
+func TestWindowsInstallerPackagingUsesLocalCodeIcon(t *testing.T) {
+	iconInfo, err := os.Stat(filepath.Join("..", "assets", "localcode.ico"))
+	if err != nil {
+		t.Fatalf("launcher icon asset missing: %v", err)
+	}
+	if iconInfo.Size() == 0 {
+		t.Fatal("launcher icon asset is empty")
+	}
+
+	driver, err := os.ReadFile(filepath.Join("..", "scripts", "build-installer.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driverText := string(driver)
+	for _, required := range []string{
+		"assets",
+		"localcode.ico",
+		"rsrc_windows_amd64.syso",
+		"windres.exe",
+		"Copy-Item -LiteralPath $iconSource",
+	} {
+		if !strings.Contains(driverText, required) {
+			t.Fatalf("installer build driver is missing icon packaging marker %q", required)
+		}
+	}
+
+	inno, err := os.ReadFile(filepath.Join("..", "installer", "localcode-setup.iss"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	innoText := string(inno)
+	for _, required := range []string{
+		`#define MyAppIconName "localcode.ico"`,
+		`SetupIconFile=..\assets\{#MyAppIconName}`,
+		`UninstallDisplayIcon={app}\{#MyAppIconName}`,
+		`Source: "..\assets\{#MyAppIconName}"`,
+		`IconFilename: "{app}\{#MyAppIconName}"`,
+	} {
+		if !strings.Contains(innoText, required) {
+			t.Fatalf("Inno installer script is missing icon marker %q", required)
 		}
 	}
 }

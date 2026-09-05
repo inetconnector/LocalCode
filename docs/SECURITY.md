@@ -130,6 +130,12 @@ Desktop-Recovery-Routen laufen ausschließlich auf dem bestehenden Loopback-Serv
 
 Mobile erhält nur den bestehenden schmalen aktiven Mission-Indikator aus authentifiziertem `running`/`run_phase`. Keine Recovery-IDs, kein Transition-Plan, keine Scheduler-/Budget-/Accounting-Daten und keine Resume-/Retry-Autorität werden an Mobile erweitert. Bestehendes Remote-Stop-Verhalten bleibt unverändert.
 
+Die Android-Hülle speichert nur die zuletzt akzeptierte Remote-URL und den TLS-Fingerprint in privaten App-Preferences. Automatische Suche nutzt mDNS und einen begrenzten privaten LAN-Probe gegen die Remote-Discovery-/Ping-Endpunkte; sie erweitert keine Remote-Autorität über das bestehende Pairing-Token hinaus.
+
+Der Windows-Startpfad erzeugt keine Firewall-Regeln per automatischer UAC-Eskalation. Eine vorhandene passende Regel wird nicht-erhöhend geprüft; eine fehlende Regel wird geloggt und blockiert den App-Start nicht.
+
+Projektöffner starten Visual Studio nur mit tatsächlich vorhandenen Solution-/Projektdateien. Fehlende IDEs, fehlende Projektdateien oder Startfehler werden in LocalCode geloggt und fallen auf Explorer zurück, damit fremde "Datei nicht gefunden"-Dialoge nicht aus einem falschen Pfad entstehen.
+
 Startup bleibt passiv. Automatisches Mission-Resume, Retry oder Replay ist weiterhin **nicht erlaubt**.
 
 ### Netzwerk und MCP
@@ -235,6 +241,12 @@ The Desktop UI never auto-posts; only explicit user action on a current Resume/R
 Recovery routes exist only on the Desktop loopback server and inherit Host, Origin and `Sec-Fetch-Site` protections.
 
 `RemoteServer` has no recovery route. Regression tests require the corresponding Remote paths to remain `404`. Mobile receives only the narrow active-Mission indicator and no recovery IDs, plan, Scheduler/budget/accounting payload or Resume/Retry authority.
+
+The Android shell stores only the last accepted Remote URL and TLS fingerprint in private app preferences. Automatic discovery uses mDNS plus a bounded private-LAN probe against the Remote discovery/ping endpoints; it does not widen authority beyond the existing pairing token.
+
+The Windows startup path does not create firewall rules through automatic UAC elevation. It checks for an existing matching rule without elevation; a missing rule is logged and does not block app startup.
+
+Project openers launch Visual Studio only with existing solution/project files. Missing IDEs, missing project files, or launch failures are logged in LocalCode and fall back to Explorer so external "file not found" dialogs are not caused by a bad path.
 
 Startup remains passive. Automatic Mission resume, retry or replay is **not allowed**.
 

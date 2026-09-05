@@ -24,6 +24,13 @@ func TestRunRequiresManifest(t *testing.T) {
 	}
 }
 
+func TestRunRejectsInvalidFlags(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"-invalid-flag"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("exit code=%d want 2", code)
+	}
+}
+
 func TestRunRejectsInvalidManifest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.json")
 	if err := os.WriteFile(path, []byte(`{"version":1}`), 0o644); err != nil {
@@ -65,7 +72,7 @@ func TestRunExecutesBenchmarkAndWritesResult(t *testing.T) {
 	}
 	outputPath := filepath.Join(root, "nested", "result.json")
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"-manifest", manifestPath, "-out", outputPath}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"-manifest", manifestPath, "-out", outputPath, "-keep-worktree"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit code=%d want 0; stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"success": true`) {
@@ -80,11 +87,50 @@ func TestRunExecutesBenchmarkAndWritesResult(t *testing.T) {
 	}
 }
 
+func TestRunBenchmarkFailsReturnsOne(t *testing.T) {
+	if os.Getenv("LOCALCODE_BENCH_CLI_HELPER") == "1" {
+		return
+	}
+	repo := initCLIBenchmarkRepo(t)
+	// Engine that fails by exiting 1
+	manifest := benchharness.Manifest{
+		Version:       benchharness.ManifestVersion,
+		Name:          "cli-failure",
+		Repository:    repo,
+		BaseRef:       "HEAD",
+		Task:          "perform benchmark failure test",
+		Engine:        "synthetic",
+		Model:         "same-model",
+		EngineCommand: []string{os.Args[0], "-test.run=TestBenchmarkCLIHelperProcessFail", "--", "engine"},
+		Environment:   map[string]string{"LOCALCODE_BENCH_CLI_HELPER_FAIL": "1"},
+	}
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "manifest.json")
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"-manifest", manifestPath}, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit code=%d want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestBenchmarkCLIHelperProcess(t *testing.T) {
 	if os.Getenv("LOCALCODE_BENCH_CLI_HELPER") != "1" {
 		return
 	}
 	os.Exit(0)
+}
+
+func TestBenchmarkCLIHelperProcessFail(t *testing.T) {
+	if os.Getenv("LOCALCODE_BENCH_CLI_HELPER_FAIL") != "1" {
+		return
+	}
+	os.Exit(1)
 }
 
 func initCLIBenchmarkRepo(t *testing.T) string {

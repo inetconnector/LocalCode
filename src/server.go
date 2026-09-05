@@ -1268,15 +1268,29 @@ func (s *Server) handleMissionKnowledge(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 	case http.MethodGet:
 		missionID := strings.TrimSpace(r.URL.Query().Get("mission_id"))
+		project := strings.TrimSpace(r.URL.Query().Get("project"))
 		category := strings.TrimSpace(r.URL.Query().Get("category"))
 		tag := strings.TrimSpace(r.URL.Query().Get("tag"))
 		query := strings.TrimSpace(r.URL.Query().Get("query"))
+		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
 
-		items, err := s.state.ListMissionKnowledge(missionID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		var items []MissionKnowledgeItem
+		if scope == "persistent" || (project != "" && missionID == "") {
+			store, err := LoadPersistentMissionKnowledge(project)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			items = store.Items
+		} else {
+			var err error
+			items, err = s.state.ListMissionKnowledge(missionID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
+
 		var cat MissionKnowledgeCategory
 		if category != "" {
 			var catErr error
@@ -1293,6 +1307,8 @@ func (s *Server) handleMissionKnowledge(w http.ResponseWriter, r *http.Request) 
 	case http.MethodPost:
 		var req struct {
 			MissionID       string                   `json:"mission_id"`
+			Project         string                   `json:"project"`
+			Persistent      bool                     `json:"persistent"`
 			Category        MissionKnowledgeCategory `json:"category"`
 			Title           string                   `json:"title"`
 			Summary         string                   `json:"summary"`
@@ -1312,6 +1328,22 @@ func (s *Server) handleMissionKnowledge(w http.ResponseWriter, r *http.Request) 
 			CreatedByTaskID: req.CreatedByTaskID,
 			SourcePath:      req.SourcePath,
 		}
+
+		if req.Persistent && req.Project != "" {
+			recorded, err := RecordPersistentMissionKnowledge(req.Project, item)
+			if err != nil {
+				if errors.Is(err, errMissionKnowledgeInvalidCategory) || errors.Is(err, errMissionKnowledgeMissingTitle) || errors.Is(err, errMissionKnowledgeMissingSummary) {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = writeJSON(w, map[string]any{"ok": true, "item": recorded})
+			return
+		}
+
 		recorded, err := s.state.RecordMissionKnowledge(req.MissionID, item)
 		if err != nil {
 			if errors.Is(err, errMissionKnowledgeInvalidCategory) || errors.Is(err, errMissionKnowledgeMissingTitle) || errors.Is(err, errMissionKnowledgeMissingSummary) || errors.Is(err, errMissionKnowledgeLimitExceeded) {

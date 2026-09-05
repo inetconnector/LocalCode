@@ -1,14 +1,39 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-09-02 Europe/Berlin  
-**Repository:** `inetconnector/LocalCode`  
+**Verified:** 2026-09-05 Europe/Berlin
+**Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `f9c171b` (Tag: `v6.7.1`)  
-**Last merged functional PR:** #84 `feat(ui,agent): Extras menu, Quick QR pairing button & direct image OCR answers` (Android OpenAI redesign: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
-**Active branch:** `master`  
+**Current authoritative merged master:** `f9c171b` (Release: `v6.9.0`)  
+**Last merged functional PR:** #87 `feat: autonomous browser automation, Windows UI desktop agent, and mobile TTS feedback` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
+**Active branch:** `release/v6.9.0-installer-automation` at `08a801a`, with persistent Mission Knowledge store (`%LOCALAPPDATA%\LocalCode\knowledge`), repaired Playwright Browser UI smoke test (`scripts/ui-e2e-test.py`), >=80.0% statement coverage, and native Windows installer/icon packaging fixes.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
+
+## 2.1 Merged runtime, Windows platform, Browser & Desktop Automation, & Android Remote (v6.9.0)
+
+- **Autonomous Browser Automation (Playwright MCP & Headless Chromium)**: First-class controlled browser automation backend (`src/browser_automation.go`) exposing `browser_navigate`, `browser_inspect`, `browser_click`, `browser_type`, `browser_screenshot`, and `browser_extract`. Dispatches to Playwright MCP (`@playwright/mcp@0.0.78`) when enabled, with automatic fallback to headless Chromium/Edge for DOM inspection, structured text/table extraction, and screenshots. Read operations are auto-approved in normal mode; mutations (`browser_click`, `browser_type`) require approval. Integrated into Doctor diagnostic item 7 ("Autonomous Browser Automation").
+- **Windows Desktop & UI Automation (Accessible GUI Agent Engine)**: Windows UI Automation engine (`src/desktop_automation_windows.go`, `src/desktop_automation_other.go`) enabling the agent to list visible top-level windows (`desktop_list_windows`), inspect accessibility control trees (`desktop_inspect`), invoke controls (`desktop_click`), enter text (`desktop_type`), and capture window/screen GDI screenshots (`desktop_screenshot`). Strict security guardrails block sensitive system windows (`Task Manager`, `Windows Security`, `LogonUI`, `Credential Prompt`, `UAC`). Integrated into Doctor diagnostic item 8 ("Windows Desktop & UI Automation").
+- **Audio / Speech Feedback (TTS) on Android Mobile Remote**: Native Android `TextToSpeech` bridge (`window.LocalCodeAndroid.speak(text)`, `window.LocalCodeAndroid.stopSpeaking()`, `isTtsAvailable()`) in `MainActivity.java` with Web Speech API fallback in `src/static/remote.html`. Includes a settings toggle (`#ttsToggle`) and on-demand read-aloud buttons (🔊) on agent response bubbles.
+- **Codex-Style Mobile Remote UI**: Redesigned floating pill composer with glassmorphic backdrop filter, border highlight on focus, sleek circular attachment (+) button, compact inline project selector chip, crisp outline microphone button on the far right, and modern high-contrast circular send and stop buttons.
+- **Quick Starter Prompt Cards**: 2x2 grid of modern starter cards on the *Neue Aufgabe* screen (Architektur analysieren 🔍, Tests ausführen 🧪, Git-Status prüfen 🌿, Release-Build erstellen 📦) for fast one-tap task initialization.
+- **Colored Syntax-Highlighted Git Diffs**: Line-by-line colored diff rendering (`.diff-box`, `.diff-add`, `.diff-del`, `.diff-hunk`, `.diff-meta`) with copy buttons across approval dialogs and review logs.
+- **Lightweight Markdown & Code Blocks**: Markdown formatting supporting bold, italic, inline code, lists, and fenced code blocks with language badge headers and one-tap clipboard copy buttons.
+- **Floating Scroll-To-Bottom Button**: Smooth auto-scrolling button (`#scrollToBottomBtn`) dynamically toggled when scrolled up >120px from the bottom.
+- **Android Haptic Feedback Bridge**: Native vibration bridge (`window.LocalCodeAndroid.vibrate(ms)`) integrated into `MainActivity.java` and `AndroidManifest.xml` with web fallback (`navigator.vibrate`) for approval triggers, card taps, and task completions.
+- **Modern Approval Dialog**: Concise bilingual buttons ("Genehmigen" / "Approve", "Immer erlauben" / "Always allow", "Ablehnen" / "Reject") with clean dark-surface styling, harmonious contrast, and code diff preview.
+- **Android Mobile Remote App**: Starts on **Neue Aufgabe / New task** tab. The **Tasks** tab is hidden by default and can be enabled dynamically in the Settings modal (`#showTasksTabToggle`). Navigation swipe and view switching dynamically adapt to active tabs. Approval requests render dynamically as a modern popup over the active view. Transient status noise is cleanly filtered from history upon completion.
+- **Voice Input & Fast Dispatch**: Microphone button is positioned on the far right across Desktop and Android Remote composers. Spoken input with speech recognition completion immediately triggers submission without requiring a manual click.
+- **Tool Profiles & Scheduler Capabilities**: Expanded `toolProfiles` and candidate search paths to include `cmd`, `wsl`, `bash`, `pwsh`, `winget`, `make`, `gcc`, `clang`, `tar`, `7z`, Windows Task Scheduler (`schtasks`), and Linux/WSL schedulers (`crontab`, `systemctl` timers, `at`). Agent system prompt provides structured scheduling instructions.
+- **Model Fallback & Cluster Mesh**: Agent start falls back to `Config.LastModel`, `Config.OllamaDefaultModel`, or `qwen2.5-coder:14b` when no model is explicitly supplied. Local and remote Ollama tags are merged cleanly with automatic failover to local daemon if remote mesh endpoints encounter errors.
+- **Native Android Shell**: Persists last accepted Remote URL and TLS fingerprint; falls back to automatic mDNS and bounded parallel LAN discovery (`/remote/api/discovery` / `/remote/api/ping`).
+- **Windows Platform & Fast Start**: `START.bat` and `FAST-START.bat` provide instant startup with `LOCALCODE_FAST_START=1`. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
+- **Native Windows Setup Installer & Inno Setup Package**: Standalone Go-based Windows GUI installer and uninstaller (`dist\LocalCode-Setup.exe`, `INSTALL.bat`, `scripts/build-installer.ps1`) that installs to `%LOCALAPPDATA%\Programs\LocalCode`, creates Start Menu and Desktop shortcuts, configures User `PATH`, and registers in Windows Settings *Apps & Features* (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\LocalCode`) with quiet uninstall support. Includes classic Inno Setup compiler script (`installer/localcode-setup.iss`). The current local worktree fixes native setup PowerShell quoting so `UninstallString` and `QuietUninstallString` are written correctly even when the target path is quoted. It also stages `assets\localcode.ico` into installer payloads, embeds that icon into the native setup EXE resource, and sets Start Menu/Desktop launcher `IconLocation` plus Apps & Features `DisplayIcon` to the installed icon.
+- **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
+
+
+
+
 
 ## 1. Product objective
 
@@ -76,9 +101,21 @@ The two recovery routes live only on the Desktop `Server` and inherit its loopba
 
 ## 4. Verification status
 
-PR #69 was squash-merged to `master` as `a4fad2494cd4b6b509647a8c514807e09f5736aa`.
+Current local installer worktree verification on 2026-09-05:
 
-The final #69 feature-branch head `2102b0445c1d199d3f4fbe5d077735f40f096254` has the **same tree SHA** (`566fdf3d45962444cfa1c9e9950fe5db9f307177`) as the merged master commit. Quality run **#608** / run ID `32573085942` completed successfully on that exact tree. Every gate passed: Go version/setup, format, Vet, frontend JavaScript syntax, PowerShell syntax, native Android Remote APK, vulnerability scan, full-stack loopback HTTP integration, Go tests, Race Detector, >=80% coverage, native Windows builds and Git diff check.
+- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1` passed and rebuilt `dist\LocalCode.exe`, `dist\LocalCode-Debug.exe`, and `CHECKSUMS-SHA256.txt`.
+- `go test -count=1 ./cmd/localcode-setup` passed after the setup quoting and installer/launcher icon fixes.
+- `go test -count=1 -run "TestWindowsInstallerPackagingUsesLocalCodeIcon|TestWindowsPowerShellScriptEncodings|TestWindowsBatchLaunchersAreASCIIAndCRLF" .` passed after the installer/launcher icon fixes.
+- `go fmt ./...`, `go vet ./...`, and `go test -race -count=1 ./...` passed across all packages (`localcode`, `benchharness`, `cmd/localcode-bench*`, `cmd/localcode-setup`).
+- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build-installer.ps1` passed after the installer/launcher icon fixes and rebuilt `dist\LocalCode-Setup.exe`; it staged `dist\localcode.ico` and generated `src\cmd\localcode-setup\rsrc_windows_amd64.syso`.
+- Direct Windows-amd64 GUI, diagnostics, and setup `go build` checks passed; `[System.Drawing.Icon]::ExtractAssociatedIcon` returned a 32x32 icon for the setup build.
+- Frontend JavaScript syntax checks passed using Visual Studio's bundled Node.js at `C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VisualStudio\NodeJs\node.exe` (`v24.12.0`) for both `src\static\*.js` and inline `<script>` blocks in `src\static\*.html`.
+- PowerShell syntax validation passed across all `scripts\*.ps1` files via the PowerShell AST parser.
+- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build-android.ps1` passed and produced `C:\Users\frede\AppData\Local\Temp\localcode-android\LocalCode-Remote-debug.apk` with SHA-256 `3750d00df22675ce0af3b79a11e8ea9ca66c749090e701b87dcf48299ca634b4`.
+- `dist\LocalCode-Setup.exe --silent` installed successfully to `%LOCALAPPDATA%\Programs\LocalCode`; installed binary hashes match the rebuilt `dist` artifacts; Start Menu/Desktop shortcuts exist; User `PATH` contains the install directory; HKCU uninstall metadata includes `UninstallString` and `QuietUninstallString`.
+- Browser UI smoke test `python scripts\ui-e2e-test.py` was repaired (added static asset routing in Playwright mock handler to serve `.js`/`.css`/`.svg` from `src/static/` and updated context menu selector) and passes 100% green (`FULL UI E2E OK 41 requests`).
+- Persistent Mission Knowledge (`src/agent_mission_knowledge.go`) implemented with JSON schema v1, project-hash naming, 64-item FIFO eviction, 128 KiB compaction, secret redaction, and atomic writes. Fully covered by `src/agent_mission_knowledge_persist_test.go`.
+- Quality statement coverage gate reached >=80.0% across all packages (`localcode`: 80.0%, `localcode/cmd/localcode-bench-aider`: 85.3%, `localcode/cmd/localcode-bench-claw`: 85.2%, `localcode/cmd/localcode-bench-native`: 83.5%, `localcode/cmd/localcode-bench-opencode`: 84.3%).
 
 The older #69 runs that stopped at format/Vet are historical failures only and are not current evidence.
 
@@ -186,13 +223,13 @@ Desktop recovery surface: `src/desktop_mission_recovery.go`, `src/desktop_missio
 
 Mobile boundary: `src/remote_server.go`, `src/remote_mission_status_contract.md`.
 
+Startup/mobile local changes: `START.bat`, `scripts/needs-build.ps1`, `scripts/build.ps1`, `src/main.go`, `src/platform_windows.go`, `src/static/remote.html`, `android/README.md`, `src/mobile_remote_ui_contract_test.go`, `src/windows_packaging_test.go`.
+
 ## 7. Exact next development direction
 
-1. Finish PR #70 on one exact fully green Quality head, inspect reviews/threads, mark Ready and squash-merge with an expected-head guard.
+1. Merge `release/v6.9.0-installer-automation` into `master` following green execution of all quality gates (Browser UI E2E, Go tests with race detector, >=80.0% coverage, JS/PS1 syntax, and Windows amd64 builds).
 2. Verify the resulting authoritative `master` SHA.
-3. Add **bounded Mission Memory/Knowledge** for architecture decisions, subsystem contracts, known failures and test evidence without creating a second recovery authority.
-4. Define retention, size, schema-version and privacy/redaction limits before Mission Memory persistence is enabled.
-5. Only after bounded read-only Mission memory/recovery remains sound, proceed to mutation-capable Builder agents in isolated Git worktrees, followed by Integrator/Test-Agent stages.
+3. Advance to Phase 7: mutation-capable Builder agents in isolated Git worktrees (`src/agent_worktree.go`), followed by Integrator and independent Reviewer validation stages.
 
 ## 8. Cleanup rule
 

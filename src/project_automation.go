@@ -94,6 +94,25 @@ func detectProjectPlan(project string) projectPlan {
 	return projectPlan{Kind: "unknown", Descriptor: "Kein unterstütztes Buildsystem wurde eindeutig erkannt"}
 }
 
+// projectIsEffectivelyEmpty reports whether the project directory has no
+// real content yet (a brand-new/empty target folder). Only the top level is
+// checked: any visible non-ignored entry means there is already something to
+// analyze, so deep repository exploration is worthwhile.
+func projectIsEffectivelyEmpty(project string) bool {
+	entries, err := os.ReadDir(project)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") || ignoredDirs[name] {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func projectInfo(project string, cfg Config) string {
 	plan := detectProjectPlan(project)
 	var b strings.Builder

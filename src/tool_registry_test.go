@@ -491,6 +491,17 @@ func TestBlockedAvoidanceQuestion(t *testing.T) {
 	if !blocked {
 		t.Fatal("tool-avoidance question should be blocked")
 	}
+	blocked, hint := blockedAvoidanceQuestion("erstelle einen komplett spielbaren Pacman-Klon in C# als exe kompiliert", "Es wurde kein unterstütztes Buildsystem erkannt. Bitte gib an, wie das Projekt kompiliert werden soll. Du kannst einen Build-Befehl oder eine Build-Datei (z.B. .csproj) angeben.")
+	if !blocked {
+		t.Fatal("new-project build-system question should be blocked")
+	}
+	if !strings.Contains(hint, "write_file") || !strings.Contains(hint, "csproj") {
+		t.Fatalf("build-system avoidance hint should redirect to choosing and creating a layout, got %q", hint)
+	}
+	blocked, _ = blockedAvoidanceQuestion("erstelle ein Node-Projekt", "No build system was detected. How should this be built? Please specify a build command or build file.")
+	if !blocked {
+		t.Fatal("english new-project build-system question should be blocked")
+	}
 }
 
 func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {
@@ -508,6 +519,43 @@ func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {
 	directive := toolFailureRecoveryDirective(AgentAction{Action: "discover_tool", Tool: "rm"}, "Das Werkzeug 'rm' wurde nicht gefunden.", errors.New("not found"), "erstelle ein Spiel")
 	if !strings.Contains(directive, "POSIX") || !strings.Contains(directive, "delete_file") || !strings.Contains(directive, "Remove-Item") {
 		t.Fatalf("rm recovery directive missing Windows guidance:\n%s", directive)
+	}
+}
+
+func TestNewShellAndLinuxToolProfiles(t *testing.T) {
+	tools := []string{"cmd", "wsl", "bash", "pwsh", "winget", "make", "gcc", "clang", "tar", "7z", "schtasks", "crontab", "systemctl", "at"}
+	for _, name := range tools {
+		profile := profileForTool(name)
+		if profile.Name != name {
+			t.Fatalf("profileForTool(%q) = %q, want %q", name, profile.Name, name)
+		}
+		if profile.DisplayName == "" {
+			t.Fatalf("profile %q missing DisplayName", name)
+		}
+		if len(profile.VersionArgs) == 0 {
+			t.Fatalf("profile %q missing VersionArgs", name)
+		}
+		if profile.DocsURL == "" {
+			t.Fatalf("profile %q missing DocsURL", name)
+		}
+	}
+
+	if canonicalToolName("wsl.exe") != "wsl" || canonicalToolName("bash.exe") != "bash" || canonicalToolName("mingw32-make.exe") != "make" || canonicalToolName("clang++.exe") != "clang" || canonicalToolName("7za.exe") != "7z" || canonicalToolName("schtasks.exe") != "schtasks" {
+		t.Fatalf("canonicalToolName failed for aliases")
+	}
+
+	cfg := normalizeConfig(Config{SchemaVersion: 4, AutoDiscoverTools: true, ToolOverrides: map[string]string{}, EnvironmentVars: map[string]string{}})
+	project := t.TempDir()
+
+	if runtime.GOOS == "windows" {
+		cmdInfo := discoverTool(project, "cmd", cfg, false)
+		if !cmdInfo.Available {
+			t.Fatalf("cmd must be discovered on Windows: %#v", cmdInfo)
+		}
+		schtasksInfo := discoverTool(project, "schtasks", cfg, false)
+		if !schtasksInfo.Available {
+			t.Fatalf("schtasks must be discovered on Windows: %#v", schtasksInfo)
+		}
 	}
 }
 
@@ -727,6 +775,31 @@ func TestContextCompactionSettingsArePresentInUI(t *testing.T) {
 	for _, jsonField := range []string{"context_compaction_enabled", "context_compaction_threshold_percent", "context_compaction_keep_recent"} {
 		if !strings.Contains(html, jsonField) {
 			t.Fatalf("missing context compaction setting binding %s", jsonField)
+		}
+	}
+}
+
+func TestExpandedToolProfilesAndDiscovery(t *testing.T) {
+	requiredTools := []string{
+		"ollama", "uv", "pnpm", "yarn", "bun", "deno", "flutter", "dart",
+		"podman", "kubectl", "helm", "terraform", "sqlite3", "psql", "mysql",
+		"redis-cli", "mongosh", "jq", "yq", "rg", "fd", "openssl", "ffmpeg",
+		"wget", "zig", "php", "composer", "ruby", "tasklist", "taskkill",
+	}
+
+	for _, name := range requiredTools {
+		profile := profileForTool(name)
+		if profile.Name != name {
+			t.Fatalf("expected profile for tool %q, got %q", name, profile.Name)
+		}
+		if profile.DisplayName == "" {
+			t.Fatalf("tool %q is missing DisplayName", name)
+		}
+		if profile.DocsURL == "" {
+			t.Fatalf("tool %q is missing DocsURL", name)
+		}
+		if len(profile.Aliases) == 0 {
+			t.Fatalf("tool %q has no Aliases", name)
 		}
 	}
 }

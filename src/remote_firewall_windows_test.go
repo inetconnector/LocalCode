@@ -25,10 +25,13 @@ func TestRemoteFirewallRuleValidationAndScope(t *testing.T) {
 	if err := ensureRemoteFirewallRule(32146); err != nil {
 		t.Fatal(err)
 	}
-	for _, marker := range []string{"LocalCode Remote 32146", "-Profile Private", "-RemoteAddress LocalSubnet", "-LocalPort 32146", "-Verb RunAs", "-WindowStyle Hidden"} {
+	for _, marker := range []string{"LocalCode Remote 32146", "Get-NetFirewallRule", "Get-NetFirewallPortFilter", "Get-NetFirewallApplicationFilter", "LocalPort", "32146"} {
 		if !strings.Contains(script, marker) {
 			t.Fatalf("firewall script missing %q: %s", marker, script)
 		}
+	}
+	if strings.Contains(script, "-Verb RunAs") || strings.Contains(script, "New-NetFirewallRule") {
+		t.Fatalf("firewall check must not create rules or trigger UAC during normal startup: %s", script)
 	}
 	if remoteFirewallRuleName(32146) != "LocalCode Remote 32146" {
 		t.Fatal("unexpected firewall rule name")
@@ -38,12 +41,12 @@ func TestRemoteFirewallRuleValidationAndScope(t *testing.T) {
 	}
 }
 
-func TestRemoteFirewallElevationFailureIsReturned(t *testing.T) {
+func TestRemoteFirewallMissingRuleDoesNotBlockStartup(t *testing.T) {
 	original := runRemoteFirewallPowerShell
 	t.Cleanup(func() { runRemoteFirewallPowerShell = original })
 	runRemoteFirewallPowerShell = func(string) error { return errors.New("declined") }
-	if err := ensureRemoteFirewallRule(32146); err == nil || !strings.Contains(err.Error(), "declined") {
-		t.Fatalf("expected elevation failure, got %v", err)
+	if err := ensureRemoteFirewallRule(32146); err != nil {
+		t.Fatalf("missing firewall rule must not block startup, got %v", err)
 	}
 }
 
