@@ -133,11 +133,16 @@ Startup bleibt passiv. Es gibt kein automatisches Resume, Retry oder Replay.
 
 Der synthetische Parallelitätsbenchmark und der opt-in Ollama-Benchmark liefern Messdaten, keine Policy. Der Ollama-Benchmark akzeptiert nur Loopback, verlangt ein bereits installiertes exaktes Modell und startet oder lädt nichts.
 
-### Nächste Schicht
+### Mission Memory & Persistente Knowledge-Speicherung
 
-Als nächstes kommt bounded **Mission Memory/Knowledge**. Diese Schicht darf Kontext/Planung informieren, aber niemals Capabilities vergeben, Postconditions ersetzen, Recovery autorisieren oder einen Scheduler-Lease erzeugen. Eine persistente Memory-Lösung braucht vorab feste Schema-/Size-/Retention-/Redaction-Grenzen und darf `run_journal.go` nicht als aktive Recovery-Autorität duplizieren.
-
-Mutation-capable Builder in isolierten Git-Worktrees folgen erst danach.
+`src/agent_mission_knowledge.go` implementiert ein zweistufiges Wissensmodell:
+1. **Laufzeit-Wissen (Mission-Scope)**: Gespeichert in `RunJournalState.Mission.Knowledge` (max. 64 Einträge pro aktiver Mission) für strukturierte Architekturentscheidungen (`architecture_decision`), Schnittstellenverträge (`subsystem_contract`), bekannte Fehler/Gotchas (`known_failure`) und Testbelege (`test_evidence`).
+2. **Projektweit persistente Knowledge-Ablage**: Gespeichert unter `%LOCALAPPDATA%\LocalCode\knowledge\<project_hash>.json` (`schema_version: 1`).
+   - Feste Obergrenzen: Maximal 64 Einträge pro Projekt, FIFO-Eviction älterer Einträge.
+   - Byte-Budget-Kompaktierung: Maximal 128 KiB JSON-Dateigröße; ältere Einträge werden automatisch verworfen, wenn das Budget überschritten wird.
+   - Datenschutz & Secret-Redaktion: Sanitisierung aller Titel, Zusammenfassungen und Tags (`sanitizeMissionKnowledgeItem`), automatische Maskierung von API-Schlüsseln, Passwörtern und Authentifizierungs-Headern.
+   - Atomare Speicherung: Sicheres Schreiben über temporäre `.tmp`-Dateien und `os.Rename`.
+   - Reiner Kontextcharakter: Mission Knowledge informiert Planer und Kontextprompts (`formatMissionKnowledgeForPrompt`), stellt jedoch **keine Ausführungsautorität**, keinen Scheduler-Lease und keine Wiederherstellungsautorität dar. `run_journal.go` bleibt die einzige Wiederherstellungsautorität.
 
 ---
 
@@ -167,7 +172,7 @@ Logical task parallelism is deliberately separated from actual model-inference p
 
 ### Core components
 
-The main boundaries are `src/server.go` (Desktop loopback), `src/remote_server.go` (Mobile Remote), `src/remote_secure_server.go` / `src/remote_firewall_windows.go` (LAN Remote HTTPS, discovery and non-elevating firewall checks), `android/app/src/main/java/com/inetconnector/localcode/MainActivity.java` (Android WebView shell with saved reconnection, mDNS and LAN fallback probing), `src/agent_factory.go` (Agent Factory & governance), `src/agent_mission_replanning.go` (DAG repair & replanning), `src/computemesh.go` (decentralized cluster subsystem), `src/doctor.go` (system health diagnostics), `scripts/test-automation-service.ps1` (E2E automation harness), `src/agent_mission.go` (Mission governance), `src/agent_scheduler*.go` (queue/admission/finalization), `src/run_journal.go` plus `src/run_journal_mission*.go` (single durable recovery authority and recovery layers), `src/desktop_mission_recovery.go` (Desktop inspection/continue transport), and `src/static/mission_status.js` (Desktop Mission/recovery UI).
+The main boundaries are `src/server.go` (Desktop loopback), `src/remote_server.go` (Mobile Remote), `src/remote_secure_server.go` / `src/remote_firewall_windows.go` (LAN Remote HTTPS, discovery and non-elevating firewall checks), `android/app/src/main/java/com/inetconnector/localcode/MainActivity.java` (Android WebView shell with saved reconnection, mDNS and LAN fallback probing), `src/agent_factory.go` (Agent Factory & governance), `src/agent_mission_replanning.go` (DAG repair & replanning), `src/agent_mission_knowledge.go` (Mission Knowledge & persistent storage), `src/computemesh.go` (decentralized cluster subsystem), `src/doctor.go` (system health diagnostics), `scripts/test-automation-service.ps1` (E2E automation harness), `src/agent_mission.go` (Mission governance), `src/agent_scheduler*.go` (queue/admission/finalization), `src/run_journal.go` plus `src/run_journal_mission*.go` (single durable recovery authority and recovery layers), `src/desktop_mission_recovery.go` (Desktop inspection/continue transport), and `src/static/mission_status.js` (Desktop Mission/recovery UI).
 
 ### Native Agent Teams
 
@@ -223,8 +228,13 @@ Startup stays passive: no automatic resume, retry, or replay.
 
 `/api/status` exposes observation-only orchestration diagnostics. Synthetic and opt-in Ollama benchmarks provide evidence but never modify Scheduler policy. The real Ollama benchmark is loopback-only, requires an already-installed exact model and starts/downloads nothing.
 
-### Next layer
+### Mission Memory & Persistent Knowledge Store
 
-Next is bounded **Mission Memory/Knowledge**. It may inform context/planning but must never grant capabilities, replace postconditions, authorize recovery or create Scheduler leases. Persistence requires fixed schema/version/size/retention/redaction rules and must not duplicate `run_journal.go` as an active recovery authority.
-
-Mutation-capable Builders in isolated Git worktrees come afterwards.
+`src/agent_mission_knowledge.go` implements a two-tier knowledge model:
+1. **Runtime Mission Knowledge**: Held in `RunJournalState.Mission.Knowledge` (max 64 items per active mission) for structured architecture decisions (`architecture_decision`), subsystem contracts (`subsystem_contract`), known failures/gotchas (`known_failure`), and test evidence (`test_evidence`).
+2. **Project-Persistent Knowledge Store**: Stored at `%LOCALAPPDATA%\LocalCode\knowledge\<project_hash>.json` (`schema_version: 1`).
+   - Strict bounds: Maximum 64 items per project, FIFO eviction of older items.
+   - Byte budget compaction: Hard cap of 128 KiB total JSON size; older items are dropped if the byte budget is exceeded.
+   - Data protection & secret redaction: Sanitization across titles, summaries, and tags (`sanitizeMissionKnowledgeItem`), with automatic redaction of API keys, tokens, passwords, and authorization headers.
+   - Atomic writes: Safe writes via temporary `.tmp` files and `os.Rename`.
+   - Contextual-only role: Mission Knowledge informs planners and prompt context (`formatMissionKnowledgeForPrompt`), but constitutes **no execution authority**, no scheduler lease, and no recovery authority. `run_journal.go` remains the single canonical recovery authority.

@@ -134,6 +134,50 @@ func TestWindowsWrapperLaunchersDelegateToCurrentBuildChecks(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallerPackagingUsesLocalCodeIcon(t *testing.T) {
+	iconInfo, err := os.Stat(filepath.Join("..", "assets", "localcode.ico"))
+	if err != nil {
+		t.Fatalf("launcher icon asset missing: %v", err)
+	}
+	if iconInfo.Size() == 0 {
+		t.Fatal("launcher icon asset is empty")
+	}
+
+	driver, err := os.ReadFile(filepath.Join("..", "scripts", "build-installer.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driverText := string(driver)
+	for _, required := range []string{
+		"assets",
+		"localcode.ico",
+		"rsrc_windows_amd64.syso",
+		"windres.exe",
+		"Copy-Item -LiteralPath $iconSource",
+	} {
+		if !strings.Contains(driverText, required) {
+			t.Fatalf("installer build driver is missing icon packaging marker %q", required)
+		}
+	}
+
+	inno, err := os.ReadFile(filepath.Join("..", "installer", "localcode-setup.iss"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	innoText := string(inno)
+	for _, required := range []string{
+		`#define MyAppIconName "localcode.ico"`,
+		`SetupIconFile=..\assets\{#MyAppIconName}`,
+		`UninstallDisplayIcon={app}\{#MyAppIconName}`,
+		`Source: "..\assets\{#MyAppIconName}"`,
+		`IconFilename: "{app}\{#MyAppIconName}"`,
+	} {
+		if !strings.Contains(innoText, required) {
+			t.Fatalf("Inno installer script is missing icon marker %q", required)
+		}
+	}
+}
+
 func TestWindowsPowerShellScriptEncodings(t *testing.T) {
 	for _, name := range []string{"build.ps1", "needs-build.ps1", "reset-project-root.ps1"} {
 		data, err := os.ReadFile(filepath.Join("..", "scripts", name))

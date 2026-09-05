@@ -491,6 +491,17 @@ func TestBlockedAvoidanceQuestion(t *testing.T) {
 	if !blocked {
 		t.Fatal("tool-avoidance question should be blocked")
 	}
+	blocked, hint := blockedAvoidanceQuestion("erstelle einen komplett spielbaren Pacman-Klon in C# als exe kompiliert", "Es wurde kein unterstütztes Buildsystem erkannt. Bitte gib an, wie das Projekt kompiliert werden soll. Du kannst einen Build-Befehl oder eine Build-Datei (z.B. .csproj) angeben.")
+	if !blocked {
+		t.Fatal("new-project build-system question should be blocked")
+	}
+	if !strings.Contains(hint, "write_file") || !strings.Contains(hint, "csproj") {
+		t.Fatalf("build-system avoidance hint should redirect to choosing and creating a layout, got %q", hint)
+	}
+	blocked, _ = blockedAvoidanceQuestion("erstelle ein Node-Projekt", "No build system was detected. How should this be built? Please specify a build command or build file.")
+	if !blocked {
+		t.Fatal("english new-project build-system question should be blocked")
+	}
 }
 
 func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {

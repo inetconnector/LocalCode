@@ -21,6 +21,7 @@ const (
 	AppPublisher   = "inetconnector"
 	AppWebsite     = "https://github.com/inetconnector/LocalCode"
 	DefaultDirName = "LocalCode"
+	AppIconFile    = "localcode.ico"
 )
 
 var (
@@ -85,7 +86,7 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func createShortcut(targetPath, shortcutPath, description, arguments string) error {
+func createShortcut(targetPath, shortcutPath, description, arguments, iconPath string) error {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
@@ -96,12 +97,17 @@ $Shortcut.TargetPath = '%s'
 $Shortcut.Arguments = '%s'
 $Shortcut.Description = '%s'
 $Shortcut.WorkingDirectory = '%s'
+$iconPath = '%s'
+if ($iconPath -and (Test-Path -LiteralPath $iconPath)) {
+    $Shortcut.IconLocation = $iconPath
+}
 $Shortcut.Save()
 `, strings.ReplaceAll(shortcutPath, "'", "''"),
 		strings.ReplaceAll(targetPath, "'", "''"),
 		strings.ReplaceAll(arguments, "'", "''"),
 		strings.ReplaceAll(description, "'", "''"),
-		strings.ReplaceAll(filepath.Dir(targetPath), "'", "''"))
+		strings.ReplaceAll(filepath.Dir(targetPath), "'", "''"),
+		strings.ReplaceAll(iconPath, "'", "''"))
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 	return cmd.Run()
@@ -122,6 +128,10 @@ $newPath = ($parts + $dir) -join ';'
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 	return cmd.Run()
+}
+
+func psSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func removeFromUserPath(dir string) error {
@@ -148,37 +158,61 @@ func registerUninstaller(installDir string) error {
 	}
 	mainExe := filepath.Join(installDir, "LocalCode.exe")
 	setupExe := filepath.Join(installDir, "LocalCode-Setup.exe")
+	displayIcon := installedIconPath(installDir)
+	if displayIcon == "" {
+		displayIcon = mainExe
+	}
 
 	psScript := fmt.Sprintf(`
-$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LocalCode"
-if (-not (Test-Path $regPath)) {
+$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LocalCode'
+if (-not (Test-Path -LiteralPath $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
 }
-Set-ItemProperty -Path $regPath -Name "DisplayName" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "DisplayVersion" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "Publisher" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "InstallLocation" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "DisplayIcon" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "UninstallString" -Value "\"%s\" --uninstall"
-Set-ItemProperty -Path $regPath -Name "QuietUninstallString" -Value "\"%s\" --uninstall --silent"
-Set-ItemProperty -Path $regPath -Name "HelpLink" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "URLInfoAbout" -Value "%s"
-Set-ItemProperty -Path $regPath -Name "NoModify" -Value 1 -Type DWord
-Set-ItemProperty -Path $regPath -Name "NoRepair" -Value 1 -Type DWord
+Set-ItemProperty -LiteralPath $regPath -Name 'DisplayName' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'DisplayVersion' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'Publisher' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'InstallLocation' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'DisplayIcon' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'UninstallString' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'QuietUninstallString' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'HelpLink' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'URLInfoAbout' -Value %s
+Set-ItemProperty -LiteralPath $regPath -Name 'NoModify' -Value 1 -Type DWord
+Set-ItemProperty -LiteralPath $regPath -Name 'NoRepair' -Value 1 -Type DWord
 `,
-		strings.ReplaceAll(AppDisplayName, `"`, `\"`),
-		strings.ReplaceAll(AppVersion, `"`, `\"`),
-		strings.ReplaceAll(AppPublisher, `"`, `\"`),
-		strings.ReplaceAll(installDir, `"`, `\"`),
-		strings.ReplaceAll(mainExe, `"`, `\"`),
-		strings.ReplaceAll(setupExe, `"`, `\"`),
-		strings.ReplaceAll(setupExe, `"`, `\"`),
-		strings.ReplaceAll(AppWebsite, `"`, `\"`),
-		strings.ReplaceAll(AppWebsite, `"`, `\"`),
+		psSingleQuote(AppDisplayName),
+		psSingleQuote(AppVersion),
+		psSingleQuote(AppPublisher),
+		psSingleQuote(installDir),
+		psSingleQuote(displayIcon),
+		psSingleQuote(fmt.Sprintf(`"%s" --uninstall`, setupExe)),
+		psSingleQuote(fmt.Sprintf(`"%s" --uninstall --silent`, setupExe)),
+		psSingleQuote(AppWebsite),
+		psSingleQuote(AppWebsite),
 	)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 	return cmd.Run()
+}
+
+func installedIconPath(installDir string) string {
+	iconPath := filepath.Join(installDir, AppIconFile)
+	if _, err := os.Stat(iconPath); err == nil {
+		return iconPath
+	}
+	return ""
+}
+
+func installPayloadFiles() []string {
+	return []string{
+		"LocalCode.exe",
+		"LocalCode-Debug.exe",
+		"START.bat",
+		"FAST-START.bat",
+		"README.md",
+		"LICENSE",
+		AppIconFile,
+	}
 }
 
 func unregisterUninstaller() error {
@@ -225,16 +259,7 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
-	filesToCopy := []string{
-		"LocalCode.exe",
-		"LocalCode-Debug.exe",
-		"START.bat",
-		"FAST-START.bat",
-		"README.md",
-		"LICENSE",
-	}
-
-	for _, file := range filesToCopy {
+	for _, file := range installPayloadFiles() {
 		src := filepath.Join(sourceDir, file)
 		if _, statErr := os.Stat(src); statErr == nil {
 			dst := filepath.Join(targetDir, file)
@@ -256,9 +281,10 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 
 		mainExe := filepath.Join(targetDir, "LocalCode.exe")
 		debugExe := filepath.Join(targetDir, "LocalCode-Debug.exe")
+		iconPath := installedIconPath(targetDir)
 
-		_ = createShortcut(mainExe, filepath.Join(startMenuDir, "LocalCode.lnk"), "LocalCode AI Development Workstation", "")
-		_ = createShortcut(debugExe, filepath.Join(startMenuDir, "LocalCode Diagnose & Debug.lnk"), "LocalCode Systemdiagnose und Debug-Konsole", "--diagnose")
+		_ = createShortcut(mainExe, filepath.Join(startMenuDir, "LocalCode.lnk"), "LocalCode AI Development Workstation", "", iconPath)
+		_ = createShortcut(debugExe, filepath.Join(startMenuDir, "LocalCode Diagnose & Debug.lnk"), "LocalCode Systemdiagnose und Debug-Konsole", "--diagnose", iconPath)
 	}
 
 	// Create Desktop Shortcut
@@ -266,7 +292,7 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 	if userProfile != "" {
 		desktopShortcut := filepath.Join(userProfile, "Desktop", "LocalCode.lnk")
 		mainExe := filepath.Join(targetDir, "LocalCode.exe")
-		_ = createShortcut(mainExe, desktopShortcut, "LocalCode AI Development Workstation", "")
+		_ = createShortcut(mainExe, desktopShortcut, "LocalCode AI Development Workstation", "", installedIconPath(targetDir))
 	}
 
 	// Add to User PATH

@@ -23,7 +23,7 @@ Die aktuellen vorkompilierten Binärdateien und Installer stehen unter **[GitHub
 
 1. Lade `LocalCode-Setup.exe` von den [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) herunter (oder führe `INSTALL.bat` im Repository aus).
 2. Starte den Installer. LocalCode wird standardmäßig in `%LOCALAPPDATA%\Programs\LocalCode` installiert (keine Administratorrechte erforderlich).
-3. Der Installer erstellt automatisch Verknüpfungen im **Startmenü** und auf dem **Desktop**, trägt `localcode` in den Benutzer-`PATH` ein und registriert sich sauber in den Windows-Einstellungen (*Installierte Apps / Apps & Features*).
+3. Der Installer erstellt automatisch LocalCode-Verknüpfungen mit App-Icon im **Startmenü** und auf dem **Desktop**, trägt `localcode` in den Benutzer-`PATH` ein und registriert sich sauber in den Windows-Einstellungen (*Installierte Apps / Apps & Features*).
 4. **Befehlszeilen-Optionen:**
    ```powershell
    # Stille / unbeaufsichtigte Installation und anschließender Start:
@@ -175,7 +175,7 @@ Pre-built binaries and installers are available directly on **[GitHub Releases](
 
 1. Download `LocalCode-Setup.exe` from [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) (or execute `INSTALL.bat` in the repository).
 2. Run the installer. LocalCode is installed to `%LOCALAPPDATA%\Programs\LocalCode` by default (no Administrator privileges required).
-3. The installer automatically creates shortcuts in the **Start Menu** and on the **Desktop**, adds `localcode` to the User `PATH`, and registers cleanly in Windows Settings (*Installed Apps / Apps & Features*).
+3. The installer automatically creates LocalCode shortcuts with the app icon in the **Start Menu** and on the **Desktop**, adds `localcode` to the User `PATH`, and registers cleanly in Windows Settings (*Installed Apps / Apps & Features*).
 4. **Command Line Options:**
    ```powershell
    # Silent installation and immediate launch:

@@ -7,6 +7,7 @@
 #define MyAppURL "https://localcode.dev"
 #define MyAppExeName "LocalCode.exe"
 #define MyAppDebugExeName "LocalCode-Debug.exe"
+#define MyAppIconName "localcode.ico"
 
 [Setup]
 AppId={{D8A13D5E-8153-4D93-BFD8-E73F0A1E4B92}
@@ -21,6 +22,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist
 OutputBaseFilename=LocalCode-Installer-Setup
+SetupIconFile=..\assets\{#MyAppIconName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -29,7 +31,7 @@ CloseApplications=yes
 RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayIcon={app}\{#MyAppIconName}
 VersionInfoVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=LocalCode Autonomous AI Development Workstation
@@ -49,12 +51,13 @@ Source: "..\START.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\FAST-START.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\{#MyAppIconName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "LocalCode AI Development Workstation"
-Name: "{group}\LocalCode Diagnose & Debug"; Filename: "{app}\{#MyAppDebugExeName}"; Parameters: "--diagnose"; Comment: "LocalCode Diagnose und Konsole"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppIconName}"; Comment: "LocalCode AI Development Workstation"
+Name: "{group}\LocalCode Diagnose & Debug"; Filename: "{app}\{#MyAppDebugExeName}"; Parameters: "--diagnose"; IconFilename: "{app}\{#MyAppIconName}"; Comment: "LocalCode Diagnose und Konsole"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; IconFilename: "{app}\{#MyAppIconName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppIconName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

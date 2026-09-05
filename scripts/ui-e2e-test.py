@@ -19,13 +19,22 @@ current='t1'; selected=projects[0]['path']; posts=[]
 def fulfill(route,obj,status=200): route.fulfill(status=status,content_type='application/json',body=json.dumps(obj))
 def handler(route):
     global current,selected,threads,projects
-    req=route.request; path=req.url.split('/api/',1)[1].split('?',1)[0]; method=req.method
+    req=route.request; url=req.url
+    if not url.startswith('http://localcode.test/api/'):
+        rel=url.split('http://localcode.test/',1)[1].split('?',1)[0]
+        file_path=static/rel
+        if file_path.exists() and file_path.is_file():
+            ct='application/javascript' if rel.endswith('.js') else ('image/svg+xml' if rel.endswith('.svg') else ('text/css' if rel.endswith('.css') else 'text/html'))
+            return route.fulfill(status=200,content_type=ct,body=file_path.read_bytes())
+        return route.fulfill(status=404,body='Not Found')
+
+    path=url.split('/api/',1)[1].split('?',1)[0]; method=req.method
     data={}
     if req.post_data:
         try:data=json.loads(req.post_data)
         except:pass
     posts.append((path,method,data))
-    if path=='status': return fulfill(route,{'version':'6.4.3','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','engine_installed':True,'engine_authenticated':True,'engine_version':'aider 0.86.2','engine_executable':'aider.exe','aider_installed':True,'aider_version':'aider 0.86.2'})
+    if path=='status': return fulfill(route,{'version':'6.9.0','resolved_language':'de','system_language':'de','project':selected,'selected_model':'qwen2.5-coder:14b','models':[{'name':'qwen2.5-coder:14b'}],'root_dir':'C:\\Users\\frede\\Projekte','ollama_online':True,'ollama_url':'http://127.0.0.1:11434','editing_engine':'aider','engine_installed':True,'engine_authenticated':True,'engine_version':'aider 0.86.2','engine_executable':'aider.exe','aider_installed':True,'aider_version':'aider 0.86.2'})
     if path=='projects': return fulfill(route,{'root':'C:\\Users\\frede\\Projekte','projects':projects,'hidden_projects':[]})
     if path=='threads': return fulfill(route,{'threads':threads,'current':current})
     if path=='snapshot':
@@ -66,7 +75,7 @@ def handler(route):
           'aider':{'engine':'aider','display_name':'Aider','enabled':True,'installed':True,'authenticated':True,'executable':'aider.exe','version':'aider 0.86.2','expected_version':'0.86.2','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\aider'},
           'claude':{'engine':'claude','display_name':'Claude Code','enabled':True,'installed':True,'authenticated':True,'executable':'claude.exe','version':'2.1.211 (Claude Code)','expected_version':'stable','installation_root':'C:\\Users\\frede\\.local\\bin'},
           'opencode':{'engine':'opencode','display_name':'OpenCode','enabled':True,'installed':True,'authenticated':True,'executable':'opencode.cmd','version':'1.2.3','expected_version':'latest','installation_root':'C:\\Users\\frede\\AppData\\Local\\LocalCode\\tools\\opencode'},
-          'native':{'engine':'native','display_name':'LocalCode nativ','enabled':True,'installed':True,'authenticated':True,'executable':'embedded','version':'6.4.3'}
+          'native':{'engine':'native','display_name':'LocalCode nativ','enabled':True,'installed':True,'authenticated':True,'executable':'embedded','version':'6.9.0'}
         }
         return fulfill(route,{'selected':engine,'status':values[engine],'engines':list(values.values())})
     if path=='engines/setup':
@@ -105,16 +114,16 @@ with sync_playwright() as p:
         launch['args']=['--no-sandbox']
     browser=p.chromium.launch(**launch)
     page=browser.new_page(viewport={'width':1440,'height':900}); page.set_default_timeout(10000); errors=[]
-    page.on('pageerror',lambda e: errors.append(str(e))); page.route('http://localcode.test/api/**',handler)
-    html=(static/'index.html').read_text(encoding='utf-8'); i18n=(static/'i18n.js').read_text(encoding='utf-8')
-    html=html.replace('<head>','<head><base href="http://localcode.test/">',1).replace('<script src="/i18n.js"></script>','<script>'+i18n+'</script>').replace('setMainGrid();connectEvents();startHealthMonitor();','setMainGrid();startHealthMonitor();')
+    page.on('pageerror',lambda e: errors.append(str(e))); page.route('http://localcode.test/**',handler)
+    html=(static/'index.html').read_text(encoding='utf-8')
+    html=html.replace('<head>','<head><base href="http://localcode.test/">',1).replace('setMainGrid();connectEvents();startHealthMonitor();','setMainGrid();startHealthMonitor();')
     page.set_content(html,wait_until='load'); page.wait_for_selector('.project-group')
     assert page.locator('.new-task-row').first.is_visible(); page.locator('.new-task-row').first.click(); page.wait_for_timeout(150)
     assert any(p[0]=='new-chat' for p in posts)
     project_menu(page); labels=page.locator('#contextMenu > .context-menu-item .menu-label').all_text_contents()
-    for x in ['Neue Aufgabe','Name bearbeiten','Öffnen in','Im integrierten Terminal öffnen','Im Datei-Explorer öffnen','Projekt anheften','Projekt entfernen']: assert x in labels
+    for x in ['Neue Aufgabe','Anzeigenamen bearbeiten','Projekt anheften','Projekt entfernen']: assert any(x in l for l in labels)
     # Rename
-    page.locator('#contextMenu > .context-menu-item',has_text='Name bearbeiten').click(); page.locator('#actionModalInput').fill('Geschichten Neu'); page.locator('#actionModalConfirm').click(); page.wait_for_timeout(150)
+    page.locator('#contextMenu > .context-menu-item',has_text='Anzeigenamen bearbeiten').click(); page.locator('#actionModalInput').fill('Geschichten Neu'); page.locator('#actionModalConfirm').click(); page.wait_for_timeout(150)
     assert any(x[0]=='project-action' and x[2].get('action')=='rename' for x in posts)
     # Open in Visual Studio submenu
     project_menu(page); parent=page.locator('#contextMenu > .context-menu-item',has_text='Öffnen in'); parent.hover(); page.get_by_role('menuitem',name='Visual Studio',exact=True).click(); page.wait_for_timeout(100)

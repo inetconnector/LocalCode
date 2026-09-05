@@ -317,6 +317,27 @@ func TestReadOnlySubagentHandoff(t *testing.T) {
 	}
 }
 
+func TestReadOnlySubagentSkipsDeepScanForEmptyProject(t *testing.T) {
+	root := t.TempDir()
+	report, err := runReadOnlySubagent(root, defaultConfig(), "erstelle einen kompletten Pacman-Klon in C#")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"READ-ONLY SUBAGENT HANDOFF", "new/empty", "do not keep asking"} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("missing %q in empty-project report:\n%s", want, report)
+		}
+	}
+	for _, unwanted := range []string{"REPOSITORY INTELLIGENCE", "REFERENCE GRAPH", "SEARCH EVIDENCE"} {
+		if strings.Contains(report, unwanted) {
+			t.Fatalf("empty-project report should skip heavy sections but contained %q:\n%s", unwanted, report)
+		}
+	}
+	if len(report) > 2000 {
+		t.Fatalf("empty-project report should be short, got %d bytes", len(report))
+	}
+}
+
 func TestAgentToolHooksRunConfiguredCommands(t *testing.T) {
 	root := t.TempDir()
 	cfg := defaultConfig()

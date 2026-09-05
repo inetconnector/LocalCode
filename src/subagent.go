@@ -66,6 +66,16 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 		return "", fmt.Errorf("subagent task is empty")
 	}
 
+	if projectIsEffectivelyEmpty(project) {
+		return "READ-ONLY SUBAGENT HANDOFF\n" +
+			"Scope: " + task + "\n" +
+			"Project directory is new/empty: no existing source files and no detected build system.\n" +
+			"HANDOFF\n" +
+			"- There is nothing to analyze yet; do not keep asking about build systems or existing structure that does not exist.\n" +
+			"- Choose a standard, idiomatic project layout for the language/platform named in the task and create it directly (e.g. .NET: a runnable SDK-style .csproj; Node: package.json; Python: pyproject.toml).\n" +
+			"- Implement the full requested scope directly with write_file, then verify with the project's own build/run tools.\n", nil
+	}
+
 	mentioned := mentionedProjectFiles(task)
 	if len(mentioned) > subagentMaxMentionedFiles {
 		mentioned = mentioned[:subagentMaxMentionedFiles]

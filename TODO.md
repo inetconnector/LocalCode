@@ -1,9 +1,9 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
-**Verified:** 2026-09-02 Europe/Berlin  
-**Authoritative merged base for this slice:** master `f9c171b` (Tag: `v6.7.1`)  
-**Last merged functional PR:** #84 `feat(ui,agent): Extras menu, Quick QR pairing button & direct image OCR answers` (Android OpenAI redesign: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
-**Active branch:** `master`  
+**Verified:** 2026-09-05 Europe/Berlin
+**Authoritative merged base for this slice:** master `f9c171b` (Tag: `v6.9.0`)
+**Last merged functional PR:** #87 `feat: autonomous browser automation, Windows UI desktop agent, and mobile TTS feedback` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)
+**Active branch:** `release/v6.9.0-installer-automation` with persistent Mission Knowledge, repaired Playwright UI smoke harness, and native installer packaging fixes
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.
@@ -75,5 +75,4 @@ This file contains unfinished functional work only. Completed PR history belongs
 
 - [x] Keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `STATE.md` and this file consistent with merged reality.
 - [x] Do not treat stale merged feature refs or historical non-current Actions runs as active development state.
-- [x] Before merging the current local startup/mobile worktree changes, run the repository's full Windows quality gates: `go fmt ./...`, `go test -race -count=1 ./...`, `go vet ./...`, JavaScript syntax checks, browser UI smoke test for visible menus, Android APK build, and Windows-amd64 builds.
-
+- [x] Before merging the local native installer registry-quoting and installer/launcher icon fixes, repair or refresh the Browser UI smoke harness and rerun `python scripts\ui-e2e-test.py` green. Completed checks: `go fmt ./...`, `go vet ./...`, `go test -race -count=1 ./...`, `go test -count=1 ./cmd/localcode-setup`, focused Windows packaging icon tests, direct Windows-amd64 GUI/diagnostics/setup builds, `scripts\build-installer.ps1`, native setup icon extraction, JavaScript syntax checks via Visual Studio Node.js `v24.12.0`, PowerShell AST syntax parser across all `scripts/*.ps1`, Android APK build, prior silent install, binary hash comparison, shortcut checks, User `PATH` check, HKCU uninstall metadata check, and `python scripts\ui-e2e-test.py` passing 100% green (`FULL UI E2E OK 41 requests`). Optional Inno compilation remains unrun because `ISCC.exe` is not installed/found.
