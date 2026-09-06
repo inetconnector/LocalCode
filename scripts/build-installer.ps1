@@ -104,25 +104,34 @@ Write-Host "  -> Generated: $setupOut" -ForegroundColor Green
 
 # 3. Check for Inno Setup compiler (ISCC.exe)
 Write-Host "`n[2/2] Checking Inno Setup compiler (optional) ..." -ForegroundColor Green
-$iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-if (-not $iscc) {
+$isccPath = $null
+$isccCmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+if ($isccCmd) {
+    if ($isccCmd.PSObject.Properties.Name -contains 'Source') {
+        $isccPath = [string]$isccCmd.Source
+    } elseif ($isccCmd.PSObject.Properties.Name -contains 'Path') {
+        $isccPath = [string]$isccCmd.Path
+    }
+}
+
+if (-not $isccPath) {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
         "${env:ProgramFiles(x86)}\Inno Setup 5\ISCC.exe"
     )
     foreach ($cand in $candidates) {
-        if (Test-Path $cand) {
-            $iscc = Get-Item $cand
+        if (Test-Path -LiteralPath $cand) {
+            $isccPath = (Get-Item -LiteralPath $cand).FullName
             break
         }
     }
 }
 
-if ($iscc) {
-    Write-Host "  -> Running Inno Setup compiler: $($iscc.FullName)" -ForegroundColor Green
+if ($isccPath) {
+    Write-Host "  -> Running Inno Setup compiler: $isccPath" -ForegroundColor Green
     $issFile = Join-Path $Root 'installer\localcode-setup.iss'
-    & $iscc.FullName $issFile
+    & $isccPath $issFile
 } else {
     Write-Host "  -> Inno Setup (ISCC.exe) not in PATH (native LocalCode-Setup.exe is ready)." -ForegroundColor Gray
 }
