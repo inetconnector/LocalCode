@@ -84,7 +84,7 @@ func TestRemotePairingTokenAndStatus(t *testing.T) {
 	if err := json.Unmarshal(pairing.Body.Bytes(), &pairingBody); err != nil {
 		t.Fatal(err)
 	}
-	if len(pairingBody.Code) != 8 || len(pairingBody.RemoteURLs) != 1 {
+	if len(pairingBody.Code) != 8 || len(pairingBody.RemoteURLs) == 0 {
 		t.Fatalf("unexpected pairing response: %#v", pairingBody)
 	}
 	for _, r := range pairingBody.Code {

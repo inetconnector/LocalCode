@@ -50,6 +50,10 @@ type AgentAction struct {
 	Skill               string         `json:"skill,omitempty"`
 	Resource            string         `json:"resource,omitempty"`
 	Script              string         `json:"script,omitempty"`
+	Selector            string         `json:"selector,omitempty"`
+	WindowTitle         string         `json:"window_title,omitempty"`
+	ControlName         string         `json:"control_name,omitempty"`
+	Text                string         `json:"text,omitempty"`
 	expectedFileVersion *fileVersion
 }
 
@@ -59,6 +63,8 @@ var actionSchema = map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
+			"browser_navigate", "browser_inspect", "browser_click", "browser_type", "browser_screenshot", "browser_extract",
+			"desktop_list_windows", "desktop_inspect", "desktop_click", "desktop_type", "desktop_screenshot",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
 			"memory_remember", "memory_list", "memory_forget",
@@ -76,13 +82,17 @@ var actionSchema = map[string]any{
 		"args":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"source": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"},
 		"commit_message": map[string]any{"type": "string"}, "stage_all": map[string]any{"type": "boolean"},
-		"task":      map[string]any{"type": "string"},
-		"name":      map[string]any{"type": "string"},
-		"memory_id": map[string]any{"type": "string"},
-		"scope":     map[string]any{"type": "string", "enum": []string{"project", "global"}},
-		"skill":     map[string]any{"type": "string"},
-		"resource":  map[string]any{"type": "string"},
-		"script":    map[string]any{"type": "string"},
+		"task":         map[string]any{"type": "string"},
+		"name":         map[string]any{"type": "string"},
+		"memory_id":    map[string]any{"type": "string"},
+		"scope":        map[string]any{"type": "string", "enum": []string{"project", "global"}},
+		"skill":        map[string]any{"type": "string"},
+		"resource":     map[string]any{"type": "string"},
+		"script":       map[string]any{"type": "string"},
+		"selector":     map[string]any{"type": "string"},
+		"window_title": map[string]any{"type": "string"},
+		"control_name": map[string]any{"type": "string"},
+		"text":         map[string]any{"type": "string"},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 	"allOf": []map[string]any{
@@ -104,6 +114,12 @@ var actionSchema = map[string]any{
 		conditionalRequired("run_command", "command"),
 		conditionalRequired("open_terminal", "command"),
 		conditionalRequired("web_fetch", "url"),
+		conditionalRequired("browser_navigate", "url"),
+		conditionalRequired("browser_click", "selector"),
+		conditionalRequired("browser_type", "selector", "text"),
+		conditionalRequired("desktop_inspect", "window_title"),
+		conditionalRequired("desktop_click", "window_title", "control_name"),
+		conditionalRequired("desktop_type", "window_title", "control_name", "text"),
 		conditionalRequired("mcp_call_tool", "server", "tool"),
 		conditionalRequired("skill_read", "skill"),
 		conditionalRequired("skill_list_resources", "skill"),
@@ -156,13 +172,20 @@ Arbeitsweise:
 - Verwende Git für Status, Diffs, Historie, Branches und vom Nutzer verlangte Commits. Keine History-Rewrites, Force-Pushes oder destruktiven Git-Befehle. Ein fehlendes Git-Repository ist bei Analyse, Build oder Deployment nur eine Information und niemals ein Grund, die Aufgabe zu unterbrechen oder nach git init zu fragen. Initialisiere Git nur, wenn der Nutzer Git ausdrücklich verlangt oder eine Git-Operation ohne Repository wirklich notwendig ist.
 - Nutze subagent_analyze(task,name) für isolierte read-only Child-Agents. name ist optional und darf explorer, planner oder reviewer sein; ohne name wird explorer verwendet. Child-Agents haben eigenen Modellkontext und harte Modell-/Tool-/Zeit-/geschätzte-Token-Budgets, dürfen aber nur list_files/read_file/search_text/LSP/finish verwenden und niemals mutieren, Shell/Git/Netzwerk/MCP/Installationen/Genehmigungen/Rekursion starten.
 - Für aktuelle Fakten darfst du web_search und web_fetch verwenden. Prüfe wichtige Aussagen mit mehreren Primärquellen und nenne die URLs im Abschluss.
+- Für autonome Browser- und Webseiten-Interaktionen nutze browser_navigate(url), browser_inspect(selector), browser_click(selector), browser_type(selector,text), browser_screenshot(url,path) und browser_extract(url,selector). LocalCode nutzt Playwright MCP oder Edge/Chrome für verlässliche Navigation, DOM-Inspektion und Screenshot-Erfassung.
+- Für Windows-Desktop- und GUI-Anwendungs-Steuerung nutze desktop_list_windows, desktop_inspect(window_title), desktop_click(window_title,control_name), desktop_type(window_title,control_name,text) und desktop_screenshot(window_title,path). LocalCode steuert sichtbare Windows-Anwendungen über die Windows UI Automation Schnittstelle mit strikten Sicherheitsgrenzen.
 - LocalCode verwaltet die MCP-Server filesystem, powershell, git, fetch, github und playwright. Liste bei einem noch unbekannten Server zuerst seine Fähigkeiten. Nutze filesystem für sichere Projektdateien, powershell für PowerShell-spezifische Aufgaben, git für strukturierte Git-Aktionen, fetch für Webinhalte, github für GitHub-Objekte und playwright für zustandsbehaftete Browserautomation. Wenn eine Laufzeit oder Anmeldung fehlt, löst LocalCode Installation beziehungsweise Login kontrolliert aus; gib nicht vorschnell auf.
 - Externe Programme niemals vorschnell als fehlend einstufen. Nutze zuerst discover_tool oder tool_inventory. run_tool löst bekannte Programme über PATH, Projekt-Wrapper, Android SDK, Visual-Studio-Installationen, Umgebungsvariablen und Standardpfade auf und liefert Pfad, Exitcode, STDOUT und STDERR. Fehlt ein unterstütztes Werkzeug, bietet LocalCode dem Nutzer automatisch eine kontrollierte Installation an und wiederholt danach exakt den ursprünglichen Aufruf; frage dafür nicht zusätzlich mit ask_user.
 - Bevor du wegen eines Werkzeugfehlers den Nutzer fragst: Werkzeug entdecken, genaue Ausgabe auswerten, eine andere sichere Diagnose versuchen und bei unbekannter Bedienung offizielle Dokumentation mit web_search/web_fetch recherchieren. Wiederhole niemals denselben fehlgeschlagenen Befehl oder dieselbe Frage ohne neue Information.
 - Nutze project_info für eine deterministische Erkennung des Buildsystems. Wenn der Nutzer kompilieren oder bauen verlangt, bevorzuge build_project statt einen geratenen Shell-Befehl. Für Android-Deployment auf ein verbundenes Gerät bevorzuge deploy_android; es baut zuerst, findet die APK, diagnostiziert ADB und installiert mit adb install -r.
+- Meldet project_info "unknown"/kein erkanntes Buildsystem in einem neuen oder leeren Projektordner, ist das normal und kein Blocker: Es gibt noch keins, weil das Projekt neu erstellt werden soll. Frage den Nutzer nicht, wie kompiliert werden soll oder welches Buildsystem er möchte. Wähle selbst ein Standard-Projektlayout passend zur in der Aufgabe genannten Sprache/Plattform (z.B. .NET: ein lauffähiges SDK-Style .csproj; Node: package.json; Python: pyproject.toml), lege es mit write_file an und implementiere den vollständigen angeforderten Umfang direkt, bevor du build_project ausführst.
 - Für einzelne Android-Diagnosen bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
+- Wenn der Nutzer zeitgesteuerte oder wiederkehrende Aufgaben (Scheduler/Cron) verlangt:
+  - Auf Windows: Verwende schtasks (z. B. schtasks /create /tn ... /tr ... /sc daily /st ...) oder PowerShell ScheduledTasks (Register-ScheduledTask, Get-ScheduledTask).
+  - Auf Linux/WSL: Verwende crontab (z. B. crontab -l, crontab -e), systemd-timer (systemctl list-timers) oder at für einmalige Verzögerungen.
+  - Prüfe vorher bestehende Aufgaben, verwende vollständige Pfade und verifiziere die Erstellung des geplanten Tasks.
 - Behaupte niemals, ein Befehl, Test, Login, Upload, Push oder Deployment sei erfolgreich gewesen, wenn das Werkzeugergebnis dies nicht bestätigt.
 - STATE.md wird von der Anwendung automatisch gepflegt. Überschreibe den verwalteten Abschnitt nicht manuell.
 - Der Kontext kann automatisch verdichtet werden. Ein Abschnitt KOMPRIMIERTER ARBEITSKONTEXT ist verbindlicher Arbeitszustand; wiederhole keine dort bereits geklärte Frage und verliere keine dort festgehaltene Nutzerentscheidung.
@@ -191,6 +214,8 @@ Werkzeuge:
 - git mit args als Argumentliste, z. B. ["status","--short"]
 - git_commit für einen vollständigen, verifizierten Commit-Ablauf (Git initialisieren falls ausdrücklich verlangt, .gitignore ergänzen, Änderungen stagen, Commit ausführen und Ergebnis prüfen)
 - web_search mit query/max_results, web_fetch mit url
+- browser_navigate(url), browser_inspect(selector), browser_click(selector), browser_type(selector,text), browser_screenshot(url,path), browser_extract(url,selector)
+- desktop_list_windows, desktop_inspect(window_title), desktop_click(window_title,control_name), desktop_type(window_title,control_name,text), desktop_screenshot(window_title,path)
 - mcp_list_tools, mcp_call_tool(server,tool,arguments)
 - mcp_list_resources, mcp_read_resource(server,uri)
 - mcp_list_prompts, mcp_get_prompt(server,prompt_name,arguments)
@@ -242,17 +267,23 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		s.Project = projectOverride
 	}
 	project := s.Project
-	if model == "" {
-		model = s.Model
-	}
 	if project == "" {
 		s.mu.Unlock()
 		return errors.New("no project selected")
 	}
 	if model == "" {
-		s.mu.Unlock()
-		return errors.New("no model selected")
+		model = s.Model
 	}
+	if model == "" {
+		model = s.Config.LastModel
+	}
+	if model == "" && s.Config.OllamaDefaultModel != "" {
+		model = s.Config.OllamaDefaultModel
+	}
+	if model == "" {
+		model = "qwen2.5-coder:14b"
+	}
+	s.Model = model
 
 	continuation := s.Continuation
 	isContinuation := continuation != nil && continuation.Project == project && continuation.ThreadID == s.CurrentThread && len(continuation.Messages) > 0 && likelyContinuationAnswer(continuation.Question, userMessage)
@@ -550,6 +581,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	instructions := projectInstructionContext(project, userMessage)
 	s.mu.RLock()
 	cfg := s.Config
+	recentContext := recentThreadContextForAgent(s.Events, userMessage)
 	s.mu.RUnlock()
 	recoveryContext, recoveredTask := s.consumeRecoveryContextForTask(project, userMessage)
 	effectiveTask := userMessage
@@ -573,7 +605,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), effectiveTask, attachmentContext, qualityHint, automationHint)}}
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -589,6 +621,86 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 
 	outcome := s.executeAgentLoop(ctx, runID, project, model, messages, cfg, "", effectiveTask)
 	runAfterHook = outcome == "done"
+}
+
+func recentThreadContextForAgent(events []UIEvent, currentUserMessage string) string {
+	currentUserMessage = strings.TrimSpace(currentUserMessage)
+	if len(events) == 0 {
+		return ""
+	}
+	items := []string{}
+	for i := len(events) - 1; i >= 0 && len(items) < 8; i-- {
+		ev := events[i]
+		if agentContextEventIsTransient(ev.Type) {
+			continue
+		}
+		text := strings.TrimSpace(ev.Message)
+		detail := strings.TrimSpace(ev.Detail)
+		if detail != "" && agentContextEventShouldIncludeDetail(ev.Type) {
+			if text != "" {
+				text += "\n" + detail
+			} else {
+				text = detail
+			}
+		}
+		if text == "" {
+			continue
+		}
+		if ev.Type == "user" && currentUserMessage != "" && strings.EqualFold(text, currentUserMessage) {
+			continue
+		}
+		items = append(items, agentContextEventLabel(ev)+": "+truncateText(text, 1800))
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+		items[left], items[right] = items[right], items[left]
+	}
+	return "\n\nTHREAD-KONTEXT:\n" + strings.Join(items, "\n\n") + "\n\nKurze Folgeaufgaben wie \"zeige Links\" oder \"mach das\" beziehen sich auf diesen sichtbaren Verlauf. Frage nur nach, wenn der Bezug auch mit diesem Kontext nicht bestimmbar ist."
+}
+
+func agentContextEventIsTransient(eventType string) bool {
+	switch eventType {
+	case "status", "progress", "action_running", "approval", "approval_required":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventShouldIncludeDetail(eventType string) bool {
+	switch eventType {
+	case "final", "question", "tool_result", "tool_error", "warning", "error", "action_done":
+		return true
+	default:
+		return false
+	}
+}
+
+func agentContextEventLabel(ev UIEvent) string {
+	switch ev.Type {
+	case "user":
+		return "Nutzer"
+	case "final":
+		return "Letzte Antwort"
+	case "question":
+		return "Rueckfrage"
+	case "tool_result", "action_done":
+		if strings.TrimSpace(ev.Action) != "" {
+			return "Werkzeug " + ev.Action
+		}
+		return "Werkzeug"
+	case "tool_error", "error":
+		return "Fehler"
+	case "warning":
+		return "Warnung"
+	default:
+		if strings.TrimSpace(ev.Action) != "" {
+			return ev.Type + " " + ev.Action
+		}
+		return ev.Type
+	}
 }
 
 func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, model, userMessage string, attachments []Attachment, continuation *AgentContinuation) {
@@ -893,7 +1005,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {
 	models, err := s.Ollama.Tags(ctx)
 	if err != nil {
-		return []string{requested}
+		if requested != "" {
+			return []string{requested}
+		}
+		return []string{"qwen2.5-coder:14b"}
 	}
 	installed := map[string]bool{}
 	for _, m := range models {
@@ -901,24 +1016,29 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 	}
 	seen := map[string]bool{}
 	out := []string{}
-	add := func(name string) {
+	add := func(name string, requireInstalled bool) {
 		name = strings.TrimSpace(name)
-		if name != "" && !seen[name] && installed[name] {
+		if name != "" && !seen[name] && (!requireInstalled || installed[name]) {
 			seen[name] = true
 			out = append(out, name)
 		}
 	}
-	add(requested)
-	add("qwen2.5-coder:14b")
-	add("qwen2.5-coder:7b")
-	add("gpt-oss:20b")
+	if requested != "" {
+		add(requested, false)
+	}
+	add("qwen2.5-coder:14b", true)
+	add("qwen2.5-coder:7b", true)
+	add("gpt-oss:20b", true)
 	for _, m := range models {
 		if strings.Contains(strings.ToLower(m.Name), "coder") {
-			add(m.Name)
+			add(m.Name, true)
 		}
 	}
 	for _, m := range models {
-		add(m.Name)
+		add(m.Name, true)
+	}
+	if len(out) == 0 && requested != "" {
+		out = append(out, requested)
 	}
 	return out
 }
@@ -2131,6 +2251,52 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 			return s.performApproved(ctx, project, a)
 		}
 		result, err = webFetch(ctx, cfg, a.URL)
+	case "browser_navigate":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = BrowserNavigate(ctx, cfg, project, a.URL)
+	case "browser_inspect":
+		result, err = BrowserInspect(ctx, cfg, project, a.Selector)
+	case "browser_click":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = BrowserClick(ctx, cfg, project, a.Selector)
+	case "browser_type":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = BrowserType(ctx, cfg, project, a.Selector, a.Text)
+	case "browser_screenshot":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = BrowserScreenshot(ctx, cfg, project, a.URL, a.Path)
+	case "browser_extract":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = BrowserExtract(ctx, cfg, project, a.URL, a.Selector)
+	case "desktop_list_windows":
+		result, err = DesktopListWindows(ctx, cfg)
+	case "desktop_inspect":
+		result, err = DesktopInspect(ctx, cfg, a.WindowTitle, a.Selector)
+	case "desktop_click":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = DesktopClick(ctx, cfg, a.WindowTitle, a.ControlName)
+	case "desktop_type":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = DesktopType(ctx, cfg, a.WindowTitle, a.ControlName, a.Text)
+	case "desktop_screenshot":
+		if actionNeedsApproval(cfg, project, a) {
+			return s.performApproved(ctx, project, a)
+		}
+		result, err = DesktopScreenshot(ctx, cfg, project, a.WindowTitle, a.Path)
 	case "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
 		var preparation string
 		var wait bool
@@ -2167,6 +2333,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 	case "finish":
 		s.mu.Lock()
 		s.LastSummary = a.Message
+
 		s.mu.Unlock()
 		s.AddEvent(UIEvent{Type: "final", Message: a.Message})
 		s.recordAction("Aufgabe abgeschlossen")
@@ -2280,15 +2447,18 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return false
 	}
 	switch a.Action {
-	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "command_list", "command_read", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt":
+	case "discover_tool", "tool_inventory", "project_info", "subagent_analyze", "command_list", "command_read", "list_files", "read_file", "search_text", "skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "mcp_list_tools", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt", "browser_inspect", "desktop_list_windows", "desktop_inspect":
 		return false
-	case "web_search", "web_fetch":
+	case "web_search", "web_fetch", "browser_navigate", "browser_screenshot", "browser_extract", "desktop_screenshot":
 		return cfg.ApprovalMode == "strict"
+	case "browser_click", "browser_type", "desktop_click", "desktop_type":
+		return cfg.ApprovalMode != "auto"
 	case "lsp":
 		// A language server is an external project-aware process. The protocol
 		// path is read-only, but strict mode still surfaces the process start.
 		return cfg.ApprovalMode == "strict"
 	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "engine_edit", "aider_edit":
+
 		return cfg.ApprovalMode != "auto"
 	case "skill_run_script":
 		return true
@@ -2613,6 +2783,28 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		return "Web search: " + a.Query, nil
 	case "web_fetch":
 		return "Web fetch: " + a.URL, nil
+	case "browser_navigate":
+		return "Browser navigation preview:\nURL: " + a.URL, nil
+	case "browser_inspect":
+		return "Browser inspect preview:\nSelector: " + a.Selector, nil
+	case "browser_click":
+		return "Browser click preview:\nSelector: " + a.Selector, nil
+	case "browser_type":
+		return fmt.Sprintf("Browser type preview:\nSelector: %s\nText: %s", a.Selector, a.Text), nil
+	case "browser_screenshot":
+		return fmt.Sprintf("Browser screenshot preview:\nURL: %s\nDestination: %s", a.URL, a.Path), nil
+	case "browser_extract":
+		return fmt.Sprintf("Browser extract preview:\nURL: %s\nSelector: %s", a.URL, a.Selector), nil
+	case "desktop_list_windows":
+		return "Desktop list windows preview: Enumerate open desktop windows", nil
+	case "desktop_inspect":
+		return fmt.Sprintf("Desktop inspect preview:\nWindow: %s\nSelector: %s", a.WindowTitle, a.Selector), nil
+	case "desktop_click":
+		return fmt.Sprintf("Desktop click preview:\nWindow: %s\nControl: %s", a.WindowTitle, a.ControlName), nil
+	case "desktop_type":
+		return fmt.Sprintf("Desktop type preview:\nWindow: %s\nControl: %s\nText: %s", a.WindowTitle, a.ControlName, a.Text), nil
+	case "desktop_screenshot":
+		return fmt.Sprintf("Desktop screenshot preview:\nWindow: %s\nDestination: %s", a.WindowTitle, a.Path), nil
 	case "engine_edit", "aider_edit":
 		task := strings.TrimSpace(a.Task)
 		if task == "" {
@@ -2642,6 +2834,7 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		return "Android-Projekt bauen, ein autorisiertes verbundenes Gerät erkennen und die neueste Debug-APK mit adb install -r übertragen.", nil
 	case "mcp_call_tool":
 		return fmt.Sprintf("MCP %s tool %s\nArguments: %s", a.Server, a.Tool, mustJSON(a.Arguments)), nil
+
 	default:
 		return "", errors.New("action does not require approval")
 	}
@@ -2864,6 +3057,28 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		return formatWebResults(r), err
 	case "web_fetch":
 		return webFetch(ctx, cfg, a.URL)
+	case "browser_navigate":
+		return BrowserNavigate(ctx, cfg, project, a.URL)
+	case "browser_inspect":
+		return BrowserInspect(ctx, cfg, project, a.Selector)
+	case "browser_click":
+		return BrowserClick(ctx, cfg, project, a.Selector)
+	case "browser_type":
+		return BrowserType(ctx, cfg, project, a.Selector, a.Text)
+	case "browser_screenshot":
+		return BrowserScreenshot(ctx, cfg, project, a.URL, a.Path)
+	case "browser_extract":
+		return BrowserExtract(ctx, cfg, project, a.URL, a.Selector)
+	case "desktop_list_windows":
+		return DesktopListWindows(ctx, cfg)
+	case "desktop_inspect":
+		return DesktopInspect(ctx, cfg, a.WindowTitle, a.Selector)
+	case "desktop_click":
+		return DesktopClick(ctx, cfg, a.WindowTitle, a.ControlName)
+	case "desktop_type":
+		return DesktopType(ctx, cfg, a.WindowTitle, a.ControlName, a.Text)
+	case "desktop_screenshot":
+		return DesktopScreenshot(ctx, cfg, project, a.WindowTitle, a.Path)
 	case "mcp_call_tool":
 		return mcpCall(ctx, cfg, project, a.Server, "tools/call", map[string]any{"name": a.Tool, "arguments": a.Arguments})
 	default:

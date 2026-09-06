@@ -1,0 +1,233 @@
+/* Authentic Arcade Cabinet Styling */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background: radial-gradient(circle at center, #111425 0%, #05060b 100%);
+    color: #ffffff;
+    font-family: 'Press Start 2P', monospace, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    overflow-x: hidden;
+}
+
+.arcade-wrapper {
+    background: #000000;
+    border: 4px solid #333344;
+    border-radius: 16px;
+    box-shadow: 0 0 30px rgba(0, 50, 255, 0.4), inset 0 0 20px rgba(0, 0, 0, 0.8);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 520px;
+    width: 100%;
+}
+
+.cabinet-marquee {
+    text-align: center;
+    margin-bottom: 12px;
+    padding: 6px 16px;
+    background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
+    border: 2px solid #ffb852;
+    border-radius: 8px;
+    box-shadow: 0 0 12px rgba(255, 184, 82, 0.4);
+    width: 100%;
+}
+
+.cabinet-title {
+    font-size: 22px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+    text-shadow: 0 0 10px rgba(255, 255, 0, 0.6);
+}
+
+.pac-yellow { color: #ffff00; }
+.ghost-cyan { color: #00ffff; }
+
+.marquee-subtitle {
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: #ff5555;
+}
+
+.game-container {
+    position: relative;
+    width: 448px;
+    height: 576px;
+    max-width: 100%;
+    aspect-ratio: 448 / 576;
+    background-color: #000000;
+    border: 3px solid #222255;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 0, 255, 0.5);
+}
+
+#game-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.crt-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+    background-size: 100% 4px;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.arcade-controls {
+    margin-top: 14px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.arcade-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 10px 14px;
+    border: 2px solid #ffffff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: transform 0.1s, filter 0.1s;
+}
+
+.arcade-btn:active {
+    transform: scale(0.95);
+}
+
+.green-btn {
+    background: #00aa00;
+    color: #ffffff;
+    border-color: #55ff55;
+    box-shadow: 0 4px #005500;
+}
+
+.blue-btn {
+    background: #0055aa;
+    color: #ffffff;
+    border-color: #55aaff;
+    box-shadow: 0 4px #002b55;
+}
+
+.red-btn {
+    background: #aa0000;
+    color: #ffffff;
+    border-color: #ff5555;
+    box-shadow: 0 4px #550000;
+}
+
+/* Touch D-Pad */
+.dpad-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.dpad {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.dpad-btn {
+    position: absolute;
+    background: #2a2a3e;
+    color: #ffff00;
+    border: 2px solid #555577;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    touch-action: manipulation;
+}
+
+.dpad-btn:active {
+    background: #ffff00;
+    color: #000000;
+}
+
+.dpad-btn.up {
+    top: 0;
+    left: 40px;
+    width: 40px;
+    height: 40px;
+}
+
+.dpad-btn.down {
+    bottom: 0;
+    left: 40px;
+    width: 40px;
+    height: 40px;
+}
+
+.dpad-btn.left {
+    top: 40px;
+    left: 0;
+    width: 40px;
+    height: 40px;
+}
+
+.dpad-btn.right {
+    top: 40px;
+    right: 0;
+    width: 40px;
+    height: 40px;
+}
+
+.dpad-center {
+    position: absolute;
+    top: 40px;
+    left: 40px;
+    width: 40px;
+    height: 40px;
+    background: #1e1e2d;
+    border: 1px solid #333344;
+}
+
+.instructions {
+    font-size: 7px;
+    color: #8888aa;
+    text-align: center;
+    line-height: 1.4;
+    margin-top: 4px;
+}
+
+@media (min-width: 650px) {
+    .dpad-container {
+        display: none; /* Hide D-Pad on desktop keyboards */
+    }
+}

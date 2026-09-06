@@ -3,11 +3,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,14 +31,20 @@ const (
 	maxMissionKnowledgeTagLen     = 32
 	maxMissionKnowledgeTags       = 8
 	maxMissionKnowledgePromptLen  = 8000
+
+	PersistentMissionKnowledgeSchemaVersion = 1
+	MaxPersistentMissionKnowledgeItems      = 64
+	MaxPersistentMissionKnowledgeBytes      = 128 * 1024 // 128 KiB
 )
 
 var (
-	errMissionKnowledgeInvalidCategory = errors.New("invalid mission knowledge category")
-	errMissionKnowledgeMissingTitle    = errors.New("mission knowledge title is required")
-	errMissionKnowledgeMissingSummary  = errors.New("mission knowledge summary is required")
-	errMissionKnowledgeLimitExceeded   = errors.New("mission knowledge capacity limit reached (max 64 items)")
-	errMissionKnowledgeNotFound        = errors.New("mission not found or inactive")
+	errMissionKnowledgeInvalidCategory  = errors.New("invalid mission knowledge category")
+	errMissionKnowledgeMissingTitle     = errors.New("mission knowledge title is required")
+	errMissionKnowledgeMissingSummary   = errors.New("mission knowledge summary is required")
+	errMissionKnowledgeLimitExceeded    = errors.New("mission knowledge capacity limit reached (max 64 items)")
+	errMissionKnowledgeNotFound         = errors.New("mission not found or inactive")
+	errPersistentKnowledgeCorruptSchema = errors.New("corrupt or incompatible persistent mission knowledge schema")
+	errPersistentKnowledgeEmptyProject  = errors.New("project path cannot be empty for persistent mission knowledge")
 )
 
 type MissionKnowledgeItem struct {
@@ -270,4 +280,182 @@ func (s *AppState) ListMissionKnowledge(missionID string) ([]MissionKnowledgeIte
 	out := make([]MissionKnowledgeItem, len(state.Mission.Knowledge))
 	copy(out, state.Mission.Knowledge)
 	return out, nil
+}
+
+type PersistentMissionKnowledgeStore struct {
+	SchemaVersion int                    `json:"schema_version"`
+	ProjectHash   string                 `json:"project_hash"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+	Items         []MissionKnowledgeItem `json:"items"`
+}
+
+var persistentMissionKnowledgeMu sync.Mutex
+
+func persistentMissionKnowledgeDir() string {
+	return filepath.Join(appDataDir(), "knowledge")
+}
+
+func persistentMissionKnowledgePath(projectRoot string) (string, string, error) {
+	clean := filepath.Clean(strings.TrimSpace(projectRoot))
+	if clean == "" || clean == "." {
+		return "", "", errPersistentKnowledgeEmptyProject
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.ToLower(filepath.ToSlash(clean)))))
+	return filepath.Join(persistentMissionKnowledgeDir(), hash+".json"), hash, nil
+}
+
+func LoadPersistentMissionKnowledge(projectRoot string) (*PersistentMissionKnowledgeStore, error) {
+	path, hash, err := persistentMissionKnowledgePath(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	persistentMissionKnowledgeMu.Lock()
+	defer persistentMissionKnowledgeMu.Unlock()
+
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return &PersistentMissionKnowledgeStore{
+			SchemaVersion: PersistentMissionKnowledgeSchemaVersion,
+			ProjectHash:   hash,
+			UpdatedAt:     time.Now(),
+			Items:         []MissionKnowledgeItem{},
+		}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var store PersistentMissionKnowledgeStore
+	if err := json.Unmarshal(data, &store); err != nil {
+		return nil, fmt.Errorf("%w: %v", errPersistentKnowledgeCorruptSchema, err)
+	}
+	if store.SchemaVersion != PersistentMissionKnowledgeSchemaVersion {
+		return nil, fmt.Errorf("%w: unsupported version %d", errPersistentKnowledgeCorruptSchema, store.SchemaVersion)
+	}
+	if store.Items == nil {
+		store.Items = []MissionKnowledgeItem{}
+	}
+	return &store, nil
+}
+
+func SavePersistentMissionKnowledge(projectRoot string, store *PersistentMissionKnowledgeStore) error {
+	if store == nil {
+		return errors.New("cannot save nil persistent mission knowledge store")
+	}
+	path, hash, err := persistentMissionKnowledgePath(projectRoot)
+	if err != nil {
+		return err
+	}
+
+	persistentMissionKnowledgeMu.Lock()
+	defer persistentMissionKnowledgeMu.Unlock()
+
+	store.SchemaVersion = PersistentMissionKnowledgeSchemaVersion
+	store.ProjectHash = hash
+	store.UpdatedAt = time.Now()
+
+	cleanItems := make([]MissionKnowledgeItem, 0, len(store.Items))
+	for _, it := range store.Items {
+		clean := sanitizeMissionKnowledgeItem(it)
+		if err := validateMissionKnowledgeItem(clean); err == nil {
+			cleanItems = append(cleanItems, clean)
+		}
+	}
+
+	if len(cleanItems) > MaxPersistentMissionKnowledgeItems {
+		cleanItems = cleanItems[len(cleanItems)-MaxPersistentMissionKnowledgeItems:]
+	}
+	store.Items = cleanItems
+
+	dir := persistentMissionKnowledgeDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(store, "", "  ")
+	if err != nil {
+		return err
+	}
+	for len(data) > MaxPersistentMissionKnowledgeBytes && len(store.Items) > 1 {
+		store.Items = store.Items[1:]
+		data, err = json.MarshalIndent(store, "", "  ")
+		if err != nil {
+			return err
+		}
+	}
+
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func RecordPersistentMissionKnowledge(projectRoot string, item MissionKnowledgeItem) (MissionKnowledgeItem, error) {
+	cat, err := normalizeMissionKnowledgeCategory(string(item.Category))
+	if err != nil {
+		return MissionKnowledgeItem{}, err
+	}
+	item.Category = cat
+	if err := validateMissionKnowledgeItem(item); err != nil {
+		return MissionKnowledgeItem{}, err
+	}
+	item = sanitizeMissionKnowledgeItem(item)
+
+	now := time.Now()
+	if item.ID == "" {
+		item.ID = newID()
+	}
+	item.CreatedAt = now
+	item.UpdatedAt = now
+
+	store, err := LoadPersistentMissionKnowledge(projectRoot)
+	if err != nil {
+		_, hash, pathErr := persistentMissionKnowledgePath(projectRoot)
+		if pathErr != nil {
+			return MissionKnowledgeItem{}, pathErr
+		}
+		store = &PersistentMissionKnowledgeStore{
+			SchemaVersion: PersistentMissionKnowledgeSchemaVersion,
+			ProjectHash:   hash,
+			UpdatedAt:     now,
+			Items:         []MissionKnowledgeItem{},
+		}
+	}
+
+	updated := false
+	for i, existing := range store.Items {
+		if existing.ID == item.ID {
+			store.Items[i] = item
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		store.Items = append(store.Items, item)
+	}
+
+	if err := SavePersistentMissionKnowledge(projectRoot, store); err != nil {
+		return MissionKnowledgeItem{}, err
+	}
+	return item, nil
+}
+
+func (s *AppState) SyncMissionKnowledgeToPersistence(projectRoot string, missionID string) (int, error) {
+	items, err := s.ListMissionKnowledge(missionID)
+	if err != nil {
+		return 0, err
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+
+	count := 0
+	for _, item := range items {
+		if _, err := RecordPersistentMissionKnowledge(projectRoot, item); err == nil {
+			count++
+		}
+	}
+	return count, nil
 }

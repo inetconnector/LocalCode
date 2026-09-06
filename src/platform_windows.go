@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,11 +115,20 @@ func openStartupBrowser(url string) error {
 }
 
 func showFatal(title, message string) {
+	if suppressFatalDialogs() {
+		log.Printf("Suppressed fatal dialog %q: %s", title, message)
+		return
+	}
 	user32 := syscall.NewLazyDLL("user32.dll")
 	messageBox := user32.NewProc("MessageBoxW")
 	t, _ := syscall.UTF16PtrFromString(title)
 	m, _ := syscall.UTF16PtrFromString(message)
 	_, _, _ = messageBox.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), 0x10)
+}
+
+func suppressFatalDialogs() bool {
+	value := strings.TrimSpace(os.Getenv("LOCALCODE_SUPPRESS_FATAL_DIALOGS"))
+	return value != "" && value != "0" && !strings.EqualFold(value, "false")
 }
 
 func startOllamaDetached(path string) error {
@@ -281,11 +291,20 @@ func openInteractiveTerminal(project, command string, cfg Config) error {
 	return cmd.Start()
 }
 
+var startProjectTargetProcess = func(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	hideCommandWindow(cmd)
+	return cmd.Start()
+}
+
 func openProjectTarget(project, target string, cfg Config) error {
 	startHidden := func(name string, args ...string) error {
-		cmd := exec.Command(name, args...)
-		hideCommandWindow(cmd)
-		return cmd.Start()
+		if filepath.IsAbs(name) {
+			if st, err := os.Stat(name); err != nil || st.IsDir() {
+				return fmt.Errorf("executable not found: %s", name)
+			}
+		}
+		return startProjectTargetProcess(name, args...)
 	}
 	switch strings.ToLower(strings.TrimSpace(target)) {
 	case "vscode":
@@ -297,18 +316,46 @@ func openProjectTarget(project, target string, cfg Config) error {
 		}
 		return fmt.Errorf("%s", localizeConfigText(cfg, "Visual Studio Code wurde nicht gefunden", "Visual Studio Code was not found"))
 	case "visualstudio":
+		vsTarget := visualStudioProjectTarget(project)
+		if vsTarget == "" {
+			log.Printf("Visual Studio open requested for %s, but no solution/project file was found; opening Explorer instead", project)
+			return startHidden("explorer.exe", project)
+		}
 		if devenv, err := exec.LookPath("devenv.exe"); err == nil {
-			return startHidden(devenv, project)
+			if err := startHidden(devenv, vsTarget); err == nil {
+				return nil
+			} else {
+				log.Printf("Visual Studio launch failed for %s via PATH: %v; opening Explorer instead", vsTarget, err)
+				return startHidden("explorer.exe", project)
+			}
 		}
 		for _, candidate := range visualStudioToolPaths("devenv") {
 			if st, err := os.Stat(candidate[0]); err == nil && !st.IsDir() {
-				return startHidden(candidate[0], project)
+				if err := startHidden(candidate[0], vsTarget); err == nil {
+					return nil
+				} else {
+					log.Printf("Visual Studio launch failed for %s via %s: %v; opening Explorer instead", vsTarget, candidate[0], err)
+					return startHidden("explorer.exe", project)
+				}
 			}
 		}
-		return fmt.Errorf("%s", localizeConfigText(cfg, "Visual Studio wurde weder über PATH noch über vswhere/Visual-Studio-Installationspfade gefunden", "Visual Studio was not found through PATH, vswhere, or Visual Studio installation paths"))
+		log.Printf("Visual Studio was not found; opening Explorer for %s instead", project)
+		return startHidden("explorer.exe", project)
 	default:
 		return startHidden("explorer.exe", project)
 	}
+}
+
+func visualStudioProjectTarget(project string) string {
+	for _, pattern := range []string{"*.sln", "*.csproj", "*.vcxproj", "*.fsproj", "*.vbproj"} {
+		matches, _ := filepath.Glob(filepath.Join(project, pattern))
+		for _, match := range matches {
+			if st, err := os.Stat(match); err == nil && !st.IsDir() {
+				return match
+			}
+		}
+	}
+	return ""
 }
 
 func selectDirectory(initial, language string) (string, error) {

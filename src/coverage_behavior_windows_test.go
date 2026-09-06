@@ -88,6 +88,42 @@ func TestWindowsPlatformDiscoveryAndSafeFailureBranches(t *testing.T) {
 	}
 }
 
+func TestOpenProjectTargetVisualStudioFallsBackWithoutProjectFile(t *testing.T) {
+	root := t.TempDir()
+	originalStarter := startProjectTargetProcess
+	t.Cleanup(func() { startProjectTargetProcess = originalStarter })
+	var calls []string
+	startProjectTargetProcess = func(name string, args ...string) error {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil
+	}
+
+	cfg := defaultConfig()
+	if err := openProjectTarget(root, "visualstudio", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || !strings.HasPrefix(strings.ToLower(calls[0]), "explorer.exe ") || !strings.Contains(calls[0], root) {
+		t.Fatalf("Visual Studio without a solution/project should fall back to Explorer, calls=%#v", calls)
+	}
+
+	sln := filepath.Join(root, "Demo.sln")
+	if err := os.WriteFile(sln, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	devenv := filepath.Join(root, "devenv.exe")
+	if err := os.WriteFile(devenv, []byte("fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", root)
+	calls = nil
+	if err := openProjectTarget(root, "visualstudio", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || !strings.HasPrefix(strings.ToLower(calls[0]), strings.ToLower(devenv)) || !strings.Contains(calls[0], sln) {
+		t.Fatalf("Visual Studio should receive the solution path, calls=%#v", calls)
+	}
+}
+
 func TestBuildProjectUsesControlledToolOverrides(t *testing.T) {
 	tools := t.TempDir()
 	goTool := writeWindowsCmdFixture(t, tools, "go-fixture", `

@@ -122,6 +122,20 @@ func approvalActionTokens(a AgentAction) []string {
 		return []string{a.Action, filepath.ToSlash(filepath.Clean(a.Source)), filepath.ToSlash(filepath.Clean(a.Destination))}
 	case "web_search", "web_fetch", "build_project", "deploy_android", "open_terminal", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
 		return []string{a.Action}
+	case "browser_navigate", "browser_screenshot", "browser_extract":
+		return []string{a.Action, a.URL}
+	case "browser_inspect", "browser_click":
+		return []string{a.Action, a.Selector}
+	case "browser_type":
+		return []string{a.Action, a.Selector, a.Text}
+	case "desktop_list_windows":
+		return []string{"desktop_list_windows"}
+	case "desktop_inspect", "desktop_screenshot":
+		return []string{a.Action, a.WindowTitle}
+	case "desktop_click":
+		return []string{"desktop_click", a.WindowTitle, a.ControlName}
+	case "desktop_type":
+		return []string{"desktop_type", a.WindowTitle, a.ControlName, a.Text}
 	case "mcp_call_tool":
 		return []string{"mcp", a.Server, a.Tool}
 	default:
@@ -199,9 +213,10 @@ func persistentApprovalPattern(action AgentAction) ([]string, bool) {
 		return tokens, true
 	case "write_file", "replace_text", "create_svg_asset", "create_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource":
 		return tokens, true
-	case "build_project", "deploy_android", "web_search", "web_fetch", "open_terminal", "mcp_call_tool", "copy_path", "skill_run_script", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider":
+	case "build_project", "deploy_android", "web_search", "web_fetch", "open_terminal", "mcp_call_tool", "copy_path", "skill_run_script", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "engine_undo", "install_engine", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "install_aider", "browser_navigate", "browser_inspect", "browser_click", "browser_type", "browser_screenshot", "browser_extract", "desktop_list_windows", "desktop_inspect", "desktop_click", "desktop_type", "desktop_screenshot":
 		return tokens, true
 	}
+
 	return tokens, true
 }
 

@@ -81,6 +81,31 @@ func (s *AppState) RevokeRemoteDevice(id string) error {
 	return err
 }
 
+func (s *AppState) RevokeRemoteToken(token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return errors.New("remote token is required")
+	}
+	hash := remoteTokenHash(token)
+	_, err := s.mutateConfig(func(cfg *Config) error {
+		out := make([]RemoteDevice, 0, len(cfg.RemoteDevices))
+		found := false
+		for _, device := range cfg.RemoteDevices {
+			if secureCompareHex(device.TokenHash, hash) {
+				found = true
+				continue
+			}
+			out = append(out, device)
+		}
+		if !found {
+			return errors.New("remote device not found")
+		}
+		cfg.RemoteDevices = out
+		return nil
+	})
+	return err
+}
+
 func (s *Server) handleRemoteDevices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -43,10 +43,21 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1
 
+      - name: Build Windows setup installer and Android companion APK
+        shell: pwsh
+        run: |
+          ./scripts/build-installer.ps1
+          ./scripts/build-android.ps1
+
       - name: Verify release artifacts and write standard checksums
         shell: pwsh
         run: |
-          $files = @('dist/LocalCode.exe', 'dist/LocalCode-Debug.exe')
+          $files = @(
+            'dist/LocalCode.exe',
+            'dist/LocalCode-Debug.exe',
+            'dist/LocalCode-Setup.exe',
+            'dist/LocalCode-Remote-debug.apk'
+          )
           foreach ($file in $files) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
               throw "Missing release artifact: $file"
@@ -91,9 +102,11 @@ jobs:
             'release', 'create', '${{ github.ref_name }}',
             'dist/LocalCode.exe',
             'dist/LocalCode-Debug.exe',
+            'dist/LocalCode-Setup.exe',
+            'dist/LocalCode-Remote-debug.apk',
             'dist/SHA256SUMS.txt',
             'dist/BUILD-METADATA.txt',
-            '--title', 'LocalCode ${{ github.ref_name }}',
+            '--title', "LocalCode ${{ github.ref_name }}",
             '--verify-tag'
           )
           if (Test-Path -LiteralPath $notesPath -PathType Leaf) {

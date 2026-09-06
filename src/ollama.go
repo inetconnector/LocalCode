@@ -175,7 +175,27 @@ func (o *OllamaClient) Discover(ctx context.Context) error {
 }
 
 func (o *OllamaClient) Tags(ctx context.Context) ([]ModelInfo, error) {
-	return o.tagsAt(ctx, o.BaseURL)
+	primary, err := o.tagsAt(ctx, o.BaseURL)
+	if !isLocalHostURL(o.BaseURL) {
+		if localModels, localErr := o.tagsAt(ctx, "http://127.0.0.1:11434"); localErr == nil && len(localModels) > 0 {
+			seen := map[string]bool{}
+			merged := make([]ModelInfo, 0, len(primary)+len(localModels))
+			for _, m := range primary {
+				if !seen[m.Name] {
+					seen[m.Name] = true
+					merged = append(merged, m)
+				}
+			}
+			for _, m := range localModels {
+				if !seen[m.Name] {
+					seen[m.Name] = true
+					merged = append(merged, m)
+				}
+			}
+			return merged, nil
+		}
+	}
+	return primary, err
 }
 
 func (o *OllamaClient) tagsAt(ctx context.Context, baseURL string) ([]ModelInfo, error) {
@@ -603,6 +623,32 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
+			// If remote/cluster gateway returned an error (e.g. 404 model not found), attempt transparent fallback to local Ollama daemon
+			if !isLocalHostURL(o.BaseURL) {
+				localReq, localErr := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:11434/api/chat", bytes.NewReader(data))
+				if localErr == nil {
+					localReq.Header.Set("Content-Type", "application/json")
+					localClient := &http.Client{Timeout: 8 * time.Minute}
+					if localResp, localDoErr := localClient.Do(localReq); localDoErr == nil {
+						localBody, _ := io.ReadAll(io.LimitReader(localResp.Body, 8<<20))
+						_ = localResp.Body.Close()
+						if localResp.StatusCode == http.StatusOK {
+							var localOut OllamaChatResponse
+							if json.Unmarshal(localBody, &localOut) == nil && localOut.Error == "" {
+								if content := extractJSONObject(localOut.Message.Content); content != "" {
+									return content, nil
+								}
+								if content := extractJSONObject(localOut.Message.Thinking); content != "" {
+									return content, nil
+								}
+								if localOut.Message.Content != "" {
+									return strings.TrimSpace(localOut.Message.Content), nil
+								}
+							}
+						}
+					}
+				}
+			}
 			return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
 		}
 		break
@@ -695,4 +741,9 @@ func (o *OllamaClient) ChatRaw(ctx context.Context, model string, messages []Oll
 		return "", errors.New(out.Error)
 	}
 	return strings.TrimSpace(out.Message.Content), nil
+}
+
+func isLocalHostURL(u string) bool {
+	u = strings.ToLower(strings.TrimSpace(u))
+	return strings.Contains(u, "127.0.0.1") || strings.Contains(u, "localhost") || strings.Contains(u, "[::1]")
 }

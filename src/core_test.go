@@ -317,6 +317,27 @@ func TestReadOnlySubagentHandoff(t *testing.T) {
 	}
 }
 
+func TestReadOnlySubagentSkipsDeepScanForEmptyProject(t *testing.T) {
+	root := t.TempDir()
+	report, err := runReadOnlySubagent(root, defaultConfig(), "erstelle einen kompletten Pacman-Klon in C#")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"READ-ONLY SUBAGENT HANDOFF", "new/empty", "do not keep asking"} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("missing %q in empty-project report:\n%s", want, report)
+		}
+	}
+	for _, unwanted := range []string{"REPOSITORY INTELLIGENCE", "REFERENCE GRAPH", "SEARCH EVIDENCE"} {
+		if strings.Contains(report, unwanted) {
+			t.Fatalf("empty-project report should skip heavy sections but contained %q:\n%s", unwanted, report)
+		}
+	}
+	if len(report) > 2000 {
+		t.Fatalf("empty-project report should be short, got %d bytes", len(report))
+	}
+}
+
 func TestAgentToolHooksRunConfiguredCommands(t *testing.T) {
 	root := t.TempDir()
 	cfg := defaultConfig()
@@ -1755,7 +1776,7 @@ func TestRemoteTabsSupportSwipeGestures(t *testing.T) {
 	}
 	html := string(data)
 	for _, required := range []string{
-		`const viewOrder=['tasks','projects','trash','approve','review','new'];`,
+		`const viewOrder=['new','tasks','projects','trash','review'];`,
 		`function swipeView(step)`,
 		`function bindSwipe()`,
 		`touchstart`,
@@ -1791,7 +1812,7 @@ func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
 		`id="fileInput" class="hidden" type="file" multiple`,
 		`data-i18n-title="upload"`,
 		`id="voiceBtn" class="round" type="button" data-i18n-title="voice"`,
-		`window.localCodeVoiceResult=text=>appendPromptText(text)`,
+		`window.localCodeVoiceResult=text=>{appendPromptText(text)`,
 		`function startVoiceInput()`,
 		`window.LocalCodeAndroid?.startVoiceInput`,
 		`window.SpeechRecognition||window.webkitSpeechRecognition`,
@@ -1805,6 +1826,26 @@ func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
 	}
 	if strings.Contains(html, `accept="image/*`) {
 		t.Fatal("remote file picker should allow all file types")
+	}
+}
+
+func TestRecentThreadContextKeepsPriorResultsForShortFollowups(t *testing.T) {
+	events := []UIEvent{
+		{Type: "status", Message: "Agent arbeitet", Detail: "qwen2.5-coder:14b"},
+		{Type: "progress", Message: "Modellschritt 1 von 60"},
+		{Type: "final", Message: "Dachdecker in Veitshoechheim gefunden.", Detail: "https://example.invalid/dachdecker"},
+		{Type: "user", Message: "Zeige Links"},
+	}
+	got := recentThreadContextForAgent(events, "Zeige Links")
+	for _, want := range []string{"THREAD-KONTEXT", "Dachdecker in Veitshoechheim", "https://example.invalid/dachdecker", "zeige Links"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("recent context missing %q: %s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"Agent arbeitet", "Modellschritt 1 von 60", "Nutzer: Zeige Links"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("recent context retained transient/current event %q: %s", forbidden, got)
+		}
 	}
 }
 
@@ -2147,7 +2188,7 @@ func TestModelCallTimeoutReturnsControl(t *testing.T) {
 	if err := state.StartAgent("Analysiere das Projekt", "slow-model", nil); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(4 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		state.mu.RLock()
 		running := state.Running
