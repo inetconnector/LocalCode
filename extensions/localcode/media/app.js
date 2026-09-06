@@ -94,6 +94,7 @@
   document.querySelectorAll('[data-action]').forEach(node => node.addEventListener('click', () => { $('menu').open = false; post({ type: node.dataset.action }); }));
   document.querySelectorAll('[data-prompt]').forEach(node => node.addEventListener('click', () => { $('prompt').value = text(node.dataset.prompt); persist(); render(); $('prompt').focus(); }));
   $('prompt').addEventListener('input', () => { persist(); render(); });
+  $('prompt').addEventListener('paste', () => { setTimeout(() => { persist(); render(); }, 0); });
   $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
   $('model').addEventListener('change', persist); $('send').addEventListener('click', send);
   $('approve').addEventListener('click', () => post({ type: 'approve', id: pendingID, decision: 'once' }));
@@ -101,6 +102,12 @@
   window.addEventListener('message', ({ data }) => {
     if (data.type === 'state') { state = data; if (!data.busy) sending = false; render(); }
     if (data.type === 'sent') { if ($('prompt').value === data.prompt) $('prompt').value = ''; sending = false; $('error').hidden = true; $('notice').hidden = !data.queued; $('notice').textContent = data.queued ? text('queued') : ''; persist(); render(); }
+    if (data.type === 'insertText') {
+      const p = $('prompt'); const start = p.selectionStart || 0, end = p.selectionEnd || 0, v = p.value || '';
+      p.value = v.slice(0, start) + (data.text || '') + v.slice(end);
+      p.selectionStart = p.selectionEnd = start + (data.text || '').length;
+      persist(); render(); p.focus();
+    }
     if (data.type === 'error') { $('error').textContent = data.message; $('error').hidden = false; sending = false; render(); }
   });
   post({ type: 'ready' });

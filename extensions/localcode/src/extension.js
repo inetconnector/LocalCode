@@ -21,7 +21,15 @@ class LocalCode {
       vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('localcode')) this.run(() => this.connect()); }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => { this.project = ''; this.thread = ''; this.attachments = []; this.run(() => this.connect()); })
     );
-    const commands = { open: () => vscode.commands.executeCommand('localcode.chat.focus'), openEditor: () => this.openEditor(), newTask: () => this.newTask(), addSelection: async () => { await this.addContext(); await vscode.commands.executeCommand('localcode.chat.focus'); }, start: () => this.start(), settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode') };
+    const commands = {
+      open: () => vscode.commands.executeCommand('localcode.chat.focus'),
+      openRight: async () => { try { await vscode.commands.executeCommand('workbench.action.moveView', { viewId: 'localcode.chat', destination: 'auxiliaryBar' }); } catch {} await vscode.commands.executeCommand('localcode.chat.focus'); },
+      openEditor: () => this.openEditor(),
+      newTask: () => this.newTask(),
+      addSelection: async () => { await this.addContext(); await vscode.commands.executeCommand('localcode.chat.focus'); },
+      start: () => this.start(),
+      settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode')
+    };
     for (const [name, fn] of Object.entries(commands)) context.subscriptions.push(vscode.commands.registerCommand(`localcode.${name}`, () => this.run(fn)));
   }
   get language() {
@@ -164,12 +172,67 @@ class LocalCode {
   async addContext() {
     if (!await this.workspace()) return;
     const editor = vscode.window.activeTextEditor || this.lastEditor;
-    if (!editor || editor.document.uri.scheme !== 'file') throw new Error('noEditor');
-    await contained(this.project, editor.document.uri.fsPath);
-    const selection = editor.selection;
-    const text = editor.document.getText(selection.isEmpty ? undefined : selection);
-    const label = `${path.relative(this.project, editor.document.uri.fsPath)}:${selection.isEmpty ? 1 : selection.start.line + 1} (${this.t(editor.document.isDirty ? 'unsaved' : 'saved')})`;
-    this.addAttachment(label, text); this.render();
+    const items = [];
+    if (editor && editor.document.uri.scheme === 'file') {
+      try {
+        await contained(this.project, editor.document.uri.fsPath);
+        const rel = path.relative(this.project, editor.document.uri.fsPath);
+        const hasSelection = !editor.selection.isEmpty;
+        items.push({
+          id: 'active',
+          label: `$(file-text) ${this.t('attachActive')}: ${rel}${hasSelection ? ` (L${editor.selection.start.line + 1}-L${editor.selection.end.line + 1})` : ''}`,
+          description: this.t(editor.document.isDirty ? 'unsaved' : 'saved')
+        });
+      } catch {}
+    }
+    items.push(
+      { id: 'choose', label: `$(folder) ${this.t('attachFile')}` },
+      { id: 'clipboard', label: `$(clippy) ${this.t('attachClipboard')}` },
+      { id: 'diagnostics', label: `$(warning) ${this.t('attachDiagnostics')}` }
+    );
+    const pick = await vscode.window.showQuickPick(items, { placeHolder: this.t('addContext') });
+    if (!pick) return;
+    if (pick.id === 'active' && editor) {
+      const selection = editor.selection;
+      const text = editor.document.getText(selection.isEmpty ? undefined : selection);
+      const label = `${path.relative(this.project, editor.document.uri.fsPath)}:${selection.isEmpty ? 1 : selection.start.line + 1} (${this.t(editor.document.isDirty ? 'unsaved' : 'saved')})`;
+      this.addAttachment(label, text);
+      this.render();
+    } else if (pick.id === 'choose') {
+      const uris = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        defaultUri: vscode.Uri.file(this.project),
+        openLabel: this.t('chooseFile')
+      });
+      if (uris && uris[0]) {
+        const file = uris[0].fsPath;
+        await contained(this.project, file);
+        const content = await fs.readFile(file, 'utf8');
+        const label = path.relative(this.project, file);
+        this.addAttachment(label, content);
+        this.render();
+      }
+    } else if (pick.id === 'clipboard') {
+      const clipText = await vscode.env.clipboard.readText();
+      if (!clipText || !clipText.trim()) {
+        vscode.window.showInformationMessage(this.t('clipboardEmpty'));
+        return;
+      }
+      this.addAttachment(this.t('clipboardLabel'), clipText);
+      this.render();
+    } else if (pick.id === 'diagnostics') {
+      await this.addDiagnostics();
+    }
+  }
+  async pasteClipboard() {
+    const text = await vscode.env.clipboard.readText();
+    if (!text || !text.trim()) {
+      vscode.window.showInformationMessage(this.t('clipboardEmpty'));
+      return;
+    }
+    this.broadcast({ type: 'insertText', text });
   }
   addAttachment(label, text) {
     if (Buffer.byteLength(text) + this.attachments.reduce((n, a) => n + Buffer.byteLength(a.text), 0) > 65536) throw new Error('contextLimit');
@@ -299,6 +362,8 @@ class LocalCode {
         case 'chooseTask': await this.chooseTask(); break;
         case 'chooseWorkspace': if (await this.workspace(true)) await this.connect(); break;
         case 'addContext': await this.addContext(); break;
+        case 'pasteClipboard': await this.pasteClipboard(); break;
+        case 'openRight': await vscode.commands.executeCommand('localcode.openRight'); break;
         case 'addDiagnostics': await this.addDiagnostics(); break;
         case 'clearContext': this.attachments = []; break;
         case 'stop': await this.stop(); break;

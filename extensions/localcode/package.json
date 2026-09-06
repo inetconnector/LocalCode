@@ -49,6 +49,12 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "localcode.openRight",
+        "title": "%openRight%",
+        "category": "LocalCode",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
         "command": "localcode.openEditor",
         "title": "%openEditor%",
         "category": "LocalCode",
