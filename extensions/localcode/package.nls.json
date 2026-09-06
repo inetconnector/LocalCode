@@ -1,6 +1,6 @@
 {
   "description": "LocalCode coding agent inside your IDE: local models, tasks, tool approvals and code review.",
-  "open": "Open Chat", "openEditor": "Open in Editor", "newTask": "New Task",
+  "open": "Open Chat", "openRight": "Open in Right Side Bar", "openEditor": "Open in Editor", "newTask": "New Task",
   "addSelection": "Add Selection to Chat", "start": "Start LocalCode", "settings": "Extension Settings", "chat": "Chat",
   "serverUrl": "LocalCode Desktop loopback URL. Only HTTP on 127.0.0.1, localhost or [::1] is accepted. Shared with the desktop application.",
   "executablePath": "Absolute path to an installed LocalCode executable. Empty uses the standard Windows per-user installation. Launched only by Start LocalCode.",

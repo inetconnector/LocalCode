@@ -11,7 +11,7 @@
   <header>
     <strong class="brand"><span class="logo" aria-hidden="true">&lt;/&gt;</span> LocalCode</strong>
     <nav><button data-action="newTask" data-title="newTask" aria-label="New task">＋</button><button data-action="chooseTask" data-title="chooseTask" aria-label="Task history">↶</button><details id="menu"><summary data-title="more">•••</summary><div class="menu">
-      <button data-action="refresh" data-text="connect"></button><button data-action="start" data-text="start"></button><button data-action="desktop" data-text="desktop"></button><button data-action="settings" data-text="settings"></button>
+      <button data-action="openRight" data-text="openRight"></button><button data-action="refresh" data-text="connect"></button><button data-action="start" data-text="start"></button><button data-action="desktop" data-text="desktop"></button><button data-action="settings" data-text="settings"></button>
     </div></details></nav>
   </header>
   <div class="connection"><span id="connection" role="status"></span><button id="workspace" data-action="chooseWorkspace"></button></div>
@@ -26,9 +26,10 @@
   <section class="composer">
     <div id="context" hidden><strong data-text="context"></strong><ul id="contextList"></ul><button data-action="clearContext" data-text="clearContext"></button></div>
     <label class="sr-only" for="prompt" data-text="placeholder"></label><textarea id="prompt" rows="3" maxlength="100000"></textarea>
-    <div class="composer-tools"><div><button data-action="addContext" data-title="addContext">＋</button><button data-action="addDiagnostics" data-title="addDiagnostics">⚑</button><select id="model" aria-label="Model"></select></div><button id="send" class="primary" data-title="send">↑</button><button id="stop" data-action="stop" data-title="stop" hidden>■</button></div>
+    <div class="composer-tools"><div><button data-action="addContext" data-title="addContext">＋</button><button data-action="pasteClipboard" data-title="pasteClipboard">📋</button><button data-action="addDiagnostics" data-title="addDiagnostics">⚑</button><select id="model" aria-label="Model"></select></div><button id="send" class="primary" data-title="send">↑</button><button id="stop" data-action="stop" data-title="stop" hidden>■</button></div>
   </section>
   <footer><span id="engine"></span><button data-action="review" data-text="review"></button></footer>
+  <script nonce="{{nonce}}">window.__INITIAL_DATA__ = { strings: {{initialStrings}}, language: {{initialLanguage}} };</script>
   <script nonce="{{nonce}}" src="{{script}}"></script>
 </body>
 </html>
