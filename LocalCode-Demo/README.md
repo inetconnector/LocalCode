@@ -13,8 +13,9 @@ Dieses Verzeichnis enthält einen **vollständig spielbaren, originalgetreuen Pa
 **Das Besondere:** Dieses gesamte Spiel wurde **nicht von Hand programmiert**, sondern **vollständig autonom von LocalCode generiert**, während LocalCode über die **Android Mobile Remote App** vom Smartphone aus gesteuert und überwacht wurde!
 
 <p align="center">
-  <img src="screenshots/pacman_arcade_gameplay.png" alt="Pac-Man Arcade Gameplay" width="45%" style="border-radius: 8px; margin-right: 10px;" />
-  <img src="screenshots/localcode_android_remote.png" alt="LocalCode Android Mobile Remote" width="38%" style="border-radius: 8px;" />
+  <img src="screenshots/pacman_arcade_gameplay.png" alt="Pac-Man Arcade Gameplay" width="44%" style="border-radius: 8px; margin-right: 6px;" />
+  <img src="screenshots/localcode_android_starter.png" alt="LocalCode Android Starter Screen" width="23%" style="border-radius: 8px; margin-right: 6px;" />
+  <img src="screenshots/localcode_android_remote.png" alt="LocalCode Android Mobile Remote" width="23%" style="border-radius: 8px;" />
 </p>
 
 ---
@@ -78,8 +79,9 @@ This directory contains a **fully playable, authentic 1980s Namco-style Pac-Man 
 **The highlight:** This entire game was **not written manually**, but **generated autonomously by LocalCode**, entirely instructed, driven, and monitored from a smartphone using the **LocalCode Android Mobile Remote Companion App**!
 
 <p align="center">
-  <img src="screenshots/pacman_arcade_gameplay.png" alt="Pac-Man Arcade Gameplay" width="45%" style="border-radius: 8px; margin-right: 10px;" />
-  <img src="screenshots/localcode_android_remote.png" alt="LocalCode Android Mobile Remote" width="38%" style="border-radius: 8px;" />
+  <img src="screenshots/pacman_arcade_gameplay.png" alt="Pac-Man Arcade Gameplay" width="44%" style="border-radius: 8px; margin-right: 6px;" />
+  <img src="screenshots/localcode_android_starter.png" alt="LocalCode Android Starter Screen" width="23%" style="border-radius: 8px; margin-right: 6px;" />
+  <img src="screenshots/localcode_android_remote.png" alt="LocalCode Android Mobile Remote" width="23%" style="border-radius: 8px;" />
 </p>
 
 ---

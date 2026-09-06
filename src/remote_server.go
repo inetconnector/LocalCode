@@ -43,6 +43,7 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/", s.handleRemotePage)
 	s.mux.HandleFunc("/remote/api/ping", s.handlePing)
 	s.mux.HandleFunc("/remote/api/pair", s.handlePair)
+	s.mux.HandleFunc("/remote/api/unpair", s.withAuth(s.handleUnpair))
 	s.mux.HandleFunc("/remote/api/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/remote/api/projects", s.withAuth(s.handleProjects))
 	s.mux.HandleFunc("/remote/api/threads", s.withAuth(s.handleThreads))
@@ -227,6 +228,26 @@ func (s *RemoteServer) handlePair(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
+}
+
+func (s *RemoteServer) handleUnpair(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimSpace(r.Header.Get("X-LocalCode-Remote-Token"))
+	if token == "" {
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+			token = strings.TrimSpace(auth[7:])
+		}
+	}
+	if err := s.state.RevokeRemoteToken(token); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "unpaired": true})
 }
 
 func (s *RemoteServer) withAuth(next http.HandlerFunc) http.HandlerFunc {

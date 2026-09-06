@@ -20,8 +20,9 @@ LocalCode is a Windows-first, local-first coding-agent application centered on O
 ### 🚀 Autonomous Coding Agent for Windows & Android Mobile Companion
 
 <p align="center">
-  <img src="assets/localcode_desktop_orchestration.png" alt="LocalCode Desktop UI" width="58%" style="border-radius: 8px; vertical-align: middle; margin-right: 8px;" />
-  <img src="assets/localcode_android_remote.png" alt="LocalCode Android Remote App" width="36%" style="border-radius: 8px; vertical-align: middle;" />
+  <img src="assets/localcode_desktop_orchestration.png" alt="LocalCode Desktop UI & Orchestration" width="50%" style="border-radius: 8px; vertical-align: middle; margin-right: 6px;" />
+  <img src="assets/localcode_android_starter.png" alt="LocalCode Android Starter Screen" width="23%" style="border-radius: 8px; vertical-align: middle; margin-right: 6px;" />
+  <img src="assets/localcode_android_remote.png" alt="LocalCode Android Mobile Remote Execution" width="23%" style="border-radius: 8px; vertical-align: middle;" />
 </p>
 
 **LocalCode built a complete, authentic 1980 Pac-Man Arcade game entirely autonomously — instructed, monitored, and approved in real-time from the Android Mobile Companion app!**

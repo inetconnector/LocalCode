@@ -51,24 +51,18 @@ if (-not $keytoolCommand) { throw 'keytool.exe not found in PATH' }
 $javac = $javacCommand.Source
 $keytool = $keytoolCommand.Source
 
-if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
-        $OutputDirectory = Join-Path ([IO.Path]::GetTempPath()) 'localcode-android'
-    } else {
-        $OutputDirectory = Join-Path $env:RUNNER_TEMP 'localcode-android'
-    }
-}
-Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-$classes = Join-Path $OutputDirectory 'classes'
-$dex = Join-Path $OutputDirectory 'dex'
-$compiledRes = Join-Path $OutputDirectory 'compiled-res'
+$stagingDir = Join-Path ([IO.Path]::GetTempPath()) ('localcode-android-' + [Guid]::NewGuid().ToString('N'))
+Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+$classes = Join-Path $stagingDir 'classes'
+$dex = Join-Path $stagingDir 'dex'
+$compiledRes = Join-Path $stagingDir 'compiled-res'
 New-Item -ItemType Directory -Path $classes,$dex,$compiledRes -Force | Out-Null
 
-$unsigned = Join-Path $OutputDirectory 'LocalCode-Remote-unsigned.apk'
-$aligned = Join-Path $OutputDirectory 'LocalCode-Remote-aligned.apk'
-$signed = Join-Path $OutputDirectory 'LocalCode-Remote-debug.apk'
-$keystore = Join-Path $OutputDirectory 'debug.keystore'
+$unsigned = Join-Path $stagingDir 'LocalCode-Remote-unsigned.apk'
+$aligned = Join-Path $stagingDir 'LocalCode-Remote-aligned.apk'
+$signed = Join-Path $stagingDir 'LocalCode-Remote-debug.apk'
+$keystore = Join-Path $stagingDir 'debug.keystore'
 
 $resourceArgs = @()
 if (Test-Path -LiteralPath $resDir -PathType Container) {
@@ -113,6 +107,23 @@ if (Test-Path -LiteralPath $releaseKeystore -PathType Leaf) {
 if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed with exit code $LASTEXITCODE" }
 
 if (-not (Test-Path -LiteralPath $signed -PathType Leaf)) { throw "Signed APK missing: $signed" }
-$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $signed).Hash.ToLowerInvariant()
-Write-Host "Android APK: $signed"
+
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $OutputDirectory = Join-Path $repo 'dist'
+}
+if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+}
+$targetApk = Join-Path $OutputDirectory 'LocalCode-Remote-debug.apk'
+Copy-Item -LiteralPath $signed -Destination $targetApk -Force
+
+$distDir = Join-Path $repo 'dist'
+if ((Test-Path -LiteralPath $distDir -PathType Container) -and ([IO.Path]::GetFullPath($OutputDirectory) -ne [IO.Path]::GetFullPath($distDir))) {
+    Copy-Item -LiteralPath $signed -Destination (Join-Path $distDir 'LocalCode-Remote-debug.apk') -Force
+}
+
+Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
+Write-Host "Android APK: $targetApk"
 Write-Host "Android APK SHA-256: $hash"

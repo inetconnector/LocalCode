@@ -455,6 +455,25 @@ public final class MainActivity extends Activity {
                 if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
             });
         }
+
+        @JavascriptInterface
+        public void unpair() {
+            runOnUiThread(() -> {
+                currentRemoteUrl = "";
+                expectedFingerprint = "";
+                clearSavedConnection();
+                if (webView != null) {
+                    webView.clearCache(true);
+                    webView.setVisibility(View.GONE);
+                }
+                if (discoveryPanel != null) {
+                    discoveryPanel.setVisibility(View.VISIBLE);
+                    setStatus(tr(
+                            "Gerät entkoppelt. Scanne den QR-Code auf dem Desktop-Bildschirm.",
+                            "Device unpaired. Scan the QR code on your desktop screen."));
+                }
+            });
+        }
     }
 
     private void startSpeaking(String text) {
@@ -918,10 +937,20 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private static String cleanRemoteBaseUrl(String target) {
+        if (target == null) return "";
+        int hashIdx = target.indexOf('#');
+        if (hashIdx >= 0) target = target.substring(0, hashIdx);
+        int queryIdx = target.indexOf('?');
+        if (queryIdx >= 0) target = target.substring(0, queryIdx);
+        return target.trim();
+    }
+
     private void persistConnection(String target, String fingerprint) {
-        if (preferences == null || !isAllowedRemoteUrl(target)) return;
+        String clean = cleanRemoteBaseUrl(target);
+        if (preferences == null || !isAllowedRemoteUrl(clean)) return;
         preferences.edit()
-                .putString(PREF_REMOTE_URL, target)
+                .putString(PREF_REMOTE_URL, clean)
                 .putString(PREF_TLS_FINGERPRINT, normalizeFingerprint(fingerprint))
                 .apply();
     }
