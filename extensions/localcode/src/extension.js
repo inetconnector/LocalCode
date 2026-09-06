@@ -264,39 +264,49 @@ class LocalCode {
     await this.context.workspaceState.update('thread:' + this.project, this.thread);
     await this.refresh();
   }
-  async addContext() {
+  async addContext(kind) {
     if (!await this.workspace(true)) {
       this.broadcast({ type: 'error', message: this.t('noWorkspace') });
       return;
     }
     const editor = vscode.window.activeTextEditor || this.lastEditor;
-    const items = [];
-    if (editor && editor.document.uri.scheme === 'file') {
-      try {
-        await contained(this.project, editor.document.uri.fsPath);
-        const rel = path.relative(this.project, editor.document.uri.fsPath);
-        const hasSelection = !editor.selection.isEmpty;
-        items.push({
-          id: 'active',
-          label: `$(file-text) ${this.t('attachActive')}: ${rel}${hasSelection ? ` (L${editor.selection.start.line + 1}-L${editor.selection.end.line + 1})` : ''}`,
-          description: this.t(editor.document.isDirty ? 'unsaved' : 'saved')
-        });
-      } catch {}
+    let pickId = kind;
+    if (!pickId) {
+      if (editor && editor.document.uri.scheme === 'file' && !editor.selection.isEmpty) {
+        pickId = 'active';
+      } else {
+        const items = [];
+        if (editor && editor.document.uri.scheme === 'file') {
+          try {
+            await contained(this.project, editor.document.uri.fsPath);
+            const rel = path.relative(this.project, editor.document.uri.fsPath);
+            const hasSelection = !editor.selection.isEmpty;
+            items.push({
+              id: 'active',
+              label: `$(file-text) ${this.t('attachActive')}: ${rel}${hasSelection ? ` (L${editor.selection.start.line + 1}-L${editor.selection.end.line + 1})` : ''}`,
+              description: this.t(editor.document.isDirty ? 'unsaved' : 'saved')
+            });
+          } catch {}
+        }
+        items.push(
+          { id: 'choose', label: `$(folder) ${this.t('attachFile')}` },
+          { id: 'clipboard', label: `$(clippy) ${this.t('attachClipboard')}` },
+          { id: 'diagnostics', label: `$(warning) ${this.t('attachDiagnostics')}` }
+        );
+        const pick = await vscode.window.showQuickPick(items, { placeHolder: this.t('addContext') });
+        if (!pick) return;
+        pickId = pick.id;
+      }
     }
-    items.push(
-      { id: 'choose', label: `$(folder) ${this.t('attachFile')}` },
-      { id: 'clipboard', label: `$(clippy) ${this.t('attachClipboard')}` },
-      { id: 'diagnostics', label: `$(warning) ${this.t('attachDiagnostics')}` }
-    );
-    const pick = await vscode.window.showQuickPick(items, { placeHolder: this.t('addContext') });
-    if (!pick) return;
-    if (pick.id === 'active' && editor) {
+    if (pickId === 'active') {
+      if (!editor || editor.document.uri.scheme !== 'file') throw new Error('noEditor');
+      await contained(this.project, editor.document.uri.fsPath);
       const selection = editor.selection;
       const text = editor.document.getText(selection.isEmpty ? undefined : selection);
       const label = `${path.relative(this.project, editor.document.uri.fsPath)}:${selection.isEmpty ? 1 : selection.start.line + 1} (${this.t(editor.document.isDirty ? 'unsaved' : 'saved')})`;
       this.addAttachment(label, text);
       this.render();
-    } else if (pick.id === 'choose') {
+    } else if (pickId === 'choose') {
       const uris = await vscode.window.showOpenDialog({
         canSelectFiles: true,
         canSelectFolders: false,
@@ -312,7 +322,7 @@ class LocalCode {
         this.addAttachment(label, content);
         this.render();
       }
-    } else if (pick.id === 'clipboard') {
+    } else if (pickId === 'clipboard') {
       const clipText = await vscode.env.clipboard.readText();
       if (!clipText || !clipText.trim()) {
         vscode.window.showInformationMessage(this.t('clipboardEmpty'));
@@ -320,7 +330,7 @@ class LocalCode {
       }
       this.addAttachment(this.t('clipboardLabel'), clipText);
       this.render();
-    } else if (pick.id === 'diagnostics') {
+    } else if (pickId === 'diagnostics') {
       await this.addDiagnostics();
     }
   }
@@ -465,7 +475,7 @@ class LocalCode {
         case 'newTask': await this.newTask(); break;
         case 'chooseTask': await this.chooseTask(); break;
         case 'chooseWorkspace': if (await this.workspace(true)) await this.connect(); break;
-        case 'addContext': await this.addContext(); break;
+        case 'addContext': await this.addContext(message.kind); break;
         case 'pasteClipboard': await this.pasteClipboard(); break;
         case 'openRight': await vscode.commands.executeCommand('localcode.openRight'); break;
         case 'addDiagnostics': await this.addDiagnostics(); break;
