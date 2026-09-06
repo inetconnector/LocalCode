@@ -3,9 +3,9 @@
 **Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `e511cc778e0e03ff1ba79ad4a18920844be33d8d` (latest published release `v6.9.1`; verified through GitHub API)
-**Last merged functional PR:** #87. Earlier documentation incorrectly named #88; GitHub reports that PR does not exist at the start of this workstream.
-**Active branch:** `codex/localcode-ide-extension`, based on the clean master above. Working-tree release version: `6.9.2`; extension version: `0.1.0`.
+**Current authoritative merged master:** `8f838fc09cbb2973d10c7df8a159c2a53ce65381` (Release `v6.9.2`; verified through GitHub API and merged PR #88)
+**Last merged functional PR:** #88 `feat: VS Code & Antigravity IDE extension, priority agent steering, Copilot dark obsidian UI redesign, and release automation`
+**Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
