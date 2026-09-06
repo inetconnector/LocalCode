@@ -9,13 +9,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 type ProjectSummary struct {
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	Pinned bool   `json:"pinned"`
+	Path      string    `json:"path"`
+	Name      string    `json:"name"`
+	Pinned    bool      `json:"pinned"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 type ProjectDeletePreview struct {
@@ -91,15 +93,23 @@ func listProjects(cfg Config) ([]ProjectSummary, error) {
 		if projectListContains(cfg.HiddenProjects, path) {
 			continue
 		}
+		var modTime time.Time
+		if info, err := entry.Info(); err == nil {
+			modTime = info.ModTime()
+		}
 		projects = append(projects, ProjectSummary{
-			Path:   path,
-			Name:   projectDisplayName(cfg, path),
-			Pinned: projectListContains(cfg.PinnedProjects, path),
+			Path:      path,
+			Name:      projectDisplayName(cfg, path),
+			Pinned:    projectListContains(cfg.PinnedProjects, path),
+			UpdatedAt: modTime,
 		})
 	}
 	sort.SliceStable(projects, func(i, j int) bool {
 		if projects[i].Pinned != projects[j].Pinned {
 			return projects[i].Pinned
+		}
+		if !projects[i].UpdatedAt.Equal(projects[j].UpdatedAt) {
+			return projects[i].UpdatedAt.After(projects[j].UpdatedAt)
 		}
 		left, right := strings.ToLower(projects[i].Name), strings.ToLower(projects[j].Name)
 		if left == right {

@@ -36,9 +36,13 @@ Implemented in this branch:
 - **Project Catalog ModTime Sorting & Composer Unblocking**:
   - `listProjects` in `src/project_catalog.go` records directory `ModTime` (`UpdatedAt`) and sorts pinned projects first, followed by last modified/accessed projects descending.
   - Interactive project selector `<select id="projectSelect">` in the composer dock. Auto-selects the first available project when starting from an empty state to prevent `#sendBtn` disabling or question response blocking.
-- **Autonomous Implementation Planning & Greenfield Execution**:
-  - Validated built-in `AgentRolePlanner` in `src/subagent_model.go` (`subagent_analyze(task, "planner")`), generating structured acyclic dependency task graphs (`suggested_tasks`).
-  - System prompt and avoidance rules ensure that when creating complex applications (e.g. Pacman clone, new language projects), the agent forms multi-phase implementation plans, sets up project layouts autonomously, writes complete components, and runs builds/tests without unnecessary user blocking.
+- **Autonomous Implementation Planning, Interactive Plan Cards & One-Click Approval Workflow**:
+  - Enhanced system prompt in `src/agent.go` to explicitly instruct the agent to generate `implementation_plan.md` before coding complex greenfield projects or architectural refactorings.
+  - Added dedicated **Plan Cards** in both Desktop Web UI (`src/static/index.html`) and VS Code / Antigravity IDE Extension (`extensions/localcode/media/app.js`, `style.css`).
+  - Added clickable markdown file links (`.file-link`, `.file-chip`) that open files (`implementation_plan.md`, source code) directly in the active IDE editor via `localcode.openFile`.
+  - Added one-click **`✓ Plan genehmigen & ausführen (Proceed)`** button to seamlessly approve and execute plans without manual typing.
+  - Complete 100% identical German/English localization across all web and extension dictionaries.
+  - Added unit tests in `src/planning_mode_test.go` and `src/project_sorting_git_test.go`.
 
 Verification checkpoint: initial full Go race suite passed; full post-implementation race suite passed (localcode 240.346s). Full Windows build passed (`scripts\build.ps1`, isolated test pass + randomized shuffle pass + amd64 GUI & diagnostics binaries). Browser UI smoke passed (`python scripts\ui-e2e-test.py`, `FULL UI E2E OK 43 requests`). VSIX packaged successfully. Focused steering tests prove inference interruption, stale-action rejection, FIFO/idempotence/bounds, concurrent terminal admission and task-bound stop. Node checks and 5 behavior tests passed. Real Extension Host suites passed in installed Antigravity IDE and official VS Code using isolated profiles and fixture HTTP service. Playwright UI visual regression captures in DE and EN confirmed exact Copilot-style layout, capsule pills, hero chips and composer.
 

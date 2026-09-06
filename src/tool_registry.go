@@ -309,7 +309,19 @@ func toolCandidatePaths(project string, profile toolProfile, cfg Config) []struc
 		home := os.Getenv("USERPROFILE")
 		switch profile.Name {
 		case "git":
+			add(filepath.Join(local, "Programs", "Git", "cmd", "git.exe"), "Benutzerinstallation")
+			add(filepath.Join(local, "Programs", "Git", "bin", "git.exe"), "Benutzerinstallation")
 			add(filepath.Join(pf, "Git", "cmd", "git.exe"), "Standardpfad")
+			add(filepath.Join(pf, "Git", "bin", "git.exe"), "Standardpfad")
+			add(filepath.Join(pf86, "Git", "cmd", "git.exe"), "ProgramFiles(x86)")
+			add(filepath.Join(pf86, "Git", "bin", "git.exe"), "ProgramFiles(x86)")
+			add(filepath.Join(home, "AppData", "Local", "Programs", "Git", "cmd", "git.exe"), "Benutzerinstallation")
+			add(filepath.Join(home, "AppData", "Local", "Programs", "Git", "bin", "git.exe"), "Benutzerinstallation")
+			add(filepath.Join(local, "LocalCode", "tools", "mingit", "cmd", "git.exe"), "MinGit")
+			add(filepath.Join(appDataDir(), "tools", "mingit", "cmd", "git.exe"), "MinGit")
+			add(filepath.Join(appDataDir(), "tools", "mingit", "bin", "git.exe"), "MinGit")
+			add("C:\\Git\\cmd\\git.exe", "Standardpfad")
+			add("C:\\Git\\bin\\git.exe", "Standardpfad")
 		case "gh":
 			add(filepath.Join(pf, "GitHub CLI", "gh.exe"), "Standardpfad")
 		case "node", "npm", "npx":

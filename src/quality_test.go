@@ -80,6 +80,9 @@ func TestProjectRootCanBeAppliedAndEnumerated(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	now := time.Now()
+	_ = os.Chtimes(filepath.Join(root, "Alpha"), now.Add(time.Minute), now.Add(time.Minute))
+	_ = os.Chtimes(filepath.Join(root, "Beta"), now, now)
 	cfg := defaultConfig()
 	cfg.RootProjectDir = root
 	state := NewAppState(cfg, NewOllamaClient())

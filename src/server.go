@@ -1035,8 +1035,12 @@ func (s *Server) handleGitOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
 	}
-	if !enabled || !gitAvailable(project, cfg) {
-		http.Error(w, "Git ist nicht verfügbar oder deaktiviert", 400)
+	if !enabled {
+		http.Error(w, "Git ist in den Einstellungen deaktiviert", 400)
+		return
+	}
+	if !gitAvailable(project, cfg) {
+		http.Error(w, "Git ist nicht verfügbar oder nicht installiert", 400)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
@@ -1045,13 +1049,19 @@ func (s *Server) handleGitOverview(w http.ResponseWriter, r *http.Request) {
 	diff, diffErr := runGit(ctx, project, []string{"diff", "--stat"}, cfg)
 	logText, logErr := runGit(ctx, project, []string{"log", "-5", "--pretty=format:%h  %s  (%cr)"}, cfg)
 	branch, _ := runGit(ctx, project, []string{"branch", "--show-current"}, cfg)
+	isRepo := statusErr == nil
+	statusMsg := strings.TrimSpace(status)
+	if !isRepo && statusMsg == "" {
+		statusMsg = "Kein Git-Repository in diesem Projekt initialisiert."
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{
-		"branch": strings.TrimSpace(branch),
-		"status": strings.TrimSpace(status),
-		"diff":   strings.TrimSpace(diff),
-		"log":    strings.TrimSpace(logText),
-		"errors": []string{errorText(statusErr), errorText(diffErr), errorText(logErr)},
+		"is_repo": isRepo,
+		"branch":  strings.TrimSpace(branch),
+		"status":  statusMsg,
+		"diff":    strings.TrimSpace(diff),
+		"log":     strings.TrimSpace(logText),
+		"errors":  []string{errorText(statusErr), errorText(diffErr), errorText(logErr)},
 	})
 }
 
