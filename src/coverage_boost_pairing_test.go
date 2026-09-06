@@ -199,6 +199,33 @@ func TestCoverageBoostAppStateAndToolRegistry(t *testing.T) {
 	if !ok || head != "git" || rest != "commit -m \"test\"" {
 		t.Fatalf("unexpected split head=%s rest=%s ok=%v", head, rest, ok)
 	}
+
+	// ADB parsing
+	count := adbDeviceCount("List of devices attached\nemulator-5554\tdevice\n192.168.1.50:5555\tunauthorized\n")
+	if count != 2 {
+		t.Fatalf("expected 2 devices, got %d", count)
+	}
+	countEmpty := adbDeviceCount("List of devices attached\n\n")
+	if countEmpty != 0 {
+		t.Fatalf("expected 0 devices, got %d", countEmpty)
+	}
+
+	diag := adbDiagnostic("device not found", "", nil)
+	if diag == "" {
+		t.Fatal("expected non-empty diagnostic")
+	}
+
+	// Action signatures
+	sig := actionSignature(AgentAction{Action: "read_file", Path: "main.go"})
+	if !strings.Contains(sig, "read_file") || !strings.Contains(sig, "main.go") {
+		t.Fatalf("unexpected signature: %s", sig)
+	}
+
+	// Rewrite known tool command
+	cmd, _, _ := rewriteKnownToolCommand(dir, "git status", Config{AutoDiscoverTools: false}, "cmd")
+	if cmd != "git status" {
+		t.Fatalf("expected untouched command: %s", cmd)
+	}
 }
 
 func TestCoverageBoostFileTools(t *testing.T) {
@@ -226,5 +253,83 @@ func TestCoverageBoostFileTools(t *testing.T) {
 	diff := simpleDiff("old content\nunchanged\n", "new content\nunchanged\n")
 	if !strings.Contains(diff, "-old content") || !strings.Contains(diff, "+new content") {
 		t.Fatalf("unexpected diff: %s", diff)
+	}
+
+	if err := backupFile(dir, "hello.txt"); err != nil {
+		t.Fatalf("backupFile failed: %v", err)
+	}
+
+	// Truncate text
+	short := truncateText("short text", 100)
+	if short != "short text" {
+		t.Fatalf("unexpected short text: %s", short)
+	}
+	long := truncateText("this is a very long text", 10)
+	if !strings.Contains(long, "truncated") {
+		t.Fatalf("unexpected truncated text: %s", long)
+	}
+
+	// Ensure within root
+	validPath, err := ensureWithinRoot(dir, "hello.txt")
+	if err != nil || !strings.HasPrefix(validPath, dir) {
+		t.Fatalf("ensureWithinRoot failed: %v", err)
+	}
+	if _, err := ensureWithinRoot(dir, "../outside.txt"); err == nil {
+		t.Fatal("expected escape path to fail")
+	}
+}
+
+func TestCoverageBoostBrowserAutomation(t *testing.T) {
+	ctx := context.Background()
+	cfg := Config{}
+	project := t.TempDir()
+
+	if _, err := BrowserClick(ctx, cfg, project, ""); err == nil {
+		t.Fatal("expected error on empty selector for browser_click")
+	}
+	resClick, err := BrowserClick(ctx, cfg, project, "#submit-btn")
+	if err != nil || !strings.Contains(resClick, "BROWSER CLICKED") {
+		t.Fatalf("unexpected browser_click result: %s, err: %v", resClick, err)
+	}
+
+	if _, err := BrowserType(ctx, cfg, project, "", "hello"); err == nil {
+		t.Fatal("expected error on empty selector for browser_type")
+	}
+	resType, err := BrowserType(ctx, cfg, project, "#input-box", "hello text")
+	if err != nil || !strings.Contains(resType, "BROWSER TYPED") {
+		t.Fatalf("unexpected browser_type result: %s, err: %v", resType, err)
+	}
+
+	resInspect, err := BrowserInspect(ctx, cfg, project, "div.main")
+	if err != nil || !strings.Contains(resInspect, "BROWSER INSPECT") {
+		t.Fatalf("unexpected browser_inspect result: %s, err: %v", resInspect, err)
+	}
+
+	if _, err := BrowserExtract(ctx, cfg, project, "", "#content"); err == nil {
+		t.Fatal("expected error on empty URL for browser_extract")
+	}
+}
+
+func TestCoverageBoostDesktopAutomation(t *testing.T) {
+	ctx := context.Background()
+	cfg := Config{}
+
+	// Blocked window guards
+	if _, err := DesktopInspect(ctx, cfg, "Task Manager", ""); err == nil {
+		t.Fatal("expected error for blocked window Task Manager")
+	}
+	if _, err := DesktopClick(ctx, cfg, "Windows Security", "Button"); err == nil {
+		t.Fatal("expected error for blocked window Windows Security")
+	}
+	if _, err := DesktopType(ctx, cfg, "UAC Prompt", "Edit", "secret"); err == nil {
+		t.Fatal("expected error for blocked window UAC Prompt")
+	}
+
+	// Empty control names
+	if _, err := DesktopClick(ctx, cfg, "Notepad", ""); err == nil {
+		t.Fatal("expected error on empty control name for desktop_click")
+	}
+	if _, err := DesktopType(ctx, cfg, "Notepad", "", "text"); err == nil {
+		t.Fatal("expected error on empty control name for desktop_type")
 	}
 }
