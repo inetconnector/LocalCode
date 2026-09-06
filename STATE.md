@@ -3,7 +3,7 @@
 **Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `c790c0a5a676b7e07fcbc4bce18db9e5aa06a382` (Release `v6.9.2`; verified through GitHub API and merged PR #92)
+**Current authoritative merged master:** `c91b72382cfc02b3df2a3443a6d63e9f45f958f2` (Release `v6.9.2`; verified through GitHub API and merged PR #93)
 **Last merged functional PR:** #92 `feat(orchestration): add planning mode, interactive plan cards, git path discovery, and modtime project sorting`
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
