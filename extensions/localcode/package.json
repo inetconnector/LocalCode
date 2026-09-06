@@ -25,8 +25,13 @@
     "localcode",
     "ollama",
     "local",
+    "codex",
+    "AI",
+    "Copilot",
+    "Claude",
     "coding agent",
-    "antigravity"
+    "Gemini",
+    "localcode"
   ],
   "main": "./src/extension.js",
   "extensionKind": [
@@ -84,7 +89,7 @@
       }
     ],
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "localcode",
           "title": "LocalCode",

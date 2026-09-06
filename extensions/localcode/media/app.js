@@ -2,7 +2,9 @@
 (() => {
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
-  let state = {}, strings = {}, previousEvents = '', previousModels = '', pendingID = '', sending = false;
+  const initial = (typeof window !== 'undefined' && window.__INITIAL_DATA__) || {};
+  let state = { strings: initial.strings || {}, language: initial.language || 'de' };
+  let strings = state.strings, previousEvents = '', previousModels = '', pendingID = '', sending = false;
   const saved = vscode.getState() || {};
   $('prompt').value = saved.prompt || '';
   const post = message => vscode.postMessage(message);
@@ -110,5 +112,6 @@
     }
     if (data.type === 'error') { $('error').textContent = data.message; $('error').hidden = false; sending = false; render(); }
   });
+  render();
   post({ type: 'ready' });
 })();

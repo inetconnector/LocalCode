@@ -29,6 +29,7 @@
     <div class="composer-tools"><div><button data-action="addContext" data-title="addContext">＋</button><button data-action="pasteClipboard" data-title="pasteClipboard">📋</button><button data-action="addDiagnostics" data-title="addDiagnostics">⚑</button><select id="model" aria-label="Model"></select></div><button id="send" class="primary" data-title="send">↑</button><button id="stop" data-action="stop" data-title="stop" hidden>■</button></div>
   </section>
   <footer><span id="engine"></span><button data-action="review" data-text="review"></button></footer>
+  <script nonce="{{nonce}}">window.__INITIAL_DATA__ = { strings: {{initialStrings}}, language: {{initialLanguage}} };</script>
   <script nonce="{{nonce}}" src="{{script}}"></script>
 </body>
 </html>

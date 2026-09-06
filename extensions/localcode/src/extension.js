@@ -23,10 +23,13 @@ class LocalCode {
     );
     const commands = {
       open: () => vscode.commands.executeCommand('localcode.chat.focus'),
-      openRight: async () => { try { await vscode.commands.executeCommand('workbench.action.moveView', { viewId: 'localcode.chat', destination: 'auxiliaryBar' }); } catch {} await vscode.commands.executeCommand('localcode.chat.focus'); },
+      openRight: () => vscode.commands.executeCommand('localcode.chat.focus'),
       openEditor: () => this.openEditor(),
       newTask: () => this.newTask(),
-      addSelection: async () => { await this.addContext(); await vscode.commands.executeCommand('localcode.chat.focus'); },
+      addSelection: async () => {
+        await this.addContext();
+        await vscode.commands.executeCommand('localcode.chat.focus');
+      },
       start: () => this.start(),
       settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode')
     };
@@ -34,8 +37,13 @@ class LocalCode {
   }
   get language() {
     const choice = vscode.workspace.getConfiguration('localcode').get('language', 'auto');
-    const value = choice === 'auto' ? (this.status.system_language || vscode.env.language) : choice;
-    return String(value).toLowerCase().startsWith('de') ? 'de' : 'en';
+    if (choice && choice !== 'auto') return String(choice).toLowerCase().startsWith('de') ? 'de' : 'en';
+    const winLocale = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : '';
+    const candidates = [this.status.system_language, winLocale, vscode.env.language, process.env.LANG, process.env.LC_ALL];
+    for (const cand of candidates) {
+      if (cand && String(cand).toLowerCase().startsWith('de')) return 'de';
+    }
+    return 'en';
   }
   t(key) { return catalogs[this.language][key] || key; }
   async run(fn) { try { return await fn(); } catch (err) { this.error(err); } }
@@ -48,13 +56,24 @@ class LocalCode {
     if (!this.views.size) vscode.window.showErrorMessage(this.t('failure') + ': ' + text);
     return text;
   }
-  assertTrust() {
+  assertTrust(requireFolder = false) {
     if (!vscode.workspace.isTrusted) throw new Error('trust');
-    if (vscode.env.remoteName || !vscode.workspace.workspaceFolders?.some(f => f.uri.scheme === 'file')) throw new Error('noWorkspace');
+    if (vscode.env.remoteName) throw new Error('noWorkspace');
+    if (requireFolder && !vscode.workspace.workspaceFolders?.some(f => f.uri.scheme === 'file')) throw new Error('noWorkspace');
   }
   async workspace(choose = false) {
     this.assertTrust();
-    const folders = vscode.workspace.workspaceFolders.filter(f => f.uri.scheme === 'file');
+    const folders = (vscode.workspace.workspaceFolders || []).filter(f => f.uri.scheme === 'file');
+    if (!folders.length) {
+      if (choose) {
+        const picked = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: this.t('chooseWorkspace') });
+        if (picked && picked[0]) {
+          await vscode.commands.executeCommand('vscode.openFolder', picked[0]);
+          return false;
+        }
+      }
+      return false;
+    }
     let folder = folders.find(f => samePath(f.uri.fsPath, this.project));
     if (choose || !folder) {
       folder = folders.length === 1 ? folders[0] : (await vscode.window.showQuickPick(folders.map(f => ({ label: f.name, description: f.uri.fsPath, folder: f })), { placeHolder: this.t('chooseWorkspace') }))?.folder;
@@ -83,28 +102,97 @@ class LocalCode {
     const nonce = crypto.randomBytes(24).toString('hex');
     const asset = name => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', name)).toString();
     let html = await fs.readFile(path.join(this.context.extensionPath, 'media', 'index.html'), 'utf8');
-    html = html.replaceAll('{{csp}}', webview.cspSource).replaceAll('{{nonce}}', nonce).replaceAll('{{style}}', asset('style.css')).replaceAll('{{script}}', asset('app.js'));
+    html = html
+      .replaceAll('{{csp}}', webview.cspSource)
+      .replaceAll('{{nonce}}', nonce)
+      .replaceAll('{{style}}', asset('style.css'))
+      .replaceAll('{{script}}', asset('app.js'))
+      .replaceAll('{{initialStrings}}', JSON.stringify(catalogs[this.language]))
+      .replaceAll('{{initialLanguage}}', JSON.stringify(this.language));
     webview.html = html;
   }
   broadcast(message) { for (const view of this.views) view.postMessage(message); }
   render() {
     this.broadcast({ type: 'state', language: this.language, strings: catalogs[this.language], connected: this.connected, project: this.project, thread: this.thread, events: this.events.slice(-500), limited: this.events.length > 500, pending: this.pending, running: !!this.snapshot?.running, models: this.status.models || [], model: this.snapshot?.model || this.status.selected_model || '', engine: this.status.editing_engine || '', attachments: this.attachments.map(a => a.label), busy: this.busy });
   }
-  async connect() {
+  async ensureBackendRunning() {
+    let executable = vscode.workspace.getConfiguration('localcode').get('executablePath', '');
+    const candidates = [];
+    if (executable) candidates.push(executable);
+    if (process.platform === 'win32') {
+      if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'LocalCode', 'LocalCode.exe'));
+      if (process.env.ProgramFiles) candidates.push(path.join(process.env.ProgramFiles, 'LocalCode', 'LocalCode.exe'));
+      if (process.env['ProgramFiles(x86)']) candidates.push(path.join(process.env['ProgramFiles(x86)'], 'LocalCode', 'LocalCode.exe'));
+    }
+    candidates.push(
+      path.resolve(__dirname, '..', '..', 'dist', 'LocalCode.exe'),
+      path.resolve(__dirname, '..', '..', 'dist', 'bin', 'LocalCode.exe'),
+      path.resolve(__dirname, '..', '..', 'LocalCode.exe')
+    );
+    let found = '';
+    for (const cand of candidates) {
+      if (!cand) continue;
+      try {
+        const st = await fs.stat(cand);
+        if (st.isFile()) { found = cand; break; }
+      } catch {}
+    }
+    if (!found) return false;
+    try {
+      const child = spawn(found, [], {
+        cwd: path.dirname(found),
+        shell: false,
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, LOCALCODE_FAST_START: '1' }
+      });
+      child.unref();
+      this.output.appendLine(`Auto-started LocalCode backend from ${found}`);
+      return true;
+    } catch (e) {
+      this.output.appendLine(`Failed to auto-start LocalCode: ${e.message}`);
+      return false;
+    }
+  }
+  async connect(allowAutoStart = true) {
     this.assertTrust();
     const generation = ++this.generation;
     clearTimeout(this.pollTimer); clearTimeout(this.retryTimer); this.endStream?.(); this.client?.dispose(); this.connected = false;
     this.client = new Client(vscode.workspace.getConfiguration('localcode').get('serverUrl'), text => this.output.appendLine(text));
     this.render();
     const client = this.client;
-    const ping = await client.request('/api/ping');
+    let ping;
+    try {
+      ping = await client.request('/api/ping');
+    } catch (err) {
+      if (allowAutoStart && (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' || err.message === 'fetch failed')) {
+        this.output.appendLine('LocalCode backend is not running. Auto-starting backend...');
+        const started = await this.ensureBackendRunning();
+        if (started) {
+          for (let i = 0; i < 25; i++) {
+            await new Promise(r => setTimeout(r, 400));
+            if (generation !== this.generation) return;
+            try {
+              ping = await client.request('/api/ping');
+              if (ping && ping.app === 'LocalCode') break;
+            } catch {}
+          }
+        }
+      }
+      if (!ping) throw err;
+    }
     if (ping.app !== 'LocalCode') throw new Error('invalidResponse');
     this.scopedStop = ping.capabilities?.includes('stop-task-v1');
     this.canSteer = ping.capabilities?.includes('steering-v1');
     const status = await client.request('/api/status');
     if (generation !== this.generation) return;
     this.status = status;
-    if (!await this.workspace()) return;
+    if (!await this.workspace()) {
+      this.connected = true;
+      this.render();
+      return;
+    }
     const threads = await client.request('/api/threads');
     const candidates = (threads.threads || []).filter(t => !t.archived && samePath(t.project, this.project));
     const saved = this.context.workspaceState.get('thread:' + this.project);
@@ -149,7 +237,10 @@ class LocalCode {
   }
   async newTask() {
     if (!this.connected) await this.connect();
-    if (!await this.workspace()) return;
+    if (!await this.workspace(true)) {
+      this.broadcast({ type: 'error', message: this.t('noWorkspace') });
+      return;
+    }
     const global = await this.client.request('/api/snapshot');
     if (global.running) throw new Error('busy');
     const result = await this.client.request('/api/new-chat', { project: this.project });
@@ -160,6 +251,10 @@ class LocalCode {
   }
   async chooseTask() {
     if (!this.connected) await this.connect();
+    if (!await this.workspace(true)) {
+      this.broadcast({ type: 'error', message: this.t('noWorkspace') });
+      return;
+    }
     const result = await this.client.request('/api/threads');
     const tasks = (result.threads || []).filter(t => !t.archived && samePath(t.project, this.project));
     if (!tasks.length) { vscode.window.showInformationMessage(this.t('noTasks')); return; }
@@ -170,7 +265,10 @@ class LocalCode {
     await this.refresh();
   }
   async addContext() {
-    if (!await this.workspace()) return;
+    if (!await this.workspace(true)) {
+      this.broadcast({ type: 'error', message: this.t('noWorkspace') });
+      return;
+    }
     const editor = vscode.window.activeTextEditor || this.lastEditor;
     const items = [];
     if (editor && editor.document.uri.scheme === 'file') {
@@ -239,7 +337,10 @@ class LocalCode {
     this.attachments.push({ label, text });
   }
   async addDiagnostics() {
-    if (!await this.workspace()) return;
+    if (!await this.workspace(true)) {
+      this.broadcast({ type: 'error', message: this.t('noWorkspace') });
+      return;
+    }
     const lines = [];
     for (const [uri, diagnostics] of vscode.languages.getDiagnostics()) {
       if (uri.scheme !== 'file') continue;
@@ -252,7 +353,10 @@ class LocalCode {
   }
   async send(message) {
     if (!this.connected) await this.connect();
-    if (!await this.workspace()) return;
+    if (!await this.workspace(true)) {
+      this.broadcast({ type: 'error', message: this.t('noWorkspace') });
+      return;
+    }
     const current = await this.client.request('/api/snapshot');
     if (current.running) {
       if (current.current_thread !== this.thread || !samePath(current.project, this.project)) throw new Error('otherRun');
