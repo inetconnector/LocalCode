@@ -3,8 +3,8 @@
 **Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `8f838fc09cbb2973d10c7df8a159c2a53ce65381` (Release `v6.9.2`; verified through GitHub API and merged PR #88)
-**Last merged functional PR:** #88 `feat: VS Code & Antigravity IDE extension, priority agent steering, Copilot dark obsidian UI redesign, and release automation`
+**Current authoritative merged master:** `e3ae65f4c543924c9e823840d940d170e17ff242` (Release `v6.9.2`; verified through GitHub API and merged PR #91)
+**Last merged functional PR:** #91 `feat(extension): add right side panel positioning, interactive context menu on +, and clipboard paste button`
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
@@ -12,11 +12,11 @@ This file is the self-contained restart point. Only merged `master` is authorita
 
 ## Active IDE release workstream — 2026-09-06
 
-User request: build and publish a LocalCode extension for VS Code / Antigravity IDE, support priority prompts during active work, and complete remaining TODO work. Repository Markdown documentation was inspected; embedded demo prompts are examples, not new user instructions. No pre-existing dirty files existed. `aider_edit` is unavailable as an exposed tool; the allowed direct editing fallback was explicitly selected.
+User request: build and publish a LocalCode extension for VS Code / Antigravity IDE positioned in the right Secondary Side Bar, support priority prompts during active work, auto-start backend, provide interactive context attachment and clipboard paste, ensure instant German localization, and complete remaining TODO work. Repository Markdown documentation was inspected; embedded demo prompts are examples, not new user instructions. No pre-existing dirty files existed. `aider_edit` is unavailable as an exposed tool; the allowed direct editing fallback was explicitly selected.
 
 Implemented in this branch:
 
-- `extensions/localcode/` is the independent 0.1.0 VSIX package, publisher ID `inetconnector`, VS Code API >=1.85, UI extension host. Sidebar and editor webviews, backend task history, explicit workspace/task-bound prompts, local model selector, HTTP/SSE streaming with snapshot reconciliation, bounded opt-in editor/selection/diagnostic context, one-time approvals, canonical safe file opening, native HEAD/current Git diff review, explicit Windows backend launcher, DE/EN catalogs and manual/automatic language selection.
+- `extensions/localcode/` is the independent 0.1.0 VSIX package, publisher ID `inetconnector`, VS Code API >=1.85, UI extension host. Registered exclusively in `viewsContainers.secondarySidebar` so that LocalCode docks directly in the right Secondary Side Bar (Auxiliary Bar) beside Google Antigravity Agent. Includes preloaded bilingual JSON translations (`{{initialStrings}}` & `{{initialLanguage}}`) eliminating raw key flashes, Windows Intl locale detection (DE default on German Windows), automatic headless backend auto-start (`LocalCode.exe` with `LOCALCODE_FAST_START=1`), interactive `+` attachment menu, direct clipboard paste button, bounded opt-in editor/selection/diagnostic context, one-time approvals, canonical safe file opening, native HEAD/current Git diff review, and explicit Windows backend launcher.
 - Webview CSP denies network and arbitrary scripts; DOM rendering never interpolates model HTML. Bridge actions are allowlisted. Loopback HTTP rejects credentials/redirects/arbitrary hosts and has byte/time limits. Executable/URL settings have application scope; no workspace-injected launch path. Only trusted local workspaces; Remote/virtual workspaces disabled. Unsaved buffers are protected by an explicit save decision before a new run.
 - `src/ide_transport.go`: Desktop-only `/api/stop-task` atomically compares `thread_id` and `run_id` under the AppState mutex before cancellation. Old global `/api/stop` remains backward compatible. `/api/ping` advertises `stop-task-v1` and `steering-v1` so older backends receive honest update errors.
 - `src/agent_steering.go`, `src/agent.go`, `src/types.go`: ordinary agent-loop steering mailbox. `/api/steer` strictly validates exact active task/run, message ID and bounded text, deduplicates retries, and cancels stale inference. The loop drains before model/action boundaries. New user instructions resolve conflicts without changing tool permissions or original unchanged scope. Pending approvals are rejected on new steering; already-started tools complete safely. Terminal action admission and queue admission serialize; late input is rejected instead of silently lost. Existing step/time budgets stay bounded.
@@ -29,6 +29,20 @@ Implemented in this branch:
   - Interactive pill suggestion chips (`Architektur analysieren`, `Tests ausführen`, `Git-Review`, `Release bauen`, `Pacman Arcade`) with prompt population and focus on click;
   - Floating capsule composer dock (`border-radius: 26px`, circular attach `+`, circular send `↑`, responsive layout);
   - 100% key-identical bilingual German/English catalog parity across 556 keys.
+- **Git Discovery & Graceful Non-Repo Handling**:
+  - Expanded `toolCandidatePaths` in `src/tool_registry.go` to find per-user Git installations (`%LOCALAPPDATA%\Programs\Git`, `%USERPROFILE%\AppData\Local\Programs\Git`, `%ProgramFiles(x86)%\Git`, and managed MinGit).
+  - Updated `handleGitOverview` in `src/server.go` to distinguish between disabled settings and missing binaries, returning `{is_repo: false, ...}` without raw 400 errors for non-git project folders.
+  - Dynamically hide `#gitBtn` in sidebar when `c.git_enabled === false`.
+- **Project Catalog ModTime Sorting & Composer Unblocking**:
+  - `listProjects` in `src/project_catalog.go` records directory `ModTime` (`UpdatedAt`) and sorts pinned projects first, followed by last modified/accessed projects descending.
+  - Interactive project selector `<select id="projectSelect">` in the composer dock. Auto-selects the first available project when starting from an empty state to prevent `#sendBtn` disabling or question response blocking.
+- **Autonomous Implementation Planning, Interactive Plan Cards & One-Click Approval Workflow**:
+  - Enhanced system prompt in `src/agent.go` to explicitly instruct the agent to generate `implementation_plan.md` before coding complex greenfield projects or architectural refactorings.
+  - Added dedicated **Plan Cards** in both Desktop Web UI (`src/static/index.html`) and VS Code / Antigravity IDE Extension (`extensions/localcode/media/app.js`, `style.css`).
+  - Added clickable markdown file links (`.file-link`, `.file-chip`) that open files (`implementation_plan.md`, source code) directly in the active IDE editor via `localcode.openFile`.
+  - Added one-click **`✓ Plan genehmigen & ausführen (Proceed)`** button to seamlessly approve and execute plans without manual typing.
+  - Complete 100% identical German/English localization across all web and extension dictionaries.
+  - Added unit tests in `src/planning_mode_test.go` and `src/project_sorting_git_test.go`.
 
 Verification checkpoint: initial full Go race suite passed; full post-implementation race suite passed (localcode 240.346s). Full Windows build passed (`scripts\build.ps1`, isolated test pass + randomized shuffle pass + amd64 GUI & diagnostics binaries). Browser UI smoke passed (`python scripts\ui-e2e-test.py`, `FULL UI E2E OK 43 requests`). VSIX packaged successfully. Focused steering tests prove inference interruption, stale-action rejection, FIFO/idempotence/bounds, concurrent terminal admission and task-bound stop. Node checks and 5 behavior tests passed. Real Extension Host suites passed in installed Antigravity IDE and official VS Code using isolated profiles and fixture HTTP service. Playwright UI visual regression captures in DE and EN confirmed exact Copilot-style layout, capsule pills, hero chips and composer.
 

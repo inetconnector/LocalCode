@@ -12,10 +12,31 @@
   function persist() { vscode.setState({ prompt: $('prompt').value, model: $('model').value }); }
   function button(label, action) { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', action); return b; }
   function inline(node, value) {
-    for (const part of value.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g)) {
+    for (const part of value.split(/(\[[^\]]+\]\([^)]+\)|`[^`\n]+`|\*\*[^*\n]+\*\*)/g)) {
+      if (!part) continue;
+      if (part.startsWith('[') && part.endsWith(')')) {
+        const m = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (m) {
+          const a = document.createElement('a'); a.textContent = m[1]; a.className = 'file-link';
+          const target = m[2].replace(/^file:\/\/\/?/, '');
+          a.href = '#';
+          a.addEventListener('click', e => { e.preventDefault(); post({ type: 'openFile', path: target }); });
+          node.append(a);
+          continue;
+        }
+      }
       const tag = part.startsWith('`') && part.endsWith('`') ? 'code' : part.startsWith('**') && part.endsWith('**') ? 'strong' : null;
       if (!tag) node.append(document.createTextNode(part));
-      else { const el = document.createElement(tag); el.textContent = tag === 'code' ? part.slice(1, -1) : part.slice(2, -2); node.append(el); }
+      else {
+        const codeContent = tag === 'code' ? part.slice(1, -1) : part.slice(2, -2);
+        if (tag === 'code' && (codeContent.endsWith('.md') || codeContent.endsWith('.go') || codeContent.endsWith('.js') || codeContent.endsWith('.cs') || codeContent.endsWith('.html') || codeContent.endsWith('.json') || codeContent.includes('/') || codeContent.includes('\\'))) {
+          const btn = document.createElement('button'); btn.className = 'file-chip'; btn.textContent = '📄 ' + codeContent;
+          btn.addEventListener('click', () => post({ type: 'openFile', path: codeContent }));
+          node.append(btn);
+        } else {
+          const el = document.createElement(tag); el.textContent = codeContent; node.append(el);
+        }
+      }
     }
   }
   function markdown(node, value) {
@@ -35,6 +56,10 @@
       node.append(span);
     }
   }
+  function sendProceed() {
+    if (sending || state.busy) return;
+    sending = true; render(); post({ type: 'send', message: text('proceedMessage'), model: $('model').value });
+  }
   function renderEvents() {
     const signature = JSON.stringify([state.events, state.language]);
     if (signature === previousEvents) return;
@@ -44,9 +69,11 @@
     for (const event of state.events || []) {
       if (event.type === 'approval_required') continue;
       const item = document.createElement('article'); item.className = 'event';
+      const isPlan = (event.message || '').includes('implementation_plan.md') || event.type === 'question';
+      if (isPlan) item.classList.add('plan-event');
       if (['user', 'assistant', 'tool_result', 'tool_start', 'status', 'warning', 'error'].includes(event.type)) item.classList.add(event.type);
       const head = document.createElement('div'); head.className = 'event-head';
-      const label = document.createElement('span'); label.textContent = event.type === 'user' ? text('user') : event.action || text('assistant');
+      const label = document.createElement('span'); label.textContent = event.type === 'user' ? text('user') : isPlan ? ('📋 ' + text('planCard')) : (event.action || text('assistant'));
       head.append(label, button(text('copy'), () => navigator.clipboard.writeText([event.message, event.detail].filter(Boolean).join('\n')))); item.append(head);
       const body = document.createElement('div'); body.className = 'event-body'; markdown(body, event.message); item.append(body);
       if (event.detail || event.preview || event.command) {
@@ -55,6 +82,13 @@
         details.append(summary, pre); item.append(details);
       }
       if (event.path) item.append(button(text('openFile'), () => post({ type: 'openFile', path: event.path })));
+      if (isPlan) {
+        const bar = document.createElement('div'); bar.className = 'plan-actions';
+        const proceedBtn = button('✓ ' + text('proceedPlan'), sendProceed); proceedBtn.className = 'plan-proceed-btn';
+        const openPlanBtn = button('📋 ' + text('openPlan'), () => post({ type: 'openFile', path: 'implementation_plan.md' })); openPlanBtn.className = 'plan-open-btn';
+        bar.append(proceedBtn, openPlanBtn);
+        item.append(bar);
+      }
       fragment.append(item);
     }
     $('events').replaceChildren(fragment);

@@ -59,7 +59,15 @@
       'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.':'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.',
       'Pacman Arcade':'Pacman Arcade',
       'Starte das Pacman Arcade Demo und prüfe die Steuerung.':'Starte das Pacman Arcade Demo und prüfe die Steuerung.',
-      '+ Nachricht an LocalCode senden...':'+ Nachricht an LocalCode senden...'
+      '+ Nachricht an LocalCode senden...':'+ Nachricht an LocalCode senden...',
+      'Kein Git-Repository':'Kein Git-Repository',
+      'Keine Git-Informationen verfügbar.':'Keine Git-Informationen verfügbar.',
+      'Projekt auswählen':'Projekt auswählen',
+      'Kein Git-Repository in diesem Projekt initialisiert.':'Kein Git-Repository in diesem Projekt initialisiert.',
+      'Plan genehmigen & ausführen':'Plan genehmigen & ausführen',
+      'Plan im Editor öffnen':'Plan im Editor öffnen',
+      'Implementierungsplan':'Implementierungsplan',
+      'Genehmigt, bitte gemäß Plan ausführen.':'Genehmigt, bitte gemäß Plan ausführen.'
     });
     Object.assign(i18n.dictionaries.en, {
       'Neues Projekt':'New project',
@@ -116,7 +124,15 @@
       'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.':'Check release readiness and build the release package.',
       'Pacman Arcade':'Pacman Arcade',
       'Starte das Pacman Arcade Demo und prüfe die Steuerung.':'Launch the Pacman Arcade demo and test controls.',
-      '+ Nachricht an LocalCode senden...':'+ Message LocalCode...'
+      '+ Nachricht an LocalCode senden...':'+ Message LocalCode...',
+      'Kein Git-Repository':'No Git repository',
+      'Keine Git-Informationen verfügbar.':'No Git information available.',
+      'Projekt auswählen':'Select project',
+      'Kein Git-Repository in diesem Projekt initialisiert.':'No Git repository initialized in this project.',
+      'Plan genehmigen & ausführen':'Approve & execute plan',
+      'Plan im Editor öffnen':'Open plan in editor',
+      'Implementierungsplan':'Implementation Plan',
+      'Genehmigt, bitte gemäß Plan ausführen.':'Approved, please proceed according to the plan.'
     });
   }
 
