@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{csp}}; script-src 'nonce-{{nonce}}'; img-src {{csp}}; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="{{style}}">
+  <title>LocalCode</title>
+</head>
+<body>
+  <header>
+    <strong class="brand"><span class="logo" aria-hidden="true">&lt;/&gt;</span> LocalCode</strong>
+    <nav><button data-action="newTask" data-title="newTask" aria-label="New task">＋</button><button data-action="chooseTask" data-title="chooseTask" aria-label="Task history">↶</button><details id="menu"><summary data-title="more">•••</summary><div class="menu">
+      <button data-action="refresh" data-text="connect"></button><button data-action="start" data-text="start"></button><button data-action="desktop" data-text="desktop"></button><button data-action="settings" data-text="settings"></button>
+    </div></details></nav>
+  </header>
+  <div class="connection"><span id="connection" role="status"></span><button id="workspace" data-action="chooseWorkspace"></button></div>
+  <div id="error" role="alert" hidden></div>
+  <div id="notice" role="status" hidden></div>
+  <main id="history" tabindex="0" aria-label="LocalCode">
+    <section id="welcome"><div class="hero-logo" aria-hidden="true">&lt;/&gt;</div><h1 data-text="welcome"></h1><p data-text="intro"></p><div class="starters"><button data-prompt="analyze" data-text="analyze"></button><button data-prompt="tests" data-text="tests"></button><button data-prompt="reviewPrompt" data-text="reviewPrompt"></button><button data-prompt="build" data-text="build"></button></div></section>
+    <div id="events" role="log" aria-live="polite" aria-relevant="additions text"></div>
+    <p id="historyLimit" data-text="historyLimit" hidden></p>
+  </main>
+  <section id="approval" hidden aria-live="polite"><strong data-text="approval"></strong><pre id="approvalText"></pre><div class="approval-actions"><button id="reject" data-text="reject"></button><button id="approve" class="primary" data-text="approve"></button></div></section>
+  <section class="composer">
+    <div id="context" hidden><strong data-text="context"></strong><ul id="contextList"></ul><button data-action="clearContext" data-text="clearContext"></button></div>
+    <label class="sr-only" for="prompt" data-text="placeholder"></label><textarea id="prompt" rows="3" maxlength="100000"></textarea>
+    <div class="composer-tools"><div><button data-action="addContext" data-title="addContext">＋</button><button data-action="addDiagnostics" data-title="addDiagnostics">⚑</button><select id="model" aria-label="Model"></select></div><button id="send" class="primary" data-title="send">↑</button><button id="stop" data-action="stop" data-title="stop" hidden>■</button></div>
+  </section>
+  <footer><span id="engine"></span><button data-action="review" data-text="review"></button></footer>
+  <script nonce="{{nonce}}" src="{{script}}"></script>
+</body>
+</html>

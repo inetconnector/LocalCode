@@ -288,6 +288,7 @@ type AppState struct {
 	RunStartedAt   time.Time
 	LastProgressAt time.Time
 	Recovery       *RunRecoveryState
+	Steering       agentSteeringState
 
 	Events               []UIEvent
 	Pending              *PendingAction

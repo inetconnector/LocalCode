@@ -1,5 +1,13 @@
 # Architecture / Architektur
 
+## IDE integration and priority input / IDE-Integration und vorrangige Hinweise
+
+`VS Code / Antigravity webview -> validated message bridge -> Node loopback HTTP/SSE -> existing LocalCode Desktop API -> AppState / governed tools`.
+
+`extensions/localcode/` contains a separate extension package (0.1.0), with no runtime npm dependencies. The extension shares LocalCode's backend tasks and one active run; it never grants independent shell/network/mutation authority. Explicit local workspace context, DE/EN catalogs, native Git diffs and approval controls live in the extension. `/api/ping` advertises `stop-task-v1` and `steering-v1`. `/api/stop-task` serializes task/run preconditions and cancellation under the AppState mutex. `/api/steer` queues bounded idempotent user input into `agentSteeringState`. The ordinary loop drains it before inference and action admission, interrupts only stale model requests, and preserves tool lifecycle, safety and run budgets. The transient mailbox is not a second durable recovery authority; startup never replays it. Desktop's composer also accepts text follow-ups. Remote routes remain unchanged.
+
+Das separate Erweiterungspaket unter `extensions/localcode/` verwendet die vorhandenen Aufgaben und genau einen aktiven Backend-Lauf. Es besitzt keine eigene Shell-/Netzwerk-/Mutationsautorität. Expliziter lokaler Workspace-Kontext, DE/EN-Kataloge, Git-Diffs und Freigaben liegen in der Erweiterung. `/api/stop-task` bindet Abbruch atomar an Aufgabe und Lauf, `/api/steer` reiht begrenzte, idempotente Nutzerhinweise ein. Die normale Agentenschleife übernimmt Hinweise vor Inferenz und Aktionszulassung; nur veraltete Modellanfragen werden unterbrochen. Werkzeuglebenszyklus, Sicherheitsgrenzen und Laufbudgets bleiben bestehen. Die Warteschlange ist flüchtig, keine zweite Recovery-Autorität; kein automatisches Replay. Auch der Desktop-Composer erlaubt Text-Folgehinweise. Remote erhält keine neuen Routen.
+
 ## Deutsch
 
 ### Systemübersicht

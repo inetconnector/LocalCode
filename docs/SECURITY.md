@@ -1,5 +1,15 @@
 # Security model / Sicherheitsmodell
 
+## IDE extension boundary / Sicherheitsgrenze der IDE-Erweiterung
+
+The extension accepts trusted **local** workspaces only. URL and executable settings have application scope, so repository settings cannot inject them. Node HTTP accepts only literal loopback addresses (localhost is normalized to 127.0.0.1), rejects redirects/credentials/path/query and bounds response bytes and time. The webview has no network access or arbitrary command bridge; it renders untrusted model output as text. Editor context and file opening require canonical workspace containment, including junction/symlink resolution. Starting a new prompt protects unsaved files with an explicit save decision. Approvals offer only once/reject. Native Git review is read-only.
+
+`/api/stop-task` validates exact task and execution-run identity and cancels atomically under the run mutex. `/api/steer` inherits Desktop Host/Origin/fetch-site protection, strict decoding and body limits; it admits only active ordinary-loop input with exact task/run identity. A bounded mailbox, per-run IDs/byte budget and terminal admission prevent duplicate application or accepted input overtaking task completion. Newer prompts remain user input, never capability grants. Started tools finish normally; only stale inference is interrupted. The queue is not crash durable and is never replayed at startup. Remote has no steering or task-stop endpoint.
+
+Die Erweiterung akzeptiert nur vertrauenswürdige **lokale** Arbeitsordner. Programm-/URL-Einstellungen gelten auf Anwendungsebene. HTTP bleibt auf Loopback begrenzt; Weiterleitungen, Zugangsdaten und freie Pfade/Parameter werden abgewiesen. Antworten und Zeiten sind begrenzt. Die Webview besitzt keinen Netzwerkzugriff und keine freie Befehlsbrücke; Modellantworten werden sicher als Text dargestellt. Kontext und Dateiöffner prüfen kanonische Workspace-Grenzen einschließlich Junctions/Symlinks. Vor einem neuen Auftrag schützt eine ausdrückliche Speicherentscheidung ungespeicherte Dateien. Freigaben erlauben nur einmalige Zustimmung oder Ablehnung; Git-Review bleibt lesend.
+
+`/api/stop-task` bindet Abbruch atomar an Aufgabe und Ausführungslauf. `/api/steer` verwendet die bestehende Desktop-Transportgrenze, strikte Dekodierung, Größen-/ID-/Laufbudgets und terminale Zulassungsprüfung. Neue Prompts bleiben Nutzereingaben ohne Rechteeskalation. Werkzeuge werden nicht abrupt abgebrochen; nur veraltete Inferenz wird unterbrochen. Die flüchtige Warteschlange besitzt kein Crash-Replay. Remote hat keine neuen Steering-/Stop-Task-Endpunkte.
+
 ## Deutsch
 
 LocalCode setzt auf mehrere Anwendungsschutzschichten statt auf eine einzige allmächtige Sandbox. Die Grenzen gelten unabhängig davon, ob LocalCode Native oder eine externe Engine verwendet wird.
@@ -154,7 +164,7 @@ MCP wird explizit konfiguriert. Stdio-/HTTP-Sessions besitzen Timeouts und kontr
 
 ### Nächste Sicherheitsgrenze: Mission Memory/Knowledge
 
-Persistente Mission Memory/Knowledge ist noch nicht implementiert. Vor Einführung müssen feste Regeln definiert werden:
+Persistente Mission Memory/Knowledge ist in `src/agent_mission_knowledge.go` implementiert (Schema v1, projektbezogener Hash, maximal 64 Einträge/128 KiB, FIFO, Redaction, atomare Ablage). Die folgenden Grenzen müssen bei Erweiterungen erhalten bleiben:
 
 - versioniertes Schema,
 - maximale Entries/Bytes und per-field Caps,
@@ -166,7 +176,7 @@ Mission Memory darf Planung/Kontext informieren, aber **niemals** Capabilities v
 
 ### Future mutation agents
 
-Builder-/Worktree-Mutation ist noch nicht implementiert. Wenn sie eingeführt wird, gelten weiterhin kontrollierte Workspaces, keine unbeaufsichtigte parallele Mutation desselben Workspace, normale Approvals und SHA-Preconditions, diff-reviewbare Resultate, Verifikation nach der letzten Mutation, kontrollierte Integrator-Grenze und sichere Cancellation/Recovery ohne blindes `reset/clean`.
+Worktree-/Builder-/Integrator-Bausteine existieren; dies verleiht den standardmäßigen read-only Scheduler-Child-Rollen keine zusätzlichen Mutationsrechte. Bei Integration gelten weiterhin kontrollierte Workspaces, keine unbeaufsichtigte parallele Mutation desselben Workspace, normale Approvals und SHA-Preconditions, diff-reviewbare Resultate, Verifikation nach der letzten Mutation, kontrollierte Integrator-Grenze und sichere Cancellation/Recovery ohne blindes `reset/clean`.
 
 ---
 
@@ -256,10 +266,10 @@ Public web fetches reject non-public destinations and mitigate DNS rebinding by 
 
 ### Next security boundary: Mission Memory/Knowledge
 
-Persistent Mission Memory/Knowledge is not implemented yet. Before persistence it requires a versioned schema, strict entry/byte/per-field caps, deterministic retention/eviction, secret redaction and exclusion of raw transcripts/unbounded tool or file content.
+Persistent Mission Memory/Knowledge is implemented in `src/agent_mission_knowledge.go` (schema v1, project hash, 64 entries/128 KiB, FIFO, redaction, atomic storage). Extensions must preserve versioning, strict entry/byte/per-field caps, deterministic retention/eviction, secret redaction and exclusion of raw transcripts/unbounded tool or file content.
 
 Mission Memory may inform planning/context but must **never** grant capabilities, satisfy postconditions, authorize recovery, alter attempts, create Scheduler leases or override current project/Git reconciliation. It must not become a second active recovery authority beside `run_journal.go`.
 
 ### Future mutation agents
 
-Builder/worktree mutation is not implemented yet. When introduced, controlled workspaces, approval/SHA boundaries, diff-reviewable results, post-mutation verification, a controlled Integrator and safe cancellation/recovery remain mandatory.
+Worktree/Builder/Integrator implementation slices exist; they do not grant mutation authority to the default read-only scheduled child roles. Integration must retain controlled workspaces, approval/SHA boundaries, diff-reviewable results, post-mutation verification, a controlled Integrator and safe cancellation/recovery.

@@ -112,7 +112,7 @@ jobs:
           if ($line -notmatch '([0-9]+(?:\.[0-9]+)?)%\s*$') { throw "Could not parse coverage total: $line" }
           $pct = [double]$matches[1]
           Write-Host "Statement coverage: $pct%"
-          if ($pct -lt 79.5) { throw "Coverage $pct% is below 79.5% gate" }
+          if ($pct -lt 80.0) { throw "Coverage $pct% is below 80.0% gate" }
 
       - name: Native Windows builds
         shell: pwsh
@@ -132,3 +132,17 @@ jobs:
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: git diff --check
+
+  ide-extension:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: extensions/localcode
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: node scripts/test-host.js
+      - run: npm run package
