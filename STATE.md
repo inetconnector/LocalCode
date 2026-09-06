@@ -3,8 +3,8 @@
 **Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `e3ae65f4c543924c9e823840d940d170e17ff242` (Release `v6.9.2`; verified through GitHub API and merged PR #91)
-**Last merged functional PR:** #91 `feat(extension): add right side panel positioning, interactive context menu on +, and clipboard paste button`
+**Current authoritative merged master:** `c790c0a5a676b7e07fcbc4bce18db9e5aa06a382` (Release `v6.9.2`; verified through GitHub API and merged PR #92)
+**Last merged functional PR:** #92 `feat(orchestration): add planning mode, interactive plan cards, git path discovery, and modtime project sorting`
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
