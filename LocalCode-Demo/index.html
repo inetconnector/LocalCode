@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pac-Man Arcade (1980 Authentic Edition)</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="arcade-wrapper">
+        <div class="cabinet-marquee">
+            <h1 class="cabinet-title"><span class="pac-yellow">PAC</span>-<span class="ghost-cyan">MAN</span></h1>
+            <div class="marquee-subtitle">ARCADE CLASSIC</div>
+        </div>
+
+        <div class="game-container">
+            <canvas id="game-canvas" width="448" height="576"></canvas>
+            <div class="crt-overlay"></div>
+        </div>
+
+        <div class="arcade-controls">
+            <div class="action-buttons">
+                <button id="btn-start" class="arcade-btn green-btn">START / PAUSE</button>
+                <button id="btn-audio" class="arcade-btn blue-btn">SOUND: ON</button>
+                <button id="btn-reset" class="arcade-btn red-btn">RESTART</button>
+            </div>
+            
+            <div class="dpad-container">
+                <div class="dpad">
+                    <button class="dpad-btn up" id="dpad-up" aria-label="Up">&#9650;</button>
+                    <button class="dpad-btn left" id="dpad-left" aria-label="Left">&#9664;</button>
+                    <div class="dpad-center"></div>
+                    <button class="dpad-btn right" id="dpad-right" aria-label="Right">&#9654;</button>
+                    <button class="dpad-btn down" id="dpad-down" aria-label="Down">&#9660;</button>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <span>Steuerung: <b>Pfeiltasten</b> / <b>WASD</b> oder <b>Touch D-Pad</b></span> | <span>Pause: <b>Leertaste</b></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Standalone vanilla scripts loaded in dependency order (No ES imports to support file://) -->
+    <script src="audio.js"></script>
+    <script src="maze.js"></script>
+    <script src="ghost.js"></script>
+    <script src="pacman.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

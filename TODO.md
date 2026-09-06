@@ -1,9 +1,9 @@
 # LocalCode – canonical TODO / kanonische Aufgabenliste
 
-**Verified:** 2026-09-05 Europe/Berlin
-**Authoritative merged base for this slice:** master `f9c171b` (Tag: `v6.9.0`)
-**Last merged functional PR:** #87 `feat: autonomous browser automation, Windows UI desktop agent, and mobile TTS feedback` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)
-**Active branch:** `release/v6.9.0-installer-automation` with persistent Mission Knowledge, repaired Playwright UI smoke harness, and native installer packaging fixes
+**Verified:** 2026-09-06 Europe/Berlin
+**Authoritative merged base for this slice:** master (Tag: `v6.9.1`)
+**Last merged functional PR:** #88 `feat: Pac-Man arcade demo showcase, mobile companion workflow documentation, and release pipeline refinement` (Browser & Desktop: #87, Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)
+**Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file contains unfinished functional work only. Completed PR history belongs in `STATE.md` and Git history.

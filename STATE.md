@@ -1,16 +1,16 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-09-05 Europe/Berlin
+**Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `f9c171b` (Release: `v6.9.0`)  
-**Last merged functional PR:** #87 `feat: autonomous browser automation, Windows UI desktop agent, and mobile TTS feedback` (Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)  
-**Active branch:** `release/v6.9.0-installer-automation` at `08a801a`, with persistent Mission Knowledge store (`%LOCALAPPDATA%\LocalCode\knowledge`), repaired Playwright Browser UI smoke test (`scripts/ui-e2e-test.py`), >=80.0% statement coverage, and native Windows installer/icon packaging fixes.
+**Current authoritative merged master:** `master` (Release: `v6.9.1`)
+**Last merged functional PR:** #88 `feat: Pac-Man arcade demo showcase, mobile companion workflow documentation, and release pipeline refinement` (Browser & Desktop: #87, Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)
+**Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
 
-## 2.1 Merged runtime, Windows platform, Browser & Desktop Automation, & Android Remote (v6.9.0)
+## 2.1 Merged runtime, Windows platform, Browser & Desktop Automation, & Android Remote (v6.9.1)
 
 - **Autonomous Browser Automation (Playwright MCP & Headless Chromium)**: First-class controlled browser automation backend (`src/browser_automation.go`) exposing `browser_navigate`, `browser_inspect`, `browser_click`, `browser_type`, `browser_screenshot`, and `browser_extract`. Dispatches to Playwright MCP (`@playwright/mcp@0.0.78`) when enabled, with automatic fallback to headless Chromium/Edge for DOM inspection, structured text/table extraction, and screenshots. Read operations are auto-approved in normal mode; mutations (`browser_click`, `browser_type`) require approval. Integrated into Doctor diagnostic item 7 ("Autonomous Browser Automation").
 - **Windows Desktop & UI Automation (Accessible GUI Agent Engine)**: Windows UI Automation engine (`src/desktop_automation_windows.go`, `src/desktop_automation_other.go`) enabling the agent to list visible top-level windows (`desktop_list_windows`), inspect accessibility control trees (`desktop_inspect`), invoke controls (`desktop_click`), enter text (`desktop_type`), and capture window/screen GDI screenshots (`desktop_screenshot`). Strict security guardrails block sensitive system windows (`Task Manager`, `Windows Security`, `LogonUI`, `Credential Prompt`, `UAC`). Integrated into Doctor diagnostic item 8 ("Windows Desktop & UI Automation").
@@ -30,6 +30,7 @@ This file is the self-contained restart point. Only merged `master` is authorita
 - **Windows Platform & Fast Start**: `START.bat` and `FAST-START.bat` provide instant startup with `LOCALCODE_FAST_START=1`. `src/platform_windows.go` avoids Visual Studio "file not found" errors by opening Explorer when no project file is found.
 - **Native Windows Setup Installer & Inno Setup Package**: Standalone Go-based Windows GUI installer and uninstaller (`dist\LocalCode-Setup.exe`, `INSTALL.bat`, `scripts/build-installer.ps1`) that installs to `%LOCALAPPDATA%\Programs\LocalCode`, creates Start Menu and Desktop shortcuts, configures User `PATH`, and registers in Windows Settings *Apps & Features* (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\LocalCode`) with quiet uninstall support. Includes classic Inno Setup compiler script (`installer/localcode-setup.iss`). The current local worktree fixes native setup PowerShell quoting so `UninstallString` and `QuietUninstallString` are written correctly even when the target path is quoted. It also stages `assets\localcode.ico` into installer payloads, embeds that icon into the native setup EXE resource, and sets Start Menu/Desktop launcher `IconLocation` plus Apps & Features `DisplayIcon` to the installed icon.
 - **Windows Firewall Integration**: `src/remote_firewall_windows.go` performs non-elevating read checks, logging status without blocking on UAC. `scripts/install-remote-firewall-rule.ps1` provides an explicit 1-time setup for Administrator installation of LocalCode Remote rules.
+- **LocalCode Autonomous Demo Showcase (`LocalCode-Demo/`)**: First-class showcase directory containing a complete, playable 1980s Namco-style Pac-Man Arcade clone built autonomously by LocalCode when driven from the Android Mobile Companion app. Includes full vanilla game files (`index.html`, `style.css`, `audio.js`, `maze.js`, `ghost.js`, `pacman.js`, `game.js`), Windows setup installer (`build-installer.ps1`, `INSTALL.bat`), gameplay screenshots, bilingual documentation (`README.md`, `PROMPTS.md`), and prominent landing links in the repository root README.
 
 
 

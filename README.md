@@ -1,6 +1,6 @@
-# LocalCode 6.9.0
+# LocalCode 6.9.1
 
-[Deutsch](#deutsch) · [English](#english) · [Releases & Downloads](https://github.com/inetconnector/LocalCode/releases)
+[Deutsch](#deutsch) · [English](#english) · [🎮 Live Demo: Pac-Man Arcade](LocalCode-Demo/) · [Releases & Downloads](https://github.com/inetconnector/LocalCode/releases)
 
 LocalCode is a Windows-first, local-first coding-agent application centered on Ollama and controlled tool execution. It combines project/task management, a native coding-agent runtime, selectable external coding engines, autonomous browser and Windows desktop GUI automation, Git/build tooling, MCP, web research, attachments, approvals, durable recovery, a Desktop UI and a mobile Android Remote with TTS audio feedback. LocalCode is an independent project and is not OpenAI Codex.
 
@@ -10,6 +10,21 @@ LocalCode is a Windows-first, local-first coding-agent application centered on O
 ---
 
 ## Deutsch
+
+### 🎮 Live-Showcase: Was kann LocalCode? (Pac-Man Arcade Demo)
+
+LocalCode hat einen **vollständig spielbaren, originalgetreuen Pac-Man Arcade-Klon (1980er Namco-Stil)** inklusive 8-Bit Web-Audio-Synthesizer und Windows-Installer autonom generiert – komplett gesteuert und überwacht über die **Android Mobile Remote App**!
+
+👉 **[Hier geht's direkt zur spielbaren Demo & den Prompts: LocalCode-Demo/](LocalCode-Demo/)**
+
+- 🕹️ **Sofort spielen:** `LocalCode-Demo\start-pacman.bat` oder `LocalCode-Demo\index.html` öffnen.
+- 📱 **Mobile Remote:** Volle Aufgabensteuerung, Audio-Sprachausgabe (TTS), Touch-Starter und Genehmigungs-Popups auf dem Smartphone.
+- 📥 **Direktdownload der aktuellen Version (v6.9.1):**
+  - 🖥️ **[Windows Setup-Installer herunterladen (`LocalCode-Setup.exe`)](https://github.com/inetconnector/LocalCode/releases/latest/download/LocalCode-Setup.exe)**
+  - 📱 **[Android Remote App APK herunterladen (`LocalCode-Remote-debug.apk`)](https://github.com/inetconnector/LocalCode/releases/latest/download/LocalCode-Remote-debug.apk)**
+  - 📦 **[Alle Release-Dateien & Archive auf GitHub](https://github.com/inetconnector/LocalCode/releases)**
+
+---
 
 ### Installation & Download
 
@@ -162,6 +177,21 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 ---
 
 ## English
+
+### 🎮 Live Showcase: What can LocalCode do? (Pac-Man Arcade Demo)
+
+LocalCode autonomously created a **fully playable, authentic 1980s Namco-style Pac-Man Arcade clone** with an 8-bit Web Audio synthesizer and Windows installer – entirely instructed, driven, and monitored from a smartphone via the **Android Mobile Remote App**!
+
+👉 **[Check out the live playable demo and prompt transcripts: LocalCode-Demo/](LocalCode-Demo/)**
+
+- 🕹️ **Play instantly:** Run `LocalCode-Demo\start-pacman.bat` or open `LocalCode-Demo\index.html`.
+- 📱 **Mobile Remote:** Complete task dispatch, Text-to-Speech audio feedback, quick prompt cards, and approval popups right from your phone.
+- 📥 **Direct Download of Latest Release (v6.9.1):**
+  - 🖥️ **[Download Windows Setup Installer (`LocalCode-Setup.exe`)](https://github.com/inetconnector/LocalCode/releases/latest/download/LocalCode-Setup.exe)**
+  - 📱 **[Download Android Remote Companion APK (`LocalCode-Remote-debug.apk`)](https://github.com/inetconnector/LocalCode/releases/latest/download/LocalCode-Remote-debug.apk)**
+  - 📦 **[View All Release Assets & Archives on GitHub](https://github.com/inetconnector/LocalCode/releases)**
+
+---
 
 ### Installation & Downloads
 
