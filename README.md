@@ -1,4 +1,10 @@
-# LocalCode 6.9.1
+# LocalCode 6.9.2
+
+## IDE extension / IDE-Erweiterung
+
+**English:** LocalCode now includes a VS Code / Antigravity IDE extension with a sidebar and editor chat, task history, live events, model selection, explicit editor context, approvals and native Git review. Priority follow-up prompts can steer an active run in the IDE and Desktop: stale inference is interrupted, started tools finish safely, and newer instructions are considered before the next action. See [installation, requirements, verified limits and development](extensions/localcode/README.md). The VSIX and matching backend are prepared for release; actual publication status is tracked in `STATE.md`. No Claude Code/Antigravity model-quality or full-service parity is claimed.
+
+**Deutsch:** LocalCode enthält jetzt eine VS-Code-/Antigravity-IDE-Erweiterung mit Seitenleiste und Editorchat, Aufgabenverlauf, Live-Ereignissen, Modellwahl, ausdrücklich angehängtem Editor-Kontext, Genehmigungen und nativem Git-Review. Vorrangige Folgeprompts steuern laufende Aufgaben in IDE und Desktop: Veraltete Inferenz wird unterbrochen, gestartete Werkzeuge werden sicher beendet und neue Hinweise vor dem nächsten Schritt berücksichtigt. [Installation, Voraussetzungen, geprüfte Grenzen und Entwicklung](extensions/localcode/README.md). VSIX und passendes Backend werden für den Release vorbereitet; der tatsächliche Veröffentlichungsstand steht in `STATE.md`. Gleiche Modellqualität oder vollständige Dienstparität zu Claude Code/Antigravity wird nicht behauptet.
 
 <p align="center">
   <strong>Language / Sprache:</strong>
@@ -59,6 +65,7 @@ Pre-built binaries and installers are available directly on **[GitHub Releases](
 - **Windows Setup Installer:** `LocalCode-Setup.exe` (available in release assets or via `INSTALL.bat`)
 - **Windows Portable Executables:** `LocalCode.exe` & `LocalCode-Debug.exe`
 - **Android Mobile Remote App:** `LocalCode-Remote-debug.apk`
+- **VS Code & Antigravity IDE Extension:** `localcode-0.1.0.vsix`
 
 #### Option 1: Windows Setup Installer (Recommended)
 
@@ -91,6 +98,19 @@ Pre-built binaries and installers are available directly on **[GitHub Releases](
    ```
 2. Open the app on your phone and scan the QR code shown on the desktop under *Help → Pair Remote*.
 3. Enjoy mobile task control, Text-to-Speech audio feedback, quick prompt cards, and review approval popups on your private LAN.
+
+#### Option 4: VS Code & Antigravity IDE Extension (`localcode-0.1.0.vsix`)
+
+1. Download `localcode-0.1.0.vsix` from [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) or build it with `./scripts/package-vsix.ps1`.
+2. Install via command line or Extensions view:
+   ```powershell
+   # In Antigravity IDE:
+   antigravity-ide --install-extension dist/localcode-0.1.0.vsix
+
+   # In Visual Studio Code:
+   code --install-extension dist/localcode-0.1.0.vsix
+   ```
+3. Open the **LocalCode** icon in the Activity Bar or press `Ctrl+Alt+L` (`Cmd+Alt+L` on macOS) to chat with LocalCode directly next to your code with editor selection context and Git diff review.
 
 ### Quick Start & First Steps
 
@@ -159,9 +179,7 @@ Mobile deliberately remains narrower than Desktop. While a read-only Mission is 
 
 ### Not implemented yet
 
-- persistent bounded **Mission Memory/Knowledge** with explicit privacy/retention limits,
-- mutation-capable Builder agents in isolated Git worktrees,
-- Integrator/Test-Agent mutation flow,
+- fully integrated mutation-capable scheduled Builder/Integrator/Test-Agent execution (the worktree, integrator, factory and replanning implementation slices already exist; default scheduled child roles remain read-only),
 - automatic recovery continuation on startup – this remains deliberately forbidden.
 
 ### Build and quality
@@ -206,6 +224,7 @@ Die aktuellen vorkompilierten Binärdateien und Installer stehen unter **[GitHub
 - **Windows Setup-Installer:** `LocalCode-Setup.exe` (in jedem Release-Asset oder über `INSTALL.bat`)
 - **Windows Portables Paket:** `LocalCode.exe` & `LocalCode-Debug.exe`
 - **Android Mobile Remote App:** `LocalCode-Remote-debug.apk`
+- **VS Code & Antigravity IDE Erweiterung:** `localcode-0.1.0.vsix`
 
 #### Option 1: Windows Setup-Installer (Empfohlen)
 
@@ -238,6 +257,19 @@ Die aktuellen vorkompilierten Binärdateien und Installer stehen unter **[GitHub
    ```
 2. App auf dem Smartphone öffnen und den auf dem PC unter *Hilfe → Remote koppeln* angezeigten QR-Code scannen.
 3. Bietet vollständige Steuerung, Audio-TTS-Sprachausgabe (`TextToSpeech`), Aufgabenstarter und Genehmigungs-Popups im privaten WLAN.
+
+#### Option 4: VS Code & Antigravity IDE Erweiterung (`localcode-0.1.0.vsix`)
+
+1. Lade `localcode-0.1.0.vsix` aus den [GitHub Releases](https://github.com/inetconnector/LocalCode/releases) herunter oder erstelle sie mit `./scripts/package-vsix.ps1`.
+2. Installation über die Befehlszeile oder die Erweiterungsansicht der IDE:
+   ```powershell
+   # In Antigravity IDE:
+   antigravity-ide --install-extension dist/localcode-0.1.0.vsix
+
+   # In Visual Studio Code:
+   code --install-extension dist/localcode-0.1.0.vsix
+   ```
+3. Öffne das **LocalCode**-Symbol in der Seitenleiste (Activity Bar) oder drücke `Ctrl+Alt+L` (`Cmd+Alt+L` auf macOS), um direkt neben deinem Code mit LocalCode zu chatten, Editor-Auswahlen anzuhängen und Git-Diffs zu prüfen.
 
 ### Schnellstart & Erste Schritte
 
@@ -313,9 +345,7 @@ Mobile bleibt absichtlich schmaler als Desktop. Die Remote zeigt bei einer aktiv
 
 ### Noch nicht implementiert
 
-- persistente, begrenzte **Mission Memory/Knowledge** mit eigener Privacy-/Retention-Grenze,
-- mutation-capable Builder-Agenten in isolierten Git-Worktrees,
-- Integrator-/Test-Agent-Mutationsfluss,
+- vollständig integrierte mutation-capable Scheduler-Ausführung für Builder/Integrator/Test-Agent (Worktree-, Integrator-, Factory- und Replanning-Bausteine existieren bereits; standardmäßige geplante Child-Rollen bleiben read-only),
 - eine automatische Recovery-Fortsetzung beim Start – diese bleibt bewusst verboten.
 
 ### Build und Qualität
@@ -349,3 +379,9 @@ Die GitHub-Quality-Pipeline prüft unter anderem:
 ## License
 
 Apache License 2.0. See `LICENSE`, `NOTICE` and `THIRD_PARTY_NOTICES.md`.
+
+## Contributing / Beiträge
+
+Keep changes scoped, maintain German/English visible text together, add behavior tests for new execution/security boundaries, and update README.md, STATE.md and TODO.md. Follow `AGENTS.md` and `docs/QUALITY-GATES.md`; submit a pull request with the problem, resulting behavior and actual verification evidence.
+
+Änderungen klar begrenzen, sichtbare Texte gleichzeitig DE/EN pflegen, neue Ausführungs-/Sicherheitsgrenzen mit Verhaltenstests absichern und README.md, STATE.md sowie TODO.md aktualisieren. `AGENTS.md` und `docs/QUALITY-GATES.md` beachten; Pull Requests müssen Problem, resultierendes Verhalten und tatsächliche Prüfbelege beschreiben.

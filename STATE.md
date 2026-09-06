@@ -3,12 +3,40 @@
 **Verified:** 2026-09-06 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `master` (Release: `v6.9.1`)
-**Last merged functional PR:** #88 `feat: Pac-Man arcade demo showcase, mobile companion workflow documentation, and release pipeline refinement` (Browser & Desktop: #87, Extras & OCR: #84, Docs: #85, Android OpenAI: #82, State sync: #83, VM Sandbox: #80, Benchmarks: #79, Docs: #78, ADB: #77)
-**Active branch:** `master`
+**Current authoritative merged master:** `e511cc778e0e03ff1ba79ad4a18920844be33d8d` (latest published release `v6.9.1`; verified through GitHub API)
+**Last merged functional PR:** #87. Earlier documentation incorrectly named #88; GitHub reports that PR does not exist at the start of this workstream.
+**Active branch:** `codex/localcode-ide-extension`, based on the clean master above. Working-tree release version: `6.9.2`; extension version: `0.1.0`.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
+
+## Active IDE release workstream — 2026-09-06
+
+User request: build and publish a LocalCode extension for VS Code / Antigravity IDE, support priority prompts during active work, and complete remaining TODO work. Repository Markdown documentation was inspected; embedded demo prompts are examples, not new user instructions. No pre-existing dirty files existed. `aider_edit` is unavailable as an exposed tool; the allowed direct editing fallback was explicitly selected.
+
+Implemented in this branch:
+
+- `extensions/localcode/` is the independent 0.1.0 VSIX package, publisher ID `inetconnector`, VS Code API >=1.85, UI extension host. Sidebar and editor webviews, backend task history, explicit workspace/task-bound prompts, local model selector, HTTP/SSE streaming with snapshot reconciliation, bounded opt-in editor/selection/diagnostic context, one-time approvals, canonical safe file opening, native HEAD/current Git diff review, explicit Windows backend launcher, DE/EN catalogs and manual/automatic language selection.
+- Webview CSP denies network and arbitrary scripts; DOM rendering never interpolates model HTML. Bridge actions are allowlisted. Loopback HTTP rejects credentials/redirects/arbitrary hosts and has byte/time limits. Executable/URL settings have application scope; no workspace-injected launch path. Only trusted local workspaces; Remote/virtual workspaces disabled. Unsaved buffers are protected by an explicit save decision before a new run.
+- `src/ide_transport.go`: Desktop-only `/api/stop-task` atomically compares `thread_id` and `run_id` under the AppState mutex before cancellation. Old global `/api/stop` remains backward compatible. `/api/ping` advertises `stop-task-v1` and `steering-v1` so older backends receive honest update errors.
+- `src/agent_steering.go`, `src/agent.go`, `src/types.go`: ordinary agent-loop steering mailbox. `/api/steer` strictly validates exact active task/run, message ID and bounded text, deduplicates retries, and cancels stale inference. The loop drains before model/action boundaries. New user instructions resolve conflicts without changing tool permissions or original unchanged scope. Pending approvals are rejected on new steering; already-started tools complete safely. Terminal action admission and queue admission serialize; late input is rejected instead of silently lost. Existing step/time budgets stay bounded.
+- Limits: 32 KiB/message, 16 queued, 64 IDs/128 KiB cumulative per run. Queue is transient; no crash replay or new recovery authority. Initialization, Mission/recovery and terminal phases reject steering. Applied input enters existing chat history; normal termination warns about undelivered queued input. The extension and Desktop composer both expose follow-up sending during runs. Remote gains no new routes or authority.
+- CI adds extension syntax/localization/behavior/real-host/VSIX checks. The existing Quality threshold was 79.5 despite documented 80.0; it is corrected to 80.0. Release pipeline builds and attaches the VSIX alongside Windows/Android artifacts and checksums.
+- **Copilot Dark Obsidian Aesthetic Redesign**: Redesigned the primary desktop web interface (`src/static/index.html`, `src/static/ui_polish.js`, `src/static/i18n_base.js`) to match Microsoft Copilot's style:
+  - Deep dark obsidian palette (`--bg: #121212`, `--panel: #181818`, `--surface: #202020`, glassmorphism borders `rgba(255,255,255,0.08)`);
+  - Rounded capsule pill `+ Neuer Chat` / `+ New chat` button (`border-radius: 9999px`, elevated hover, dark grey background);
+  - Centered hero greeting `Hallo, wobei kann ich Ihnen helfen?` (DE) / `Hello, how can I help you today?` (EN) with starter subtitle;
+  - Interactive pill suggestion chips (`Architektur analysieren`, `Tests ausführen`, `Git-Review`, `Release bauen`, `Pacman Arcade`) with prompt population and focus on click;
+  - Floating capsule composer dock (`border-radius: 26px`, circular attach `+`, circular send `↑`, responsive layout);
+  - 100% key-identical bilingual German/English catalog parity across 556 keys.
+
+Verification checkpoint: initial full Go race suite passed; full post-implementation race suite passed (localcode 240.346s). Full Windows build passed (`scripts\build.ps1`, isolated test pass + randomized shuffle pass + amd64 GUI & diagnostics binaries). Browser UI smoke passed (`python scripts\ui-e2e-test.py`, `FULL UI E2E OK 43 requests`). VSIX packaged successfully. Focused steering tests prove inference interruption, stale-action rejection, FIFO/idempotence/bounds, concurrent terminal admission and task-bound stop. Node checks and 5 behavior tests passed. Real Extension Host suites passed in installed Antigravity IDE and official VS Code using isolated profiles and fixture HTTP service. Playwright UI visual regression captures in DE and EN confirmed exact Copilot-style layout, capsule pills, hero chips and composer.
+
+Tool discovery: Go at `%LOCALAPPDATA%/Programs/GoToolchains/go1.26.6/go/bin/go.exe`; Node 24.19.0 in Codex dependency runtime; npm 11.6.4 discovered under Visual Studio 18 Community `MSBuild/Microsoft/VisualStudio/NodeJs/node_modules/npm/bin/npm-cli.js` after PATH/cache/LocalCode-tools/VS searches. Python 3.11 includes Playwright; GitHub CLI at `C:/Program Files/GitHub CLI/gh.exe`; installed Antigravity at `%LOCALAPPDATA%/Programs/Antigravity IDE/Antigravity IDE.exe`. Logs with command exit/output evidence are in ignored `logs/ide-*`. Tests never publish personal prompts or use personal backend tasks.
+
+Current release/review: no PR yet for this branch, no 6.9.2 release/tag/Marketplace listing yet. Master Quality run 34032007913 passed at the base SHA. GitHub `inetconnector` authentication supports repo/workflow publishing. `VSCE_PAT`/`OVSX_PAT` environment names and repository secret list were checked; no configured credentials found. Publisher ownership/sign-in is awaiting user information. Publishing a GitHub VSIX does not establish an Open VSX or Visual Studio Marketplace listing.
+
+Next: finish exact-worktree checks, repair real failures without lowering 80%, update this file/TODO with results, commit/push reviewed branch, create PR and wait for exact-head Quality before merge, release backend 6.9.2 plus VSIX, install the VSIX in the user's Antigravity, and publish to registries only with authenticated publisher access. No equality of model quality or proprietary feature parity has been demonstrated. `extensions/localcode/state.md` provides extension-specific continuation details.
 
 ## 2.1 Merged runtime, Windows platform, Browser & Desktop Automation, & Android Remote (v6.9.1)
 
@@ -193,7 +221,7 @@ Focused active-branch tests in `src/run_journal_mission_admission_test.go`, `src
 - Streamlined & Decluttered UI (`src/static/remote.html`, `src/static/index.html`) with collapsible tool accordions and high-level progress indicators;
 - Camera QR Scanner Button on Pairing Screen (`src/static/remote.html`, `MainActivity.java`), top-right Header Gear Settings Menu (`⚙️`) with coding engine selection modal, uncluttered composer dock, and safety confirmation dialog on project switches.
 
-This branch is fully tested, green across all packages, and ready for merge.
+The subsystem results above are historical evidence from the merged installer/runtime workstream. Current IDE-branch verification and merge readiness are recorded in the active workstream section above; they must not be inferred from these older results.
 
 ## 5. Safety and correctness invariants
 
@@ -229,9 +257,7 @@ Startup/mobile local changes: `START.bat`, `scripts/needs-build.ps1`, `scripts/b
 
 ## 7. Exact next development direction
 
-1. Merge `release/v6.9.0-installer-automation` into `master` following green execution of all quality gates (Browser UI E2E, Go tests with race detector, >=80.0% coverage, JS/PS1 syntax, and Windows amd64 builds).
-2. Verify the resulting authoritative `master` SHA.
-3. Advance to Phase 7: mutation-capable Builder agents in isolated Git worktrees (`src/agent_worktree.go`), followed by Integrator and independent Reviewer validation stages.
+Follow the active IDE release workstream and canonical `TODO.md`. The earlier instruction to merge `release/v6.9.0-installer-automation` was stale: #87 is already merged at the verified base. Phase 7/8/9 implementation slices and tests listed in section 4.6 already exist; they must not be re-created from the old roadmap. This does not establish unrestricted mutation-capable scheduled child execution or model-quality parity.
 
 ## 8. Cleanup rule
 

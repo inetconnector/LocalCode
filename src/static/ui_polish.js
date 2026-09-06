@@ -46,7 +46,20 @@
       'Pairing-Code':'Pairing-Code',
       'Kopieren':'Kopieren',
       'Code in die Zwischenablage kopiert.':'Code in die Zwischenablage kopiert.',
-      'Fertig':'Fertig'
+      'Fertig':'Fertig',
+      'Hallo, wobei kann ich Ihnen helfen?':'Hallo, wobei kann ich Ihnen helfen?',
+      'Beschreibe eine Aufgabe oder nutze einen der Starter-Vorschläge für dein Projekt.':'Beschreibe eine Aufgabe oder nutze einen der Starter-Vorschläge für dein Projekt.',
+      'Architektur analysieren':'Architektur analysieren',
+      'Analysiere die Projektarchitektur und liste Kernkomponenten auf.':'Analysiere die Projektarchitektur und liste Kernkomponenten auf.',
+      'Tests ausführen':'Tests ausführen',
+      'Führe alle Tests und die Codequalitätsprüfung aus.':'Führe alle Tests und die Codequalitätsprüfung aus.',
+      'Git-Review':'Git-Review',
+      'Prüfe den aktuellen Git-Status, geänderte Dateien und Diffs.':'Prüfe den aktuellen Git-Status, geänderte Dateien und Diffs.',
+      'Release bauen':'Release bauen',
+      'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.':'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.',
+      'Pacman Arcade':'Pacman Arcade',
+      'Starte das Pacman Arcade Demo und prüfe die Steuerung.':'Starte das Pacman Arcade Demo und prüfe die Steuerung.',
+      '+ Nachricht an LocalCode senden...':'+ Nachricht an LocalCode senden...'
     });
     Object.assign(i18n.dictionaries.en, {
       'Neues Projekt':'New project',
@@ -90,50 +103,77 @@
       'Pairing-Code':'Pairing code',
       'Kopieren':'Copy',
       'Code in die Zwischenablage kopiert.':'Code copied to clipboard.',
-      'Fertig':'Done'
+      'Fertig':'Done',
+      'Hallo, wobei kann ich Ihnen helfen?':'Hello, how can I help you today?',
+      'Beschreibe eine Aufgabe oder nutze einen der Starter-Vorschläge für dein Projekt.':'Describe a task or pick one of the starter suggestions for your project.',
+      'Architektur analysieren':'Analyze architecture',
+      'Analysiere die Projektarchitektur und liste Kernkomponenten auf.':'Analyze the project architecture and summarize core components.',
+      'Tests ausführen':'Run tests',
+      'Führe alle Tests und die Codequalitätsprüfung aus.':'Run all tests and code quality checks.',
+      'Git-Review':'Git review',
+      'Prüfe den aktuellen Git-Status, geänderte Dateien und Diffs.':'Check current Git status, modified files and diffs.',
+      'Release bauen':'Build release',
+      'Prüfe die Release-Bereitschaft und erstelle das Release-Paket.':'Check release readiness and build the release package.',
+      'Pacman Arcade':'Pacman Arcade',
+      'Starte das Pacman Arcade Demo und prüfe die Steuerung.':'Launch the Pacman Arcade demo and test controls.',
+      '+ Nachricht an LocalCode senden...':'+ Message LocalCode...'
     });
   }
 
   const css = `
     :root{--rightW:280px}
-    .sidebar{background:#182126}
+    .sidebar{background:#141414}
     .project-tree{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important}
     .section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-right:9px}
-    .section-title-action{width:27px;height:27px;flex:0 0 auto;border:1px solid #36434a;border-radius:7px;background:#202b30;color:#b8c3c9;display:grid;place-items:center;font-size:18px;line-height:1;padding:0}
-    .section-title-action.text{width:auto;padding:0 6px;font-size:10px;font-weight:700;white-space:nowrap}
-    .section-title-action:hover{background:#2b3940;color:#fff;border-color:#4a5a62}
-    .project-header-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
-    .project-row.active{background:#263b4d;box-shadow:inset 2px 0 0 var(--accent)}
-    .context-menu{background:#1e2529;border-color:#3c494f;box-shadow:0 18px 60px rgba(0,0,0,.6)}
-    .context-menu-item:hover,.context-menu-item:focus,.context-menu-item.open{background:#2c383e}
+    .section-title-action{height:28px;flex:0 0 auto;border:1px solid rgba(255,255,255,0.1);border-radius:9999px;background:#202020;color:#c0c0c0;display:grid;place-items:center;font-size:14px;padding:0 8px;transition:all .15s}
+    .section-title-action.text{padding:0 10px;font-size:11px;font-weight:600;white-space:nowrap}
+    .section-title-action:hover{background:#2e2e2e;color:#fff;border-color:rgba(255,255,255,0.2)}
+    .project-header-actions{display:flex;align-items:center;gap:6px;margin-left:auto}
+    .project-row.active{background:#262626;box-shadow:inset 2px 0 0 var(--accent)}
+    .context-menu{background:#202020;border-color:rgba(255,255,255,0.12);box-shadow:0 18px 60px rgba(0,0,0,.65);border-radius:14px}
+    .context-menu-item:hover,.context-menu-item:focus,.context-menu-item.open{background:rgba(255,255,255,0.08);border-radius:8px}
     .context-menu-item.danger{color:#ff8e8e}
-    .rightbar{background:#181c1f;border-left-color:#2c3438}
-    .right-tabs{height:50px;padding:0 8px}
-    .right-tab{height:32px;padding:0 9px}
-    .right-body{padding:10px;overflow-x:hidden}
+    .rightbar{background:#161616;border-left-color:rgba(255,255,255,0.08)}
+    .right-tabs{height:52px;padding:0 10px}
+    .right-tab{height:32px;padding:0 12px;border-radius:9999px}
+    .right-tab.active{background:#282828;color:#fff}
+    .right-body{padding:12px;overflow-x:hidden}
     .output-list,.output-card,.output-card details,.output-card summary,.output-head,.output-message{min-width:0;max-width:100%}
-    .output-card{padding:10px;border-radius:9px;overflow:hidden}
+    .output-card{padding:12px;border-radius:12px;background:#202020;border:1px solid rgba(255,255,255,0.08);overflow:hidden}
     .output-card h4,.output-message,.output-head b{overflow-wrap:anywhere;word-break:break-word}
-    .output-card pre{width:100%;max-width:100%;max-height:330px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:10.5px}
-    .approval-actions{display:flex;flex-wrap:wrap;gap:6px}
+    .output-card pre{width:100%;max-width:100%;max-height:330px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:11px}
+    .approval-actions{display:flex;flex-wrap:wrap;gap:8px}
     .approval-actions button{max-width:100%}
-    .approval-dock{left:50%;bottom:96px;transform:translateX(-50%);width:min(690px,calc(100vw - 56px));max-height:46vh;overflow:auto;background:#1e252a;border:1px solid #3d4d58;border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.62),0 0 0 1px rgba(47,129,247,.08);padding:14px 15px;display:block}
+    .approval-dock{left:50%;bottom:96px;transform:translateX(-50%);width:min(690px,calc(100vw - 56px));max-height:46vh;overflow:auto;background:#202020;border:1px solid rgba(255,255,255,0.16);border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.68),0 0 0 1px rgba(47,129,247,.12);padding:16px;display:block}
     .approval-dock-kicker{color:#69a8ff;font-size:10.5px;letter-spacing:.11em;margin-bottom:4px}
     .approval-dock-message{font-size:14px;font-weight:650;line-height:1.4}
-    .approval-dock-meta{margin-top:6px;color:#9aa7ae;font-size:10.5px;overflow-wrap:anywhere}
-    .approval-dock-preview{width:100%;max-width:100%;max-height:150px;margin-top:10px;padding:9px 10px;background:#131719;border:1px solid #344149;border-radius:8px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
-    .approval-dock-actions{display:flex;align-items:center;justify-content:flex-start;gap:7px;flex-wrap:wrap;margin-top:11px}
-    .approval-dock .approve,.approval-dock .reject,.approval-dock .always{height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:650;white-space:normal;line-height:1.15}
-    .approval-dock .approve{background:#eef0f1;color:#111}
-    .approval-dock .always{background:#285fae;border-color:#3c78ca}
+    .approval-dock-meta{margin-top:6px;color:#9e9e9e;font-size:10.5px;overflow-wrap:anywhere}
+    .approval-dock-preview{width:100%;max-width:100%;max-height:150px;margin-top:10px;padding:10px;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+    .approval-dock-actions{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .approval-dock .approve,.approval-dock .reject,.approval-dock .always{height:34px;padding:0 14px;border-radius:9999px;font-size:12px;font-weight:650;white-space:normal;line-height:1.15}
+    .approval-dock .approve{background:#ffffff;color:#111}
+    .approval-dock .always{background:#285fae;border-color:#3c78ca;color:#fff}
     .approval-dock .reject{background:#382426;border-color:#6d3d41;color:#ffdede}
     body.has-approval .composer-zone{padding-bottom:18px}
-    .modal-card{background:#1e2428;border-color:#3b464c}
+    .modal-card{background:#202020;border-color:rgba(255,255,255,0.12);border-radius:16px}
     .action-modal-danger{background:#b64b4b!important;border-color:#c65a5a!important}
-    .project-trash-overlay{position:fixed;inset:0;z-index:650;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:24px}
-    .project-trash-dialog{width:min(680px,calc(100vw - 40px));max-height:min(720px,calc(100vh - 48px));overflow:auto;background:#1e2529;border:1px solid #445159;border-radius:14px;box-shadow:0 24px 90px rgba(0,0,0,.66);padding:16px}
-    .project-trash-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}.project-trash-head h3{margin:0;flex:1;font-size:17px}.project-trash-close{border:1px solid #46535a;background:#273137;border-radius:7px;padding:6px 10px}
-    .project-trash-row{border:1px solid #354249;background:#182025;border-radius:10px;padding:11px;margin:8px 0}.project-trash-name{font-weight:700}.project-trash-meta{color:#9ba7ad;font-size:11px;margin:4px 0 10px;overflow-wrap:anywhere}.project-trash-actions{display:flex;gap:8px;flex-wrap:wrap}.project-trash-actions button{border:1px solid #42515a;background:#27343a;border-radius:7px;padding:7px 10px}.project-trash-actions .project-trash-purge{margin-left:auto;background:#382426;border-color:#6d3d41;color:#ffdede}
+    .project-trash-overlay{position:fixed;inset:0;z-index:650;background:rgba(0,0,0,.65);display:grid;place-items:center;padding:24px;backdrop-filter:blur(6px)}
+    .project-trash-dialog{width:min(680px,calc(100vw - 40px));max-height:min(720px,calc(100vh - 48px));overflow:auto;background:#202020;border:1px solid rgba(255,255,255,0.12);border-radius:18px;box-shadow:0 24px 90px rgba(0,0,0,.7);padding:20px}
+    .project-trash-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}.project-trash-head h3{margin:0;flex:1;font-size:17px}.project-trash-close{border:1px solid rgba(255,255,255,0.1);background:#2c2c2c;border-radius:9999px;padding:6px 12px;color:#d0d0d0}
+    .project-trash-row{border:1px solid rgba(255,255,255,0.08);background:#181818;border-radius:12px;padding:12px;margin:8px 0}.project-trash-name{font-weight:700}.project-trash-meta{color:#9e9e9e;font-size:11px;margin:4px 0 10px;overflow-wrap:anywhere}.project-trash-actions{display:flex;gap:8px;flex-wrap:wrap}.project-trash-actions button{border:1px solid rgba(255,255,255,0.1);background:#282828;border-radius:9999px;padding:6px 12px}.project-trash-actions .project-trash-purge{margin-left:auto;background:#382426;border-color:#6d3d41;color:#ffdede}
+    #newChatBtn{margin:6px 10px 12px;background:#242424;border:1px solid rgba(255,255,255,0.12);border-radius:9999px;height:40px;padding:0 16px;font-weight:600;font-size:13.5px;color:#fff;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.25);transition:all .18s ease}
+    #newChatBtn:hover{background:#323232;border-color:rgba(255,255,255,0.22);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.35)}
+    #newChatBtn .icon{width:16px;height:16px;color:#e0e0e0}
+    #newChatBtn .hint{font-size:10.5px;color:#888;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px}
+    .empty-state{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+    .hero-container{max-width:680px;display:flex;flex-direction:column;align-items:center}
+    .hero-title{font-size:30px;font-weight:500;letter-spacing:-.02em;color:#fff;margin:0 0 10px}
+    .hero-subtitle{font-size:14px;color:#9e9e9e;line-height:1.6;margin:0 0 24px;max-width:580px}
+    .hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+    .hero-chip{background:#222;border:1px solid rgba(255,255,255,.1);border-radius:9999px;padding:8px 18px;font-size:13px;font-weight:500;color:#d0d0d0;cursor:pointer;transition:all .15s ease;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+    .hero-chip:hover{background:#2e2e2e;border-color:rgba(255,255,255,.22);color:#fff;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+    .composer{background:#202020!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:26px!important;box-shadow:0 14px 44px rgba(0,0,0,.45)!important}
+    .composer:focus-within{border-color:rgba(255,255,255,.28)!important;box-shadow:0 16px 50px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.1)!important}
     @media(max-width:1100px){:root{--rightW:250px}.approval-dock{width:min(630px,calc(100vw - 40px));bottom:88px}.section-title-action.text{font-size:9px;padding:0 4px}}
     @media(max-width:760px){.approval-dock{left:12px;right:12px;bottom:82px;transform:none;width:auto;max-height:48vh}.approval-dock-actions{justify-content:stretch}.approval-dock-actions button{flex:1 1 150px}}
   `;

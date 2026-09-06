@@ -779,11 +779,32 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	invalidActionBlocks := 0
 	blockedFinishCounts := map[string]int{}
 	loopGuard := newAgentLoopGuard()
+	s.beginAgentSteering(runID)
+	defer s.endAgentSteering(runID)
+	applySteering := func() bool {
+		items := s.drainAgentSteering(runID)
+		for _, item := range items {
+			messages = append(messages, OllamaMessage{Role: "user", Content: localizeConfigText(cfg,
+				"VORRANGIGER NUTZERHINWEIS: Berücksichtige diese neue Anweisung vor dem nächsten Schritt. Bei Widerspruch gilt der neuere Nutzerhinweis. Unveränderte Teile des ursprünglichen Auftrags bleiben bestehen. Werkzeugberechtigungen und Sicherheitsgrenzen bleiben unverändert.\n",
+				"PRIORITY USER UPDATE: Apply this new instruction before the next step. Newer user instructions resolve conflicts; unchanged parts of the original task remain in scope. Tool permissions and safety boundaries remain unchanged.\n") + item.Message})
+			originalTask += "\n\n" + item.Message
+			intent = classifyTaskIntent(originalTask)
+			s.AddEvent(UIEvent{Type: "user", Action: "steering", Message: item.Message})
+			s.AddEvent(UIEvent{Type: "status", Action: "steering_applied", Message: localizeConfigText(cfg, "Neuer Nutzerhinweis wird vorrangig berücksichtigt", "New user instruction takes priority")})
+		}
+		if len(items) > 0 {
+			lastSignature = ""
+			completedActions = map[string]bool{}
+			supervisorBlocks, repeatBlocks, invalidActionBlocks = 0, 0, 0
+		}
+		return len(items) > 0
+	}
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
 			return "cancelled"
 		}
+		applySteering()
 		if compacted, didCompact := s.compactAgentMessages(ctx, model, messages, cfg, originalTask); didCompact {
 			messages = compacted
 			compactionCount++
@@ -802,8 +823,13 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 				modelTimeout = 4 * time.Minute
 			}
 			stepCtx, stepCancel := context.WithTimeout(ctx, modelTimeout)
+			s.setSteeringModelCancel(runID, stepCancel)
 			action, usedModel, err = s.nextAgentAction(stepCtx, model, messages)
+			s.setSteeringModelCancel(runID, nil)
 			stepCancel()
+		}
+		if applySteering() {
+			continue // Discard a model result computed before the newer user input.
 		}
 		fallbackTask := originalTask
 		if strings.TrimSpace(fallbackTask) == "" {
@@ -901,6 +927,9 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		lastSignature = signature
 		if action.Action == "ask_user" {
+			if !s.admitActionAfterSteering(runID, true) {
+				continue
+			}
 			s.mu.Lock()
 			s.Continuation = &AgentContinuation{
 				Project:         project,
@@ -948,6 +977,9 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 					continue
 				}
 			}
+		}
+		if !s.admitActionAfterSteering(runID, action.Action == "finish") {
+			continue
 		}
 		if action.Action != "finish" {
 			s.AddEvent(UIEvent{Type: "agent_step", Message: action.Message, Action: action.Action, Path: action.Path, Command: action.Command})

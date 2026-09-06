@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/delete-chat", s.handleDeleteChat)
 	s.mux.HandleFunc("/api/open-chat-window", s.handleOpenChatWindow)
 	s.mux.HandleFunc("/api/stop", s.handleStop)
+	s.mux.HandleFunc("/api/stop-task", s.handleStopTask)
+	s.mux.HandleFunc("/api/steer", s.handleSteer)
 	s.mux.HandleFunc("/api/force-stop", s.handleForceStop)
 	s.mux.HandleFunc("/api/approve", s.handleApprove)
 	s.mux.HandleFunc("/api/snapshot", s.handleSnapshot)
@@ -162,7 +164,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0"})
+	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0", "capabilities": []string{"stop-task-v1", "steering-v1"}})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

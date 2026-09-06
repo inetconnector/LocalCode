@@ -1,5 +1,11 @@
 # LocalCode Release Notes
 
+## 6.9.2 — IDE extension and priority follow-ups / IDE-Erweiterung und Folgeprompts
+
+**English:** Adds the LocalCode 0.1.0 VSIX for Visual Studio Code and compatible Antigravity IDE versions: sidebar/editor chat, task history, live events, model selection, explicit editor context, one-time approvals and native Git review. Follow-up prompts in IDE and Desktop steer active ordinary agent runs; stale inference is interrupted and pending tool approvals are invalidated before replanning. Started tools finish safely. Stop controls use atomic task/run preconditions. German/English catalogs are synchronized. Extension transport and workspace boundaries have dedicated tests, and the VSIX joins release assets/checksums. Registry listing requires separate publisher authentication. No model-quality parity claim.
+
+**Deutsch:** Ergänzt die LocalCode-0.1.0-VSIX für Visual Studio Code und kompatible Antigravity-IDE-Versionen: Seitenleisten-/Editorchat, Aufgabenverlauf, Live-Ereignisse, Modellwahl, ausdrücklich angehängter Editor-Kontext, einmalige Genehmigungen und nativer Git-Review. Folgeprompts in IDE und Desktop steuern aktive normale Agentenläufe; veraltete Inferenz wird unterbrochen und offene Werkzeugfreigaben werden vor Neuplanung verworfen. Gestartete Werkzeuge werden sicher beendet. Abbruch ist atomar an Aufgabe/Lauf gebunden. DE/EN-Kataloge sind synchron. Transport und Workspace-Grenzen besitzen eigene Tests, die VSIX wird mit Prüfsummen veröffentlicht. Registry-Listungen benötigen gesonderte Publisher-Anmeldung. Keine Behauptung gleicher Modellqualität.
+
 Kanonische Release-Historie von LocalCode. Diese Datei ersetzt die früheren einzelnen `RELEASE-NOTES-<version>.md`-Dateien. Die neuesten Versionen stehen zuerst; historische Details bleiben erhalten.
 
 ## Inhalt

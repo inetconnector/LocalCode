@@ -1,0 +1,167 @@
+{
+  "name": "localcode",
+  "displayName": "LocalCode",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "inetconnector",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/inetconnector/LocalCode.git",
+    "directory": "extensions/localcode"
+  },
+  "homepage": "https://github.com/inetconnector/LocalCode/tree/master/extensions/localcode",
+  "bugs": {
+    "url": "https://github.com/inetconnector/LocalCode/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "localcode",
+    "ollama",
+    "local",
+    "coding agent",
+    "antigravity"
+  ],
+  "main": "./src/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "localcode.open",
+        "title": "%open%",
+        "category": "LocalCode",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "localcode.openEditor",
+        "title": "%openEditor%",
+        "category": "LocalCode",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "localcode.newTask",
+        "title": "%newTask%",
+        "category": "LocalCode",
+        "icon": "$(add)"
+      },
+      {
+        "command": "localcode.addSelection",
+        "title": "%addSelection%",
+        "category": "LocalCode"
+      },
+      {
+        "command": "localcode.start",
+        "title": "%start%",
+        "category": "LocalCode"
+      },
+      {
+        "command": "localcode.settings",
+        "title": "%settings%",
+        "category": "LocalCode",
+        "icon": "$(gear)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "localcode",
+          "title": "LocalCode",
+          "icon": "media/localcode.svg"
+        }
+      ]
+    },
+    "views": {
+      "localcode": [
+        {
+          "type": "webview",
+          "id": "localcode.chat",
+          "name": "%chat%"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "localcode.addSelection",
+          "when": "editorHasSelection && resourceScheme == file && isWorkspaceTrusted",
+          "group": "localcode"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "localcode.newTask",
+          "when": "view == localcode.chat",
+          "group": "navigation"
+        },
+        {
+          "command": "localcode.openEditor",
+          "when": "view == localcode.chat",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "localcode.open",
+        "key": "ctrl+alt+l",
+        "mac": "cmd+alt+l"
+      }
+    ],
+    "configuration": {
+      "title": "LocalCode",
+      "properties": {
+        "localcode.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:32145",
+          "scope": "application",
+          "description": "%serverUrl%"
+        },
+        "localcode.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%executablePath%"
+        },
+        "localcode.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "de",
+            "en"
+          ],
+          "default": "auto",
+          "scope": "application",
+          "description": "%language%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node scripts/check.js",
+    "test": "node --test test/*.test.js",
+    "package": "vsce package --no-dependencies",
+    "publish:vsce": "vsce publish --no-dependencies",
+    "publish:ovsx": "ovsx publish"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "2.5.2",
+    "@vscode/vsce": "3.9.2",
+    "ovsx": "1.1.1"
+  }
+}

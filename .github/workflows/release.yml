@@ -49,6 +49,19 @@ jobs:
           ./scripts/build-installer.ps1
           ./scripts/build-android.ps1
 
+      - name: Build IDE extension VSIX
+        shell: pwsh
+        working-directory: extensions/localcode
+        run: |
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Extension dependency installation failed' }
+          npm run check
+          if ($LASTEXITCODE -ne 0) { throw 'Extension syntax or localization check failed' }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Extension tests failed' }
+          npm run package -- --out ../../dist/localcode-0.1.0.vsix
+          if ($LASTEXITCODE -ne 0) { throw 'VSIX packaging failed' }
+
       - name: Verify release artifacts and write standard checksums
         shell: pwsh
         run: |
@@ -56,7 +69,8 @@ jobs:
             'dist/LocalCode.exe',
             'dist/LocalCode-Debug.exe',
             'dist/LocalCode-Setup.exe',
-            'dist/LocalCode-Remote-debug.apk'
+            'dist/LocalCode-Remote-debug.apk',
+            'dist/localcode-0.1.0.vsix'
           )
           foreach ($file in $files) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
@@ -104,6 +118,7 @@ jobs:
             'dist/LocalCode-Debug.exe',
             'dist/LocalCode-Setup.exe',
             'dist/LocalCode-Remote-debug.apk',
+            'dist/localcode-0.1.0.vsix',
             'dist/SHA256SUMS.txt',
             'dist/BUILD-METADATA.txt',
             '--title', "LocalCode ${{ github.ref_name }}",

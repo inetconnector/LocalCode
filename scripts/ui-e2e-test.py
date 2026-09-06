@@ -190,6 +190,13 @@ with sync_playwright() as p:
     assert any(x[0]=='mcp/setup' and x[2].get('action')=='install' and x[2].get('name')=='fetch' for x in posts)
     assert any(x[0]=='mcp/setup' and x[2].get('action')=='authenticate' and x[2].get('name')=='github' for x in posts)
     assert any(x[0]=='mcp/setup' and x[2].get('action')=='reset' and x[2].get('name')=='playwright' for x in posts)
+    # Priority follow-up remains available while the current task is running.
+    page.evaluate("""() => { clearInterval(state.healthTimer); state.runID='fixture-run'; state.running=true; state.attachments=[]; setRunning(true); }""")
+    page.locator('#settingsBackBtn').click()
+    page.evaluate("""() => { if (!crypto.randomUUID) crypto.randomUUID=()=> 'fixture-steering-id'; }""")
+    page.evaluate("""() => { document.getElementById('prompt').value='Use German and keep the original scope.'; setRunning(true); }""")
+    page.evaluate('send()')
+    assert any(x[0]=='steer' and x[2].get('message')=='Use German and keep the original scope.' and x[2].get('run_id')=='fixture-run' for x in posts)
     assert not errors,errors
     browser.close()
 print('FULL UI E2E OK',len(posts),'requests')
