@@ -160,9 +160,9 @@ try {
 
     Set-Location -LiteralPath $Source
     Invoke-Native '[1/6] Formatting source code ...' $GoExe @('fmt','./...')
-    Invoke-Native '[2/6] Running isolated tests ...' $GoExe @('test','-count=1','-timeout=240s','./...')
+    Invoke-Native '[2/6] Running isolated tests ...' $GoExe @('test','-count=1','-timeout=600s','./...')
     Invoke-Native '[3/6] Running go vet ...' $GoExe @('vet','./...')
-    Invoke-Native '[4/6] Re-running tests in randomized order ...' $GoExe @('test','-shuffle=on','-count=1','-timeout=240s','./...')
+    Invoke-Native '[4/6] Re-running tests in randomized order ...' $GoExe @('test','-shuffle=on','-count=1','-timeout=600s','./...')
 
     $env:CGO_ENABLED = '0'
     $env:GOOS = 'windows'

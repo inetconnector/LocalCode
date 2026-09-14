@@ -81,12 +81,23 @@ func RunDoctorDiagnostics(ctx context.Context, cfg Config) DoctorReport {
 
 		if meshStatus.Online {
 			item.Status = HealthStatusOK
-			item.Summary = fmt.Sprintf("Cluster online: Node %s (%s), %s, %d cluster models available", meshStatus.NodeID, meshStatus.NodeStatus, meshStatus.VRAMPool, len(meshStatus.Models))
-			item.Details = []string{
-				"Gateway: " + meshStatus.URL,
-				"Local Workstation Node: " + meshStatus.LocalNodeURL,
-				"GPU Specs: " + meshStatus.GPU,
-				"Active Key: " + meshStatus.ActiveKeyMasked + " (" + meshStatus.KeySource + ")",
+			if meshStatus.DirectLocal {
+				item.Summary = fmt.Sprintf("Lokaler Mesh-Knoten aktiv (0%% Gebühr): Node %s (%s), %s, %d Modelle", meshStatus.NodeID, meshStatus.NodeStatus, meshStatus.VRAMPool, len(meshStatus.Models))
+				item.Details = []string{
+					"Lokaler Workstation-Node: " + meshStatus.LocalNodeURL + " (Direkter lokaler Mesh-Betrieb)",
+					"Gateway: " + meshStatus.URL,
+					"GPU & VRAM: " + meshStatus.GPU,
+					"Aktiver Key: " + meshStatus.ActiveKeyMasked + " (" + meshStatus.KeySource + ")",
+					"Provider Account: " + meshStatus.Account,
+				}
+			} else {
+				item.Summary = fmt.Sprintf("Cluster online: Node %s (%s), %s, %d cluster models available", meshStatus.NodeID, meshStatus.NodeStatus, meshStatus.VRAMPool, len(meshStatus.Models))
+				item.Details = []string{
+					"Gateway: " + meshStatus.URL,
+					"Local Workstation Node: " + meshStatus.LocalNodeURL,
+					"GPU Specs: " + meshStatus.GPU,
+					"Active Key: " + meshStatus.ActiveKeyMasked + " (" + meshStatus.KeySource + ")",
+				}
 			}
 		} else {
 			item.Status = HealthStatusWarning

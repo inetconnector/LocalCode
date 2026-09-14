@@ -78,6 +78,10 @@ func TestInstallerSilentExecutionInTempDir(t *testing.T) {
 	_ = os.WriteFile(srcFile, []byte("mock binary"), 0o755)
 
 	targetDir := filepath.Join(tmp, "InstalledApp")
+	t.Cleanup(func() {
+		_ = removeFromUserPath(targetDir)
+		_ = unregisterUninstaller()
+	})
 
 	// Test installing into isolated directory
 	if err := installFromSource(targetDir, tmp, true, false); err != nil {

@@ -177,21 +177,26 @@ func (o *OllamaClient) Discover(ctx context.Context) error {
 func (o *OllamaClient) Tags(ctx context.Context) ([]ModelInfo, error) {
 	primary, err := o.tagsAt(ctx, o.BaseURL)
 	if !isLocalHostURL(o.BaseURL) {
-		if localModels, localErr := o.tagsAt(ctx, "http://127.0.0.1:11434"); localErr == nil && len(localModels) > 0 {
-			seen := map[string]bool{}
-			merged := make([]ModelInfo, 0, len(primary)+len(localModels))
-			for _, m := range primary {
-				if !seen[m.Name] {
-					seen[m.Name] = true
-					merged = append(merged, m)
+		localEndpoints := []string{"http://127.0.0.1:11434", "http://127.0.0.1:8080"}
+		seen := map[string]bool{}
+		merged := make([]ModelInfo, 0, len(primary)+8)
+		for _, m := range primary {
+			if !seen[m.Name] {
+				seen[m.Name] = true
+				merged = append(merged, m)
+			}
+		}
+		for _, ep := range localEndpoints {
+			if localModels, localErr := o.tagsAt(ctx, ep); localErr == nil {
+				for _, m := range localModels {
+					if !seen[m.Name] {
+						seen[m.Name] = true
+						merged = append(merged, m)
+					}
 				}
 			}
-			for _, m := range localModels {
-				if !seen[m.Name] {
-					seen[m.Name] = true
-					merged = append(merged, m)
-				}
-			}
+		}
+		if len(merged) > 0 {
 			return merged, nil
 		}
 	}
@@ -623,26 +628,32 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			// If remote/cluster gateway returned an error (e.g. 404 model not found), attempt transparent fallback to local Ollama daemon
+			// If remote/cluster gateway returned an error (e.g. 404 model not found), attempt transparent fallback to local nodes (ComputeMesh 8080 or Ollama 11434)
 			if !isLocalHostURL(o.BaseURL) {
-				localReq, localErr := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:11434/api/chat", bytes.NewReader(data))
-				if localErr == nil {
-					localReq.Header.Set("Content-Type", "application/json")
-					localClient := &http.Client{Timeout: 8 * time.Minute}
-					if localResp, localDoErr := localClient.Do(localReq); localDoErr == nil {
-						localBody, _ := io.ReadAll(io.LimitReader(localResp.Body, 8<<20))
-						_ = localResp.Body.Close()
-						if localResp.StatusCode == http.StatusOK {
-							var localOut OllamaChatResponse
-							if json.Unmarshal(localBody, &localOut) == nil && localOut.Error == "" {
-								if content := extractJSONObject(localOut.Message.Content); content != "" {
-									return content, nil
-								}
-								if content := extractJSONObject(localOut.Message.Thinking); content != "" {
-									return content, nil
-								}
-								if localOut.Message.Content != "" {
-									return strings.TrimSpace(localOut.Message.Content), nil
+				fallbackCandidates := []string{"http://127.0.0.1:8080", "http://127.0.0.1:11434"}
+				for _, fb := range fallbackCandidates {
+					if strings.TrimRight(strings.ToLower(fb), "/") == strings.TrimRight(strings.ToLower(o.BaseURL), "/") {
+						continue
+					}
+					localReq, localErr := http.NewRequestWithContext(ctx, http.MethodPost, fb+"/api/chat", bytes.NewReader(data))
+					if localErr == nil {
+						localReq.Header.Set("Content-Type", "application/json")
+						localClient := &http.Client{Timeout: 8 * time.Minute}
+						if localResp, localDoErr := localClient.Do(localReq); localDoErr == nil {
+							localBody, _ := io.ReadAll(io.LimitReader(localResp.Body, 8<<20))
+							_ = localResp.Body.Close()
+							if localResp.StatusCode == http.StatusOK {
+								var localOut OllamaChatResponse
+								if json.Unmarshal(localBody, &localOut) == nil && localOut.Error == "" {
+									if content := extractJSONObject(localOut.Message.Content); content != "" {
+										return content, nil
+									}
+									if content := extractJSONObject(localOut.Message.Thinking); content != "" {
+										return content, nil
+									}
+									if localOut.Message.Content != "" {
+										return strings.TrimSpace(localOut.Message.Content), nil
+									}
 								}
 							}
 						}

@@ -133,6 +133,13 @@ Launcher logs are written to `logs/start.log`; runtime details are written to `%
 
 LocalCode can switch among **LocalCode Native**, **Aider**, **Claude Code**, **OpenCode**, and experimental **Claw Code**. The engine is selectable in the composer and Settings. There is no silent provider or model drift.
 
+### ComputeMesh & Decentralized Local Inference
+
+LocalCode seamlessly integrates with **ComputeMesh**:
+- **Zero-Fee Local Self-Compute (0% platform fee):** If a ComputeMesh workstation node is running locally (e.g. on port 8080), LocalCode automatically detects the local GPU/VRAM hardware, node status, and served models, prioritizing direct local execution with 0% platform fee and zero network latency.
+- **Provider Key Auto-Discovery:** Automatically discovers active API keys and accounts from `.computemesh/provider_config.json` or environment variables without manual configuration.
+- **Decentralized Cluster Gateway:** Connects to decentralized ComputeMesh nodes (`https://computemesh.inetconnector.com`) with transparent fallback to local nodes and Ollama if cluster nodes are unreachable.
+
 ### Projects, tasks and tools
 
 LocalCode manages projects and persistent task/thread history. Depending on configuration and approval, the Native agent can read and modify files, use Git, run builds/tests, discover local tooling, use MCP, perform public-web research, process attachments and use local image/asset tools.
@@ -291,6 +298,13 @@ Startprotokolle liegen in `logs/start.log`; Runtime-Details liegen im LocalCode-
 ### Coding-Agent-Engines
 
 LocalCode kann zwischen **LocalCode Native**, **Aider**, **Claude Code**, **OpenCode** und dem experimentellen **Claw Code** umschalten. Die Engine kann in der Eingabeleiste und in den Einstellungen gewählt werden. Es gibt keine stille Provider- oder Modellumschaltung.
+
+### ComputeMesh & dezentrale lokale Inferenz
+
+LocalCode integriert nahtlos **ComputeMesh**:
+- **Gebührenfreier lokaler Eigen-Compute (0 % Plattformgebühr):** Wenn ein ComputeMesh-Workstation-Knoten lokal aktiv ist (z. B. auf Port 8080), erkennt LocalCode automatisch die lokale GPU-/VRAM-Hardware, den Node-Status und bereitgestellte Modelle. Direkter lokaler Betrieb wird priorisiert (0 % Plattformgebühr, minimale Latenz).
+- **Automatische Provider-Key-Erkennung:** Findet aktive API-Keys und Konten aus `.computemesh/provider_config.json` oder Umgebungsvariablen vollautomatisch ohne manuellen Konfigurationsaufwand.
+- **Dezentrales Cluster-Gateway:** Verbindet sich mit dezentralen ComputeMesh-Knoten (`https://computemesh.inetconnector.com`) mit transparentem Fallback auf lokale Nodes und Ollama bei Verbindungsengpässen.
 
 ### Projekte, Aufgaben und Werkzeuge
 

@@ -21,6 +21,7 @@
       'Verbindung testen': 'Verbindung testen',
       'ComputeMesh-Status wird geprüft …': 'ComputeMesh-Status wird geprüft …',
       'ComputeMesh ist online': 'ComputeMesh ist online',
+      'ComputeMesh ist online (Lokaler Mesh-Knoten, 0% Gebühr)': 'ComputeMesh ist online (Lokaler Mesh-Knoten, 0% Gebühr)',
       'ComputeMesh ist offline': 'ComputeMesh ist offline',
       'Gateway-Latenz': 'Gateway-Latenz',
       'Lokale Workstation': 'Lokale Workstation',
@@ -53,6 +54,7 @@
       'Verbindung testen': 'Test connection',
       'ComputeMesh-Status wird geprüft …': 'Checking ComputeMesh status …',
       'ComputeMesh ist online': 'ComputeMesh is online',
+      'ComputeMesh ist online (Lokaler Mesh-Knoten, 0% Gebühr)': 'ComputeMesh is online (Local Mesh Node, 0% fee)',
       'ComputeMesh ist offline': 'ComputeMesh is offline',
       'Gateway-Latenz': 'Gateway latency',
       'Lokale Workstation': 'Local workstation',
@@ -83,11 +85,15 @@
     try {
       const res = await window.api('/api/computemesh/status');
       const st = res.status || {};
+      const statusLabel = st.online
+        ? (st.direct_local ? tx('ComputeMesh ist online (Lokaler Mesh-Knoten, 0% Gebühr)') : tx('ComputeMesh ist online'))
+        : tx('ComputeMesh ist offline');
+
       const lines = [
-        (st.online ? '🟢 ' : '🔴 ') + tx(st.online ? 'ComputeMesh ist online' : 'ComputeMesh ist offline'),
+        (st.online ? '🟢 ' : '🔴 ') + statusLabel,
         'Gateway: ' + (st.url || 'https://computemesh.inetconnector.com') + (st.latency_ms ? ` (${st.latency_ms} ms)` : ''),
         tx('Lokale Workstation') + ': ' + (st.node_id || 'test-node-custom') + ' · ' + (st.node_status || 'Offline'),
-        tx('GPU & VRAM') + ': ' + (st.gpu || 'NVIDIA RTX 3080') + (st.vram_pool ? ` · Pool: ${st.vram_pool}` : ''),
+        tx('GPU & VRAM') + ': ' + (st.gpu || 'NVIDIA GPU') + (st.vram_pool ? ` · Pool: ${st.vram_pool}` : ''),
         tx('Account') + ': ' + (st.account || 'frede@inetconnector.com'),
         tx('Aktiver Key') + ': ' + (st.active_key_masked || 'cm_provider_…'),
         tx('Key-Quelle') + ': ' + (st.key_source || 'auto')

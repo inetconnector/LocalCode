@@ -48,6 +48,7 @@ if (-not $windres) {
     }
 }
 
+$iconGenerated = $false
 if ($windres) {
     $windresPath = $null
     if ($windres.PSObject.Properties.Name -contains 'Source') {
@@ -59,31 +60,37 @@ if ($windres) {
     if (-not $windresPath -and $windres.PSObject.Properties.Name -contains 'FullName') {
         $windresPath = $windres.FullName
     }
-    if (-not $windresPath) {
-        throw "Could not resolve windres.exe path"
-    }
-    $tempRc = Join-Path ([IO.Path]::GetTempPath()) ('localcode-setup-' + [Guid]::NewGuid().ToString('N') + '.rc')
-    try {
-        $escapedIconSource = $iconSource -replace '\\', '/'
-        Set-Content -LiteralPath $tempRc -Value "1 ICON `"$escapedIconSource`"" -Encoding ASCII
-        & $windresPath -O coff -o $setupResourceOut $tempRc
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to generate setup icon resource"
+    if ($windresPath) {
+        $tempRc = Join-Path ([IO.Path]::GetTempPath()) ('localcode-setup-' + [Guid]::NewGuid().ToString('N') + '.rc')
+        try {
+            $escapedIconSource = $iconSource -replace '\\', '/'
+            Set-Content -LiteralPath $tempRc -Value "1 ICON `"$escapedIconSource`"" -Encoding ASCII
+            & $windresPath --no-preprocessor -O coff -o $setupResourceOut $tempRc 2>$null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $setupResourceOut)) {
+                $iconGenerated = $true
+            } else {
+                & $windresPath -O coff -o $setupResourceOut $tempRc 2>$null
+                if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $setupResourceOut)) {
+                    $iconGenerated = $true
+                }
+            }
+        } catch {
+            $iconGenerated = $false
+        } finally {
+            Remove-Item -LiteralPath $tempRc -Force -ErrorAction SilentlyContinue
         }
     }
-    finally {
-        Remove-Item -LiteralPath $tempRc -Force -ErrorAction SilentlyContinue
-    }
-} else {
-    $fallbackResource = Join-Path $Source 'rsrc_windows_amd64.syso'
-    if (-not (Test-Path -LiteralPath $fallbackResource)) {
-        throw "windres.exe not found and fallback Windows icon resource is missing: $fallbackResource"
-    }
-    Copy-Item -LiteralPath $fallbackResource -Destination $setupResourceOut -Force
 }
 
-Write-Host "  -> Staged launcher icon: $iconOut" -ForegroundColor Green
-Write-Host "  -> Prepared setup icon resource: $setupResourceOut" -ForegroundColor Green
+if (-not $iconGenerated) {
+    $fallbackResource = Join-Path $Source 'rsrc_windows_amd64.syso'
+    if (Test-Path -LiteralPath $fallbackResource) {
+        Copy-Item -LiteralPath $fallbackResource -Destination $setupResourceOut -Force
+        $iconGenerated = $true
+    } else {
+        Write-Host "  -> Warning: Neither windres nor fallback syso available; continuing without embedded icon resource." -ForegroundColor Yellow
+    }
+}
 
 Write-Host "`n[1/2] Compiling native Windows Setup (LocalCode-Setup.exe) ..." -ForegroundColor Green
 $setupSource = Join-Path $Source 'cmd\localcode-setup\main.go'
@@ -91,7 +98,26 @@ $setupOut = Join-Path $Dist 'LocalCode-Setup.exe'
 
 Push-Location $Source
 try {
-    & go build -ldflags="-H=windowsgui -s -w" -o $setupOut $setupSource
+    $GoExe = $null
+    $LocalGo = Join-Path $Root '.tools\go\bin\go.exe'
+    if (Test-Path -LiteralPath $LocalGo -PathType Leaf) {
+        $GoExe = $LocalGo
+    } else {
+        $cmd = Get-Command 'go.exe' -ErrorAction SilentlyContinue
+        if ($cmd) {
+            $GoExe = $cmd.Source
+        } else {
+            $toolchainMatches = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs\GoToolchains\*\go\bin\go.exe') -ErrorAction SilentlyContinue
+            if ($toolchainMatches) {
+                $GoExe = $toolchainMatches[-1].FullName
+            }
+        }
+    }
+    if (-not $GoExe -or -not (Test-Path -LiteralPath $GoExe -PathType Leaf)) {
+        throw "go.exe was not found"
+    }
+
+    & $GoExe build -ldflags="-H=windowsgui -s -w" -o $setupOut $setupSource
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to build LocalCode-Setup.exe"
     }

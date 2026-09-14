@@ -1,14 +1,39 @@
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
-**Verified:** 2026-09-06 Europe/Berlin
+**Verified:** 2026-09-14 Europe/Berlin
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `c91b72382cfc02b3df2a3443a6d63e9f45f958f2` (Release `v6.9.2`; verified through GitHub API and merged PR #93)
-**Last merged functional PR:** #92 `feat(orchestration): add planning mode, interactive plan cards, git path discovery, and modtime project sorting`
+**Current authoritative merged master:** `5ac393b4827042a98f1a26d70fffae9b5f54117b` (Release `v6.9.2`; verified in sync with origin/master)
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
+
+## Active ComputeMesh zero-fee local integration & Go toolchain workstream — 2026-09-14
+
+User request: Verify if localcode is up to date with git remote, fix Go toolchain error in notification, thoroughly inspect and implement optimal integration with ComputeMesh to auto-discover and utilize the free local mesh node (0% platform fee, zero latency, local self-compute), update all installers, ensure local machine installation is current, and verify all tests, tags, and commits.
+
+Implemented in this workstream:
+
+- **ComputeMesh Zero-Fee Local Workstation Integration & Direct Node Prioritization**:
+  - Implemented `ProbeRunningLocalComputeMeshNodeDetailed(ctx, candidates...)` in `src/computemesh.go` querying `http://127.0.0.1:8080/api/status` and `http://localhost:8080/api/status`.
+  - Automatically parses live hardware telemetry (`NVIDIA GeForce RTX 3080 Laptop GPU, 16384 MiB`), Node ID, Provider Account, and Active Models directly from the running local workstation daemon.
+  - Automatically prioritizes `DirectLocal = true` for 0% platform fee, zero latency, and private GPU self-compute without remote routing.
+  - Enhanced gateway failover logic: if remote cluster gateway is unreachable or responds with error, seamlessly falls back to the active local mesh node and Ollama.
+  - Updated `Doctor` (Diagnostic item 1 in `src/doctor.go`) to distinguish between direct local node (0% fee) and remote cluster gateway.
+  - Updated `src/static/computemesh.js` UI status card and tooltips with 100% key-identical bilingual DE/EN dictionaries.
+  - Hermetic Ollama client isolation in `src/ollama.go` preventing background daemons from polluting isolated mock test servers.
+- **Go Toolchain & Environment Optimization**:
+  - Configured `.vscode/settings.json` specifying `go.goroot`, `go.gopath`, and `go.alternateTools.go` targeting `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin\go.exe`.
+  - Cleaned test temp pollution from Windows User PATH registry.
+  - Hardened `localcode-setup` (`src/cmd/localcode-setup/main.go` and `setup_test.go`) with execution timeouts (30s), `-ExecutionPolicy Bypass`, and `t.Cleanup` registry cleanup.
+- **Code Graph Relations & Polyglot Symbol Extraction**:
+  - Updated `repoIntelSymbolPatterns` in `src/repo_intelligence.go` to match TypeScript/JavaScript `interface`, `type`, and `enum` definitions alongside classes.
+- **Installer & Local Deployment Verification**:
+  - Hardened `scripts/build-installer.ps1` with automated toolchain discovery and graceful fallback for `.syso` resource compilation.
+  - Full `scripts/build.ps1` suite passed (formatting, isolated tests, vet, shuffle tests, GUI/debug binary compilation).
+  - Built `dist/LocalCode-Setup.exe` and performed silent machine update via `dist/LocalCode-Setup.exe --silent` to `%LOCALAPPDATA%\Programs\LocalCode`.
+  - Verified system diagnostics with `LocalCode-Debug.exe --diagnose`, JS syntax with `node --check`, and browser UI E2E suite with `python scripts/ui-e2e-test.py` (`FULL UI E2E OK 43 requests`).
 
 ## Active IDE release workstream — 2026-09-06
 
