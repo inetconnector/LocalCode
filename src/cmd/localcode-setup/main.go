@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	AppVersion     = "6.9.2"
+	AppVersion     = "6.9.3"
 	AppDisplayName = "LocalCode"
 	AppPublisher   = "inetconnector"
 	AppWebsite     = "https://github.com/inetconnector/LocalCode"

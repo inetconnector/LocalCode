@@ -2,7 +2,7 @@
 ; Inno Setup Script for LocalCode Windows Installer
 
 #define MyAppName "LocalCode"
-#define MyAppVersion "6.9.2"
+#define MyAppVersion "6.9.3"
 #define MyAppPublisher "inetconnector"
 #define MyAppURL "https://localcode.dev"
 #define MyAppExeName "LocalCode.exe"
