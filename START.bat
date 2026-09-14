@@ -21,8 +21,7 @@ if errorlevel 1 (
 )
 
 taskkill /F /IM LocalCode.exe >nul 2>&1
-powershell.exe -NoLogo -NoProfile -WindowStyle Hidden -Command "$n='Local'+'Codex'; Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force" >nul 2>&1
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 2 >nul
 set "LOCALCODE_FAST_START=1"
 set "LOCALCODE_SUPPRESS_FATAL_DIALOGS=1"
 >>"%START_LOG%" echo [%DATE% %TIME%] Launching LocalCode fast startup.
