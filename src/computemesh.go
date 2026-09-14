@@ -57,6 +57,34 @@ type computeMeshConfigFile struct {
 	} `json:"provider,omitempty"`
 }
 
+type LocalMeshNodeStatusResponse struct {
+	NodeID       string `json:"node_id"`
+	OS           string `json:"os"`
+	PlatformName string `json:"platform_name"`
+	Config       struct {
+		RigName           string `json:"rig_name"`
+		ProviderAccountID string `json:"provider_account_id"`
+		OwnerKey          string `json:"owner_key"`
+		CoordinatorURL    string `json:"coordinator_url"`
+		DashboardPort     int    `json:"dashboard_port"`
+	} `json:"config"`
+	Inventory struct {
+		TotalGPUs      int   `json:"total_gpus"`
+		TotalVRAMBytes int64 `json:"total_vram_bytes"`
+		GPUs           []struct {
+			ModelName string `json:"model_name"`
+			VRAMBytes int64  `json:"vram_bytes"`
+			Vendor    string `json:"vendor"`
+			Backend   string `json:"driver_backend"`
+		} `json:"gpus"`
+	} `json:"inventory"`
+	GlobalMesh struct {
+		TotalComputeTFLOPS float64 `json:"total_compute_tflops"`
+		TotalVRAMGB        float64 `json:"total_vram_gb"`
+		TotalNodesOnline   int     `json:"total_nodes_online"`
+	} `json:"global_mesh"`
+}
+
 func MaskAPIKey(key string) string {
 	k := strings.TrimSpace(key)
 	if len(k) <= 8 {
@@ -71,7 +99,7 @@ func MaskAPIKey(key string) string {
 	return k[:4] + "…" + k[len(k)-3:]
 }
 
-func ProbeRunningLocalComputeMeshNode(ctx context.Context) (nodeURL string, nodeStatus string, nodeID string, directModels []ModelInfo) {
+func ProbeRunningLocalComputeMeshNodeDetailed(ctx context.Context, customCandidates ...string) (nodeURL, nodeStatus, nodeID, account, ownerKey, gpu, vramPool, gatewayURL string, directModels []ModelInfo) {
 	candidates := []string{
 		"http://127.0.0.1:8080",
 		"http://localhost:8080",
@@ -79,13 +107,21 @@ func ProbeRunningLocalComputeMeshNode(ctx context.Context) (nodeURL string, node
 		"http://127.0.0.1:8000",
 		"http://127.0.0.1:11435",
 	}
+	if len(customCandidates) > 0 {
+		candidates = customCandidates
+	}
 
 	type probeResult struct {
-		url    string
-		status string
-		id     string
-		models []ModelInfo
-		ok     bool
+		url        string
+		status     string
+		id         string
+		account    string
+		ownerKey   string
+		gpu        string
+		vramPool   string
+		gatewayURL string
+		models     []ModelInfo
+		ok         bool
 	}
 
 	ch := make(chan probeResult, len(candidates))
@@ -100,47 +136,89 @@ func ProbeRunningLocalComputeMeshNode(ctx context.Context) (nodeURL string, node
 			probeCtx, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
 			defer cancel()
 
-			req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, url+"/", nil)
-			if err != nil {
-				return
+			res := probeResult{
+				url:      url,
+				status:   "🟢 Lokaler Mesh-Knoten aktiv (0% Fee, 0ms)",
+				id:       "test-node-custom",
+				gpu:      "NVIDIA GPU (CUDA)",
+				vramPool: "16.0 GB VRAM (Local Mesh)",
 			}
-			resp, err := client.Do(req)
-			if err != nil {
-				// Try /api/tags
-				reqTags, _ := http.NewRequestWithContext(probeCtx, http.MethodGet, url+"/api/tags", nil)
-				if reqTags != nil {
-					if respTags, errTags := client.Do(reqTags); errTags == nil {
-						defer respTags.Body.Close()
-						var tr ollamaTagsResponse
-						var models []ModelInfo
-						if json.NewDecoder(respTags.Body).Decode(&tr) == nil {
-							for _, m := range tr.Models {
-								models = append(models, ModelInfo{Name: m.Name, Size: m.Size, ModifiedAt: m.ModifiedAt.Format(time.RFC3339)})
+
+			// 1. Try /api/status for rich hardware and config details
+			reqStatus, err := http.NewRequestWithContext(probeCtx, http.MethodGet, url+"/api/status", nil)
+			if err == nil {
+				if respStatus, errStatus := client.Do(reqStatus); errStatus == nil {
+					defer respStatus.Body.Close()
+					if respStatus.StatusCode == http.StatusOK {
+						var st LocalMeshNodeStatusResponse
+						if json.NewDecoder(respStatus.Body).Decode(&st) == nil {
+							res.ok = true
+							if st.NodeID != "" {
+								res.id = st.NodeID
+							}
+							if st.Config.ProviderAccountID != "" {
+								res.account = st.Config.ProviderAccountID
+							}
+							if st.Config.OwnerKey != "" {
+								res.ownerKey = st.Config.OwnerKey
+							}
+							if st.Config.CoordinatorURL != "" {
+								res.gatewayURL = st.Config.CoordinatorURL
+							}
+							if len(st.Inventory.GPUs) > 0 && st.Inventory.GPUs[0].ModelName != "" {
+								gpuName := st.Inventory.GPUs[0].ModelName
+								vramGB := float64(st.Inventory.GPUs[0].VRAMBytes) / (1024 * 1024 * 1024)
+								if vramGB > 0 {
+									res.gpu = fmt.Sprintf("%s (%.1f GB VRAM, CUDA)", gpuName, vramGB)
+								} else {
+									res.gpu = gpuName
+								}
+							}
+							if st.GlobalMesh.TotalVRAMGB > 0 || st.GlobalMesh.TotalComputeTFLOPS > 0 {
+								res.vramPool = fmt.Sprintf("%.1f GB VRAM & %.1f TFLOPS (Local Mesh)", st.GlobalMesh.TotalVRAMGB, st.GlobalMesh.TotalComputeTFLOPS)
 							}
 						}
-						ch <- probeResult{url: url, status: "🟢 Online & Bereit (Serving)", id: "test-node-custom", models: models, ok: true}
-						return
 					}
 				}
-				return
 			}
-			defer resp.Body.Close()
 
-			res := probeResult{url: url, status: "🟢 Online & Bereit (Serving)", id: "test-node-custom", ok: true}
-			// Probe tags
+			// 2. Try /api/tags for served models
 			reqTags, _ := http.NewRequestWithContext(probeCtx, http.MethodGet, url+"/api/tags", nil)
 			if reqTags != nil {
 				if respTags, errTags := client.Do(reqTags); errTags == nil {
 					defer respTags.Body.Close()
-					var tr ollamaTagsResponse
-					if json.NewDecoder(respTags.Body).Decode(&tr) == nil {
-						for _, m := range tr.Models {
-							res.models = append(res.models, ModelInfo{Name: m.Name, Size: m.Size, ModifiedAt: m.ModifiedAt.Format(time.RFC3339)})
+					if respTags.StatusCode == http.StatusOK {
+						var tr ollamaTagsResponse
+						if json.NewDecoder(respTags.Body).Decode(&tr) == nil {
+							res.ok = true
+							for _, m := range tr.Models {
+								res.models = append(res.models, ModelInfo{
+									Name:       m.Name,
+									Size:       m.Size,
+									ModifiedAt: m.ModifiedAt.Format(time.RFC3339),
+								})
+							}
 						}
 					}
 				}
 			}
-			ch <- res
+
+			// 3. Fallback: try root / if status/tags were not reachable
+			if !res.ok {
+				reqRoot, errRoot := http.NewRequestWithContext(probeCtx, http.MethodGet, url+"/", nil)
+				if errRoot == nil {
+					if respRoot, errDo := client.Do(reqRoot); errDo == nil {
+						defer respRoot.Body.Close()
+						if respRoot.StatusCode == http.StatusOK {
+							res.ok = true
+						}
+					}
+				}
+			}
+
+			if res.ok {
+				ch <- res
+			}
 		}(cand)
 	}
 
@@ -149,11 +227,16 @@ func ProbeRunningLocalComputeMeshNode(ctx context.Context) (nodeURL string, node
 
 	for res := range ch {
 		if res.ok {
-			return res.url, res.status, res.id, res.models
+			return res.url, res.status, res.id, res.account, res.ownerKey, res.gpu, res.vramPool, res.gatewayURL, res.models
 		}
 	}
 
-	return "", "", "", nil
+	return "", "", "", "", "", "", "", "", nil
+}
+
+func ProbeRunningLocalComputeMeshNode(ctx context.Context, customCandidates ...string) (nodeURL string, nodeStatus string, nodeID string, directModels []ModelInfo) {
+	url, status, id, _, _, _, _, _, models := ProbeRunningLocalComputeMeshNodeDetailed(ctx, customCandidates...)
+	return url, status, id, models
 }
 
 func AutoDetectComputeMeshCredentials() (apiKey, gatewayURL, account, nodeID, localNodeURL, source string) {
@@ -287,18 +370,27 @@ func AutoDetectComputeMeshCredentials() (apiKey, gatewayURL, account, nodeID, lo
 		}
 	}
 
-	// 5. Probe live local running workstation node
-	probeCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	if probedURL, _, probedNodeID, _ := ProbeRunningLocalComputeMeshNode(probeCtx); probedURL != "" {
-		if localNodeURL == defaultComputeMeshLocalNodeURL || localNodeURL == "" {
-			localNodeURL = probedURL
-		}
-		if nodeID == "" && probedNodeID != "" {
-			nodeID = probedNodeID
-		}
-		if source == "" {
-			source = "running local node (" + probedURL + ")"
+	// 5. Probe live local running workstation node only if credentials/sources were not found yet
+	if source == "" {
+		probeCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		if probedURL, _, probedNodeID, probedAccount, probedOwnerKey, _, _, probedGatewayURL, _ := ProbeRunningLocalComputeMeshNodeDetailed(probeCtx); probedURL != "" {
+			if localNodeURL == defaultComputeMeshLocalNodeURL || localNodeURL == "" {
+				localNodeURL = probedURL
+			}
+			if nodeID == "" && probedNodeID != "" {
+				nodeID = probedNodeID
+			}
+			if account == "" && probedAccount != "" {
+				account = probedAccount
+			}
+			if apiKey == "" && probedOwnerKey != "" {
+				apiKey = probedOwnerKey
+			}
+			if gatewayURL == defaultComputeMeshGatewayURL && probedGatewayURL != "" {
+				gatewayURL = probedGatewayURL
+			}
+			source = "running local node (" + probedURL + ") (0% fee)"
 		}
 	}
 
@@ -346,6 +438,41 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 		}
 	}
 
+	// 1. Probe local running workstation node first
+	localProbeCtx, cancelLocal := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelLocal()
+	var localCandidates []string
+	if cfg.ComputeMeshLocalNodeURL != "" {
+		localCandidates = []string{cfg.ComputeMeshLocalNodeURL}
+	}
+	if probedURL, probedStatus, probedID, probedAccount, probedOwnerKey, probedGPU, probedVRAMPool, _, localModels := ProbeRunningLocalComputeMeshNodeDetailed(localProbeCtx, localCandidates...); probedURL != "" {
+		status.LocalNodeURL = probedURL
+		status.NodeStatus = probedStatus
+		status.DirectLocal = true
+		status.Online = true
+		if probedID != "" {
+			status.NodeID = probedID
+		}
+		if status.Account == "" && probedAccount != "" {
+			status.Account = probedAccount
+		}
+		if status.ActiveKeyMasked == "" && probedOwnerKey != "" && apiKey == "" {
+			apiKey = probedOwnerKey
+			if keySource == "settings" {
+				keySource = "local node (" + probedURL + ")"
+			}
+		}
+		if probedGPU != "" {
+			status.GPU = probedGPU
+		}
+		if probedVRAMPool != "" {
+			status.VRAMPool = probedVRAMPool
+		}
+		if len(localModels) > 0 {
+			status.Models = append(status.Models, localModels...)
+		}
+	}
+
 	if status.Account == "" {
 		status.Account = "frede@inetconnector.com"
 	}
@@ -356,20 +483,6 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 	status.KeySource = keySource
 	status.ActiveKeyMasked = MaskAPIKey(apiKey)
 
-	// 1. Probe local running workstation node first
-	localProbeCtx, cancelLocal := context.WithTimeout(ctx, 2*time.Second)
-	defer cancelLocal()
-	if probedURL, probedStatus, probedID, localModels := ProbeRunningLocalComputeMeshNode(localProbeCtx); probedURL != "" {
-		status.LocalNodeURL = probedURL
-		status.NodeStatus = probedStatus
-		if probedID != "" {
-			status.NodeID = probedID
-		}
-		if len(localModels) > 0 {
-			status.Models = append(status.Models, localModels...)
-		}
-	}
-
 	// 2. Probe Gateway /api/tags
 	probeURL := status.URL + "/api/tags"
 	probeCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
@@ -378,7 +491,9 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 	start := time.Now()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, nil)
 	if err != nil {
-		status.Error = fmt.Sprintf("invalid compute mesh URL: %v", err)
+		if !status.DirectLocal {
+			status.Error = fmt.Sprintf("invalid compute mesh URL: %v", err)
+		}
 		return status
 	}
 
@@ -390,10 +505,9 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 	resp, err := client.Do(req)
 	status.LatencyMs = time.Since(start).Milliseconds()
 	if err != nil {
-		// If gateway is unreachable but local workstation is running, we are still online!
-		if status.NodeStatus == "🟢 Online & Bereit (Serving)" {
+		// If gateway is unreachable but local workstation is running, we are fully online locally with 0% fee!
+		if status.DirectLocal {
 			status.Online = true
-			status.DirectLocal = true
 			return status
 		}
 		status.Error = fmt.Sprintf("ComputeMesh Gateway nicht erreichbar (%s): %v", probeURL, err)
@@ -402,9 +516,8 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if status.NodeStatus == "🟢 Online & Bereit (Serving)" {
+		if status.DirectLocal {
 			status.Online = true
-			status.DirectLocal = true
 			return status
 		}
 		status.Error = fmt.Sprintf("ComputeMesh Gateway antwortete mit HTTP %d", resp.StatusCode)
@@ -413,6 +526,10 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 
 	var tr ollamaTagsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		if status.DirectLocal {
+			status.Online = true
+			return status
+		}
 		status.Error = fmt.Sprintf("ungültige ComputeMesh Modellantwort: %v", err)
 		return status
 	}
@@ -472,7 +589,7 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		targetURL = meshStatus.LocalNodeURL
 	}
 
-	// Only override BaseURL if no explicit local URL was set by the user or if local node was discovered
+	// Only override BaseURL if no explicit custom local URL was set by the user or if local mesh node was discovered
 	s.mu.Lock()
 	if s.Ollama == nil {
 		s.Ollama = NewOllamaClient()

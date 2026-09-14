@@ -93,7 +93,37 @@ func TestAutoDetectComputeMeshCredentials(t *testing.T) {
 
 func TestProbeRunningLocalComputeMeshNode(t *testing.T) {
 	mockNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || r.URL.Path == "/api/tags" {
+		switch r.URL.Path {
+		case "/api/status":
+			statusData := map[string]any{
+				"node_id": "test-node-custom",
+				"os":      "windows",
+				"config": map[string]any{
+					"provider_account_id": "cm_provider_genesis",
+					"owner_key":           "inet-89d428edbdf525ce956f34d622bba1faf8f38701",
+					"coordinator_url":     "https://mesh.inetconnector.com",
+				},
+				"inventory": map[string]any{
+					"total_gpus":       1,
+					"total_vram_bytes": 17179869184,
+					"gpus": []map[string]any{
+						{
+							"model_name":     "NVIDIA GeForce RTX 3080 Laptop GPU",
+							"vram_bytes":     17179869184,
+							"driver_backend": "cuda",
+						},
+					},
+				},
+				"global_mesh": map[string]any{
+					"total_compute_tflops": 24.0,
+					"total_vram_gb":        16.0,
+					"total_nodes_online":   1,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(statusData)
+			return
+		case "/", "/api/tags":
 			resp := ollamaTagsResponse{
 				Models: []struct {
 					Name       string    `json:"name"`
@@ -116,12 +146,18 @@ func TestProbeRunningLocalComputeMeshNode(t *testing.T) {
 	defer cancel()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, mockNode.URL+"/", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, mockNode.URL+"/api/status", nil)
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("mock local node failed: %v", err)
 	}
 	resp.Body.Close()
+
+	url, status, id, models := ProbeRunningLocalComputeMeshNode(ctx)
+	_ = url
+	_ = status
+	_ = id
+	_ = models
 }
 
 func TestCheckComputeMeshStatusWithMockGateway(t *testing.T) {

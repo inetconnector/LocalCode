@@ -1,7 +1,7 @@
 # LocalCode — open work / offene Arbeit
 
-**Verified:** 2026-09-06 Europe/Berlin
-**Merged base:** `c91b72382cfc02b3df2a3443a6d63e9f45f958f2`, master / published release `v6.9.2`, merged PR #93.
+**Verified:** 2026-09-14 Europe/Berlin
+**Merged base:** `5ac393b4827042a98f1a26d70fffae9b5f54117b`, master / published release `v6.9.2`.
 **Active branch:** `master`.
 **Roadmap reference:** #32. Current implemented reality and detailed restart context: `STATE.md`.
 

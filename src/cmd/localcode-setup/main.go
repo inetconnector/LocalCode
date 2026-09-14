@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -86,6 +88,16 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+func runPowerShell(script string) error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
+	return cmd.Run()
+}
+
 func createShortcut(targetPath, shortcutPath, description, arguments, iconPath string) error {
 	if runtime.GOOS != "windows" {
 		return nil
@@ -109,8 +121,7 @@ $Shortcut.Save()
 		strings.ReplaceAll(filepath.Dir(targetPath), "'", "''"),
 		strings.ReplaceAll(iconPath, "'", "''"))
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	return cmd.Run()
+	return runPowerShell(psScript)
 }
 
 func addToUserPath(dir string) error {
@@ -126,8 +137,7 @@ $newPath = ($parts + $dir) -join ';'
 [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 `, strings.ReplaceAll(dir, "'", "''"))
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	return cmd.Run()
+	return runPowerShell(psScript)
 }
 
 func psSingleQuote(value string) string {
@@ -148,8 +158,7 @@ if ($current) {
 }
 `, strings.ReplaceAll(dir, "'", "''"))
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	return cmd.Run()
+	return runPowerShell(psScript)
 }
 
 func registerUninstaller(installDir string) error {
@@ -191,8 +200,7 @@ Set-ItemProperty -LiteralPath $regPath -Name 'NoRepair' -Value 1 -Type DWord
 		psSingleQuote(AppWebsite),
 	)
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	return cmd.Run()
+	return runPowerShell(psScript)
 }
 
 func installedIconPath(installDir string) string {
@@ -225,8 +233,7 @@ if (Test-Path $regPath) {
     Remove-Item -Path $regPath -Recurse -Force
 }
 `
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	return cmd.Run()
+	return runPowerShell(psScript)
 }
 
 func install(targetDir string, silent, launchAfter bool) error {
