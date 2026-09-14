@@ -1,4 +1,4 @@
-# LocalCode 6.9.2
+# LocalCode 6.9.3
 
 ## IDE extension / IDE-Erweiterung
 
