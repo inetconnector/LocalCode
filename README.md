@@ -84,11 +84,12 @@ Pre-built binaries and installers are available directly on **[GitHub Releases](
    .\LocalCode-Setup.exe --uninstall
    ```
 
-#### Option 2: Portable Fast Startup
+#### Option 2: Portable Fast Startup & System Tray Mode
 
 1. Clone the repository or extract the release ZIP.
 2. Launch `START.bat` or `FAST-START.bat`. The launcher opens the Desktop UI in your browser.
-3. If binaries are missing, `BUILD.bat` automatically builds the application locally.
+3. **System Tray Mode (`/tray`):** Launch `LocalCode.exe /tray` (or use the *LocalCode (System Tray)* Start Menu shortcut) to start LocalCode minimized to the Windows notification area with its tray icon. Right-click the icon for the context menu (*Open*, *Exit*) or double-click to open the UI maximized.
+4. If binaries are missing, `BUILD.bat` automatically builds the application locally.
 
 #### Option 3: Android Mobile Remote App
 
@@ -250,11 +251,12 @@ Die aktuellen vorkompilierten Binärdateien und Installer stehen unter **[GitHub
    .\LocalCode-Setup.exe --uninstall
    ```
 
-#### Option 2: Portabler Schnellstart
+#### Option 2: Portabler Schnellstart & Systemtray-Modus
 
 1. Repository klonen oder Release-ZIP entpacken.
 2. `START.bat` oder `FAST-START.bat` starten. Der Start nutzt einen schnellen Pfad und öffnet die Desktop-UI im Browser.
-3. Falls Binärdateien fehlen, baut `BUILD.bat` die Anwendung automatisch lokal.
+3. **Systemtray-Modus (`/tray`):** `LocalCode.exe /tray` starten (oder die Startmenü-Verknüpfung *LocalCode (System Tray)* nutzen), um LocalCode direkt im Infobereich/Systemtray minimiert zu starten. Rechtsklick öffnet das Kontextmenü (*Öffnen*, *Beenden*), ein Doppelklick öffnet die UI maximiert.
+4. Falls Binärdateien fehlen, baut `BUILD.bat` die Anwendung automatisch lokal.
 
 #### Option 3: Android Mobile Remote App
 

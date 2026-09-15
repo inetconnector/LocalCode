@@ -7,7 +7,26 @@
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-This file is the self-contained restart point. Only merged `master` is authoritative product behavior. `TODO.md` contains unfinished work only.
+## Active System Tray (`/tray`) & Windows Setups workstream — 2026-09-15
+
+User request: Start LocalCode with `/tray` in the Windows system tray with application icon, bilingual context menu (*Öffnen* / *Beenden*), and double-click to open UI maximized; rebuild all Windows setups.
+
+Implemented in this workstream:
+
+- **Windows System Tray (`/tray`) Architecture (`src/tray_windows.go`, `src/tray_other.go`, `src/tray_test.go`)**:
+  - Implemented pure Win32 system tray manager (`TrayManager`) using `syscall.NewLazyDLL` ("user32.dll", "shell32.dll", "kernel32.dll") and `syscall.NewCallback`.
+  - Created hidden host window (`LocalCodeTrayWindowClass`) with `Shell_NotifyIconW` integration (`NIM_ADD`, `NIM_MODIFY`, `NIM_DELETE`).
+  - Embedded / staged icon extraction via `ExtractIconExW`, `LoadImageW` (`localcode.ico`), and standard application icon fallback.
+  - Double-click on tray icon (`WM_LBUTTONDBLCLK`) triggers `openBrowserMaximized(url)` with Chromium `--start-maximized` or system default browser.
+  - Right-click on tray icon (`WM_RBUTTONUP` / `WM_CONTEXTMENU`) renders native popup menu with **Öffnen** (bold/default) and **Beenden** with 100% bilingual DE/EN localization.
+  - "Beenden" cleanly removes tray icon (`NIM_DELETE`), destroys window, and gracefully stops the application.
+- **CLI Flag Integration & Background Startup (`src/main.go`)**:
+  - Recognizes `/tray`, `-tray`, and `--tray` (case-insensitive).
+  - When started with `/tray`, bypasses opening an initial browser window and runs silently in the Windows system tray.
+  - When already running, invoking with `/tray` avoids duplicate browser window spawning.
+- **Installer & Setup Shortcuts (`src/cmd/localcode-setup/main.go`, `installer/localcode-setup.iss`, `src/windows_packaging_test.go`)**:
+  - Added dedicated *"LocalCode (System Tray)"* Start Menu shortcut with the `/tray` argument in Go native installer and Inno Setup script.
+  - Updated `README.md` documentation in both German and English.
 
 ## Active ComputeMesh zero-fee local integration & Go toolchain workstream — 2026-09-14
 

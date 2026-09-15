@@ -105,12 +105,18 @@ try {
     Get-Process -Name $legacyName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
     $GoExe = $null
-    $LocalGo = Join-Path $Root '.tools\go\bin\go.exe'
-    if (Test-Path -LiteralPath $LocalGo -PathType Leaf) {
-        $GoExe = $LocalGo
-    } else {
-        $command = Get-Command 'go.exe' -ErrorAction SilentlyContinue
-        if ($command) { $GoExe = $command.Source }
+    $toolchainMatches = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs\GoToolchains\*\go\bin\go.exe') -ErrorAction SilentlyContinue
+    if ($toolchainMatches) {
+        $GoExe = $toolchainMatches[-1].FullName
+    }
+    if (-not $GoExe) {
+        $LocalGo = Join-Path $Root '.tools\go\bin\go.exe'
+        if (Test-Path -LiteralPath $LocalGo -PathType Leaf) {
+            $GoExe = $LocalGo
+        } else {
+            $command = Get-Command 'go.exe' -ErrorAction SilentlyContinue
+            if ($command) { $GoExe = $command.Source }
+        }
     }
 
     if (-not $GoExe -or -not (Test-GoVersion $GoExe)) {
@@ -119,13 +125,14 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw ('Go installation failed with exit code ' + $LASTEXITCODE)
         }
-        $GoExe = $LocalGo
+        $GoExe = Join-Path $Root '.tools\go\bin\go.exe'
     }
 
     if (-not (Test-Path -LiteralPath $GoExe -PathType Leaf)) {
         throw ('go.exe was not found: ' + $GoExe)
     }
 
+    $env:GOROOT = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $GoExe) '..'))
     & $GoExe version
     if ($LASTEXITCODE -ne 0) { throw 'go version failed' }
 

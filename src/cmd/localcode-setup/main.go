@@ -103,8 +103,13 @@ func createShortcut(targetPath, shortcutPath, description, arguments, iconPath s
 		return nil
 	}
 	psScript := fmt.Sprintf(`
+$shortcutPath = '%s'
+$dir = [System.IO.Path]::GetDirectoryName($shortcutPath)
+if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+}
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut('%s')
+$Shortcut = $WshShell.CreateShortcut($shortcutPath)
 $Shortcut.TargetPath = '%s'
 $Shortcut.Arguments = '%s'
 $Shortcut.Description = '%s'
@@ -268,6 +273,12 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 
 	for _, file := range installPayloadFiles() {
 		src := filepath.Join(sourceDir, file)
+		if _, statErr := os.Stat(src); statErr != nil {
+			parentSrc := filepath.Join(sourceDir, "..", file)
+			if _, pErr := os.Stat(parentSrc); pErr == nil {
+				src = parentSrc
+			}
+		}
 		if _, statErr := os.Stat(src); statErr == nil {
 			dst := filepath.Join(targetDir, file)
 			if err := copyFile(src, dst); err != nil {
@@ -291,6 +302,7 @@ func installFromSource(targetDir, sourceDir string, silent, launchAfter bool) er
 		iconPath := installedIconPath(targetDir)
 
 		_ = createShortcut(mainExe, filepath.Join(startMenuDir, "LocalCode.lnk"), "LocalCode AI Development Workstation", "", iconPath)
+		_ = createShortcut(mainExe, filepath.Join(startMenuDir, "LocalCode (System Tray).lnk"), "LocalCode im Systemtray starten", "/tray", iconPath)
 		_ = createShortcut(debugExe, filepath.Join(startMenuDir, "LocalCode Diagnose & Debug.lnk"), "LocalCode Systemdiagnose und Debug-Konsole", "--diagnose", iconPath)
 	}
 

@@ -239,3 +239,23 @@ func TestWindowsBuildIsolationAllowsPerTestOverrides(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsTrayShortcutsConfigured(t *testing.T) {
+	setupGo, err := os.ReadFile(filepath.Join("cmd", "localcode-setup", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupText := string(setupGo)
+	if !strings.Contains(setupText, "LocalCode (System Tray).lnk") || !strings.Contains(setupText, `"/tray"`) {
+		t.Error("setup main.go is missing LocalCode (System Tray).lnk shortcut with /tray")
+	}
+
+	inno, err := os.ReadFile(filepath.Join("..", "installer", "localcode-setup.iss"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	innoText := string(inno)
+	if !strings.Contains(innoText, `Name: "{group}\LocalCode (System Tray)"`) || !strings.Contains(innoText, `Parameters: "/tray"`) {
+		t.Error("installer/localcode-setup.iss is missing LocalCode (System Tray) icon entry with /tray")
+	}
+}
