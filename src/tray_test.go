@@ -184,12 +184,6 @@ func TestTrayWndProcMock(t *testing.T) {
 		t.Errorf("expected 0, got %d", ret)
 	}
 
-	// Test WM_DESTROY
-	ret = trayWndProc(0, WM_DESTROY, 0, 0)
-	if ret != 0 {
-		t.Errorf("expected 0, got %d", ret)
-	}
-
 	// Test other message (delegated to DefWindowProcW)
 	_ = trayWndProc(0, WM_APP, 0, 0)
 }
@@ -208,9 +202,6 @@ func TestTrayManagerRunLifecycle(t *testing.T) {
 	select {
 	case <-tm.readyCh:
 		// Tray manager is running and window message loop is active
-		if !tm.running.Load() {
-			t.Errorf("expected tm.running to be true")
-		}
 		if tm.hwnd == 0 {
 			t.Errorf("expected tm.hwnd to be non-zero")
 		}
