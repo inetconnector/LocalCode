@@ -55,6 +55,7 @@ Source: "..\assets\{#MyAppIconName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppIconName}"; Comment: "LocalCode AI Development Workstation"
+Name: "{group}\LocalCode (System Tray)"; Filename: "{app}\{#MyAppExeName}"; Parameters: "/tray"; IconFilename: "{app}\{#MyAppIconName}"; Comment: "LocalCode im Systemtray starten"
 Name: "{group}\LocalCode Diagnose & Debug"; Filename: "{app}\{#MyAppDebugExeName}"; Parameters: "--diagnose"; IconFilename: "{app}\{#MyAppIconName}"; Comment: "LocalCode Diagnose und Konsole"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; IconFilename: "{app}\{#MyAppIconName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppIconName}"; Tasks: desktopicon

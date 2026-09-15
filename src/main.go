@@ -31,9 +31,12 @@ func main() {
 
 	cfg := loadConfig()
 	defaultURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
+	trayRequested := isTrayRequested()
 	if runningVersion, ok := existingLocalCodeVersion(defaultURL); ok {
 		if runningVersion == version {
-			_ = openBrowser(defaultURL)
+			if !trayRequested {
+				_ = openBrowserMaximized(defaultURL)
+			}
 			return
 		}
 		log.Printf("Stopping older LocalCode instance %q before starting %q", runningVersion, version)
@@ -50,11 +53,15 @@ func main() {
 	var setup RuntimeBootstrapResult
 	var err error
 	limitedMode := false
-	fastStart := fastStartupRequested()
+	fastStart := fastStartupRequested() || trayRequested
 	var splash *startupSplash
 	if fastStart {
 		setup = fastStartupBootstrap(cfg)
-		log.Printf("Fast startup enabled; runtime dependency checks are deferred to status/doctor and first use")
+		if trayRequested {
+			log.Printf("Tray mode requested (/tray); background startup initialized")
+		} else {
+			log.Printf("Fast startup enabled; runtime dependency checks are deferred to status/doctor and first use")
+		}
 	} else if started, splashErr := startStartupSplash(cfg, version); splashErr != nil {
 		log.Printf("Startup splash could not be started: %v", splashErr)
 	} else if browserErr := openStartupBrowser(started.URL()); browserErr != nil {
@@ -150,14 +157,34 @@ bootstrapLoop:
 	} else if len(remoteURLs) > 0 {
 		log.Printf("LocalCode Remote started: %s", strings.Join(remoteURLs, ", "))
 	}
+	tray := NewTrayManager(url, cfg.Language, trayRequested)
 	if splash != nil {
 		splash.Complete(url)
 		time.AfterFunc(30*time.Second, splash.Close)
-	} else if err := openBrowser(url); err != nil {
-		showFatal("LocalCode", localizeConfigText(cfg, "Browser konnte nicht geöffnet werden. Öffne manuell:", "The browser could not be opened. Open this address manually:")+"\n"+url)
+	} else if !trayRequested {
+		if err := openBrowserMaximized(url); err != nil {
+			showFatal("LocalCode", localizeConfigText(cfg, "Browser konnte nicht geöffnet werden. Öffne manuell:", "The browser could not be opened. Open this address manually:")+"\n"+url)
+		}
 	}
 
-	select {}
+	if err := tray.Run(); err != nil {
+		log.Printf("Tray run error: %v; falling back to standard wait", err)
+		select {}
+	}
+}
+
+func isTrayRequested() bool {
+	return hasTrayFlag(os.Args[1:])
+}
+
+func hasTrayFlag(args []string) bool {
+	for _, arg := range args {
+		clean := strings.ToLower(strings.TrimSpace(arg))
+		if clean == "/tray" || clean == "-tray" || clean == "--tray" {
+			return true
+		}
+	}
+	return false
 }
 
 func fastStartupRequested() bool {

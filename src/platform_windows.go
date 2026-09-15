@@ -77,7 +77,7 @@ func openChromiumApp(url string, compact bool) error {
 		if st, err := os.Stat(browser); err != nil || st.IsDir() {
 			continue
 		}
-		args := []string{"--app=" + url, "--no-first-run"}
+		args := []string{"--app=" + url, "--no-first-run", "--force-dark-mode", "--enable-features=WebContentsForceDark"}
 		if compact {
 			args = append(args, "--window-size=760,560", "--window-position=120,80")
 		} else {

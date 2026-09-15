@@ -24,13 +24,20 @@ if (-not (Test-Path $mainExe) -or -not (Test-Path $debugExe)) {
     & (Join-Path $PSScriptRoot 'build.ps1')
 }
 
-# 2. Stage launcher icon and compile native Go Setup Installer
+# 2. Stage launcher icon and payload files, then compile native Go Setup Installer
 $iconSource = Join-Path $Assets 'localcode.ico'
 $iconOut = Join-Path $Dist 'localcode.ico'
 if (-not (Test-Path -LiteralPath $iconSource)) {
     throw "Installer icon missing: $iconSource"
 }
 Copy-Item -LiteralPath $iconSource -Destination $iconOut -Force
+
+foreach ($file in @('START.bat', 'FAST-START.bat', 'README.md', 'LICENSE')) {
+    $src = Join-Path $Root $file
+    if (Test-Path -LiteralPath $src) {
+        Copy-Item -LiteralPath $src -Destination (Join-Path $Dist $file) -Force
+    }
+}
 
 $setupResourceOut = Join-Path $Source 'cmd\localcode-setup\rsrc_windows_amd64.syso'
 $windres = Get-Command windres.exe -ErrorAction SilentlyContinue
@@ -99,23 +106,26 @@ $setupOut = Join-Path $Dist 'LocalCode-Setup.exe'
 Push-Location $Source
 try {
     $GoExe = $null
-    $LocalGo = Join-Path $Root '.tools\go\bin\go.exe'
-    if (Test-Path -LiteralPath $LocalGo -PathType Leaf) {
-        $GoExe = $LocalGo
-    } else {
-        $cmd = Get-Command 'go.exe' -ErrorAction SilentlyContinue
-        if ($cmd) {
-            $GoExe = $cmd.Source
+    $toolchainMatches = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs\GoToolchains\*\go\bin\go.exe') -ErrorAction SilentlyContinue
+    if ($toolchainMatches) {
+        $GoExe = $toolchainMatches[-1].FullName
+    }
+    if (-not $GoExe) {
+        $LocalGo = Join-Path $Root '.tools\go\bin\go.exe'
+        if (Test-Path -LiteralPath $LocalGo -PathType Leaf) {
+            $GoExe = $LocalGo
         } else {
-            $toolchainMatches = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs\GoToolchains\*\go\bin\go.exe') -ErrorAction SilentlyContinue
-            if ($toolchainMatches) {
-                $GoExe = $toolchainMatches[-1].FullName
+            $cmd = Get-Command 'go.exe' -ErrorAction SilentlyContinue
+            if ($cmd) {
+                $GoExe = $cmd.Source
             }
         }
     }
     if (-not $GoExe -or -not (Test-Path -LiteralPath $GoExe -PathType Leaf)) {
         throw "go.exe was not found"
     }
+
+    $env:GOROOT = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $GoExe) '..'))
 
     & $GoExe build -ldflags="-H=windowsgui -s -w" -o $setupOut $setupSource
     if ($LASTEXITCODE -ne 0) {
