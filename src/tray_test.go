@@ -3,8 +3,11 @@
 package main
 
 import (
+	"errors"
 	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -87,6 +90,51 @@ func TestNotifyIconDataStructSize(t *testing.T) {
 	}
 }
 
+func TestLoadAppIcon(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-only test")
+	}
+	hIcon := loadAppIcon()
+	if hIcon == 0 {
+		t.Log("loadAppIcon returned 0 (expected in headless test environment)")
+	}
+}
+
+func TestTrayOpenUIAndExitAppHooks(t *testing.T) {
+	tm := NewTrayManager("http://127.0.0.1:4040", "en", true)
+
+	var openedURL string
+	origOpenHook := openBrowserMaximizedHook
+	openBrowserMaximizedHook = func(url string) error {
+		openedURL = url
+		return nil
+	}
+	defer func() { openBrowserMaximizedHook = origOpenHook }()
+
+	tm.OpenUI()
+	if openedURL != "http://127.0.0.1:4040" {
+		t.Errorf("expected openBrowserMaximizedHook to receive %q, got %q", "http://127.0.0.1:4040", openedURL)
+	}
+
+	// Test error branch
+	openBrowserMaximizedHook = func(url string) error {
+		return errors.New("browser error")
+	}
+	tm.OpenUI()
+
+	var exitCalled atomic.Bool
+	origExitHook := exitAppHook
+	exitAppHook = func(code int) {
+		exitCalled.Store(true)
+	}
+	defer func() { exitAppHook = origExitHook }()
+
+	tm.ExitApp()
+	if !exitCalled.Load() {
+		t.Errorf("expected exitAppHook to be called")
+	}
+}
+
 func TestTrayWndProcMock(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only test")
@@ -101,19 +149,89 @@ func TestTrayWndProcMock(t *testing.T) {
 		activeTrayMu.Unlock()
 	}()
 
-	// Test WM_TRAY_CALLBACK with unexpected mouse event
-	ret := trayWndProc(0, WM_TRAY_CALLBACK, 0, 0x0200) // WM_MOUSEMOVE
+	var openCalled atomic.Bool
+	origOpenHook := openBrowserMaximizedHook
+	openBrowserMaximizedHook = func(url string) error {
+		openCalled.Store(true)
+		return nil
+	}
+	defer func() { openBrowserMaximizedHook = origOpenHook }()
+
+	// Test WM_TRAY_CALLBACK with double click
+	ret := trayWndProc(0, WM_TRAY_CALLBACK, 0, WM_LBUTTONDBLCLK)
 	if ret != 0 {
 		t.Errorf("expected 0, got %d", ret)
 	}
+	if !openCalled.Load() {
+		t.Errorf("expected OpenUI to be called on double click")
+	}
+
+	// Test WM_TRAY_CALLBACK with right click
+	ret = trayWndProc(0, WM_TRAY_CALLBACK, 0, WM_RBUTTONUP)
+	if ret != 0 {
+		t.Errorf("expected 0, got %d", ret)
+	}
+
+	// Test WM_TRAY_CALLBACK with context menu msg
+	ret = trayWndProc(0, WM_TRAY_CALLBACK, 0, WM_CONTEXTMENU)
+	if ret != 0 {
+		t.Errorf("expected 0, got %d", ret)
+	}
+
+	// Test WM_TRAY_CALLBACK with unexpected mouse event
+	ret = trayWndProc(0, WM_TRAY_CALLBACK, 0, 0x0200) // WM_MOUSEMOVE
+	if ret != 0 {
+		t.Errorf("expected 0, got %d", ret)
+	}
+
+	// Test WM_DESTROY
+	ret = trayWndProc(0, WM_DESTROY, 0, 0)
+	if ret != 0 {
+		t.Errorf("expected 0, got %d", ret)
+	}
+
+	// Test other message (delegated to DefWindowProcW)
+	_ = trayWndProc(0, WM_APP, 0, 0)
 }
 
-func TestLoadAppIcon(t *testing.T) {
+func TestTrayManagerRunLifecycle(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only test")
 	}
-	hIcon := loadAppIcon()
-	if hIcon == 0 {
-		t.Log("loadAppIcon returned 0 (expected in headless test environment)")
+	tm := NewTrayManager("http://127.0.0.1:4040", "en", true)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- tm.Run()
+	}()
+
+	select {
+	case <-tm.readyCh:
+		// Tray manager is running and window message loop is active
+		if !tm.running.Load() {
+			t.Errorf("expected tm.running to be true")
+		}
+		if tm.hwnd == 0 {
+			t.Errorf("expected tm.hwnd to be non-zero")
+		}
+		// Test showContextMenu
+		tm.showContextMenu()
+		// Now stop the tray manager
+		tm.Stop()
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("tm.Run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for tray manager to be ready")
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("tm.Run exited with error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for tray manager to stop")
 	}
 }

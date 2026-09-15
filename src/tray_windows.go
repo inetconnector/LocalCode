@@ -230,6 +230,11 @@ func loadAppIcon() syscall.Handle {
 	return syscall.Handle(hIcon)
 }
 
+var (
+	openBrowserMaximizedHook func(url string) error
+	exitAppHook              func(code int)
+)
+
 func (tm *TrayManager) showContextMenu() {
 	var pt POINT
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
@@ -280,6 +285,12 @@ func (tm *TrayManager) showContextMenu() {
 
 func (tm *TrayManager) OpenUI() {
 	log.Printf("Tray: opening UI at %s (maximized)", tm.url)
+	if openBrowserMaximizedHook != nil {
+		if err := openBrowserMaximizedHook(tm.url); err != nil {
+			log.Printf("Tray: failed opening browser: %v", err)
+		}
+		return
+	}
 	if err := openBrowserMaximized(tm.url); err != nil {
 		log.Printf("Tray: failed opening browser: %v", err)
 	}
@@ -288,6 +299,10 @@ func (tm *TrayManager) OpenUI() {
 func (tm *TrayManager) ExitApp() {
 	log.Printf("Tray: exit requested by user")
 	tm.Stop()
+	if exitAppHook != nil {
+		exitAppHook(0)
+		return
+	}
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		os.Exit(0)
@@ -300,6 +315,7 @@ func (tm *TrayManager) Stop() {
 		if tm.hwnd != 0 {
 			procShellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&tm.nid)))
 			procPostMessageW.Call(uintptr(tm.hwnd), WM_CLOSE, 0, 0)
+			procPostQuitMessage.Call(0)
 		}
 		if tm.hIcon != 0 {
 			procDestroyIcon.Call(uintptr(tm.hIcon))

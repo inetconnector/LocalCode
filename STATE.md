@@ -7,19 +7,22 @@
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
-## Active System Tray (`/tray`) & Windows Setups workstream — 2026-09-15
+## Active System Tray (`/tray`), Startup Flicker Fix & Windows Setups workstream — 2026-09-15
 
-User request: Start LocalCode with `/tray` in the Windows system tray with application icon, bilingual context menu (*Öffnen* / *Beenden*), and double-click to open UI maximized; rebuild all Windows setups.
+User request: Start LocalCode with `/tray` in the Windows system tray with application icon, bilingual context menu (*Öffnen* / *Beenden*), and double-click to open UI maximized; eliminate top-left white rectangular flash on Windows startup; rebuild all binaries (`LocalCode-Android.apk`, `LocalCode-Remote-debug.apk`, `LocalCode.exe`, `LocalCode-Setup.exe`, `localcode-0.1.0.vsix`), commit and push, and make binaries live on GitHub Releases.
 
 Implemented in this workstream:
 
 - **Windows System Tray (`/tray`) Architecture (`src/tray_windows.go`, `src/tray_other.go`, `src/tray_test.go`)**:
   - Implemented pure Win32 system tray manager (`TrayManager`) using `syscall.NewLazyDLL` ("user32.dll", "shell32.dll", "kernel32.dll") and `syscall.NewCallback`.
-  - Created hidden host window (`LocalCodeTrayWindowClass`) with `Shell_NotifyIconW` integration (`NIM_ADD`, `NIM_MODIFY`, `NIM_DELETE`).
+  - Created message-only host window (`LocalCodeTrayWindowClass` with `HWND_MESSAGE`) with `Shell_NotifyIconW` integration (`NIM_ADD`, `NIM_MODIFY`, `NIM_DELETE`).
   - Embedded / staged icon extraction via `ExtractIconExW`, `LoadImageW` (`localcode.ico`), and standard application icon fallback.
   - Double-click on tray icon (`WM_LBUTTONDBLCLK`) triggers `openBrowserMaximized(url)` with Chromium `--start-maximized` or system default browser.
   - Right-click on tray icon (`WM_RBUTTONUP` / `WM_CONTEXTMENU`) renders native popup menu with **Öffnen** (bold/default) and **Beenden** with 100% bilingual DE/EN localization.
   - "Beenden" cleanly removes tray icon (`NIM_DELETE`), destroys window, and gracefully stops the application.
+- **Top-Left White Rectangular Startup Flash Elimination (`src/tray_windows.go`, `src/platform_windows.go`)**:
+  - Replaced top-level desktop window creation with `HWND_MESSAGE` (`(HWND)-3`), creating a pure message-only window that Desktop Window Manager (DWM) does not visually rasterize.
+  - Added `--force-dark-mode` and `--enable-features=WebContentsForceDark` in Chromium app launcher (`openChromiumApp`) to prevent white canvas repaint flashes prior to CSS initialization.
 - **CLI Flag Integration & Background Startup (`src/main.go`)**:
   - Recognizes `/tray`, `-tray`, and `--tray` (case-insensitive).
   - When started with `/tray`, bypasses opening an initial browser window and runs silently in the Windows system tray.

@@ -102,3 +102,31 @@ func TestLSPPositionNormalizationResolutionAndFormatting(t *testing.T) {
 		t.Fatalf("empty LSP result should render null: %s", empty)
 	}
 }
+
+func TestWebToolsPublicOnlyValidationAndDialer(t *testing.T) {
+	if !isForbiddenIP(nil) {
+		t.Fatalf("expected nil IP to be forbidden")
+	}
+
+	for _, invalid := range []string{
+		"http://127.0.0.1:8080",
+		"http://localhost:3000",
+		"ftp://example.com",
+		"not-a-url",
+	} {
+		if _, err := validatePublicURL(invalid); err == nil {
+			t.Errorf("validatePublicURL(%q) should have failed", invalid)
+		}
+	}
+
+	// Dialing a forbidden IP or invalid address should fail cleanly
+	_, err := publicOnlyDialContext(t.Context(), "tcp", "127.0.0.1:8080")
+	if err == nil {
+		t.Errorf("publicOnlyDialContext to loopback should have failed")
+	}
+
+	_, err = publicOnlyDialContext(t.Context(), "tcp", "invalid-no-port")
+	if err == nil {
+		t.Errorf("publicOnlyDialContext with invalid host:port should have failed")
+	}
+}
