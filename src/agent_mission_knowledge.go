@@ -18,8 +18,10 @@ import (
 type MissionKnowledgeCategory string
 
 const (
+	MissionKnowledgeCategoryNegativeRule MissionKnowledgeCategory = "negative_rule"
 	MissionKnowledgeCategoryArchitecture MissionKnowledgeCategory = "architecture_decision"
 	MissionKnowledgeCategoryContract     MissionKnowledgeCategory = "subsystem_contract"
+	MissionKnowledgeCategoryProcedural   MissionKnowledgeCategory = "procedural_workflow"
 	MissionKnowledgeCategoryKnownFailure MissionKnowledgeCategory = "known_failure"
 	MissionKnowledgeCategoryTestEvidence MissionKnowledgeCategory = "test_evidence"
 )
@@ -62,16 +64,20 @@ type MissionKnowledgeItem struct {
 
 func normalizeMissionKnowledgeCategory(raw string) (MissionKnowledgeCategory, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "negative", "negative_rule", "constraint", "negative_constraint", "rule", "forbidden", "do_not", "prohibition":
+		return MissionKnowledgeCategoryNegativeRule, nil
 	case "architecture", "architecture_decision", "decision", "arch":
 		return MissionKnowledgeCategoryArchitecture, nil
 	case "contract", "subsystem_contract", "interface", "spec":
 		return MissionKnowledgeCategoryContract, nil
+	case "procedural", "procedural_workflow", "workflow", "process", "routine", "method":
+		return MissionKnowledgeCategoryProcedural, nil
 	case "failure", "known_failure", "bug", "issue", "gotcha":
 		return MissionKnowledgeCategoryKnownFailure, nil
 	case "test", "test_evidence", "evidence", "test_result", "verification":
 		return MissionKnowledgeCategoryTestEvidence, nil
 	default:
-		return "", fmt.Errorf("%w: %q (allowed: architecture_decision, subsystem_contract, known_failure, test_evidence)", errMissionKnowledgeInvalidCategory, raw)
+		return "", fmt.Errorf("%w: %q (allowed: negative_rule, procedural_workflow, architecture_decision, subsystem_contract, known_failure, test_evidence)", errMissionKnowledgeInvalidCategory, raw)
 	}
 }
 
@@ -164,15 +170,19 @@ func formatMissionKnowledgeForPrompt(items []MissionKnowledgeItem, maxBytes int)
 	}
 
 	categories := []MissionKnowledgeCategory{
+		MissionKnowledgeCategoryNegativeRule,
 		MissionKnowledgeCategoryArchitecture,
 		MissionKnowledgeCategoryContract,
+		MissionKnowledgeCategoryProcedural,
 		MissionKnowledgeCategoryKnownFailure,
 		MissionKnowledgeCategoryTestEvidence,
 	}
 
 	categoryTitles := map[MissionKnowledgeCategory]string{
+		MissionKnowledgeCategoryNegativeRule: "## ⚠️ Critical Constraints & Negative Rules",
 		MissionKnowledgeCategoryArchitecture: "## Architecture Decisions",
 		MissionKnowledgeCategoryContract:     "## Subsystem Contracts & Interfaces",
+		MissionKnowledgeCategoryProcedural:   "## Reusable Procedural Workflows",
 		MissionKnowledgeCategoryKnownFailure: "## Known Failures & Gotchas",
 		MissionKnowledgeCategoryTestEvidence: "## Verified Test Evidence",
 	}
@@ -188,7 +198,11 @@ func formatMissionKnowledgeForPrompt(items []MissionKnowledgeItem, maxBytes int)
 		b.WriteString(categoryTitles[cat] + "\n\n")
 		for _, item := range group {
 			var line strings.Builder
-			line.WriteString(fmt.Sprintf("- **%s**", item.Title))
+			if cat == MissionKnowledgeCategoryNegativeRule {
+				line.WriteString(fmt.Sprintf("- **[CRITICAL CONSTRAINT] %s**", item.Title))
+			} else {
+				line.WriteString(fmt.Sprintf("- **%s**", item.Title))
+			}
 			if item.SourcePath != "" {
 				line.WriteString(fmt.Sprintf(" (`%s`)", item.SourcePath))
 			}

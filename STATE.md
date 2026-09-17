@@ -7,6 +7,34 @@
 **Active branch:** `master`
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
+## Active Progressive Skill Discovery, Negative Knowledge & Quality Gate workstream — 2026-09-17
+
+User request: Thoroughly analyze all documents in `C:\Users\frede\Desktop\pipeline` and implement high-leverage architectural refinements into LocalCode.
+
+Implemented in this workstream:
+
+- **Progressive Skill Routing & Context Budget Management (`src/instruction_context.go`, `src/instruction_context_test.go`)**:
+  - Expanded `availableSkillRoots` to discover skills from `.agents/skills`, `.localcode/skills`, `.gemini/config/skills`, and Antigravity IDE builtin paths alongside existing `.codex` and `.cursor` roots.
+  - Enhanced frontmatter parsing in `localSkillSummaries` for `domains`, `side_effect_level`, `activation`, and `negative_triggers` / `negative_activation`.
+  - Added negative trigger matching (`negativeActivationMatchesTask`): suppresses heavy or conflicting skills when matching negative triggers (e.g., `quick_fix`, `no_ui`, `dry_run`).
+  - Implemented Context Budget Guard: limits auto-embedded full-text skills to the 2 highest-priority matching skills to preserve context window and VRAM on local models, leaving remaining skills available in the compact index for on-demand `skill_read`.
+- **Negative Rules & Procedural Knowledge Store (`src/agent_mission_knowledge.go`, `src/agent_mission_knowledge_test.go`)**:
+  - Added `MissionKnowledgeCategoryNegativeRule` (`"negative_rule"`) for persistent "Do Not" project constraints and `MissionKnowledgeCategoryProcedural` (`"procedural_workflow"`) for standard development workflows.
+  - Prominent prompt injection: `[CRITICAL CONSTRAINT]` items rendered at the very top of prompt context under `## ⚠️ Critical Constraints & Negative Rules`.
+  - Full persistence support under `%LOCALAPPDATA%\LocalCode\knowledge\<hash>.json` with 128 KiB cap, secret redaction, and atomic writes.
+- **Tool Side-Effect Taxonomy & Adversarial Self-Review Protocol (`src/agent.go`)**:
+  - Formalized Tool Side-Effect hierarchy (`ReadOnly`, `SafeWrite`, `Mutating`, `SystemExecution`) adhering to the *Principle of Least Privilege*.
+  - Added mandatory 4-step Pre-Completion Quality Gate (Adversarial Self-Review before `finish`):
+    1. Acceptance Verification (explicit user criteria)
+    2. Constraint & Negative Rule Check (`[CRITICAL CONSTRAINT]`)
+    3. Clean Diff, No Placeholders, and Verified Automated Tests
+    4. Truthful Reporting (report strictly verified actions).
+- **Verification & Testing**:
+  - All unit and integration tests passed (`go test -race -count=1 ./...`).
+  - Full build suite passed (`scripts/build.ps1`, isolated + shuffled passes, amd64 binaries).
+  - Browser UI smoke test passed (`python scripts/ui-e2e-test.py`, `FULL UI E2E OK 43 requests`).
+  - JavaScript syntax checks passed with Node.js.
+
 ## Active System Tray (`/tray`), Startup Flicker Fix & Windows Setups workstream — 2026-09-15
 
 User request: Start LocalCode with `/tray` in the Windows system tray with application icon, bilingual context menu (*Öffnen* / *Beenden*), and double-click to open UI maximized; eliminate top-left white rectangular flash on Windows startup; rebuild all binaries (`LocalCode-Android.apk`, `LocalCode-Remote-debug.apk`, `LocalCode.exe`, `LocalCode-Setup.exe`, `localcode-0.1.0.vsix`), commit and push, and make binaries live on GitHub Releases.
