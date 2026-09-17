@@ -144,7 +144,7 @@ Der synthetische Parallelitätsbenchmark und der opt-in Ollama-Benchmark liefern
 ### Mission Memory & Persistente Knowledge-Speicherung
 
 `src/agent_mission_knowledge.go` implementiert ein zweistufiges Wissensmodell:
-1. **Laufzeit-Wissen (Mission-Scope)**: Gespeichert in `RunJournalState.Mission.Knowledge` (max. 64 Einträge pro aktiver Mission) für strukturierte Architekturentscheidungen (`architecture_decision`), Schnittstellenverträge (`subsystem_contract`), bekannte Fehler/Gotchas (`known_failure`) und Testbelege (`test_evidence`).
+1. **Laufzeit-Wissen (Mission-Scope)**: Gespeichert in `RunJournalState.Mission.Knowledge` (max. 64 Einträge pro aktiver Mission) für verbindliche Verbote und Projektregeln (`negative_rule`), strukturierte Architekturentscheidungen (`architecture_decision`), Schnittstellenverträge (`subsystem_contract`), bewährte Entwicklungsabläufe (`procedural_workflow`), bekannte Fehler/Gotchas (`known_failure`) und Testbelege (`test_evidence`).
 2. **Projektweit persistente Knowledge-Ablage**: Gespeichert unter `%LOCALAPPDATA%\LocalCode\knowledge\<project_hash>.json` (`schema_version: 1`).
    - Feste Obergrenzen: Maximal 64 Einträge pro Projekt, FIFO-Eviction älterer Einträge.
    - Byte-Budget-Kompaktierung: Maximal 128 KiB JSON-Dateigröße; ältere Einträge werden automatisch verworfen, wenn das Budget überschritten wird.
@@ -239,7 +239,7 @@ Startup stays passive: no automatic resume, retry, or replay.
 ### Mission Memory & Persistent Knowledge Store
 
 `src/agent_mission_knowledge.go` implements a two-tier knowledge model:
-1. **Runtime Mission Knowledge**: Held in `RunJournalState.Mission.Knowledge` (max 64 items per active mission) for structured architecture decisions (`architecture_decision`), subsystem contracts (`subsystem_contract`), known failures/gotchas (`known_failure`), and test evidence (`test_evidence`).
+1. **Runtime Mission Knowledge**: Held in `RunJournalState.Mission.Knowledge` (max 64 items per active mission) for critical project constraints and "Do Not" rules (`negative_rule`), structured architecture decisions (`architecture_decision`), subsystem contracts (`subsystem_contract`), reusable workflows (`procedural_workflow`), known failures/gotchas (`known_failure`), and test evidence (`test_evidence`).
 2. **Project-Persistent Knowledge Store**: Stored at `%LOCALAPPDATA%\LocalCode\knowledge\<project_hash>.json` (`schema_version: 1`).
    - Strict bounds: Maximum 64 items per project, FIFO eviction of older items.
    - Byte budget compaction: Hard cap of 128 KiB total JSON size; older items are dropped if the byte budget is exceeded.

@@ -31,20 +31,23 @@ type instructionDocument struct {
 }
 
 type localSkillSummary struct {
-	Name             string
-	Path             string
-	Description      string
-	Relevant         bool
-	AlwaysApply      bool
-	Globs            []string
-	Activation       []string
-	ExcludeGlobs     []string
-	Priority         int
-	Permissions      []string
-	Scripts          []string
-	RequiresApproval bool
-	RootTier         int
-	RootRank         int
+	Name               string
+	Path               string
+	Description        string
+	Relevant           bool
+	AlwaysApply        bool
+	Globs              []string
+	Activation         []string
+	NegativeActivation []string
+	ExcludeGlobs       []string
+	Domains            []string
+	Priority           int
+	SideEffectLevel    string
+	Permissions        []string
+	Scripts            []string
+	RequiresApproval   bool
+	RootTier           int
+	RootRank           int
 }
 
 func projectInstructionContext(project, task string) string {
@@ -83,9 +86,14 @@ func projectInstructionContext(project, task string) string {
 	}
 
 	skills := localSkillSummaries(project, task)
+	embeddedCount := 0
+	const maxAutoEmbeddedSkills = 2
 	for _, skill := range skills {
 		if skill.Relevant && !skill.RequiresApproval {
-			add("Relevanter Skill", skill.Path, maxSkillDocBytes)
+			if embeddedCount < maxAutoEmbeddedSkills {
+				add("Relevanter Skill", skill.Path, maxSkillDocBytes)
+				embeddedCount++
+			}
 		}
 	}
 
@@ -227,31 +235,41 @@ func localSkillSummaries(project, task string) []localSkillSummary {
 			globs := frontmatterList(content, "globs")
 			alwaysApply := cursorRuleAlwaysApplies(content)
 			activation := frontmatterListAny(content, "activation", "activations", "trigger", "triggers", "keywords", "when", "appliesTo", "applies_to")
+			negativeActivation := frontmatterListAny(content, "negative_triggers", "negative_trigger", "negative_activation", "anti_triggers", "anti_trigger", "negative_keywords", "negativeTriggers")
 			excludeGlobs := frontmatterListAny(content, "exclude", "excludes", "excludeGlobs", "exclude_globs")
+			domains := frontmatterListAny(content, "domains", "domain", "categories", "category", "tags", "tag")
+			sideEffectLevel := strings.ToLower(strings.TrimSpace(frontmatterValue(content, "side_effect_level")))
+			if sideEffectLevel == "" {
+				sideEffectLevel = strings.ToLower(strings.TrimSpace(frontmatterValue(content, "side_effects")))
+			}
 			priority := frontmatterInt(content, "priority")
 			permissions := compactNonEmpty(append(frontmatterList(content, "permissions"), frontmatterList(content, "allowed-tools")...))
 			permissions = compactNonEmpty(append(permissions, frontmatterList(content, "tools")...))
 			scripts := compactNonEmpty(append(frontmatterList(content, "scripts"), frontmatterList(content, "commands")...))
 			relevant := false
-			if !instructionGlobsMatchTask(project, task, excludeGlobs) {
-				relevant = alwaysApply || instructionGlobsMatchTask(project, task, globs) || activationMatchesTask(task, activation) || instructionTextRelevant(task, name+" "+description)
+			negativeMatch := len(negativeActivation) > 0 && activationMatchesTask(task, negativeActivation)
+			if !negativeMatch && !instructionGlobsMatchTask(project, task, excludeGlobs) {
+				relevant = alwaysApply || instructionGlobsMatchTask(project, task, globs) || activationMatchesTask(task, activation) || instructionTextRelevant(task, name+" "+description+" "+strings.Join(domains, " "))
 			}
 			requiresApproval := skillMetadataRequiresApproval(permissions, scripts)
 			skills = append(skills, localSkillSummary{
-				Name:             name,
-				Path:             path,
-				Description:      truncateText(strings.TrimSpace(description), 600),
-				Relevant:         relevant,
-				AlwaysApply:      alwaysApply,
-				Globs:            globs,
-				Activation:       activation,
-				ExcludeGlobs:     excludeGlobs,
-				Priority:         priority,
-				Permissions:      permissions,
-				Scripts:          scripts,
-				RequiresApproval: requiresApproval,
-				RootTier:         rootTier,
-				RootRank:         rootRank,
+				Name:               name,
+				Path:               path,
+				Description:        truncateText(strings.TrimSpace(description), 600),
+				Relevant:           relevant,
+				AlwaysApply:        alwaysApply,
+				Globs:              globs,
+				Activation:         activation,
+				NegativeActivation: negativeActivation,
+				ExcludeGlobs:       excludeGlobs,
+				Domains:            domains,
+				Priority:           priority,
+				SideEffectLevel:    sideEffectLevel,
+				Permissions:        permissions,
+				Scripts:            scripts,
+				RequiresApproval:   requiresApproval,
+				RootTier:           rootTier,
+				RootRank:           rootRank,
 			})
 			return nil
 		})
@@ -310,18 +328,33 @@ func skillConflictWinner(candidate, current localSkillSummary) bool {
 
 func availableSkillRoots(project string) []string {
 	var roots []string
-	for _, root := range []string{
+	candidateDirs := []string{
+		filepath.Join(project, ".agents", "skills"),
+		filepath.Join(project, ".localcode", "skills"),
 		filepath.Join(project, ".codex", "skills"),
 		filepath.Join(project, ".cursor", "skills"),
 		filepath.Join(project, ".opencode", "skills"),
 		filepath.Join(project, "skills"),
 		filepath.Join(appDataDir(), "skills"),
+		filepath.Join(appDataDir(), "builtin", "skills"),
 		filepath.Join(codexHomeDir(), "skills"),
+		filepath.Join(userProfileDir(), ".agents", "skills"),
+		filepath.Join(userProfileDir(), ".localcode", "skills"),
 		filepath.Join(userProfileDir(), ".cursor", "skills"),
 		filepath.Join(userProfileDir(), ".opencode", "skills"),
-	} {
-		if info, err := os.Stat(root); err == nil && info.IsDir() {
-			roots = append(roots, root)
+		filepath.Join(userProfileDir(), ".gemini", "config", "skills"),
+		filepath.Join(userProfileDir(), ".gemini", "antigravity-ide", "builtin", "skills"),
+	}
+	seen := map[string]bool{}
+	for _, root := range candidateDirs {
+		clean := filepath.Clean(root)
+		key := strings.ToLower(clean)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if info, err := os.Stat(clean); err == nil && info.IsDir() {
+			roots = append(roots, clean)
 		}
 	}
 	return roots
@@ -344,6 +377,12 @@ func localSkillIndex(project string, skills []localSkillSummary) string {
 			desc = "Keine Beschreibung."
 		}
 		meta := ""
+		if len(skill.Domains) > 0 {
+			meta += " domains=" + strings.Join(skill.Domains, ",")
+		}
+		if skill.SideEffectLevel != "" {
+			meta += " side_effects=" + skill.SideEffectLevel
+		}
 		if len(skill.Permissions) > 0 {
 			meta += " permissions=" + strings.Join(skill.Permissions, ",")
 		}
@@ -355,6 +394,9 @@ func localSkillIndex(project string, skills []localSkillSummary) string {
 		}
 		if len(skill.Activation) > 0 {
 			meta += " activation=" + strings.Join(skill.Activation, ",")
+		}
+		if len(skill.NegativeActivation) > 0 {
+			meta += " negative_triggers=" + strings.Join(skill.NegativeActivation, ",")
 		}
 		if len(skill.ExcludeGlobs) > 0 {
 			meta += " exclude=" + strings.Join(skill.ExcludeGlobs, ",")

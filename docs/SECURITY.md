@@ -160,11 +160,9 @@ MCP wird explizit konfiguriert. Stdio-/HTTP-Sessions besitzen Timeouts und kontr
 - Rule-/Skill-Dateien erweitern Modellkontext, nicht Policy.
 - Skills mit non-read-only Tool-Authority werden nicht automatisch privilegiert.
 - Skill-Ressourcen bleiben unter Pfad-, Größen- und Approval-Grenzen.
-- Bestehende dauerhafte Memories dürfen keine Secrets enthalten und erweitern Tool-Authority nicht.
+-### Nächste Sicherheitsgrenze: Mission Memory/Knowledge
 
-### Nächste Sicherheitsgrenze: Mission Memory/Knowledge
-
-Persistente Mission Memory/Knowledge ist in `src/agent_mission_knowledge.go` implementiert (Schema v1, projektbezogener Hash, maximal 64 Einträge/128 KiB, FIFO, Redaction, atomare Ablage). Die folgenden Grenzen müssen bei Erweiterungen erhalten bleiben:
+Persistente Mission Memory/Knowledge ist in `src/agent_mission_knowledge.go` implementiert (Schema v1, projektbezogener Hash, maximal 64 Einträge/128 KiB, FIFO, Redaction, atomare Ablage, Kategorien inklusive `negative_rule` und `procedural_workflow`). Die folgenden Grenzen müssen bei Erweiterungen erhalten bleiben:
 
 - versioniertes Schema,
 - maximale Entries/Bytes und per-field Caps,
@@ -266,7 +264,7 @@ Public web fetches reject non-public destinations and mitigate DNS rebinding by 
 
 ### Next security boundary: Mission Memory/Knowledge
 
-Persistent Mission Memory/Knowledge is implemented in `src/agent_mission_knowledge.go` (schema v1, project hash, 64 entries/128 KiB, FIFO, redaction, atomic storage). Extensions must preserve versioning, strict entry/byte/per-field caps, deterministic retention/eviction, secret redaction and exclusion of raw transcripts/unbounded tool or file content.
+Persistent Mission Memory/Knowledge is implemented in `src/agent_mission_knowledge.go` (schema v1, project hash, 64 entries/128 KiB, FIFO, redaction, atomic storage, including `negative_rule` and `procedural_workflow` categories). Extensions must preserve versioning, strict entry/byte/per-field caps, deterministic retention/eviction, secret redaction and exclusion of raw transcripts/unbounded tool or file content.
 
 Mission Memory may inform planning/context but must **never** grant capabilities, satisfy postconditions, authorize recovery, alter attempts, create Scheduler leases or override current project/Git reconciliation. It must not become a second active recovery authority beside `run_journal.go`.
 

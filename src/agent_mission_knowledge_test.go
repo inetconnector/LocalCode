@@ -20,6 +20,14 @@ func TestMissionKnowledgeNormalizationAndValidation(t *testing.T) {
 		input string
 		want  MissionKnowledgeCategory
 	}{
+		{"negative", MissionKnowledgeCategoryNegativeRule},
+		{"negative_rule", MissionKnowledgeCategoryNegativeRule},
+		{"constraint", MissionKnowledgeCategoryNegativeRule},
+		{"negative_constraint", MissionKnowledgeCategoryNegativeRule},
+		{"rule", MissionKnowledgeCategoryNegativeRule},
+		{"forbidden", MissionKnowledgeCategoryNegativeRule},
+		{"do_not", MissionKnowledgeCategoryNegativeRule},
+		{"prohibition", MissionKnowledgeCategoryNegativeRule},
 		{"architecture", MissionKnowledgeCategoryArchitecture},
 		{"architecture_decision", MissionKnowledgeCategoryArchitecture},
 		{"arch", MissionKnowledgeCategoryArchitecture},
@@ -28,6 +36,12 @@ func TestMissionKnowledgeNormalizationAndValidation(t *testing.T) {
 		{"subsystem_contract", MissionKnowledgeCategoryContract},
 		{"interface", MissionKnowledgeCategoryContract},
 		{"spec", MissionKnowledgeCategoryContract},
+		{"procedural", MissionKnowledgeCategoryProcedural},
+		{"procedural_workflow", MissionKnowledgeCategoryProcedural},
+		{"workflow", MissionKnowledgeCategoryProcedural},
+		{"process", MissionKnowledgeCategoryProcedural},
+		{"routine", MissionKnowledgeCategoryProcedural},
+		{"method", MissionKnowledgeCategoryProcedural},
 		{"failure", MissionKnowledgeCategoryKnownFailure},
 		{"known_failure", MissionKnowledgeCategoryKnownFailure},
 		{"bug", MissionKnowledgeCategoryKnownFailure},
@@ -107,30 +121,42 @@ func TestMissionKnowledgePromptFormatting(t *testing.T) {
 	now := time.Now()
 	items := []MissionKnowledgeItem{
 		{
+			Category:  MissionKnowledgeCategoryNegativeRule,
+			Title:     "Never Run Unsafe Force Push",
+			Summary:   "Do not execute git push --force on shared branches.",
+			CreatedAt: now,
+		},
+		{
 			Category:  MissionKnowledgeCategoryArchitecture,
 			Title:     "Decouple Scheduler from Child Execution",
 			Summary:   "Children run detached copies outside the scheduler lock.",
 			Tags:      []string{"scheduler", "concurrency"},
-			CreatedAt: now,
+			CreatedAt: now.Add(time.Minute),
 		},
 		{
 			Category:   MissionKnowledgeCategoryContract,
 			Title:      "Child Agent Result Schema",
 			Summary:    "Child agents emit structured JSON AgentResult.",
 			SourcePath: "src/agent_team_types.go",
-			CreatedAt:  now.Add(time.Minute),
+			CreatedAt:  now.Add(2 * time.Minute),
+		},
+		{
+			Category:  MissionKnowledgeCategoryProcedural,
+			Title:     "Release Build Process",
+			Summary:   "Execute scripts/build.ps1 before testing binaries.",
+			CreatedAt: now.Add(3 * time.Minute),
 		},
 		{
 			Category:  MissionKnowledgeCategoryKnownFailure,
 			Title:     "Windows Lock Contention",
 			Summary:   "Do not hold file handles open across child execution.",
-			CreatedAt: now.Add(2 * time.Minute),
+			CreatedAt: now.Add(4 * time.Minute),
 		},
 		{
 			Category:  MissionKnowledgeCategoryTestEvidence,
 			Title:     "Scheduler Fairness 14-Task DAG",
 			Summary:   "Verified drain without starvation or memory leaks.",
-			CreatedAt: now.Add(3 * time.Minute),
+			CreatedAt: now.Add(5 * time.Minute),
 		},
 	}
 
@@ -138,11 +164,20 @@ func TestMissionKnowledgePromptFormatting(t *testing.T) {
 	if !strings.Contains(formatted, "# Mission Knowledge & Memory") {
 		t.Fatal("header missing in prompt formatting")
 	}
+	if !strings.Contains(formatted, "## ⚠️ Critical Constraints & Negative Rules") {
+		t.Fatal("Critical constraints category missing")
+	}
+	if !strings.Contains(formatted, "[CRITICAL CONSTRAINT] Never Run Unsafe Force Push") {
+		t.Fatal("critical constraint prefix missing")
+	}
 	if !strings.Contains(formatted, "## Architecture Decisions") {
 		t.Fatal("Architecture category missing")
 	}
 	if !strings.Contains(formatted, "## Subsystem Contracts & Interfaces") {
 		t.Fatal("Contract category missing")
+	}
+	if !strings.Contains(formatted, "## Reusable Procedural Workflows") {
+		t.Fatal("Procedural workflow category missing")
 	}
 	if !strings.Contains(formatted, "## Known Failures & Gotchas") {
 		t.Fatal("Known failure category missing")

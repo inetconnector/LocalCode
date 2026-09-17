@@ -348,6 +348,77 @@ func TestSkillRunScriptExecutesDeclaredCommand(t *testing.T) {
 	}
 }
 
+func TestSkillDiscoveryFromAgentsFolderAndNegativeTriggers(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+
+	// Skill in .agents/skills with positive and negative triggers
+	mustWrite(t, filepath.Join(project, ".agents", "skills", "deploy-skill", "SKILL.md"), `---
+description: Automated deployment skill
+activation:
+  - deploy
+  - release
+negative_triggers:
+  - dry_run
+  - simulate
+domains:
+  - ci_cd
+side_effect_level: system_execution
+---
+# Deploy Skill
+
+Execute production release deployment.
+`)
+
+	// Test positive match
+	skillsPos := localSkillSummaries(project, "Please deploy the application.")
+	if len(skillsPos) == 0 || !skillsPos[0].Relevant {
+		t.Fatalf("expected deploy-skill to be relevant for positive task: %#v", skillsPos)
+	}
+	if len(skillsPos[0].Domains) == 0 || skillsPos[0].Domains[0] != "ci_cd" {
+		t.Fatalf("expected domains ci_cd, got %#v", skillsPos[0].Domains)
+	}
+	if skillsPos[0].SideEffectLevel != "system_execution" {
+		t.Fatalf("expected side_effect_level system_execution, got %s", skillsPos[0].SideEffectLevel)
+	}
+
+	// Test negative trigger suppression
+	skillsNeg := localSkillSummaries(project, "Please deploy with dry_run mode.")
+	if len(skillsNeg) == 0 || skillsNeg[0].Relevant {
+		t.Fatalf("expected deploy-skill to be suppressed by negative trigger: %#v", skillsNeg)
+	}
+}
+
+func TestSkillContextBudgetCapping(t *testing.T) {
+	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := t.TempDir()
+
+	// Create 4 relevant skills
+	mustWrite(t, filepath.Join(project, ".localcode", "skills", "skill-a", "SKILL.md"), "---\ndescription: Skill A\nalwaysApply: true\npriority: 100\n---\n# Skill A Body\n")
+	mustWrite(t, filepath.Join(project, ".localcode", "skills", "skill-b", "SKILL.md"), "---\ndescription: Skill B\nalwaysApply: true\npriority: 90\n---\n# Skill B Body\n")
+	mustWrite(t, filepath.Join(project, ".localcode", "skills", "skill-c", "SKILL.md"), "---\ndescription: Skill C\nalwaysApply: true\npriority: 80\n---\n# Skill C Body\n")
+	mustWrite(t, filepath.Join(project, ".localcode", "skills", "skill-d", "SKILL.md"), "---\ndescription: Skill D\nalwaysApply: true\npriority: 70\n---\n# Skill D Body\n")
+
+	context := projectInstructionContext(project, "Perform general tasks.")
+
+	// Check that highest priority (Skill A and B) are auto-embedded, but Skill C and D body are NOT auto-embedded
+	if !strings.Contains(context, "# Skill A Body") || !strings.Contains(context, "# Skill B Body") {
+		t.Fatalf("expected Skill A and B to be auto-embedded:\n%s", context)
+	}
+	if strings.Contains(context, "# Skill C Body") || strings.Contains(context, "# Skill D Body") {
+		t.Fatalf("expected Skill C and D to be capped by budget guard:\n%s", context)
+	}
+
+	// But all skills must appear in the local skill index
+	for _, name := range []string{"skill-a", "skill-b", "skill-c", "skill-d"} {
+		if !strings.Contains(context, name) {
+			t.Fatalf("expected %s to be listed in skill index:\n%s", name, context)
+		}
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
