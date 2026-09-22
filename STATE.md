@@ -109,8 +109,9 @@ Dieser verwaltete Abschnitt wird bei Projektauswahl, Agentenstart, Werkzeugaktio
 **Verified:** 2026-09-22 Europe/Berlin (Android Startup Black Screen Elimination, Persistent Last Project Auto-Restoration via Native SharedPreferences Bridge & `/remote/api/select-project`, Plesk Live Portal & GitHub Downloads Architecture on `https://mesh.inetconnector.com/#downloads`, ComputeMesh Zero-Fee Local GPU & Cluster Collaboration, Antigravity IDE-Style Live Execution Trajectory across Desktop & Mobile Remote, Active Project Name Under LocalCode in identical font size, Android Horizontal Swipe Gesture Tab Switching, Safe Area Insets & Non-Sticky Edge Padding, Obsidian Dark Mode Discovery Wizard, UDP Broadcast Multi-Instance Auto-Discovery, 1-Click Connection, Concurrent Multi-Project Execution, Green Pulsating Active Project Indicators, Android hardware deployed & verified on Samsung Galaxy SM-S931B, Windows amd64 native build + full Go test suite 100% green)
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
-**Current authoritative merged master:** `96ad7f7d76e6b2f5b01308be52199cc9d895d9ea` (HEAD equals local origin/master; latest published release checked: `v6.9.3`)
-**Active branch:** `master`
+**Current authoritative merged master:** `96ad7f7d76e6b2f5b01308be52199cc9d895d9ea` (latest published release checked: `v6.9.3`)
+**Active branch:** `feat/android-startup-live-downloads`
+**Active PR:** #99 (`feat: Android startup black screen fix, persistent last project restoration & live Plesk downloads pipeline`)
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 ## Android Startup Black Screen Elimination & Persistent Last Project Auto-Restoration — 2026-09-22
