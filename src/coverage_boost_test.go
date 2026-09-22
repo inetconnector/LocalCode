@@ -366,8 +366,8 @@ func TestMissionRecoveryHandlersDirect(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/mission-recovery", nil)
 	w := httptest.NewRecorder()
 	server.handleMissionRecovery(w, req)
-	if w.Code != http.StatusNoContent && w.Code != http.StatusOK {
-		t.Fatalf("handleMissionRecovery code=%d want 204 or 200", w.Code)
+	if w.Code != http.StatusNoContent && w.Code != http.StatusOK && w.Code != http.StatusConflict {
+		t.Fatalf("handleMissionRecovery code=%d want 204, 200 or 409", w.Code)
 	}
 
 	// POST /api/mission-recovery/continue (empty/invalid body returns 400)

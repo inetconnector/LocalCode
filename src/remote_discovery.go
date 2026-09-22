@@ -105,41 +105,7 @@ func startRemoteUDPDiscovery(remotePort int, bindHost, fingerprint string, urls 
 				// Still respond if non-empty or standard query
 			}
 
-			// Collect active project names and running project paths
-			var projectNames []string
-			var runningProjects []string
-
-			if state != nil {
-				state.mu.RLock()
-				for _, p := range state.Threads {
-					if p != nil && p.Project != "" {
-						name := filepath.Base(p.Project)
-						if name != "" && name != "." && !containsString(projectNames, name) {
-							projectNames = append(projectNames, name)
-						}
-					}
-				}
-				runningProjects = state.GetRunningProjectsLocked()
-				state.mu.RUnlock()
-			}
-
-			if len(projectNames) == 0 && state != nil && state.Project != "" {
-				projectNames = append(projectNames, filepath.Base(state.Project))
-			}
-
-			payload := UDPDiscoveryPayload{
-				App:             "LocalCode Remote",
-				InstanceName:    hostname,
-				Hostname:        hostname,
-				Version:         version,
-				Port:            remotePort,
-				URL:             primaryURL,
-				RemoteURLs:      append([]string(nil), urls...),
-				TLS:             true,
-				TLSFingerprint:  fingerprint,
-				ActiveProjects:  projectNames,
-				RunningProjects: runningProjects,
-			}
+			payload := buildUDPDiscoveryPayload(remotePort, hostname, fingerprint, primaryURL, urls, state)
 
 			respData, encErr := json.Marshal(payload)
 			if encErr != nil {
@@ -151,4 +117,41 @@ func startRemoteUDPDiscovery(remotePort int, bindHost, fingerprint string, urls 
 	}()
 
 	return closer, nil
+}
+
+func buildUDPDiscoveryPayload(remotePort int, hostname, fingerprint, primaryURL string, urls []string, state *AppState) UDPDiscoveryPayload {
+	var projectNames []string
+	var runningProjects []string
+
+	if state != nil {
+		state.mu.RLock()
+		for _, p := range state.Threads {
+			if p != nil && p.Project != "" {
+				name := filepath.Base(p.Project)
+				if name != "" && name != "." && !containsString(projectNames, name) {
+					projectNames = append(projectNames, name)
+				}
+			}
+		}
+		runningProjects = state.GetRunningProjectsLocked()
+		state.mu.RUnlock()
+	}
+
+	if len(projectNames) == 0 && state != nil && state.Project != "" {
+		projectNames = append(projectNames, filepath.Base(state.Project))
+	}
+
+	return UDPDiscoveryPayload{
+		App:             "LocalCode Remote",
+		InstanceName:    hostname,
+		Hostname:        hostname,
+		Version:         version,
+		Port:            remotePort,
+		URL:             primaryURL,
+		RemoteURLs:      append([]string(nil), urls...),
+		TLS:             true,
+		TLSFingerprint:  fingerprint,
+		ActiveProjects:  projectNames,
+		RunningProjects: runningProjects,
+	}
 }
