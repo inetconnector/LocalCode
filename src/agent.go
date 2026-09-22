@@ -468,7 +468,7 @@ func (s *AppState) StopAgent() bool {
 
 func (s *AppState) StopAgentForThread(threadID string) bool {
 	s.mu.Lock()
-	run := s.GetActiveRunForThread(threadID)
+	run := s.getActiveRunForThreadLocked(threadID)
 	if run == nil {
 		s.mu.Unlock()
 		return false

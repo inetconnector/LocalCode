@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWindowsPlatformDiscoveryAndSafeFailureBranches(t *testing.T) {
@@ -251,5 +252,26 @@ func TestTrayLoadAppIcon(t *testing.T) {
 	h := loadAppIcon()
 	if h != 0 {
 		procDestroyIcon.Call(uintptr(h))
+	}
+}
+
+func TestLocalCodeAppWindows(t *testing.T) {
+	_ = isLocalCodeAppWindow("LocalCode", "Chrome_WidgetWin_1", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
+	_ = localCodeAppWindows("non-existent-browser.exe")
+}
+
+func TestRunPowerShellScript(t *testing.T) {
+	cfg := Config{CommandTimeout: 10}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	out, err := runPowerShellScript(ctx, cfg, "Write-Output 'localcode-test'")
+	if err != nil || !strings.Contains(out, "localcode-test") {
+		t.Errorf("expected powershell output 'localcode-test', got %q, err=%v", out, err)
+	}
+
+	escaped := escapePowerShellString(`"quoted"`)
+	if !strings.Contains(escaped, `\"`) {
+		t.Errorf("expected escaped powershell string")
 	}
 }

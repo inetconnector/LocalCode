@@ -432,3 +432,61 @@ func TestPublicOnlyDialContext(t *testing.T) {
 		t.Errorf("expected error for invalid address without port")
 	}
 }
+
+func TestStopAgentForThread(t *testing.T) {
+	tempRoot := t.TempDir()
+	cfg := Config{
+		RootProjectDir: tempRoot,
+		LastProject:    tempRoot,
+	}
+	state := NewAppState(cfg, nil)
+	defer state.Close()
+
+	// Stopping non-existent thread
+	if state.StopAgentForThread("non-existent-thread") {
+		t.Errorf("expected StopAgentForThread to return false for non-existent thread")
+	}
+
+	// Register active run
+	cancelled := false
+	state.RegisterActiveRun(&ActiveAgentRun{
+		ID:       "run-cancel-test",
+		Project:  tempRoot,
+		ThreadID: "thread-cancel-test",
+		Cancel:   func() { cancelled = true },
+	})
+
+	if !state.StopAgentForThread("thread-cancel-test") {
+		t.Errorf("expected StopAgentForThread to return true for active thread")
+	}
+	if !cancelled {
+		t.Errorf("expected Cancel hook to be invoked")
+	}
+}
+
+func TestMainFlagHelpers(t *testing.T) {
+	if !hasTrayFlag([]string{"--tray"}) || !hasTrayFlag([]string{"/tray"}) || !hasTrayFlag([]string{"-tray"}) {
+		t.Errorf("expected hasTrayFlag to detect tray flags")
+	}
+	if hasTrayFlag([]string{"--other", "-v"}) {
+		t.Errorf("expected hasTrayFlag to return false for non-tray flags")
+	}
+
+	t.Setenv("LOCALCODE_FAST_START", "1")
+	if !fastStartupRequested() {
+		t.Errorf("expected fastStartupRequested to be true")
+	}
+	t.Setenv("LOCALCODE_FAST_START", "0")
+	if fastStartupRequested() {
+		t.Errorf("expected fastStartupRequested to be false for '0'")
+	}
+	t.Setenv("LOCALCODE_FAST_START", "false")
+	if fastStartupRequested() {
+		t.Errorf("expected fastStartupRequested to be false for 'false'")
+	}
+
+	res := fastStartupBootstrap(Config{OllamaURL: "http://localhost:11434", ContextLength: 16000})
+	if res.Ollama == nil || res.Ollama.BaseURL != "http://localhost:11434" {
+		t.Errorf("unexpected fastStartupBootstrap Ollama client")
+	}
+}
