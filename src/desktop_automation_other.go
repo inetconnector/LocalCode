@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 type DesktopWindowInfo struct {
@@ -34,4 +35,24 @@ func DesktopType(ctx context.Context, cfg Config, windowTitle, controlName, text
 
 func DesktopScreenshot(ctx context.Context, cfg Config, project, windowTitle, destination string) (string, error) {
 	return "", errors.New("desktop UI automation is only supported on Windows")
+}
+
+var blockedDesktopWindows = []string{
+	"task manager", "taskmgr", "windows security", "sicherheitscenter", "logonui", "uac",
+	"benutzerkontensteuerung", "credential", "passwort", "anmeldeinformationen",
+}
+
+func isBlockedDesktopWindow(title, processName string) bool {
+	lowerT := strings.ToLower(title)
+	lowerP := strings.ToLower(processName)
+	for _, blocked := range blockedDesktopWindows {
+		if strings.Contains(lowerT, blocked) || strings.Contains(lowerP, blocked) {
+			return true
+		}
+	}
+	return false
+}
+
+func escapePowerShellString(s string) string {
+	return strings.ReplaceAll(s, `"`, `\"`)
 }

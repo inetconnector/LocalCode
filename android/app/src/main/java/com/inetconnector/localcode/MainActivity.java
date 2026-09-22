@@ -21,7 +21,9 @@ import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.view.GestureDetector;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
@@ -38,10 +40,13 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.Inet4Address;
@@ -58,6 +63,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -78,17 +84,50 @@ public final class MainActivity extends Activity {
     private static final String PREFS_NAME = "localcode_remote";
     private static final String PREF_REMOTE_URL = "remote_url";
     private static final String PREF_TLS_FINGERPRINT = "tls_fingerprint";
+    private static final String PREF_LAST_PROJECT = "last_project";
     private static final int DEFAULT_REMOTE_PORT = 32146;
+    private static final int DEFAULT_UDP_PORT = 32147;
     private static final int REQUEST_NEARBY = 701;
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
     private static final int REQUEST_QR_SCAN = 704;
 
+    public static final class DiscoveredInstance {
+        final String hostname;
+        final String version;
+        final String url;
+        final String fingerprint;
+        final int port;
+        final ArrayList<String> activeProjects = new ArrayList<>();
+        final ArrayList<String> runningProjects = new ArrayList<>();
+        long lastSeen;
+
+        DiscoveredInstance(String hostname, String version, String url, String fingerprint, int port) {
+            this.hostname = hostname == null ? "" : hostname.trim();
+            this.version = version == null ? "" : version.trim();
+            this.url = url == null ? "" : url.trim();
+            this.fingerprint = fingerprint == null ? "" : fingerprint.trim();
+            this.port = port;
+            this.lastSeen = System.currentTimeMillis();
+        }
+    }
+
     private NsdManager nsdManager;
     private NsdManager.DiscoveryListener discoveryListener;
     private WifiManager.MulticastLock multicastLock;
     private WebView webView;
-    private LinearLayout discoveryPanel;
+    private ScrollView discoveryPanel;
+    private LinearLayout connectingOverlay;
+    private TextView connectingStatus;
+    private TextView connectingTarget;
+    private LinearLayout instancesContainer;
+    private LinearLayout tabAutoLayout;
+    private LinearLayout tabQrLayout;
+    private LinearLayout tabManualLayout;
+    private Button tabAutoBtn;
+    private Button tabQrBtn;
+    private Button tabManualBtn;
+    private final Map<String, DiscoveredInstance> discoveredInstances = new ConcurrentHashMap<>();
     private TextView status;
     private EditText manualUrl;
     private EditText manualFingerprint;
@@ -99,15 +138,39 @@ public final class MainActivity extends Activity {
     private String currentRemoteUrl = "";
     private boolean discovering;
     private volatile boolean scanningLan;
-
+    private volatile boolean scanningUdp;
+    private int activeWizardTab = 0;
+    private GestureDetector gestureDetector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            getWindow().setStatusBarColor(0xFF0D0D0D);
-            getWindow().setNavigationBarColor(0xFF0D0D0D);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(0xFF0A0D14);
+            getWindow().setNavigationBarColor(0xFF0A0D14);
+        }
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                if (e1 == null || e2 == null) return false;
+                float diffX = e2.getX() - e1.getX();
+                float diffY = e2.getY() - e1.getY();
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > dp(40) && Math.abs(velocityX) > 100) {
+                    if (diffX < 0) {
+                        switchToNextWizardTab();
+                        return true;
+                    } else {
+                        switchToPrevWizardTab();
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
         nsdManager = (NsdManager) getSystemService(Context.NSD_SERVICE);
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         tts = new TextToSpeech(this, status -> {
@@ -128,6 +191,14 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (gestureDetector != null && discoveryPanel != null && discoveryPanel.getVisibility() == View.VISIBLE) {
+            gestureDetector.onTouchEvent(ev);
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
@@ -137,46 +208,197 @@ public final class MainActivity extends Activity {
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFF0A0D14);
+        root.setFitsSystemWindows(false);
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        discoveryPanel = new LinearLayout(this);
-        discoveryPanel.setOrientation(LinearLayout.VERTICAL);
-        discoveryPanel.setGravity(Gravity.CENTER_HORIZONTAL);
-        int pad = dp(20);
-        discoveryPanel.setPadding(pad, pad, pad, pad);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top = 0;
+            int bottom = 0;
+            int left = 0;
+            int right = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
+                top = bars.top;
+                bottom = bars.bottom;
+                left = bars.left;
+                right = bars.right;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+                left = insets.getSystemWindowInsetLeft();
+                right = insets.getSystemWindowInsetRight();
+            }
+            int safeTop = Math.max(top, dp(24));
+            int safeBottom = Math.max(bottom, dp(24));
+            v.setPadding(left, safeTop, right, safeBottom);
+            return insets;
+        });
+
+        discoveryPanel = new ScrollView(this);
+        discoveryPanel.setBackgroundColor(0xFF0A0D14);
+        discoveryPanel.setFillViewport(true);
+        discoveryPanel.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(22), dp(20), dp(22), dp(44));
+        discoveryPanel.addView(content, fullWidthWrap());
+
+        // 1. App Header / Branding
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setOrientation(LinearLayout.HORIZONTAL);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
+        brandRow.setPadding(0, dp(8), 0, dp(20));
+
+        TextView brandIcon = new TextView(this);
+        brandIcon.setText("⚡");
+        brandIcon.setTextSize(22f);
+        brandIcon.setPadding(dp(10), dp(8), dp(10), dp(8));
+        brandIcon.setBackground(createCardDrawable(0xFF1E293B, 0x3338BDF8, 14));
+        brandRow.addView(brandIcon);
+
+        LinearLayout brandTextCol = new LinearLayout(this);
+        brandTextCol.setOrientation(LinearLayout.VERTICAL);
+        brandTextCol.setPadding(dp(12), 0, 0, 0);
 
         TextView title = new TextView(this);
         title.setText("LocalCode Remote");
-        title.setTextSize(24f);
-        discoveryPanel.addView(title, fullWidthWrap());
+        title.setTextSize(22f);
+        title.setTextColor(0xFFF8FAFC);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        brandTextCol.addView(title);
+
+        TextView subTitle = new TextView(this);
+        subTitle.setText(tr("Kabellose Desktop-Kopplung", "Wireless Desktop Pairing"));
+        subTitle.setTextSize(13f);
+        subTitle.setTextColor(0xFF94A3B8);
+        brandTextCol.addView(subTitle);
+
+        brandRow.addView(brandTextCol, fullWidthWrap());
+        content.addView(brandRow, fullWidthWrap());
+
+        // 2. Status Banner (Pulsing / Discovery Status)
+        LinearLayout statusCard = new LinearLayout(this);
+        statusCard.setOrientation(LinearLayout.HORIZONTAL);
+        statusCard.setGravity(Gravity.CENTER_VERTICAL);
+        statusCard.setPadding(dp(14), dp(10), dp(14), dp(10));
+        statusCard.setBackground(createCardDrawable(0x1A38BDF8, 0x3338BDF8, 12));
+        LinearLayout.LayoutParams statusLp = fullWidthWrap();
+        statusLp.setMargins(0, 0, 0, dp(18));
+        statusCard.setLayoutParams(statusLp);
+
+        TextView statusDot = new TextView(this);
+        statusDot.setText("📡 ");
+        statusDot.setTextSize(14f);
+        statusCard.addView(statusDot);
 
         status = new TextView(this);
         status.setText(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
-        status.setPadding(0, dp(10), 0, dp(12));
-        discoveryPanel.addView(status, fullWidthWrap());
+        status.setTextSize(13f);
+        status.setTextColor(0xFF38BDF8);
+        status.setTypeface(null, android.graphics.Typeface.BOLD);
+        statusCard.addView(status, fullWidthWrap());
+        content.addView(statusCard);
 
-        Button scanQr = new Button(this);
-        scanQr.setText(tr("📷 QR-Code scannen", "📷 Scan QR code"));
-        scanQr.setOnClickListener(v -> launchQrScanner());
-        discoveryPanel.addView(scanQr, fullWidthWrap());
+        // 3. Modern 3-Tab Wizard Selector
+        LinearLayout tabsRow = new LinearLayout(this);
+        tabsRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabsRow.setPadding(dp(4), dp(4), dp(4), dp(4));
+        tabsRow.setBackground(createCardDrawable(0xFF101522, 0x33475569, 14));
+        LinearLayout.LayoutParams tabsLp = fullWidthWrap();
+        tabsLp.setMargins(0, 0, 0, dp(18));
+        tabsRow.setLayoutParams(tabsLp);
 
-        Button discover = new Button(this);
-        discover.setText(tr("LocalCode automatisch suchen", "Find LocalCode automatically"));
-        discover.setOnClickListener(v -> requestDiscoveryPermissionAndStart());
-        discoveryPanel.addView(discover, fullWidthWrap());
+        tabAutoBtn = createTabButton(tr("📡 Auto-Suche", "📡 Auto-Find"), true);
+        tabQrBtn = createTabButton(tr("📷 QR-Scan", "📷 QR Scan"), false);
+        tabManualBtn = createTabButton(tr("⌨️ Manuell", "⌨️ Manual"), false);
 
-        manualUrl = new EditText(this);
-        manualUrl.setSingleLine(true);
-        manualUrl.setHint("http://192.168.1.94:32146/remote");
-        discoveryPanel.addView(manualUrl, fullWidthWrap());
+        tabAutoBtn.setOnClickListener(v -> selectWizardTab(0));
+        tabQrBtn.setOnClickListener(v -> selectWizardTab(1));
+        tabManualBtn.setOnClickListener(v -> selectWizardTab(2));
 
-        manualFingerprint = new EditText(this);
-        manualFingerprint.setSingleLine(true);
-        manualFingerprint.setHint(tr("TLS-Fingerprint (optional bei HTTP)", "TLS fingerprint (optional for HTTP)"));
-        discoveryPanel.addView(manualFingerprint, fullWidthWrap());
+        LinearLayout.LayoutParams tabItemLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tabsRow.addView(tabAutoBtn, tabItemLp);
+        tabsRow.addView(tabQrBtn, tabItemLp);
+        tabsRow.addView(tabManualBtn, tabItemLp);
+        content.addView(tabsRow);
 
-        Button open = new Button(this);
-        open.setText(tr("Adresse öffnen", "Open address"));
+        // 4. Tab 0: Auto Discovery Layout
+        tabAutoLayout = new LinearLayout(this);
+        tabAutoLayout.setOrientation(LinearLayout.VERTICAL);
+        tabAutoLayout.setLayoutParams(fullWidthWrap());
+
+        instancesContainer = new LinearLayout(this);
+        instancesContainer.setOrientation(LinearLayout.VERTICAL);
+        instancesContainer.setLayoutParams(fullWidthWrap());
+        tabAutoLayout.addView(instancesContainer);
+        content.addView(tabAutoLayout);
+
+        // 5. Tab 1: QR Code Scanner Layout
+        tabQrLayout = new LinearLayout(this);
+        tabQrLayout.setOrientation(LinearLayout.VERTICAL);
+        tabQrLayout.setPadding(dp(18), dp(18), dp(18), dp(18));
+        tabQrLayout.setBackground(createCardDrawable(0xFF141A28, 0x33475569, 16));
+        tabQrLayout.setLayoutParams(fullWidthWrap());
+        tabQrLayout.setVisibility(View.GONE);
+
+        TextView qrTitle = new TextView(this);
+        qrTitle.setText(tr("📷 QR-Code vom PC scannen", "📷 Scan QR code from PC"));
+        qrTitle.setTextSize(17f);
+        qrTitle.setTextColor(0xFFF8FAFC);
+        qrTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        qrTitle.setPadding(0, 0, 0, dp(12));
+        tabQrLayout.addView(qrTitle);
+
+        TextView qrSteps = new TextView(this);
+        qrSteps.setText(tr(
+                "1. Öffne LocalCode auf deinem PC.\n2. Klicke links unten auf ⚙️ Einstellungen ➔ Remote.\n3. Klicke auf 'QR-Code anzeigen' und richte die Kamera darauf.",
+                "1. Open LocalCode on your PC.\n2. Click ⚙️ Settings ➔ Remote at the bottom-left.\n3. Click 'Show QR Code' and point your camera at it."));
+        qrSteps.setTextSize(13f);
+        qrSteps.setTextColor(0xFFCBD5E1);
+        qrSteps.setLineSpacing(dp(4), 1.2f);
+        qrSteps.setPadding(0, 0, 0, dp(18));
+        tabQrLayout.addView(qrSteps);
+
+        Button startQrScanBtn = createActionButton(tr("📷 Kamera öffnen & QR scannen", "📷 Open camera & scan QR"), 0xFF7C3AED, 0xFFFFFFFF, v -> launchQrScanner());
+        tabQrLayout.addView(startQrScanBtn, fullWidthWrap());
+        content.addView(tabQrLayout);
+
+        // 6. Tab 2: Manual Entry Layout
+        tabManualLayout = new LinearLayout(this);
+        tabManualLayout.setOrientation(LinearLayout.VERTICAL);
+        tabManualLayout.setPadding(dp(18), dp(18), dp(18), dp(18));
+        tabManualLayout.setBackground(createCardDrawable(0xFF141A28, 0x33475569, 16));
+        tabManualLayout.setLayoutParams(fullWidthWrap());
+        tabManualLayout.setVisibility(View.GONE);
+
+        TextView manTitle = new TextView(this);
+        manTitle.setText(tr("⌨️ Manuelle Verbindung", "⌨️ Manual Connection"));
+        manTitle.setTextSize(17f);
+        manTitle.setTextColor(0xFFF8FAFC);
+        manTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        manTitle.setPadding(0, 0, 0, dp(8));
+        tabManualLayout.addView(manTitle);
+
+        TextView manSub = new TextView(this);
+        manSub.setText(tr("Gib die Remote-URL und optional den TLS-Fingerprint ein:", "Enter the remote URL and optional TLS fingerprint:"));
+        manSub.setTextSize(13f);
+        manSub.setTextColor(0xFF94A3B8);
+        manSub.setPadding(0, 0, 0, dp(14));
+        tabManualLayout.addView(manSub);
+
+        manualUrl = createInputField("https://192.168.1.94:32146/remote");
+        LinearLayout.LayoutParams urlLp = fullWidthWrap();
+        urlLp.setMargins(0, 0, 0, dp(10));
+        tabManualLayout.addView(manualUrl, urlLp);
+
+        manualFingerprint = createInputField(tr("TLS-Fingerprint (optional bei HTTP)", "TLS fingerprint (optional for HTTP)"));
+        LinearLayout.LayoutParams fpLp = fullWidthWrap();
+        fpLp.setMargins(0, 0, 0, dp(16));
+        tabManualLayout.addView(manualFingerprint, fpLp);
+
+        Button open = createActionButton(tr("🚀 Manuell verbinden", "🚀 Connect manually"), 0xFF0284C7, 0xFFFFFFFF, null);
         open.setOnClickListener(v -> {
             String value = manualUrl.getText().toString().trim();
             String fp = normalizeFingerprint(manualFingerprint.getText().toString());
@@ -189,22 +411,395 @@ public final class MainActivity extends Activity {
                         "Manual setup allows private HTTPS IP addresses with a valid SHA-256 fingerprint only."));
             }
         });
-        discoveryPanel.addView(open, fullWidthWrap());
+        tabManualLayout.addView(open, fullWidthWrap());
+        content.addView(tabManualLayout);
 
-        TextView qrHint = new TextView(this);
-        qrHint.setText(tr(
-                "Am einfachsten: QR-/Pair-Link verwenden. URL und TLS-Fingerprint werden dann automatisch und zusammen übernommen.",
-                "Easiest: use the QR/pair link. The URL and TLS fingerprint are then transferred together automatically."));
-        qrHint.setPadding(0, dp(12), 0, 0);
-        discoveryPanel.addView(qrHint, fullWidthWrap());
+        root.addView(discoveryPanel);
 
-        root.addView(discoveryPanel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // 7. Connecting Overlay (shown while WebView connects/loads)
+        connectingOverlay = new LinearLayout(this);
+        connectingOverlay.setOrientation(LinearLayout.VERTICAL);
+        connectingOverlay.setGravity(Gravity.CENTER);
+        connectingOverlay.setBackgroundColor(0xFF0A0D14);
+        connectingOverlay.setPadding(dp(28), dp(40), dp(28), dp(40));
+        connectingOverlay.setVisibility(View.GONE);
 
+        TextView connIcon = new TextView(this);
+        connIcon.setText("⚡");
+        connIcon.setTextSize(36f);
+        connIcon.setPadding(dp(18), dp(12), dp(18), dp(12));
+        connIcon.setBackground(createCardDrawable(0xFF1E293B, 0x3338BDF8, 20));
+        LinearLayout.LayoutParams connIconLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        connIconLp.setMargins(0, 0, 0, dp(18));
+        connIcon.setLayoutParams(connIconLp);
+        connectingOverlay.addView(connIcon);
+
+        TextView connTitle = new TextView(this);
+        connTitle.setText("LocalCode Remote");
+        connTitle.setTextSize(22f);
+        connTitle.setTextColor(0xFFF8FAFC);
+        connTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        connTitle.setGravity(Gravity.CENTER);
+        connectingOverlay.addView(connTitle);
+
+        connectingStatus = new TextView(this);
+        connectingStatus.setText(tr("Verbinde mit Desktop-PC …", "Connecting to desktop PC …"));
+        connectingStatus.setTextSize(14f);
+        connectingStatus.setTextColor(0xFF38BDF8);
+        connectingStatus.setTypeface(null, android.graphics.Typeface.BOLD);
+        connectingStatus.setGravity(Gravity.CENTER);
+        connectingStatus.setPadding(0, dp(8), 0, dp(4));
+        connectingOverlay.addView(connectingStatus);
+
+        connectingTarget = new TextView(this);
+        connectingTarget.setText("");
+        connectingTarget.setTextSize(12f);
+        connectingTarget.setTextColor(0xFF94A3B8);
+        connectingTarget.setGravity(Gravity.CENTER);
+        connectingTarget.setPadding(0, 0, 0, dp(24));
+        connectingOverlay.addView(connectingTarget);
+
+        Button cancelConnBtn = createActionButton(tr("Zurück zur Suche", "Back to discovery"), 0xFF1E293B, 0xFFE2E8F0, v -> {
+            cancelConnectingAndOpenDiscovery();
+        });
+        connectingOverlay.addView(cancelConnBtn, fullWidthWrap());
+
+        root.addView(connectingOverlay, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 8. WebView
         webView = new WebView(this);
+        webView.setBackgroundColor(0xFF0A0D14);
         configureWebView();
         webView.setVisibility(View.GONE);
-        root.addView(webView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(webView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         setContentView(root);
+        renderDiscoveredInstances();
+    }
+
+    private void selectWizardTab(int index) {
+        if (index < 0) index = 0;
+        if (index > 2) index = 2;
+        activeWizardTab = index;
+        tabAutoBtn.setBackground(createTabButtonDrawable(index == 0));
+        tabAutoBtn.setTextColor(index == 0 ? 0xFFFFFFFF : 0xFF94A3B8);
+
+        tabQrBtn.setBackground(createTabButtonDrawable(index == 1));
+        tabQrBtn.setTextColor(index == 1 ? 0xFFFFFFFF : 0xFF94A3B8);
+
+        tabManualBtn.setBackground(createTabButtonDrawable(index == 2));
+        tabManualBtn.setTextColor(index == 2 ? 0xFFFFFFFF : 0xFF94A3B8);
+
+        tabAutoLayout.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
+        tabQrLayout.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
+        tabManualLayout.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+    }
+
+    private void switchToNextWizardTab() {
+        int next = (activeWizardTab + 1) % 3;
+        selectWizardTab(next);
+        triggerHapticTick();
+    }
+
+    private void switchToPrevWizardTab() {
+        int prev = (activeWizardTab - 1 + 3) % 3;
+        selectWizardTab(prev);
+        triggerHapticTick();
+    }
+
+    private void triggerHapticTick() {
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    v.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    v.vibrate(15);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private Button createTabButton(String text, boolean active) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextSize(12.5f);
+        btn.setTextColor(active ? 0xFFFFFFFF : 0xFF94A3B8);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        btn.setBackground(createTabButtonDrawable(active));
+        btn.setPadding(dp(8), dp(10), dp(8), dp(10));
+        btn.setAllCaps(false);
+        return btn;
+    }
+
+    private android.graphics.drawable.GradientDrawable createTabButtonDrawable(boolean active) {
+        android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+        if (active) {
+            gd.setColor(0xFF2563EB);
+            gd.setCornerRadius(dp(10));
+        } else {
+            gd.setColor(0x00000000);
+            gd.setCornerRadius(dp(10));
+        }
+        return gd;
+    }
+
+    private Button createActionButton(String text, int bgColor, int textColor, View.OnClickListener onClick) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextSize(14f);
+        btn.setTextColor(textColor);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        btn.setBackground(createCardDrawable(bgColor, 0x00000000, 12));
+        btn.setPadding(dp(16), dp(12), dp(16), dp(12));
+        btn.setAllCaps(false);
+        btn.setOnClickListener(onClick);
+        return btn;
+    }
+
+    private EditText createInputField(String hint) {
+        EditText et = new EditText(this);
+        et.setSingleLine(true);
+        et.setHint(hint);
+        et.setHintTextColor(0xFF64748B);
+        et.setTextColor(0xFFF1F5F9);
+        et.setTextSize(13f);
+        et.setPadding(dp(14), dp(12), dp(14), dp(12));
+        et.setBackground(createCardDrawable(0xFF0C101A, 0x44475569, 12));
+        return et;
+    }
+
+    private android.graphics.drawable.GradientDrawable createCardDrawable(int bgColor, int borderColor, int radiusDp) {
+        android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+        gd.setColor(bgColor);
+        gd.setCornerRadius(dp(radiusDp));
+        if (borderColor != 0) {
+            gd.setStroke(dp(1), borderColor);
+        }
+        return gd;
+    }
+
+    private void renderDiscoveredInstances() {
+        if (instancesContainer == null) return;
+        instancesContainer.removeAllViews();
+
+        if (discoveredInstances.isEmpty()) {
+            LinearLayout emptyCard = new LinearLayout(this);
+            emptyCard.setOrientation(LinearLayout.VERTICAL);
+            emptyCard.setPadding(dp(18), dp(20), dp(18), dp(20));
+            emptyCard.setBackground(createCardDrawable(0xFF141A28, 0x33475569, 16));
+            emptyCard.setLayoutParams(fullWidthWrap());
+
+            TextView emptyTitle = new TextView(this);
+            emptyTitle.setText(tr("📡 Suche nach LocalCode-Instanzen …", "📡 Searching for LocalCode instances …"));
+            emptyTitle.setTextSize(16f);
+            emptyTitle.setTextColor(0xFFF8FAFC);
+            emptyTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+            emptyTitle.setPadding(0, 0, 0, dp(8));
+            emptyCard.addView(emptyTitle);
+
+            TextView emptyDesc = new TextView(this);
+            emptyDesc.setText(tr(
+                    "LocalCode auf deinem PC gestartet? Sobald LocalCode läuft, wird die Instanz hier automatisch per UDP-Broadcast und mDNS angezeigt.",
+                    "Is LocalCode running on your PC? Once started, the instance will appear here automatically via UDP broadcast and mDNS."));
+            emptyDesc.setTextSize(13f);
+            emptyDesc.setTextColor(0xFF94A3B8);
+            emptyDesc.setLineSpacing(dp(4), 1.2f);
+            emptyDesc.setPadding(0, 0, 0, dp(16));
+            emptyCard.addView(emptyDesc);
+
+            Button refreshBtn = createActionButton(tr("🔄 Suche neu starten", "🔄 Restart search"), 0xFF1E293B, 0xFFE2E8F0, v -> {
+                requestDiscoveryPermissionAndStart();
+            });
+            emptyCard.addView(refreshBtn, fullWidthWrap());
+
+            instancesContainer.addView(emptyCard);
+            return;
+        }
+
+        TextView sectionHeader = new TextView(this);
+        String headerTitle = tr("GEFUNDENE INSTANZEN (" + discoveredInstances.size() + ")",
+                "DISCOVERED INSTANCES (" + discoveredInstances.size() + ")");
+        sectionHeader.setText(headerTitle);
+        sectionHeader.setTextSize(12f);
+        sectionHeader.setTypeface(null, android.graphics.Typeface.BOLD);
+        sectionHeader.setTextColor(0xFF64748B);
+        sectionHeader.setPadding(dp(4), 0, 0, dp(10));
+        instancesContainer.addView(sectionHeader, fullWidthWrap());
+
+        for (DiscoveredInstance inst : discoveredInstances.values()) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(dp(18), dp(18), dp(18), dp(18));
+            card.setBackground(createCardDrawable(0xFF141A28, 0x33475569, 16));
+
+            LinearLayout.LayoutParams lp = fullWidthWrap();
+            lp.setMargins(0, 0, 0, dp(14));
+            card.setLayoutParams(lp);
+
+            // Row 1: Hostname + Version Badge
+            LinearLayout topRow = new LinearLayout(this);
+            topRow.setOrientation(LinearLayout.HORIZONTAL);
+            topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView hostText = new TextView(this);
+            String displayHost = inst.hostname.isEmpty() ? "LocalCode PC" : inst.hostname;
+            hostText.setText("💻 " + displayHost);
+            hostText.setTextSize(17f);
+            hostText.setTextColor(0xFFF8FAFC);
+            hostText.setTypeface(null, android.graphics.Typeface.BOLD);
+            LinearLayout.LayoutParams hostLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            topRow.addView(hostText, hostLp);
+
+            if (!inst.version.isEmpty()) {
+                TextView verText = new TextView(this);
+                verText.setText("v" + inst.version);
+                verText.setTextSize(11f);
+                verText.setTextColor(0xFF38BDF8);
+                verText.setTypeface(null, android.graphics.Typeface.BOLD);
+                verText.setPadding(dp(8), dp(3), dp(8), dp(3));
+                verText.setBackground(createCardDrawable(0x2238BDF8, 0x3338BDF8, 8));
+                topRow.addView(verText);
+            }
+            card.addView(topRow, fullWidthWrap());
+
+            // Row 2: Address
+            TextView addrText = new TextView(this);
+            addrText.setText("🔗 " + inst.url);
+            addrText.setTextSize(13f);
+            addrText.setTextColor(0xFF94A3B8);
+            addrText.setPadding(0, dp(6), 0, dp(8));
+            card.addView(addrText, fullWidthWrap());
+
+            // Row 3: Active / Running projects
+            if (!inst.runningProjects.isEmpty()) {
+                LinearLayout runBox = new LinearLayout(this);
+                runBox.setOrientation(LinearLayout.HORIZONTAL);
+                runBox.setPadding(dp(10), dp(6), dp(10), dp(6));
+                runBox.setBackground(createCardDrawable(0x2216A34A, 0x4422C55E, 8));
+                LinearLayout.LayoutParams runBoxLp = fullWidthWrap();
+                runBoxLp.setMargins(0, 0, 0, dp(12));
+                runBox.setLayoutParams(runBoxLp);
+
+                TextView runText = new TextView(this);
+                runText.setText("🟢 " + tr("Agent arbeitet an: ", "Agent working on: ") + String.join(", ", inst.runningProjects));
+                runText.setTextSize(12f);
+                runText.setTextColor(0xFF4ADE80);
+                runText.setTypeface(null, android.graphics.Typeface.BOLD);
+                runBox.addView(runText);
+                card.addView(runBox);
+            } else if (!inst.activeProjects.isEmpty()) {
+                TextView projText = new TextView(this);
+                projText.setText("📁 " + tr("Projekte: ", "Projects: ") + String.join(", ", inst.activeProjects));
+                projText.setTextSize(12f);
+                projText.setTextColor(0xFF94A3B8);
+                projText.setPadding(0, 0, 0, dp(10));
+                card.addView(projText, fullWidthWrap());
+            }
+
+            // 1-Click Connect button
+            Button connectBtn = createActionButton(tr("⚡ 1-Klick Verbinden", "⚡ 1-Click Connect"), 0xFF2563EB, 0xFFFFFFFF, v -> {
+                expectedFingerprint = inst.fingerprint;
+                openRemote(inst.url);
+            });
+            card.addView(connectBtn, fullWidthWrap());
+
+            instancesContainer.addView(card);
+        }
+    }
+
+    private void startUdpBroadcastDiscovery() {
+        if (scanningUdp) return;
+        scanningUdp = true;
+        new Thread(() -> {
+            DatagramSocket socket = null;
+            try {
+                socket = new DatagramSocket();
+                socket.setBroadcast(true);
+                socket.setSoTimeout(3500);
+
+                byte[] sendData = "LOCALCODE_DISCOVERY_PROBE".getBytes(StandardCharsets.UTF_8);
+
+                // 1. Broadcast to 255.255.255.255:32147
+                try {
+                    DatagramPacket packet = new DatagramPacket(sendData, sendData.length, InetAddress.getByName("255.255.255.255"), DEFAULT_UDP_PORT);
+                    socket.send(packet);
+                } catch (Exception ignored) {}
+
+                // 2. Broadcast to all interface broadcast addresses
+                try {
+                    for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                        if (!iface.isUp() || iface.isLoopback()) continue;
+                        for (InterfaceAddress ifAddr : iface.getInterfaceAddresses()) {
+                            InetAddress bcast = ifAddr.getBroadcast();
+                            if (bcast != null) {
+                                try {
+                                    DatagramPacket packet = new DatagramPacket(sendData, sendData.length, bcast, DEFAULT_UDP_PORT);
+                                    socket.send(packet);
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                // 3. Receive responses
+                byte[] recvBuf = new byte[8192];
+                long endTime = System.currentTimeMillis() + 4500;
+                while (System.currentTimeMillis() < endTime) {
+                    DatagramPacket recvPacket = new DatagramPacket(recvBuf, recvBuf.length);
+                    try {
+                        socket.receive(recvPacket);
+                        String jsonStr = new String(recvPacket.getData(), 0, recvPacket.getLength(), StandardCharsets.UTF_8);
+                        JSONObject json = new JSONObject(jsonStr);
+                        if (!json.optString("app", "").contains("LocalCode")) continue;
+
+                        String hostname = json.optString("hostname", json.optString("instance_name", "LocalCode PC"));
+                        String ver = json.optString("version", "");
+                        int port = json.optInt("port", DEFAULT_REMOTE_PORT);
+                        String fp = normalizeFingerprint(json.optString("tls_fingerprint", ""));
+                        String peerHost = recvPacket.getAddress().getHostAddress();
+                        String url = json.optString("url", "https://" + peerHost + ":" + port + "/remote");
+                        if (!isAllowedRemoteUrl(url)) {
+                            url = "https://" + peerHost + ":" + port + "/remote";
+                        }
+                        if (!isAllowedRemoteUrl(url)) continue;
+
+                        DiscoveredInstance instance = new DiscoveredInstance(hostname, ver, url, fp, port);
+
+                        JSONArray act = json.optJSONArray("active_projects");
+                        if (act != null) {
+                            for (int i = 0; i < act.length(); i++) {
+                                String name = act.optString(i, "");
+                                if (!name.isEmpty() && !instance.activeProjects.contains(name)) {
+                                    instance.activeProjects.add(name);
+                                }
+                            }
+                        }
+                        JSONArray run = json.optJSONArray("running_projects");
+                        if (run != null) {
+                            for (int i = 0; i < run.length(); i++) {
+                                String rp = run.optString(i, "");
+                                String name = rp.contains("/") || rp.contains("\\") ? rp.substring(Math.max(rp.lastIndexOf('/'), rp.lastIndexOf('\\')) + 1) : rp;
+                                if (!name.isEmpty() && !instance.runningProjects.contains(name)) {
+                                    instance.runningProjects.add(name);
+                                }
+                            }
+                        }
+
+                        discoveredInstances.put(url, instance);
+                        runOnUiThread(this::renderDiscoveredInstances);
+                    } catch (Exception ex) {
+                        if (System.currentTimeMillis() >= endTime) break;
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (socket != null && !socket.isClosed()) {
+                    try { socket.close(); } catch (Exception ignored) {}
+                }
+                scanningUdp = false;
+            }
+        }, "UdpBroadcastDiscovery").start();
     }
 
     private LinearLayout.LayoutParams fullWidthWrap() {
@@ -215,12 +810,36 @@ public final class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
         webView.addJavascriptInterface(new AndroidBridge(), "LocalCodeAndroid");
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onProgressChanged(WebView view, int newProgress) {
+                if (newProgress >= 85) {
+                    runOnUiThread(() -> {
+                        if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+                    });
+                }
+            }
+
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+                if (consoleMessage != null) {
+                    android.util.Log.d("LocalCodeRemote", "JS: " + consoleMessage.message() + " (" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + ")");
+                }
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 cancelPendingFileChooser();
@@ -294,6 +913,20 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                runOnUiThread(() -> {
+                    if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+                    if (webView != null) webView.setVisibility(View.VISIBLE);
+                });
+            }
+
+            @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 String observed = fingerprint(error.getCertificate());
                 if ((validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) || isPrivateHost(currentRemoteUrl)) {
@@ -302,28 +935,26 @@ public final class MainActivity extends Activity {
                     handler.proceed();
                 } else {
                     handler.cancel();
-                    runOnUiThread(() -> {
-                        webView.setVisibility(View.GONE);
-                        discoveryPanel.setVisibility(View.VISIBLE);
-                        setStatus(tr(
-                                "TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed),
-                                "TLS certificate not confirmed. Expected: " + printable(expectedFingerprint) + " · Received: " + printable(observed)));
-                    });
+                    handleConnectionFailure(
+                            "TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed),
+                            "TLS certificate not confirmed. Expected: " + printable(expectedFingerprint) + " · Received: " + printable(observed));
                 }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request != null && request.isForMainFrame()) {
-                    runOnUiThread(() -> {
-                        webView.setVisibility(View.GONE);
-                        discoveryPanel.setVisibility(View.VISIBLE);
-                        setStatus(tr(
-                                "Gespeicherte Verbindung nicht erreichbar. Suche LocalCode erneut …",
-                                "Saved connection is not reachable. Searching for LocalCode again …"));
-                        requestDiscoveryPermissionAndStart();
-                    });
+                    handleConnectionFailure(
+                            "Gespeicherte Verbindung nicht erreichbar. Suche LocalCode erneut …",
+                            "Saved connection is not reachable. Searching for LocalCode again …");
                 }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                handleConnectionFailure(
+                        "Gespeicherte Verbindung nicht erreichbar (" + description + "). Suche LocalCode erneut …",
+                        "Saved connection is not reachable (" + description + "). Searching for LocalCode again …");
             }
         });
     }
@@ -382,6 +1013,27 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setLastProject(String path) {
+            if (preferences != null && path != null) {
+                preferences.edit().putString(PREF_LAST_PROJECT, path.trim()).apply();
+            }
+        }
+
+        @JavascriptInterface
+        public String getLastProject() {
+            return preferences != null ? preferences.getString(PREF_LAST_PROJECT, "") : "";
+        }
+
+        @JavascriptInterface
+        public void onAppReady() {
+            runOnUiThread(() -> {
+                if (connectingOverlay != null) {
+                    connectingOverlay.setVisibility(View.GONE);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public String runDiagnostics() {
             JSONObject diag = new JSONObject();
             try {
@@ -410,7 +1062,17 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getBridgeVersion() {
-            return "2.1";
+            return "2.2";
+        }
+
+        @JavascriptInterface
+        public String getDeviceName() {
+            String manufacturer = Build.MANUFACTURER;
+            String model = Build.MODEL;
+            if (model.toLowerCase(Locale.ROOT).startsWith(manufacturer.toLowerCase(Locale.ROOT))) {
+                return model;
+            }
+            return manufacturer + " " + model;
         }
 
         @JavascriptInterface
@@ -591,6 +1253,7 @@ public final class MainActivity extends Activity {
     }
 
     private void requestDiscoveryPermissionAndStart() {
+        startUdpBroadcastDiscovery();
         startLanProbeDiscovery();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.NEARBY_WIFI_DEVICES}, REQUEST_NEARBY);
@@ -653,28 +1316,26 @@ public final class MainActivity extends Activity {
         int port = discoveryPort();
         setStatus(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
         new Thread(() -> {
-            AtomicBoolean found = new AtomicBoolean(false);
-            ExecutorService pool = Executors.newFixedThreadPool(24);
+            ExecutorService pool = Executors.newFixedThreadPool(28);
             try {
                 for (String host : lanProbeCandidates()) {
                     pool.execute(() -> {
-                        if (found.get()) return;
-                        ProbeResult result = probeLocalCode(host, port);
-                        if (result != null && found.compareAndSet(false, true)) {
-                            runOnUiThread(() -> {
-                                expectedFingerprint = result.fingerprint;
-                                openRemote(result.url);
-                            });
-                        }
+                        probeLocalCode(host, port);
                     });
                 }
                 pool.shutdown();
-                if (!pool.awaitTermination(8, TimeUnit.SECONDS)) pool.shutdownNow();
-                if (!found.get()) {
-                    setStatus(tr(
-                            "Keine LocalCode-Instanz gefunden. QR-Code scannen oder Adresse vom PC eingeben.",
-                            "No LocalCode instance found. Scan the QR code or enter the PC address."));
-                }
+                if (!pool.awaitTermination(7, TimeUnit.SECONDS)) pool.shutdownNow();
+                runOnUiThread(() -> {
+                    if (discoveredInstances.isEmpty()) {
+                        setStatus(tr(
+                                "Keine LocalCode-Instanz gefunden. QR-Code scannen oder Adresse vom PC eingeben.",
+                                "No LocalCode instance found. Scan the QR code or enter the PC address."));
+                    } else {
+                        setStatus(tr(
+                                discoveredInstances.size() + " LocalCode-Instanz(en) gefunden.",
+                                discoveredInstances.size() + " LocalCode instance(s) found."));
+                    }
+                });
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -703,6 +1364,7 @@ public final class MainActivity extends Activity {
     private ArrayList<String> lanProbeCandidates() {
         ArrayList<String> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
+        addCandidateHost(out, seen, "192.168.1.94");
         addCandidateHost(out, seen, hostFromText(manualUrl == null ? "" : manualUrl.getText().toString()));
         addCandidateHost(out, seen, hostFromText(currentRemoteUrl));
         try {
@@ -758,7 +1420,19 @@ public final class MainActivity extends Activity {
     private ProbeResult probeLocalCode(String host, int port) {
         ProbeResult result = probeLocalCodeEndpoint("https", host, port, true);
         if (result != null) return result;
-        return probeLocalCodeEndpoint("http", host, port, false);
+        result = probeLocalCodeEndpoint("http", host, port, false);
+        if (result != null) return result;
+        if (port != DEFAULT_REMOTE_PORT) {
+            result = probeLocalCodeEndpoint("https", host, DEFAULT_REMOTE_PORT, true);
+            if (result != null) return result;
+            result = probeLocalCodeEndpoint("http", host, DEFAULT_REMOTE_PORT, false);
+            if (result != null) return result;
+        }
+        if (port != 32145) {
+            result = probeLocalCodeEndpoint("http", host, 32145, false);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     private ProbeResult probeLocalCodeEndpoint(String scheme, String host, int port, boolean trustDiscoveryCertificate) {
@@ -779,12 +1453,39 @@ public final class MainActivity extends Activity {
                 if (code != 200) continue;
                 String body = readSmallResponse(connection.getInputStream());
                 JSONObject json = new JSONObject(body);
-                if (!json.optString("app", "").contains("LocalCode Remote")) continue;
+                if (!json.optString("app", "").contains("LocalCode")) continue;
                 String fingerprint = normalizeFingerprint(json.optString("tls_fingerprint", ""));
                 String target = discoveryURLFromJSON(json, scheme + "://" + host + ":" + port + "/remote");
                 if (target == null || !isAllowedRemoteUrl(target)) continue;
                 if ("https".equalsIgnoreCase(scheme) && path.endsWith("/discovery") && !validFingerprint(fingerprint)) continue;
-                return new ProbeResult(target, fingerprint);
+
+                String hostname = json.optString("hostname", json.optString("instance_name", "LocalCode PC"));
+                String version = json.optString("version", "");
+                DiscoveredInstance instance = new DiscoveredInstance(hostname, version, target, fingerprint, port);
+
+                JSONArray act = json.optJSONArray("active_projects");
+                if (act != null) {
+                    for (int i = 0; i < act.length(); i++) {
+                        String name = act.optString(i, "");
+                        if (!name.isEmpty() && !instance.activeProjects.contains(name)) {
+                            instance.activeProjects.add(name);
+                        }
+                    }
+                }
+                JSONArray run = json.optJSONArray("running_projects");
+                if (run != null) {
+                    for (int i = 0; i < run.length(); i++) {
+                        String rp = run.optString(i, "");
+                        String name = rp.contains("/") || rp.contains("\\") ? rp.substring(Math.max(rp.lastIndexOf('/'), rp.lastIndexOf('\\')) + 1) : rp;
+                        if (!name.isEmpty() && !instance.runningProjects.contains(name)) {
+                            instance.runningProjects.add(name);
+                        }
+                    }
+                }
+
+                discoveredInstances.put(target, instance);
+                runOnUiThread(this::renderDiscoveredInstances);
+                return new ProbeResult(target, fingerprint, hostname, version);
             } catch (Exception ignored) {
             } finally {
                 if (connection != null) connection.disconnect();
@@ -835,10 +1536,18 @@ public final class MainActivity extends Activity {
     private static final class ProbeResult {
         final String url;
         final String fingerprint;
+        final String hostname;
+        final String version;
 
         ProbeResult(String url, String fingerprint) {
+            this(url, fingerprint, "", "");
+        }
+
+        ProbeResult(String url, String fingerprint, String hostname, String version) {
             this.url = url;
             this.fingerprint = fingerprint;
+            this.hostname = hostname;
+            this.version = version;
         }
     }
 
@@ -921,9 +1630,50 @@ public final class MainActivity extends Activity {
         currentRemoteUrl = target;
         persistConnection(target, expectedFingerprint);
         runOnUiThread(() -> {
-            discoveryPanel.setVisibility(View.GONE);
-            webView.setVisibility(View.VISIBLE);
-            webView.loadUrl(target);
+            if (discoveryPanel != null) discoveryPanel.setVisibility(View.GONE);
+            if (connectingOverlay != null) {
+                connectingOverlay.setVisibility(View.VISIBLE);
+                if (connectingStatus != null) connectingStatus.setText(tr("Verbinde mit Desktop-PC …", "Connecting to desktop PC …"));
+                if (connectingTarget != null) connectingTarget.setText(target);
+            }
+            if (webView != null) {
+                webView.setVisibility(View.VISIBLE);
+                webView.loadUrl(target);
+            }
+        });
+    }
+
+    private void cancelConnectingAndOpenDiscovery() {
+        runOnUiThread(() -> {
+            if (webView != null) {
+                try { webView.stopLoading(); } catch (Exception ignored) {}
+                webView.setVisibility(View.GONE);
+            }
+            if (connectingOverlay != null) {
+                connectingOverlay.setVisibility(View.GONE);
+            }
+            if (discoveryPanel != null) {
+                discoveryPanel.setVisibility(View.VISIBLE);
+            }
+            setStatus(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
+            requestDiscoveryPermissionAndStart();
+        });
+    }
+
+    private void handleConnectionFailure(String germanMsg, String englishMsg) {
+        runOnUiThread(() -> {
+            if (connectingOverlay != null) {
+                connectingOverlay.setVisibility(View.GONE);
+            }
+            if (webView != null) {
+                try { webView.stopLoading(); } catch (Exception ignored) {}
+                webView.setVisibility(View.GONE);
+            }
+            if (discoveryPanel != null) {
+                discoveryPanel.setVisibility(View.VISIBLE);
+            }
+            setStatus(tr(germanMsg, englishMsg));
+            requestDiscoveryPermissionAndStart();
         });
     }
 
@@ -1003,9 +1753,13 @@ public final class MainActivity extends Activity {
         try {
             Uri uri = Uri.parse(url.trim());
             String host = uri.getHost();
-            if (host == null) return false;
-            if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
-            return isPrivateAddress(InetAddress.getByName(host));
+            if (host == null || host.trim().isEmpty()) return false;
+            host = host.trim().toLowerCase(Locale.ROOT);
+            if ("localhost".equals(host) || "127.0.0.1".equals(host) || "::1".equals(host)) return true;
+            if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.")) return true;
+            if (host.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*")) return true;
+            if (host.endsWith(".local")) return true;
+            return false;
         } catch (Exception ex) {
             return false;
         }

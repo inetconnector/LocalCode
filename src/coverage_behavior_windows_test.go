@@ -10,19 +10,6 @@ import (
 	"testing"
 )
 
-func writeWindowsCmdFixture(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, name+".cmd")
-	content := "@echo off\r\n" + strings.ReplaceAll(strings.TrimSpace(body), "\n", "\r\n") + "\r\n"
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 func TestWindowsPlatformDiscoveryAndSafeFailureBranches(t *testing.T) {
 	empty := t.TempDir()
 	t.Setenv("PATH", empty)

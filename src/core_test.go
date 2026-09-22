@@ -20,6 +20,19 @@ import (
 	"time"
 )
 
+func writeWindowsCmdFixture(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name+".cmd")
+	content := "@echo off\r\n" + strings.ReplaceAll(strings.TrimSpace(body), "\n", "\r\n") + "\r\n"
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestEnsureWithinRoot(t *testing.T) {
 	root := t.TempDir()
 	got, err := ensureWithinRoot(root, "")
@@ -1831,8 +1844,8 @@ func TestRemoteSendAttachmentAndDefaultEngineAreMobileRobust(t *testing.T) {
 
 func TestRecentThreadContextKeepsPriorResultsForShortFollowups(t *testing.T) {
 	events := []UIEvent{
-		{Type: "status", Message: "Agent arbeitet", Detail: "qwen2.5-coder:14b"},
-		{Type: "progress", Message: "Modellschritt 1 von 60"},
+		{Type: "status", Message: "Arbeite...", Detail: "qwen2.5-coder:14b"},
+		{Type: "progress", Message: "Arbeite..."},
 		{Type: "final", Message: "Dachdecker in Veitshoechheim gefunden.", Detail: "https://example.invalid/dachdecker"},
 		{Type: "user", Message: "Zeige Links"},
 	}
@@ -1842,7 +1855,7 @@ func TestRecentThreadContextKeepsPriorResultsForShortFollowups(t *testing.T) {
 			t.Fatalf("recent context missing %q: %s", want, got)
 		}
 	}
-	for _, forbidden := range []string{"Agent arbeitet", "Modellschritt 1 von 60", "Nutzer: Zeige Links"} {
+	for _, forbidden := range []string{"Arbeite...", "Agent arbeitet", "Modellschritt 1 von 60", "Nutzer: Zeige Links"} {
 		if strings.Contains(got, forbidden) {
 			t.Fatalf("recent context retained transient/current event %q: %s", forbidden, got)
 		}

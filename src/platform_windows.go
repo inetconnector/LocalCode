@@ -66,7 +66,7 @@ func chromiumBrowserCandidates() []string {
 	return candidates
 }
 
-func openChromiumApp(url string, compact bool) error {
+func openChromiumApp(url string, _ bool) error {
 	seen := map[string]bool{}
 	for _, browser := range chromiumBrowserCandidates() {
 		key := strings.ToLower(strings.TrimSpace(browser))
@@ -77,15 +77,14 @@ func openChromiumApp(url string, compact bool) error {
 		if st, err := os.Stat(browser); err != nil || st.IsDir() {
 			continue
 		}
-		args := []string{"--app=" + url, "--no-first-run", "--force-dark-mode", "--enable-features=WebContentsForceDark"}
-		if compact {
-			args = append(args, "--window-size=760,560", "--window-position=120,80")
-		} else {
-			args = append(args, "--start-maximized")
-		}
+		args := []string{"--app=" + url, "--no-first-run", "--force-dark-mode", "--enable-features=WebContentsForceDark", "--start-maximized"}
 		cmd := exec.Command(browser, args...)
 		hideCommandWindow(cmd)
 		if err := cmd.Start(); err == nil {
+			_ = cmd.Process.Release()
+			// Chromium may reuse an existing process and ignore launch geometry.
+			// Wait for its app window even when this is a short-lived second launch.
+			maximizeLocalCodeAppWindows(browser)
 			return nil
 		}
 	}
@@ -105,12 +104,7 @@ func openBrowser(url string) error {
 }
 
 func openStartupBrowser(url string) error {
-	// The bootstrap UI intentionally starts as a compact splash window. Once
-	// setup completes, its page expands the same app window before redirecting
-	// to the main LocalCode UI.
-	if err := openChromiumApp(url, true); err == nil {
-		return nil
-	}
+	// Bootstrap and the main UI use the same maximized window policy.
 	return openBrowser(url)
 }
 

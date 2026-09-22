@@ -48,6 +48,8 @@
 x64/
 x86/
 ARM/
+phone_screen*.png
+
 ARM64/
 bld/
 [Bb]uild/
