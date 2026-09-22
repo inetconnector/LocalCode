@@ -246,3 +246,10 @@ exit /b 0`)
 		t.Fatalf("non-Android deploy output=%q err=%v", out, err)
 	}
 }
+
+func TestTrayLoadAppIcon(t *testing.T) {
+	h := loadAppIcon()
+	if h != 0 {
+		procDestroyIcon.Call(uintptr(h))
+	}
+}

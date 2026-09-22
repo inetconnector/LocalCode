@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -337,5 +338,97 @@ func TestDefaultActionDescription(t *testing.T) {
 		if gotEN != tc.wantEN {
 			t.Errorf("defaultActionDescription EN (%s): got %q, want %q", tc.action.Action, gotEN, tc.wantEN)
 		}
+	}
+}
+
+func TestAgentActionParsingAndContext(t *testing.T) {
+	// Valid JSON direct
+	act, err := parseAgentAction(`{"action":"read_file","path":"foo.go"}`)
+	if err != nil || act.Action != "read_file" || act.Path != "foo.go" {
+		t.Errorf("expected parsed action, got %v, err=%v", act, err)
+	}
+
+	// Markdown or surrounded JSON
+	act2, err := parseAgentAction("Some markdown prefix\n```json\n{\"action\":\"write_file\",\"path\":\"bar.go\",\"content\":\"code\"}\n```\nsuffix")
+	if err != nil || act2.Action != "write_file" || act2.Path != "bar.go" || act2.Content != "code" {
+		t.Errorf("expected parsed fenced action, got %v, err=%v", act2, err)
+	}
+
+	// Action with arguments map
+	act3, err := parseAgentAction(`{"action":"search_text","arguments":{"query":"search_term"}}`)
+	if err != nil || act3.Action != "search_text" || act3.Query != "search_term" {
+		t.Errorf("expected argument-filled action, got %v, err=%v", act3, err)
+	}
+
+	// Invalid actions
+	if _, err := parseAgentAction(`{"action":""}`); err == nil {
+		t.Errorf("expected error for empty action")
+	}
+	if _, err := parseAgentAction(`invalid json without braces`); err == nil {
+		t.Errorf("expected error for non-json")
+	}
+
+	// chooseMoreSpecificAction
+	a1 := AgentAction{Action: "read_file", Path: "a.go"}
+	a2 := AgentAction{Action: "write_file", Path: "b.go"}
+	if chooseMoreSpecificAction(a1, a2).Action != "write_file" {
+		t.Errorf("expected a2 to be chosen")
+	}
+	if chooseMoreSpecificAction(a1, AgentAction{}).Action != "read_file" {
+		t.Errorf("expected a1 to be chosen when second is empty")
+	}
+
+	// actionForModelContext
+	cfgSmall := Config{ContextLength: 8192}
+	cfgLarge := Config{ContextLength: 128000}
+
+	longContent := make([]byte, 5000)
+	for i := range longContent {
+		longContent[i] = 'x'
+	}
+	actLong := AgentAction{
+		Action:  "write_file",
+		Path:    "large.txt",
+		Content: string(longContent),
+		OldText: string(longContent),
+		NewText: string(longContent),
+	}
+
+	actTruncSmall := actionForModelContext(actLong, cfgSmall)
+	if len(actTruncSmall.Content) > 500 {
+		t.Errorf("expected content to be omitted/truncated for small context")
+	}
+	if len(actTruncSmall.OldText) > 500 || len(actTruncSmall.NewText) > 500 {
+		t.Errorf("expected old/new text omitted")
+	}
+
+	actTruncLarge := actionForModelContext(actLong, cfgLarge)
+	if actTruncLarge.Content != string(longContent) {
+		t.Errorf("expected 5000 bytes content preserved under 65k+ context")
+	}
+}
+
+func TestPublicOnlyDialContext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Block private IPs
+	_, err := publicOnlyDialContext(ctx, "tcp", "127.0.0.1:80")
+	if err == nil {
+		t.Errorf("expected blocked private IP for 127.0.0.1")
+	}
+	_, err = publicOnlyDialContext(ctx, "tcp", "192.168.1.1:443")
+	if err == nil {
+		t.Errorf("expected blocked private IP for 192.168.1.1")
+	}
+	_, err = publicOnlyDialContext(ctx, "tcp", "10.0.0.1:80")
+	if err == nil {
+		t.Errorf("expected blocked private IP for 10.0.0.1")
+	}
+
+	// Invalid address format
+	_, err = publicOnlyDialContext(ctx, "tcp", "invalid-address-without-port")
+	if err == nil {
+		t.Errorf("expected error for invalid address without port")
 	}
 }
