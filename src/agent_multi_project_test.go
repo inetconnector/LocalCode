@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -488,5 +489,18 @@ func TestMainFlagHelpers(t *testing.T) {
 	res := fastStartupBootstrap(Config{OllamaURL: "http://localhost:11434", ContextLength: 16000})
 	if res.Ollama == nil || res.Ollama.BaseURL != "http://localhost:11434" {
 		t.Errorf("unexpected fastStartupBootstrap Ollama client")
+	}
+}
+
+func TestDesktopMissionRecoveryDebugString(t *testing.T) {
+	snap := DesktopMissionRecoverySnapshot{
+		RunID:               "run-123",
+		MissionID:           "mission-456",
+		ReconciliationState: "stable",
+		Tasks:               []DesktopMissionRecoveryTask{{TaskID: "task-1"}},
+	}
+	dbg := desktopMissionRecoveryDebugString(snap)
+	if !strings.Contains(dbg, "run=run-123") || !strings.Contains(dbg, "mission=mission-456") || !strings.Contains(dbg, "tasks=1") {
+		t.Errorf("unexpected debug string: %s", dbg)
 	}
 }

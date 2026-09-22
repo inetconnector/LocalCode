@@ -275,3 +275,43 @@ func TestRunPowerShellScript(t *testing.T) {
 		t.Errorf("expected escaped powershell string")
 	}
 }
+
+func TestWindowsSuppressFatalAndAtomicErrors(t *testing.T) {
+	t.Setenv("LOCALCODE_SUPPRESS_FATAL_DIALOGS", "1")
+	if !suppressFatalDialogs() {
+		t.Errorf("expected suppressFatalDialogs to be true")
+	}
+	t.Setenv("LOCALCODE_SUPPRESS_FATAL_DIALOGS", "0")
+	if suppressFatalDialogs() {
+		t.Errorf("expected suppressFatalDialogs to be false for 0")
+	}
+
+	errNil := windowsAtomicReplaceError("TestAPI", nil)
+	if errNil == nil || !strings.Contains(errNil.Error(), "TestAPI failed") {
+		t.Errorf("unexpected windowsAtomicReplaceError for nil: %v", errNil)
+	}
+
+	errWithErr := windowsAtomicReplaceError("TestAPI", os.ErrNotExist)
+	if errWithErr == nil || !strings.Contains(errWithErr.Error(), "file does not exist") {
+		t.Errorf("unexpected windowsAtomicReplaceError with err: %v", errWithErr)
+	}
+
+	_ = isTrayRequested()
+}
+
+func TestRenderWithChromiumDefault(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceSVG := filepath.Join(tempDir, "test.svg")
+	targetPNG := filepath.Join(tempDir, "test.png")
+	targetWebP := filepath.Join(tempDir, "test.webp")
+	if err := os.WriteFile(sourceSVG, []byte("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'></svg>"), 0o644); err != nil {
+		t.Fatalf("failed to write svg: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cfg := Config{}
+	_, _ = renderPNGWithChromiumDefault(ctx, cfg, sourceSVG, targetPNG, 10, 10)
+	_, _ = renderWebPWithChromiumDefault(ctx, cfg, sourceSVG, targetWebP, 10, 10)
+}
