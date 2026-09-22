@@ -58,6 +58,7 @@ type Config struct {
 	RemoteEnabled  bool              `json:"remote_enabled"`
 	RemoteBindHost string            `json:"remote_bind_host"`
 	RemotePort     int               `json:"remote_port"`
+	RemoteAutoPair bool              `json:"remote_auto_pair"`
 	RemoteDevices  []RemoteDevice    `json:"remote_devices,omitempty"`
 
 	OllamaURL                         string  `json:"ollama_url"`
@@ -230,6 +231,8 @@ type Status struct {
 	RootDir              string      `json:"root_dir"`
 	Project              string      `json:"project,omitempty"`
 	Running              bool        `json:"running"`
+	RunningProjects      []string    `json:"running_projects,omitempty"`
+	ActiveRunsCount      int         `json:"active_runs_count,omitempty"`
 	GitAvailable         bool        `json:"git_available"`
 	MCPCount             int         `json:"mcp_count"`
 	RunID                string      `json:"run_id,omitempty"`
@@ -290,15 +293,18 @@ type AppState struct {
 	Recovery       *RunRecoveryState
 	Steering       agentSteeringState
 
-	Events               []UIEvent
-	Pending              *PendingAction
-	Continuation         *AgentContinuation
-	Threads              map[string]*ChatThread
-	CurrentThread        string
-	RemoteListenAddr     string
-	RemoteURLs           []string
-	RemoteTLSFingerprint string
-	RemotePairing        *RemotePairingState
+	Events                []UIEvent
+	Pending               *PendingAction
+	Continuation          *AgentContinuation
+	Threads               map[string]*ChatThread
+	CurrentThread         string
+	RemoteListenAddr      string
+	RemoteURLs            []string
+	RemoteTLSFingerprint  string
+	RemotePairing         *RemotePairingState
+	ActiveRuns            map[string]*ActiveAgentRun
+	RunningProjects       map[string]int
+	PendingRemotePairings map[string]*PendingRemotePairing
 
 	LastTask         string
 	LastSummary      string
@@ -313,26 +319,52 @@ type AppState struct {
 	threadSaveCloseOnce sync.Once
 }
 
+type ActiveAgentRun struct {
+	ID             string             `json:"id"`
+	Project        string             `json:"project"`
+	ThreadID       string             `json:"thread_id"`
+	Model          string             `json:"model"`
+	Phase          string             `json:"phase"`
+	StartedAt      time.Time          `json:"started_at"`
+	LastProgressAt time.Time          `json:"last_progress_at"`
+	Cancel         context.CancelFunc `json:"-"`
+}
+
 type RemotePairingState struct {
 	CodeHash       string
 	ExpiresAt      time.Time
 	FailedAttempts int
 }
 
+type PendingRemotePairing struct {
+	ID         string        `json:"id"`
+	DeviceName string        `json:"device_name"`
+	ClientIP   string        `json:"client_ip"`
+	CreatedAt  time.Time     `json:"created_at"`
+	ExpiresAt  time.Time     `json:"expires_at"`
+	Status     string        `json:"status"` // pending | approved | rejected | expired
+	Token      string        `json:"token,omitempty"`
+	Device     RemoteDevice  `json:"device,omitempty"`
+	DoneCh     chan struct{} `json:"-"`
+}
+
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 	threads := loadThreads()
 	recovery := loadRecoverableRun()
 	state := &AppState{
-		Config:         cfg,
-		Ollama:         ollama,
-		Project:        cfg.LastProject,
-		Model:          cfg.LastModel,
-		Recovery:       recovery,
-		Threads:        threads,
-		subscribers:    make(map[chan UIEvent]struct{}),
-		threadSaveCh:   make(chan map[string]*ChatThread, 1),
-		threadSaveStop: make(chan struct{}),
-		threadSaveDone: make(chan struct{}),
+		Config:                cfg,
+		Ollama:                ollama,
+		Project:               cfg.LastProject,
+		Model:                 cfg.LastModel,
+		Recovery:              recovery,
+		Threads:               threads,
+		subscribers:           make(map[chan UIEvent]struct{}),
+		PendingRemotePairings: make(map[string]*PendingRemotePairing),
+		ActiveRuns:            make(map[string]*ActiveAgentRun),
+		RunningProjects:       make(map[string]int),
+		threadSaveCh:          make(chan map[string]*ChatThread, 1),
+		threadSaveStop:        make(chan struct{}),
+		threadSaveDone:        make(chan struct{}),
 	}
 	go state.threadSaveWorker()
 	if cfg.LastProject != "" {
@@ -353,21 +385,169 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 	if recovery != nil {
 		if thread := threads[recovery.ThreadID]; thread != nil && !thread.Archived && strings.EqualFold(filepath.Clean(thread.Project), filepath.Clean(recovery.Project)) {
 			state.CurrentThread = thread.ID
-			state.Project = thread.Project
 			state.Events = append([]UIEvent(nil), thread.Events...)
-			if thread.Model != "" {
-				state.Model = thread.Model
-			}
 		}
 		state.AddEvent(recoveryStartupEvent(cfg, recovery))
 	}
 	return state
 }
 
+func (s *AppState) IsProjectRunning(project string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isProjectRunningLocked(project)
+}
+
+func (s *AppState) isProjectRunningLocked(project string) bool {
+	if project == "" {
+		return false
+	}
+	clean := filepath.Clean(project)
+	hasTrackedRuns := len(s.RunningProjects) > 0 || len(s.ActiveRuns) > 0
+	for p, count := range s.RunningProjects {
+		if count > 0 && strings.EqualFold(filepath.Clean(p), clean) {
+			return true
+		}
+	}
+	for _, run := range s.ActiveRuns {
+		if run != nil && strings.EqualFold(filepath.Clean(run.Project), clean) {
+			return true
+		}
+	}
+	if !hasTrackedRuns && s.Running && strings.EqualFold(filepath.Clean(s.Project), clean) {
+		return true
+	}
+	return false
+}
+
+func (s *AppState) GetRunningProjects() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.GetRunningProjectsLocked()
+}
+
+func (s *AppState) GetRunningProjectsLocked() []string {
+	seen := make(map[string]bool)
+	var out []string
+	hasTrackedRuns := len(s.RunningProjects) > 0 || len(s.ActiveRuns) > 0
+	for p, count := range s.RunningProjects {
+		clean := filepath.Clean(p)
+		if count > 0 && !seen[clean] {
+			seen[clean] = true
+			out = append(out, p)
+		}
+	}
+	for _, run := range s.ActiveRuns {
+		if run != nil && run.Project != "" {
+			clean := filepath.Clean(run.Project)
+			if !seen[clean] {
+				seen[clean] = true
+				out = append(out, run.Project)
+			}
+		}
+	}
+	if !hasTrackedRuns && s.Running && s.Project != "" {
+		clean := filepath.Clean(s.Project)
+		if !seen[clean] {
+			seen[clean] = true
+			out = append(out, s.Project)
+		}
+	}
+	return out
+}
+
+func (s *AppState) RegisterActiveRun(run *ActiveAgentRun) {
+	if run == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ActiveRuns == nil {
+		s.ActiveRuns = make(map[string]*ActiveAgentRun)
+	}
+	if s.RunningProjects == nil {
+		s.RunningProjects = make(map[string]int)
+	}
+	s.ActiveRuns[run.ID] = run
+	if run.Project != "" {
+		s.RunningProjects[run.Project]++
+	}
+	s.Running = len(s.ActiveRuns) > 0
+}
+
+func (s *AppState) UnregisterActiveRun(runID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, exists := s.ActiveRuns[runID]
+	if exists {
+		delete(s.ActiveRuns, runID)
+		if run != nil && run.Project != "" {
+			s.RunningProjects[run.Project]--
+			if s.RunningProjects[run.Project] <= 0 {
+				delete(s.RunningProjects, run.Project)
+			}
+		}
+	}
+	s.Running = len(s.ActiveRuns) > 0
+	if !s.Running {
+		s.RunPhase = "idle"
+	}
+}
+
+func (s *AppState) IsThreadRunning(threadID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.isThreadRunningLocked(threadID)
+}
+
+func (s *AppState) isThreadRunningLocked(threadID string) bool {
+	if threadID == "" {
+		return s.Running
+	}
+	for _, r := range s.ActiveRuns {
+		if r != nil && r.ThreadID == threadID {
+			return true
+		}
+	}
+	if s.Running && s.CurrentThread == threadID {
+		return true
+	}
+	return false
+}
+
+func (s *AppState) GetActiveRunForThread(threadID string) *ActiveAgentRun {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.getActiveRunForThreadLocked(threadID)
+}
+
+func (s *AppState) getActiveRunForThreadLocked(threadID string) *ActiveAgentRun {
+	for _, r := range s.ActiveRuns {
+		if r != nil && r.ThreadID == threadID {
+			return r
+		}
+	}
+	if s.Running && s.CurrentThread == threadID {
+		return &ActiveAgentRun{
+			ID:             s.RunID,
+			Project:        s.Project,
+			ThreadID:       s.CurrentThread,
+			Model:          s.Model,
+			Phase:          s.RunPhase,
+			StartedAt:      s.RunStartedAt,
+			LastProgressAt: s.LastProgressAt,
+			Cancel:         s.Cancel,
+		}
+	}
+	return nil
+}
+
 func (s *AppState) AddEvent(ev UIEvent) {
 	s.mu.Lock()
-	if ev.ThreadID == "" {
-		ev.ThreadID = s.CurrentThread
+	targetThreadID := ev.ThreadID
+	if targetThreadID == "" {
+		targetThreadID = s.CurrentThread
+		ev.ThreadID = targetThreadID
 	}
 	if s.Running {
 		s.LastProgressAt = time.Now()
@@ -378,15 +558,20 @@ func (s *AppState) AddEvent(ev UIEvent) {
 	if ev.Timestamp.IsZero() {
 		ev.Timestamp = time.Now()
 	}
-	s.Events = append(s.Events, ev)
-	if len(s.Events) > 500 {
-		s.Events = append([]UIEvent(nil), s.Events[len(s.Events)-500:]...)
+	if targetThreadID == s.CurrentThread || targetThreadID == "" {
+		s.Events = append(s.Events, ev)
+		if len(s.Events) > 500 {
+			s.Events = append([]UIEvent(nil), s.Events[len(s.Events)-500:]...)
+		}
 	}
-	if s.CurrentThread != "" {
-		if t := s.Threads[s.CurrentThread]; t != nil {
-			t.Events = append([]UIEvent(nil), s.Events...)
+	if targetThreadID != "" {
+		if t := s.Threads[targetThreadID]; t != nil {
+			t.Events = append(t.Events, ev)
+			if len(t.Events) > 500 {
+				t.Events = append([]UIEvent(nil), t.Events[len(t.Events)-500:]...)
+			}
 			t.UpdatedAt = ev.Timestamp
-			if s.Model != "" {
+			if s.Model != "" && t.Model == "" {
 				t.Model = s.Model
 			}
 		}
@@ -542,4 +727,25 @@ func (s *AppState) Unsubscribe(ch chan UIEvent) {
 	s.mu.Lock()
 	delete(s.subscribers, ch)
 	s.mu.Unlock()
+}
+
+func (s *AppState) Broadcast(ev UIEvent) {
+	if ev.ID == "" {
+		ev.ID = newID()
+	}
+	if ev.Timestamp.IsZero() {
+		ev.Timestamp = time.Now()
+	}
+	s.mu.RLock()
+	subs := make([]chan UIEvent, 0, len(s.subscribers))
+	for c := range s.subscribers {
+		subs = append(subs, c)
+	}
+	s.mu.RUnlock()
+	for _, c := range subs {
+		select {
+		case c <- ev:
+		default:
+		}
+	}
 }

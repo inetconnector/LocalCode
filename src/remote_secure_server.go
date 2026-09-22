@@ -280,6 +280,9 @@ func startProductionRemoteServer(state *AppState, cfg Config) ([]string, error) 
 	if err := startRemoteMDNS(actualPort, bindHost, fingerprint, urls); err != nil {
 		log.Printf("LocalCode Remote mDNS advertisement unavailable: %v", err)
 	}
+	if _, err := startRemoteUDPDiscovery(actualPort, bindHost, fingerprint, urls, state); err != nil {
+		log.Printf("LocalCode Remote UDP broadcast discovery unavailable: %v", err)
+	}
 	go func() {
 		if err := server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 			log.Printf("remote HTTPS server error: %v", err)
@@ -294,14 +297,37 @@ func registerRemoteDiscoveryRoute(remote *RemoteServer, fingerprint string, urls
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		hostname, _ := os.Hostname()
+		if strings.TrimSpace(hostname) == "" {
+			hostname = "LocalCode-PC"
+		}
+		var projectNames []string
+		var runningProjects []string
+		if remote.state != nil {
+			remote.state.mu.RLock()
+			for _, p := range remote.state.Threads {
+				if p != nil && p.Project != "" {
+					name := filepath.Base(p.Project)
+					if name != "" && name != "." && !containsString(projectNames, name) {
+						projectNames = append(projectNames, name)
+					}
+				}
+			}
+			runningProjects = remote.state.GetRunningProjectsLocked()
+			remote.state.mu.RUnlock()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"app":             "LocalCode Remote",
-			"version":         version,
-			"service":         remoteMDNSServiceType,
-			"tls":             true,
-			"tls_fingerprint": fingerprint,
-			"remote_urls":     append([]string(nil), urls...),
+			"app":              "LocalCode Remote",
+			"instance_name":    hostname,
+			"hostname":         hostname,
+			"version":          version,
+			"service":          remoteMDNSServiceType,
+			"tls":              true,
+			"tls_fingerprint":  fingerprint,
+			"remote_urls":      append([]string(nil), urls...),
+			"active_projects":  projectNames,
+			"running_projects": runningProjects,
 		})
 	})
 }

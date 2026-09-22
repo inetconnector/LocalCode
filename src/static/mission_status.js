@@ -149,20 +149,20 @@
   const style = document.createElement('style');
   style.id = 'localcode-mission-status-style';
   style.textContent = `
-    .mission-status-card{border-color:#40536a;background:#1b232a}
-    .orchestration-diagnostics-card{border-color:#3f4d59;background:#192126}
-    .mission-recovery-card{border-color:#725f32;background:#282317}
-    .mission-status-head{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
-    .mission-status-title{font-weight:750;min-width:0;flex:1;overflow-wrap:anywhere}
-    .mission-status-state{font-size:10px;border:1px solid #4b617a;border-radius:99px;padding:2px 7px;white-space:nowrap;color:#bcd7f5}
+    .mission-status-card{border-color:rgba(255,255,255,0.07);background:#16191e}
+    .orchestration-diagnostics-card{border-color:rgba(255,255,255,0.07);background:#16191e}
+    .mission-recovery-card{border-color:#725f32;background:#201c13}
+    .mission-status-head{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+    .mission-status-title{font-weight:700;font-size:12px;min-width:0;flex:1;overflow-wrap:anywhere}
+    .mission-status-state{font-size:9.5px;border:1px solid rgba(255,255,255,0.09);border-radius:99px;padding:2px 7px;white-space:nowrap;color:#bcd7f5}
     .mission-status-state.ready,.mission-status-state.succeeded{border-color:#386b49;color:#8ee2a7}
     .mission-status-state.failed,.mission-status-state.budget_exhausted,.mission-status-state.saturated,.mission-status-state.backend_unavailable,.mission-status-state.model_unavailable{border-color:#7b4b4b;color:#ffaaaa}
     .mission-status-state.cancelled{border-color:#756543;color:#e3c980}
-    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:10.5px;margin-top:7px}
-    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#94a1a8}
-    .mission-status-section{margin-top:10px;padding-top:9px;border-top:1px solid #313c43}.mission-status-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#92a0a7;font-weight:700;margin-bottom:6px}
-    .mission-task{border:1px solid #313c43;background:#171d21;border-radius:7px;padding:7px 8px;margin-top:5px}.mission-task-head{display:flex;gap:7px;align-items:center}.mission-task-id{min-width:0;flex:1;font:10.5px var(--code-font);overflow-wrap:anywhere}.mission-task-state{font-size:9.5px;color:#b5c4cc}.mission-task-sub{font-size:9.5px;color:#839198;margin-top:3px;overflow-wrap:anywhere}
-    .mission-recovery-copy{font-size:10.5px;color:#b9b09b;line-height:1.5;margin:4px 0 8px}.mission-recovery-action{margin-top:7px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid #776339;background:#332b1b;border-radius:7px;padding:6px 9px;font-size:10.5px;color:#f2dfad}.mission-recovery-btn:hover{background:#413622}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:10px;color:#d8c58f;margin-top:7px}
+    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;font-size:10px;margin-top:6px}
+    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#8b949e}
+    .mission-status-section{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06)}.mission-status-section-title{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#7d8590;font-weight:700;margin-bottom:5px}
+    .mission-task{border:1px solid rgba(255,255,255,0.06);background:#121519;border-radius:6px;padding:5px 7px;margin-top:4px}.mission-task-head{display:flex;gap:6px;align-items:center}.mission-task-id{min-width:0;flex:1;font:10px var(--code-font);overflow-wrap:anywhere}.mission-task-state{font-size:9px;color:#b0bac4}.mission-task-sub{font-size:9px;color:#7d8590;margin-top:2px;overflow-wrap:anywhere}
+    .mission-recovery-copy{font-size:10px;color:#b9b09b;line-height:1.45;margin:3px 0 6px}.mission-recovery-action{margin-top:6px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid #776339;background:#2d2618;border-radius:6px;padding:4px 8px;font-size:10px;color:#f2dfad}.mission-recovery-btn:hover{background:#3b311e}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:9.5px;color:#d8c58f;margin-top:5px}
   `;
   document.head.appendChild(style);
 

@@ -139,6 +139,9 @@ func startMobileSafeRemoteHTTPServer(state *AppState, cfg Config) ([]string, err
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          log.New(os.Stderr, "remote http: ", log.LstdFlags),
 	}
+	if _, err := startRemoteUDPDiscovery(port, bindHost, "", urls, state); err != nil {
+		log.Printf("LocalCode Remote UDP broadcast discovery unavailable: %v", err)
+	}
 	go func() {
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("remote HTTP server error: %v", err)
@@ -208,10 +211,13 @@ func startMobileSafeProductionRemoteServer(state *AppState, cfg Config) ([]strin
 			Certificates: []tls.Certificate{pair},
 		},
 	}
-	tlsListener := tls.NewListener(ln, server.TLSConfig)
 	if err := startRemoteMDNS(actualPort, bindHost, fingerprint, urls); err != nil {
 		log.Printf("LocalCode Remote mDNS advertisement unavailable: %v", err)
 	}
+	if _, err := startRemoteUDPDiscovery(actualPort, bindHost, fingerprint, urls, state); err != nil {
+		log.Printf("LocalCode Remote UDP broadcast discovery unavailable: %v", err)
+	}
+	tlsListener := tls.NewListener(ln, server.TLSConfig)
 	go func() {
 		if err := server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 			log.Printf("remote HTTPS server error: %v", err)

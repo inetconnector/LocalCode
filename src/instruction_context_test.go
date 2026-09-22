@@ -15,6 +15,8 @@ func TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills(t *testing.T)
 	codexHome := t.TempDir()
 	t.Setenv("LOCALCODE_CONFIG_HOME", configHome)
 	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("USERPROFILE", configHome)
+	t.Setenv("HOME", configHome)
 
 	mustWrite(t, filepath.Join(configHome, productDirName, "AGENTS.md"), "global localcode base\n")
 	mustWrite(t, filepath.Join(configHome, productDirName, "AGENTS.override.md"), "global localcode override\n")
@@ -59,8 +61,11 @@ func TestProjectInstructionContextLoadsGlobalProjectRulesAndSkills(t *testing.T)
 }
 
 func TestProjectInstructionContextFallsBackWhenNoDocsExist(t *testing.T) {
-	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
-	t.Setenv("CODEX_HOME", t.TempDir())
+	tempDir := t.TempDir()
+	t.Setenv("LOCALCODE_CONFIG_HOME", tempDir)
+	t.Setenv("CODEX_HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
+	t.Setenv("HOME", tempDir)
 	context := projectInstructionContext(t.TempDir(), "analyse")
 	if !strings.Contains(context, "Keine Projektdokumente") {
 		t.Fatalf("unexpected empty context: %s", context)

@@ -255,9 +255,9 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	}
 
 	s.mu.Lock()
-	if s.Running {
+	if threadID != "" && s.isThreadRunningLocked(threadID) {
 		s.mu.Unlock()
-		return errors.New("agent is already running")
+		return errors.New("agent is already running for this chat")
 	}
 	if threadID != "" {
 		t := s.Threads[threadID]
@@ -312,6 +312,26 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	ctx, cancel := context.WithCancel(context.Background())
 	runID := newID()
 	now := time.Now()
+
+	activeRun := &ActiveAgentRun{
+		ID:             runID,
+		Project:        project,
+		ThreadID:       s.CurrentThread,
+		Model:          model,
+		Phase:          "starting",
+		StartedAt:      now,
+		LastProgressAt: now,
+		Cancel:         cancel,
+	}
+	if s.ActiveRuns == nil {
+		s.ActiveRuns = make(map[string]*ActiveAgentRun)
+	}
+	if s.RunningProjects == nil {
+		s.RunningProjects = make(map[string]int)
+	}
+	s.ActiveRuns[runID] = activeRun
+	s.RunningProjects[project]++
+
 	s.Running = true
 	s.Cancel = cancel
 	s.RunID = runID
@@ -325,6 +345,7 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		t := newThread(project, model)
 		s.Threads[t.ID] = t
 		s.CurrentThread = t.ID
+		activeRun.ThreadID = t.ID
 		s.Events = nil
 		isContinuation = false
 		continuation = nil
@@ -426,6 +447,11 @@ func (s *AppState) StopAgent() bool {
 	if running {
 		s.RunPhase = "cancelling"
 		s.LastProgressAt = time.Now()
+		for _, r := range s.ActiveRuns {
+			if r != nil && r.Cancel != nil {
+				r.Cancel()
+			}
+		}
 	}
 	s.mu.Unlock()
 	if running {
@@ -440,6 +466,28 @@ func (s *AppState) StopAgent() bool {
 	return running
 }
 
+func (s *AppState) StopAgentForThread(threadID string) bool {
+	s.mu.Lock()
+	run := s.getActiveRunForThreadLocked(threadID)
+	if run == nil {
+		s.mu.Unlock()
+		return false
+	}
+	run.Phase = "cancelling"
+	run.LastProgressAt = time.Now()
+	cancel := run.Cancel
+	runID := run.ID
+	s.mu.Unlock()
+	if runID != "" {
+		s.journalRunPhase(runID, "cancelling")
+	}
+	if cancel != nil {
+		cancel()
+	}
+	s.AddEvent(UIEvent{ThreadID: threadID, Type: "warning", Message: "Abbruch angefordert", Detail: "Der laufende Modell- oder Werkzeugaufruf wird kontrolliert beendet."})
+	return true
+}
+
 func (s *AppState) ForceStopAgent() bool {
 	s.mu.Lock()
 	cancel := s.Cancel
@@ -447,8 +495,14 @@ func (s *AppState) ForceStopAgent() bool {
 	wasRunning := s.Running
 	runID := s.RunID
 	if wasRunning {
-		// Invalidate the current run so a late goroutine cannot switch the UI back
-		// into a running state or execute an after-task hook.
+		// Invalidate all active runs
+		for _, r := range s.ActiveRuns {
+			if r != nil && r.Cancel != nil {
+				r.Cancel()
+			}
+		}
+		s.ActiveRuns = make(map[string]*ActiveAgentRun)
+		s.RunningProjects = make(map[string]int)
 		s.RunID = newID()
 		s.Running = false
 		s.Cancel = nil
@@ -479,10 +533,16 @@ func (s *AppState) ForceStopAgent() bool {
 
 func (s *AppState) setRunPhase(runID, phase string) {
 	s.mu.Lock()
-	updated := s.Running && s.RunID == runID
-	if updated {
+	updated := false
+	if s.Running && s.RunID == runID {
 		s.RunPhase = phase
 		s.LastProgressAt = time.Now()
+		updated = true
+	}
+	if r, ok := s.ActiveRuns[runID]; ok && r != nil {
+		r.Phase = phase
+		r.LastProgressAt = time.Now()
+		updated = true
 	}
 	s.mu.Unlock()
 	if updated {
@@ -493,7 +553,8 @@ func (s *AppState) setRunPhase(runID, phase string) {
 func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 	s.mu.RLock()
 	cfg := s.Config
-	active := s.RunID == runID
+	_, isActiveRun := s.ActiveRuns[runID]
+	active := isActiveRun || s.RunID == runID
 	s.mu.RUnlock()
 	if !active {
 		return
@@ -514,12 +575,14 @@ func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 	// NewChat can switch the selected thread between the Running=false update and
 	// the final status event, causing the old run to write into the new chat.
 	s.mu.Lock()
-	if s.RunID != runID {
-		s.mu.Unlock()
-		return
+	if run, exists := s.ActiveRuns[runID]; exists && run != nil {
+		run.Phase = "finalizing"
+		run.LastProgressAt = time.Now()
 	}
-	s.RunPhase = "finalizing"
-	s.LastProgressAt = time.Now()
+	if s.RunID == runID {
+		s.RunPhase = "finalizing"
+		s.LastProgressAt = time.Now()
+	}
 	s.mu.Unlock()
 	if runAfterHook {
 		s.UpdateProjectState("Agentenlauf beendet")
@@ -528,13 +591,27 @@ func (s *AppState) finishAgentRun(runID, project string, runAfterHook bool) {
 	}
 	s.AddEvent(UIEvent{Type: "status", Message: "Bereit"})
 	s.mu.Lock()
+	if run, exists := s.ActiveRuns[runID]; exists {
+		delete(s.ActiveRuns, runID)
+		if run != nil && run.Project != "" {
+			s.RunningProjects[run.Project]--
+			if s.RunningProjects[run.Project] <= 0 {
+				delete(s.RunningProjects, run.Project)
+			}
+		}
+	} else if s.RunningProjects != nil && project != "" {
+		s.RunningProjects[project]--
+		if s.RunningProjects[project] <= 0 {
+			delete(s.RunningProjects, project)
+		}
+	}
 	if s.RunID == runID {
-		s.Running = false
 		s.Cancel = nil
 		s.Pending = nil
 		s.RunPhase = "idle"
 		s.LastProgressAt = time.Now()
 	}
+	s.Running = len(s.ActiveRuns) > 0
 	s.mu.Unlock()
 	outcome := "completed"
 	if !runAfterHook {
@@ -619,7 +696,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
 	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
-	s.AddEvent(UIEvent{Type: "status", Message: "Agent arbeitet", Detail: model})
+	s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Arbeite...", "Working..."), Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
 		hookCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.CommandTimeout)*time.Second)
@@ -730,11 +807,12 @@ func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, mod
 	messages := append([]OllamaMessage(nil), continuation.Messages...)
 	answer := "ANTWORT DES NUTZERS AUF DIE RÜCKFRAGE:\nFrage: " + continuation.Question + "\nAntwort: " + userMessage + attachmentContext + "\n\nSetze die bestehende Aufgabe jetzt fort. Stelle dieselbe Frage nicht erneut, außer die Antwort ist wirklich unverständlich."
 	messages = append(messages, OllamaMessage{Role: "user", Content: answer})
-	s.AddEvent(UIEvent{Type: "status", Message: "Agent setzt Aufgabe fort", Detail: model})
 
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
+
+	s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Arbeite...", "Working..."), Detail: model})
 	if continuation.SuggestedAction != nil {
 		if isAffirmativeAnswer(userMessage) {
 			action := *continuation.SuggestedAction
@@ -823,7 +901,13 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			compactionCount++
 		}
 		s.setRunPhase(runID, "model")
-		s.AddEvent(UIEvent{Type: "progress", Message: fmt.Sprintf("Modellschritt %d von %d", step, maxSteps), Detail: model})
+		stepInfo := localizeConfigText(cfg, fmt.Sprintf("%s · Schritt %d/%d", model, step, maxSteps), fmt.Sprintf("%s · Step %d/%d", model, step, maxSteps))
+		s.AddEvent(UIEvent{
+			Type:    "progress",
+			Action:  "thinking",
+			Message: localizeConfigText(cfg, "Analysiere Aufgabe & plane nächsten Schritt...", "Analyzing task & planning next step..."),
+			Detail:  stepInfo,
+		})
 		var action AgentAction
 		usedModel := model
 		var err error
@@ -995,7 +1079,11 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			continue
 		}
 		if action.Action != "finish" {
-			s.AddEvent(UIEvent{Type: "agent_step", Message: action.Message, Action: action.Action, Path: action.Path, Command: action.Command})
+			stepMsg := strings.TrimSpace(action.Message)
+			if stepMsg == "" {
+				stepMsg = defaultActionDescription(action, cfg)
+			}
+			s.AddEvent(UIEvent{Type: "agent_step", Message: stepMsg, Action: action.Action, Path: action.Path, Command: action.Command})
 		}
 		s.setRunPhase(runID, "tool:"+action.Action)
 		if agentToolHookEligible(action) && strings.TrimSpace(cfg.HookBeforeTool) != "" {
@@ -1045,6 +1133,84 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	}
 	s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
 	return "limit"
+}
+
+func defaultActionDescription(a AgentAction, cfg Config) string {
+	switch a.Action {
+	case "read_file":
+		if a.Path != "" {
+			return localizeConfigText(cfg, "Datei lesen: "+a.Path, "Read file: "+a.Path)
+		}
+		return localizeConfigText(cfg, "Datei lesen", "Read file")
+	case "write_file":
+		if a.Path != "" {
+			return localizeConfigText(cfg, "Datei schreiben: "+a.Path, "Write file: "+a.Path)
+		}
+		return localizeConfigText(cfg, "Datei schreiben", "Write file")
+	case "replace_text":
+		if a.Path != "" {
+			return localizeConfigText(cfg, "Datei bearbeiten: "+a.Path, "Edit file: "+a.Path)
+		}
+		return localizeConfigText(cfg, "Datei bearbeiten", "Edit file")
+	case "search_text":
+		if a.Query != "" {
+			return localizeConfigText(cfg, "Text suchen: "+a.Query, "Search text: "+a.Query)
+		}
+		return localizeConfigText(cfg, "Code durchsuchen", "Search code")
+	case "list_files":
+		if a.Path != "" {
+			return localizeConfigText(cfg, "Dateien auflisten: "+a.Path, "List files: "+a.Path)
+		}
+		return localizeConfigText(cfg, "Dateien auflisten", "List files")
+	case "run_command":
+		if a.Command != "" {
+			return localizeConfigText(cfg, "Befehl ausführen: "+a.Command, "Run command: "+a.Command)
+		}
+		return localizeConfigText(cfg, "Befehl ausführen", "Run command")
+	case "run_tool":
+		if a.Tool != "" {
+			return localizeConfigText(cfg, "Werkzeug ausführen: "+a.Tool, "Run tool: "+a.Tool)
+		}
+		return localizeConfigText(cfg, "Werkzeug ausführen", "Run tool")
+	case "git":
+		if len(a.Args) > 0 {
+			return "Git: " + strings.Join(a.Args, " ")
+		}
+		return "Git"
+	case "git_commit":
+		return localizeConfigText(cfg, "Git Commit erstellen", "Create Git commit")
+	case "web_search":
+		if a.Query != "" {
+			return localizeConfigText(cfg, "Websuche: "+a.Query, "Web search: "+a.Query)
+		}
+		return localizeConfigText(cfg, "Websuche", "Web search")
+	case "web_fetch":
+		if a.URL != "" {
+			return localizeConfigText(cfg, "Webseite aufrufen: "+a.URL, "Fetch URL: "+a.URL)
+		}
+		return localizeConfigText(cfg, "Webseite aufrufen", "Fetch URL")
+	case "project_info":
+		return localizeConfigText(cfg, "Projektstruktur analysieren", "Analyze project structure")
+	case "build_project":
+		return localizeConfigText(cfg, "Projekt bauen", "Build project")
+	case "deploy_android":
+		return localizeConfigText(cfg, "Android App bereitstellen", "Deploy Android app")
+	case "subagent_analyze":
+		if a.Task != "" {
+			return localizeConfigText(cfg, "Subagent Analyse: "+a.Task, "Subagent analysis: "+a.Task)
+		}
+		return localizeConfigText(cfg, "Subagent Analyse", "Subagent analysis")
+	case "engine_edit", "aider_edit":
+		if a.Task != "" {
+			return localizeConfigText(cfg, "Code Engine: "+a.Task, "Code engine: "+a.Task)
+		}
+		return localizeConfigText(cfg, "Code Engine ausführen", "Execute code engine")
+	default:
+		if a.Action != "" {
+			return a.Action
+		}
+		return localizeConfigText(cfg, "Arbeite...", "Working...")
+	}
 }
 
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {

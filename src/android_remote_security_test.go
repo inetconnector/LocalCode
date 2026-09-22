@@ -55,7 +55,10 @@ func TestAndroidRemoteLocksNavigationToPinnedPrivateOrigin(t *testing.T) {
 	}
 
 	manualStart := strings.Index(text, "open.setOnClickListener")
-	manualEnd := strings.Index(text, "discoveryPanel.addView(open")
+	manualEnd := strings.Index(text, "tabManualLayout.addView(open")
+	if manualEnd < 0 {
+		manualEnd = strings.Index(text, "discoveryPanel.addView(open")
+	}
 	if manualStart < 0 || manualEnd <= manualStart {
 		t.Fatal("manual Android Remote handler could not be isolated")
 	}

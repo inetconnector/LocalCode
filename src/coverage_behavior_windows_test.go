@@ -8,20 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
-
-func writeWindowsCmdFixture(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, name+".cmd")
-	content := "@echo off\r\n" + strings.ReplaceAll(strings.TrimSpace(body), "\n", "\r\n") + "\r\n"
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
 
 func TestWindowsPlatformDiscoveryAndSafeFailureBranches(t *testing.T) {
 	empty := t.TempDir()
@@ -258,4 +246,72 @@ exit /b 0`)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not recognized") || !strings.Contains(out, "unknown") {
 		t.Fatalf("non-Android deploy output=%q err=%v", out, err)
 	}
+}
+
+func TestTrayLoadAppIcon(t *testing.T) {
+	h := loadAppIcon()
+	if h != 0 {
+		procDestroyIcon.Call(uintptr(h))
+	}
+}
+
+func TestLocalCodeAppWindows(t *testing.T) {
+	_ = isLocalCodeAppWindow("LocalCode", "Chrome_WidgetWin_1", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
+	_ = localCodeAppWindows("non-existent-browser.exe")
+}
+
+func TestRunPowerShellScript(t *testing.T) {
+	cfg := Config{CommandTimeout: 10}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	out, err := runPowerShellScript(ctx, cfg, "Write-Output 'localcode-test'")
+	if err != nil || !strings.Contains(out, "localcode-test") {
+		t.Errorf("expected powershell output 'localcode-test', got %q, err=%v", out, err)
+	}
+
+	escaped := escapePowerShellString(`"quoted"`)
+	if !strings.Contains(escaped, `\"`) {
+		t.Errorf("expected escaped powershell string")
+	}
+}
+
+func TestWindowsSuppressFatalAndAtomicErrors(t *testing.T) {
+	t.Setenv("LOCALCODE_SUPPRESS_FATAL_DIALOGS", "1")
+	if !suppressFatalDialogs() {
+		t.Errorf("expected suppressFatalDialogs to be true")
+	}
+	t.Setenv("LOCALCODE_SUPPRESS_FATAL_DIALOGS", "0")
+	if suppressFatalDialogs() {
+		t.Errorf("expected suppressFatalDialogs to be false for 0")
+	}
+
+	errNil := windowsAtomicReplaceError("TestAPI", nil)
+	if errNil == nil || !strings.Contains(errNil.Error(), "TestAPI failed") {
+		t.Errorf("unexpected windowsAtomicReplaceError for nil: %v", errNil)
+	}
+
+	errWithErr := windowsAtomicReplaceError("TestAPI", os.ErrNotExist)
+	if errWithErr == nil || !strings.Contains(errWithErr.Error(), "file does not exist") {
+		t.Errorf("unexpected windowsAtomicReplaceError with err: %v", errWithErr)
+	}
+
+	_ = isTrayRequested()
+}
+
+func TestRenderWithChromiumDefault(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceSVG := filepath.Join(tempDir, "test.svg")
+	targetPNG := filepath.Join(tempDir, "test.png")
+	targetWebP := filepath.Join(tempDir, "test.webp")
+	if err := os.WriteFile(sourceSVG, []byte("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'></svg>"), 0o644); err != nil {
+		t.Fatalf("failed to write svg: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cfg := Config{}
+	_, _ = renderPNGWithChromiumDefault(ctx, cfg, sourceSVG, targetPNG, 10, 10)
+	_, _ = renderWebPWithChromiumDefault(ctx, cfg, sourceSVG, targetWebP, 10, 10)
 }

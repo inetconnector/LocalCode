@@ -43,9 +43,11 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/", s.handleRemotePage)
 	s.mux.HandleFunc("/remote/api/ping", s.handlePing)
 	s.mux.HandleFunc("/remote/api/pair", s.handlePair)
+	s.mux.HandleFunc("/remote/api/pair-status", s.handlePairStatus)
 	s.mux.HandleFunc("/remote/api/unpair", s.withAuth(s.handleUnpair))
 	s.mux.HandleFunc("/remote/api/status", s.withAuth(s.handleStatus))
 	s.mux.HandleFunc("/remote/api/projects", s.withAuth(s.handleProjects))
+	s.mux.HandleFunc("/remote/api/select-project", s.withAuth(s.handleSelectProject))
 	s.mux.HandleFunc("/remote/api/threads", s.withAuth(s.handleThreads))
 	s.mux.HandleFunc("/remote/api/new-chat", s.withAuth(s.handleNewChat))
 	s.mux.HandleFunc("/remote/api/select-chat", s.withAuth(s.handleSelectChat))
@@ -214,20 +216,137 @@ func (s *RemoteServer) handlePair(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code       string `json:"code"`
 		DeviceName string `json:"device_name"`
+		Auto       bool   `json:"auto"`
 	}
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, "invalid pairing request", http.StatusBadRequest)
 		return
 	}
-	token, device, err := s.state.PairRemoteDevice(req.Code, req.DeviceName)
-	if err != nil {
-		// Keep failures deliberately indistinguishable to avoid turning the pair
-		// endpoint into an oracle for code state.
-		http.Error(w, "invalid or expired pairing code", http.StatusForbidden)
+	if strings.TrimSpace(req.Code) != "" {
+		token, device, err := s.state.PairRemoteDevice(req.Code, req.DeviceName)
+		if err != nil {
+			// Keep failures deliberately indistinguishable to avoid turning the pair
+			// endpoint into an oracle for code state.
+			http.Error(w, "invalid or expired pairing code", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
+
+	if req.Auto {
+		s.state.mu.RLock()
+		autoPairEnabled := s.state.Config.RemoteAutoPair
+		s.state.mu.RUnlock()
+
+		if autoPairEnabled {
+			token, device, err := s.state.DirectPairRemoteDevice(req.DeviceName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = writeJSON(w, map[string]any{"ok": true, "token": token, "device": remoteDeviceView(device)})
+			return
+		}
+
+		clientIP := clientIPFromRequest(r)
+		pending, err := s.state.CreatePendingRemotePairing(req.DeviceName, clientIP)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "pending": true, "request_id": pending.ID, "expires_at": pending.ExpiresAt})
+		return
+	}
+
+	http.Error(w, "invalid or expired pairing code", http.StatusForbidden)
+}
+
+func (s *RemoteServer) handlePairStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	reqID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	if reqID == "" {
+		http.Error(w, "request_id required", http.StatusBadRequest)
+		return
+	}
+	pending := s.state.GetPendingRemotePairing(reqID)
+	if pending == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "status": "expired", "error": "pairing request expired or not found"})
+		return
+	}
+
+	s.state.mu.RLock()
+	status := pending.Status
+	token := pending.Token
+	device := pending.Device
+	doneCh := pending.DoneCh
+	expiresAt := pending.ExpiresAt
+	s.state.mu.RUnlock()
+
+	if status == "approved" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "status": "approved", "token": token, "device": remoteDeviceView(device)})
+		return
+	}
+	if status == "rejected" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "status": "rejected", "rejected": true, "error": "pairing rejected by desktop"})
+		return
+	}
+	if time.Now().After(expiresAt) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "status": "expired", "expired": true, "error": "pairing request expired"})
+		return
+	}
+
+	timeout := time.NewTimer(25 * time.Second)
+	defer timeout.Stop()
+
+	select {
+	case <-r.Context().Done():
+		return
+	case <-timeout.C:
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": true, "status": "pending", "request_id": reqID})
+		return
+	case <-doneCh:
+		s.state.mu.RLock()
+		status = pending.Status
+		token = pending.Token
+		device = pending.Device
+		s.state.mu.RUnlock()
+		if status == "approved" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = writeJSON(w, map[string]any{"ok": true, "status": "approved", "token": token, "device": remoteDeviceView(device)})
+			return
+		}
+		if status == "rejected" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = writeJSON(w, map[string]any{"ok": false, "status": "rejected", "rejected": true, "error": "pairing rejected by desktop"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{"ok": false, "status": status, "expired": status == "expired", "error": "pairing request " + status})
+		return
+	}
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 func (s *RemoteServer) handleUnpair(w http.ResponseWriter, r *http.Request) {
@@ -281,6 +400,8 @@ func (s *RemoteServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"root_dir":            cfg.RootProjectDir,
 		"model":               s.state.Model,
 		"running":             s.state.Running,
+		"running_projects":    s.state.GetRunningProjectsLocked(),
+		"active_runs_count":   len(s.state.ActiveRuns),
 		"pending":             s.state.Pending != nil,
 		"current_thread":      s.state.CurrentThread,
 		"run_id":              s.state.RunID,
@@ -311,6 +432,59 @@ func (s *RemoteServer) handleProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"root": cfg.RootProjectDir, "projects": projects})
+}
+
+func (s *RemoteServer) handleSelectProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	root := s.state.Config.RootProjectDir
+	running := s.state.Running
+	s.state.mu.RUnlock()
+	if running {
+		http.Error(w, "agent is running", http.StatusConflict)
+		return
+	}
+	full, err := ensureWithinRoot(root, req.Path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	info, err := os.Stat(full)
+	if err != nil || !info.IsDir() {
+		http.Error(w, "project directory not found", http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	cfg := s.state.Config
+	s.state.mu.RUnlock()
+	if err := ensureProjectDocs(full, cfg); err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cfg, err = s.state.mutateConfig(func(next *Config) error {
+		next.LastProject = full
+		return nil
+	})
+	if err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektauswahl konnte nicht gespeichert werden: ", "Project selection could not be saved: ")+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.state.selectProjectThread(full)
+	s.state.UpdateProjectState(localizeConfigText(cfg, "Projekt ausgewählt", "Project selected"))
+	w.Header().Set("Content-Type", "application/json")
+	if err := writeJSON(w, map[string]any{"ok": true, "project": full}); err != nil {
+		log.Printf("writing remote project selection response failed: %v", err)
+	}
 }
 
 func (s *RemoteServer) handleThreads(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +556,7 @@ func (s *RemoteServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	runPhase := s.state.RunPhase
 	runStartedAt := s.state.RunStartedAt
 	lastProgressAt := s.state.LastProgressAt
+	runningProjects := s.state.GetRunningProjectsLocked()
 	if requestedThread != "" {
 		if t := s.state.Threads[requestedThread]; t != nil && !t.Archived {
 			events = append([]UIEvent(nil), t.Events...)
@@ -390,7 +565,13 @@ func (s *RemoteServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 				model = t.Model
 			}
 			currentThread = requestedThread
-			if s.state.CurrentThread != requestedThread {
+			if activeRun := s.state.getActiveRunForThreadLocked(requestedThread); activeRun != nil {
+				running = true
+				runID = activeRun.ID
+				runPhase = activeRun.Phase
+				runStartedAt = activeRun.StartedAt
+				lastProgressAt = activeRun.LastProgressAt
+			} else if s.state.CurrentThread != requestedThread {
 				running = false
 				runID = ""
 				runPhase = "idle"
@@ -406,7 +587,7 @@ func (s *RemoteServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt})
+	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "running_projects": runningProjects, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt})
 }
 
 func (s *RemoteServer) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -597,6 +778,132 @@ func (s *AppState) PairRemoteDevice(code, deviceName string) (string, RemoteDevi
 	return token, device, nil
 }
 
+func (s *AppState) DirectPairRemoteDevice(deviceName string) (string, RemoteDevice, error) {
+	now := time.Now()
+	token, err := randomRemoteToken()
+	if err != nil {
+		return "", RemoteDevice{}, err
+	}
+	device := RemoteDevice{ID: newID(), Name: remoteDeviceName(deviceName), TokenHash: remoteTokenHash(token), PairedAt: now, LastSeenAt: now}
+	if _, err := s.mutateConfig(func(cfg *Config) error {
+		cfg.RemoteDevices = append(cfg.RemoteDevices, device)
+		return nil
+	}); err != nil {
+		return "", RemoteDevice{}, err
+	}
+	return token, device, nil
+}
+
+func (s *AppState) CreatePendingRemotePairing(deviceName, clientIP string) (*PendingRemotePairing, error) {
+	now := time.Now()
+	reqID := newID()
+	pending := &PendingRemotePairing{
+		ID:         reqID,
+		DeviceName: remoteDeviceName(deviceName),
+		ClientIP:   clientIP,
+		CreatedAt:  now,
+		ExpiresAt:  now.Add(60 * time.Second),
+		Status:     "pending",
+		DoneCh:     make(chan struct{}),
+	}
+	s.mu.Lock()
+	if s.PendingRemotePairings == nil {
+		s.PendingRemotePairings = make(map[string]*PendingRemotePairing)
+	}
+	for id, p := range s.PendingRemotePairings {
+		if now.After(p.ExpiresAt) || p.Status != "pending" {
+			delete(s.PendingRemotePairings, id)
+		}
+	}
+	s.PendingRemotePairings[reqID] = pending
+	s.mu.Unlock()
+
+	data, _ := json.Marshal(map[string]any{
+		"id":          reqID,
+		"device_name": pending.DeviceName,
+		"client_ip":   clientIP,
+		"created_at":  now,
+		"expires_at":  pending.ExpiresAt,
+	})
+	s.Broadcast(UIEvent{
+		Type:      "remote_pairing_request",
+		Message:   pending.DeviceName,
+		Action:    reqID,
+		Path:      clientIP,
+		Detail:    string(data),
+		Timestamp: now,
+	})
+	return pending, nil
+}
+
+func (s *AppState) GetPendingRemotePairing(id string) *PendingRemotePairing {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.PendingRemotePairings == nil {
+		return nil
+	}
+	return s.PendingRemotePairings[id]
+}
+
+func (s *AppState) DecidePendingRemotePairing(id string, approve bool) error {
+	s.mu.Lock()
+	if s.PendingRemotePairings == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("pairing request not found")
+	}
+	pending, ok := s.PendingRemotePairings[id]
+	if !ok || pending == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("pairing request not found")
+	}
+	if time.Now().After(pending.ExpiresAt) {
+		pending.Status = "expired"
+		delete(s.PendingRemotePairings, id)
+		s.mu.Unlock()
+		select {
+		case <-pending.DoneCh:
+		default:
+			close(pending.DoneCh)
+		}
+		return fmt.Errorf("pairing request expired")
+	}
+	if pending.Status != "pending" {
+		s.mu.Unlock()
+		return fmt.Errorf("pairing request already resolved")
+	}
+	deviceName := pending.DeviceName
+	doneCh := pending.DoneCh
+	s.mu.Unlock()
+
+	if !approve {
+		s.mu.Lock()
+		pending.Status = "rejected"
+		s.mu.Unlock()
+		select {
+		case <-doneCh:
+		default:
+			close(doneCh)
+		}
+		return nil
+	}
+
+	token, device, err := s.DirectPairRemoteDevice(deviceName)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	pending.Status = "approved"
+	pending.Token = token
+	pending.Device = device
+	s.mu.Unlock()
+	select {
+	case <-doneCh:
+	default:
+		close(doneCh)
+	}
+	return nil
+}
+
 func (s *AppState) RemoteTokenValid(token string) bool {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -706,6 +1013,55 @@ func (s *Server) handleRemotePairing(w http.ResponseWriter, r *http.Request) {
 		"deep_link":   deepLink,
 		"web_link":    webLink,
 	})
+}
+
+func (s *Server) handleRemotePairingDecision(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req struct {
+		RequestID string `json:"request_id"`
+		Approve   bool   `json:"approve"`
+	}
+	if err := readJSON(r.Body, &req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := s.state.DecidePendingRemotePairing(req.RequestID, req.Approve); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleRemotePairingPending(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.state.mu.RLock()
+	defer s.state.mu.RUnlock()
+	now := time.Now()
+	pendingList := []map[string]any{}
+	if s.state.PendingRemotePairings != nil {
+		for _, p := range s.state.PendingRemotePairings {
+			if p.Status == "pending" && now.Before(p.ExpiresAt) {
+				pendingList = append(pendingList, map[string]any{
+					"id":          p.ID,
+					"request_id":  p.ID,
+					"device_name": p.DeviceName,
+					"client_ip":   p.ClientIP,
+					"created_at":  p.CreatedAt,
+					"expires_at":  p.ExpiresAt,
+				})
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "pending": pendingList, "auto_pair": s.state.Config.RemoteAutoPair})
 }
 
 func activeLANIPv4Addresses() []string {

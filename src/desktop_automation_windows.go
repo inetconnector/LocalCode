@@ -281,11 +281,14 @@ if (-not $invoked) {
 	return fmt.Sprintf("DESKTOP CLICKED\nWindow: %s\nControl: %s\nResult: %s", windowTitle, controlName, strings.TrimSpace(out)), nil
 }
 
-// DesktopType enters text into an edit control or focused element.
+// DesktopType enters text into an explicitly named edit control.
 func DesktopType(ctx context.Context, cfg Config, windowTitle, controlName, text string) (string, error) {
 	windowTitle = strings.TrimSpace(windowTitle)
-	if windowTitle == "" {
-		return "", errors.New("desktop_type requires window_title")
+	controlName = strings.TrimSpace(controlName)
+	if windowTitle == "" || controlName == "" {
+		return "", errors.New(localizeConfigText(cfg,
+			"desktop_type benötigt window_title und control_name",
+			"desktop_type requires window_title and control_name"))
 	}
 	if isBlockedDesktopWindow(windowTitle, "") {
 		return "", errors.New("access to system/security window is blocked for safety")
@@ -326,7 +329,7 @@ $controls = $foundWin.FindAll(
 
 $set = $false
 foreach ($c in $controls) {
-    if ($c.Current.Name -eq $targetControl -or $c.Current.AutomationId -eq $targetControl -or [string]::IsNullOrEmpty($targetControl)) {
+    if ($c.Current.Name -eq $targetControl -or $c.Current.AutomationId -eq $targetControl) {
         $pattern = $null
         if ($c.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
             $pattern.SetValue($textToType)

@@ -71,6 +71,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+	s.mux.HandleFunc("/api/remote/pairing/decision", s.handleRemotePairingDecision)
+	s.mux.HandleFunc("/api/remote/pairing/pending", s.handleRemotePairingPending)
 	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
 	s.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)
 	s.mux.HandleFunc("/api/mcp/test", s.handleMCPTest)
@@ -188,6 +190,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		RootDir:            cfg.RootProjectDir,
 		Project:            s.state.Project,
 		Running:            s.state.Running,
+		RunningProjects:    s.state.GetRunningProjectsLocked(),
+		ActiveRunsCount:    len(s.state.ActiveRuns),
 		GitAvailable:       gitAvailable(s.state.Project, cfg),
 		MCPCount:           enabledMCPCount(cfg),
 		RunID:              s.state.RunID,
@@ -708,6 +712,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	runPhase := s.state.RunPhase
 	runStartedAt := s.state.RunStartedAt
 	lastProgressAt := s.state.LastProgressAt
+	runningProjects := s.state.GetRunningProjectsLocked()
 	if requestedThread != "" {
 		if t := s.state.Threads[requestedThread]; t != nil && !t.Archived {
 			events = append([]UIEvent(nil), t.Events...)
@@ -716,7 +721,13 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 				model = t.Model
 			}
 			currentThread = requestedThread
-			if s.state.CurrentThread != requestedThread {
+			if activeRun := s.state.getActiveRunForThreadLocked(requestedThread); activeRun != nil {
+				running = true
+				runID = activeRun.ID
+				runPhase = activeRun.Phase
+				runStartedAt = activeRun.StartedAt
+				lastProgressAt = activeRun.LastProgressAt
+			} else if s.state.CurrentThread != requestedThread {
 				running = false
 				runID = ""
 				runPhase = "idle"
@@ -732,7 +743,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt})
+	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "running_projects": runningProjects, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt})
 }
 
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {

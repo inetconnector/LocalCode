@@ -6,6 +6,12 @@ package main
 
 import (
 	"log"
+	"os"
+)
+
+var (
+	openBrowserMaximizedHook func(url string) error
+	exitAppHook              func(code int)
 )
 
 type TrayManager struct {
@@ -28,10 +34,21 @@ func (tm *TrayManager) Run() error {
 }
 
 func (tm *TrayManager) OpenUI() {
+	if openBrowserMaximizedHook != nil {
+		_ = openBrowserMaximizedHook(tm.url)
+		return
+	}
 	_ = openBrowser(tm.url)
 }
 
-func (tm *TrayManager) ExitApp() {}
+func (tm *TrayManager) ExitApp() {
+	tm.Stop()
+	if exitAppHook != nil {
+		exitAppHook(0)
+		return
+	}
+	os.Exit(0)
+}
 
 func (tm *TrayManager) Stop() {}
 
