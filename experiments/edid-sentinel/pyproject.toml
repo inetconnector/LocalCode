@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edid-sentinel"
+version = "0.1.0"
+description = "Isolated offline EDID/DisplayID parser robustness testing"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[project.scripts]
+edid-sentinel = "edidsentinel.__main__:main"
+
+[tool.setuptools]
+packages = ["edidsentinel"]
