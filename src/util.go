@@ -72,6 +72,25 @@ func ensureWithinRoot(root, target string) (string, error) {
 	return absTarget, nil
 }
 
+// ensureExistingProjectDir validates both the canonical project boundary and
+// the concrete directory before a caller uses it as a process working folder.
+// A containment check alone intentionally permits missing paths for file
+// creation, but a project/working-directory boundary must not do so.
+func ensureExistingProjectDir(root, target string) (string, error) {
+	full, err := ensureWithinRoot(root, target)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(full)
+	if err != nil {
+		return "", fmt.Errorf("project directory not found: %s", full)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("project path is not a directory: %s", full)
+	}
+	return full, nil
+}
+
 func truncateText(s string, max int) string {
 	if len(s) <= max {
 		return s

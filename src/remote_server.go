@@ -511,6 +511,17 @@ func (s *RemoteServer) handleNewChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(req.Project) != "" {
+		s.state.mu.RLock()
+		cfg := s.state.Config
+		s.state.mu.RUnlock()
+		full, err := ensureExistingProjectDir(cfg.RootProjectDir, req.Project)
+		if err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektverzeichnis ist ungültig: ", "Project directory is invalid: ")+err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Project = full
+	}
 	t, err := s.state.NewChat(req.Project)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)

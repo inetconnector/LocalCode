@@ -4,8 +4,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -237,6 +240,12 @@ func TestServerBasicEndpointsDirect(t *testing.T) {
 
 func TestServerChatEndpointsDirect(t *testing.T) {
 	cfg := defaultConfig()
+	root := t.TempDir()
+	project := filepath.Join(root, "my-proj")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg.RootProjectDir = root
 	appState := &AppState{
 		Config:  cfg,
 		Threads: map[string]*ChatThread{},
@@ -256,7 +265,11 @@ func TestServerChatEndpointsDirect(t *testing.T) {
 	// 2. handleNewChat
 	var threadID string
 	{
-		req := httptest.NewRequest(http.MethodPost, "/api/new-chat", strings.NewReader(`{"project":"my-proj"}`))
+		body, err := json.Marshal(map[string]string{"project": project})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/new-chat", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		server.handleNewChat(w, req)

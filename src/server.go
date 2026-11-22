@@ -487,6 +487,17 @@ func (s *Server) handleNewChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	if strings.TrimSpace(req.Project) != "" {
+		s.state.mu.RLock()
+		cfg := s.state.Config
+		s.state.mu.RUnlock()
+		full, err := ensureExistingProjectDir(cfg.RootProjectDir, req.Project)
+		if err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektverzeichnis ist ungültig: ", "Project directory is invalid: ")+err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Project = full
+	}
 	t, err := s.state.NewChat(req.Project)
 	if err != nil {
 		http.Error(w, err.Error(), 409)
@@ -936,6 +947,11 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
 	}
+	project, err := ensureExistingProjectDir(cfg.RootProjectDir, project)
+	if err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektverzeichnis nicht gefunden", "Project directory not found"), http.StatusBadRequest)
+		return
+	}
 	if strings.TrimSpace(req.Command) != "" {
 		if err := commandBlocked(cfg, req.Command); err != nil {
 			http.Error(w, err.Error(), 400)
@@ -977,6 +993,11 @@ func (s *Server) handleTerminalCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
+		return
+	}
+	project, err := ensureExistingProjectDir(cfg.RootProjectDir, project)
+	if err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektverzeichnis nicht gefunden", "Project directory not found"), http.StatusBadRequest)
 		return
 	}
 	command := strings.TrimSpace(req.Command)

@@ -2,7 +2,7 @@
 # Aktueller Projektstatus
 
 - **Zuletzt aktualisiert:** 2026-09-22T23:50:59+02:00
-- **Projekt:** `C:\Users\frede\Projekte\LocalCode`
+- **Projekt:** `<LOCAL_WINDOWS_PATH>`
 - **Agentstatus:** bereit
 - **Modell:** `qwen2.5-coder:14b`
 - **Letzte Aufgabe:** keine laufende Aufgabe
@@ -10,7 +10,7 @@
 - **Aktualisierungsgrund:** Projekt ausgewählt
 - **Git-Branch:** `Tool: git
 Pfad: C:\Program Files\Git\cmd\git.exe
-Arbeitsordner: C:\Users\frede\Projekte\LocalCode
+Arbeitsordner: <LOCAL_WINDOWS_PATH>
 Argumente: --no-pager branch --show-current
 Exitcode: 0
 Dauer: 35ms
@@ -24,7 +24,7 @@ master`
 ```text
 Tool: git
 Pfad: C:\Program Files\Git\cmd\git.exe
-Arbeitsordner: C:\Users\frede\Projekte\LocalCode
+Arbeitsordner: <LOCAL_WINDOWS_PATH>
 Argumente: --no-pager status --short --branch
 Exitcode: 0
 Dauer: 40ms
@@ -106,12 +106,30 @@ Dieser verwaltete Abschnitt wird bei Projektauswahl, Agentenstart, Werkzeugaktio
 
 # LocalCode – canonical current state / kanonischer aktueller Projektstand
 
+**Workspace relocation / Workspace-Verschiebung (2026-11-20):** The complete
+Git checkout was moved from `<LOCAL_WINDOWS_PATH>` to
+`<LOCAL_WINDOWS_PATH>`. The branch, Git metadata, uncommitted
+changes and untracked files were preserved; no reset, clean, commit or push was
+performed. / Der vollständige Git-Checkout wurde von
+`<LOCAL_WINDOWS_PATH>` nach
+`<LOCAL_WINDOWS_PATH>` verschoben. Branch, Git-Metadaten,
+uncommittete Änderungen und ungetrackte Dateien blieben erhalten; es gab keinen
+Reset, Clean, Commit oder Push.
+
+## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
+
+The reported PowerShell error came from `TestCoverageFinalServerInvalidPayloadsAndMethodBranches`: `/api/new-chat` accepted a missing/outside project path, made it the active project, and the later `/api/open-terminal` launched PowerShell with `Set-Location` to that nonexistent path. The API now validates the canonical containment boundary and requires an existing directory before accepting a project for a new chat. Desktop and Remote terminal entry points apply the same existing-directory guard before starting a process, so stale state fails closed without launching PowerShell. / Der gemeldete PowerShell-Fehler entstand, weil `/api/new-chat` einen fehlenden bzw. außerhalb liegenden Projektpfad als aktives Projekt übernahm und `/api/open-terminal` danach PowerShell mit `Set-Location` auf diesen nicht vorhandenen Pfad startete. Die API prüft jetzt kanonische Pfadgrenzen und verlangt vor einem neuen Chat ein vorhandenes Verzeichnis. Desktop- und Remote-Terminal-Einstiegspunkte verwenden dieselbe Prüfung, sodass veralteter Zustand fail-closed endet und PowerShell nicht gestartet wird.
+
+Changed in both the canonical checkout and the AgentOS bundled copy: `src/util.go`, `src/server.go`, `src/remote_server.go`, `src/coverage_final_test.go`, and `src/coverage_boost_test.go`. The root LocalCode checkout remains on `master` at `6e56cebe`; its pre-existing documentation, `src/go.mod`, and `scripts/go26.*` worktree changes were preserved and no commit or push was made for this fix. / Geändert wurden in kanonischem Checkout und AgentOS-Bundle: `src/util.go`, `src/server.go`, `src/remote_server.go`, `src/coverage_final_test.go` und `src/coverage_boost_test.go`. Der lokale LocalCode-Checkout bleibt auf `master` bei `6e56cebe`; die vorbestehenden Dokumentations-, `src/go.mod`- und `scripts/go26.*`-Änderungen blieben erhalten, für diesen Fix wurde kein Commit und kein Push ausgeführt.
+
+Verified locally with Go 1.26.6: focused regression tests passed in both copies; full uncached Go tests passed (`localcode` 124.876 s canonical / 120.936 s bundle), `go vet ./...` passed in both, full `go test -race -count=1 ./...` passed (`localcode` 142.060 s canonical / 141.632 s bundle), Windows builds passed in temporary output paths, JavaScript syntax passed, and `python scripts/ui-e2e-test.py` passed with `FULL UI E2E OK 46 requests`. / Lokal verifiziert mit Go 1.26.6: fokussierte Regressionstests, vollständige uncached Go-Suites, `go vet ./...`, beide Race-Suites, temporäre Windows-Builds, JavaScript-Syntaxprüfung und der UI-Smoke-Test (`FULL UI E2E OK 46 requests`) bestanden in den jeweils genannten Ständen.
+
 **Verified:** 2026-09-22 Europe/Berlin (Android Startup Black Screen Elimination, Persistent Last Project Auto-Restoration via Native SharedPreferences Bridge & `/remote/api/select-project`, Plesk Live Portal & GitHub Downloads Architecture on `https://mesh.inetconnector.com/#downloads`, ComputeMesh Zero-Fee Local GPU & Cluster Collaboration, Antigravity IDE-Style Live Execution Trajectory across Desktop & Mobile Remote, Active Project Name Under LocalCode in identical font size, Android Horizontal Swipe Gesture Tab Switching, Safe Area Insets & Non-Sticky Edge Padding, Obsidian Dark Mode Discovery Wizard, UDP Broadcast Multi-Instance Auto-Discovery, 1-Click Connection, Concurrent Multi-Project Execution, Green Pulsating Active Project Indicators, Android hardware deployed & verified on Samsung Galaxy SM-S931B, Windows amd64 native build + full Go test suite 100% green)
 **Repository:** `inetconnector/LocalCode`
 **Default branch:** `master`  
 **Current authoritative merged master:** `96ad7f7d76e6b2f5b01308be52199cc9d895d9ea` (latest published release checked: `v6.9.3`)
-**Active branch:** `feat/android-startup-live-downloads`
-**Active PR:** #99 (`feat: Android startup black screen fix, persistent last project restoration & live Plesk downloads pipeline`)
+**Active branch:** `master`
+**Active PR:** none for the current local path-guard fix; the worktree contains uncommitted local changes.
 **Primary roadmap issue:** #32 `feat: exceed Claw Code native orchestration capabilities`
 
 ## Android Startup Black Screen Elimination & Persistent Last Project Auto-Restoration — 2026-09-22
@@ -144,7 +162,7 @@ Dieser verwaltete Abschnitt wird bei Projektauswahl, Agentenstart, Werkzeugaktio
     - **Camera QR-Code**: Direct scannable QR SVG (`/assets/qr-localcode-apk.svg`) for instant mobile APK download.
   - **Automated Staging Pipeline (`scripts/publish-downloads.ps1`)**:
     - Automates compilation of `LocalCode.exe`, `LocalCode-Debug.exe`, `LocalCode-Setup.exe`, `LocalCode-Remote-debug.apk`, and `localcode-0.1.0.vsix`.
-    - Stages all release assets to `C:\Users\frede\Projekte\ComputeMesh\portal\downloads\` and verifies SHA-256 checksums.
+    - Stages all release assets to `<LOCAL_WINDOWS_PATH>` and verifies SHA-256 checksums.
     - Plesk synchronization script `deploy/sync_plesk_portal.sh` synchronizes the `portal/downloads` directory directly to `/var/www/vhosts/inetconnector.com/site2/downloads/` and `httpdocs/downloads/`.
 
 ## ComputeMesh & LocalCode Integrated Collaboration Ecosystem — 2026-09-22
@@ -395,7 +413,7 @@ Implemented in this workstream:
 
 ## Active Progressive Skill Discovery, Negative Knowledge & Quality Gate workstream — 2026-09-17
 
-User request: Thoroughly analyze all documents in `C:\Users\frede\Desktop\pipeline` and implement high-leverage architectural refinements into LocalCode.
+User request: Thoroughly analyze all documents in `<LOCAL_WINDOWS_PATH>` and implement high-leverage architectural refinements into LocalCode.
 
 Implemented in this workstream:
 
@@ -460,7 +478,7 @@ Implemented in this workstream:
   - Updated `src/static/computemesh.js` UI status card and tooltips with 100% key-identical bilingual DE/EN dictionaries.
   - Hermetic Ollama client isolation in `src/ollama.go` preventing background daemons from polluting isolated mock test servers.
 - **Go Toolchain & Environment Optimization**:
-  - Configured `.vscode/settings.json` specifying `go.goroot`, `go.gopath`, and `go.alternateTools.go` targeting `C:\Users\frede\AppData\Local\Programs\GoToolchains\go1.26.6\go\bin\go.exe`.
+  - Configured `.vscode/settings.json` specifying `go.goroot`, `go.gopath`, and `go.alternateTools.go` targeting `<LOCAL_WINDOWS_PATH>`.
   - Cleaned test temp pollution from Windows User PATH registry.
   - Hardened `localcode-setup` (`src/cmd/localcode-setup/main.go` and `setup_test.go`) with execution timeouts (30s), `-ExecutionPolicy Bypass`, and `t.Cleanup` registry cleanup.
 - **Code Graph Relations & Polyglot Symbol Extraction**:
@@ -616,7 +634,7 @@ Current local installer worktree verification on 2026-09-05:
 - Direct Windows-amd64 GUI, diagnostics, and setup `go build` checks passed; `[System.Drawing.Icon]::ExtractAssociatedIcon` returned a 32x32 icon for the setup build.
 - Frontend JavaScript syntax checks passed using Visual Studio's bundled Node.js at `C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VisualStudio\NodeJs\node.exe` (`v24.12.0`) for both `src\static\*.js` and inline `<script>` blocks in `src\static\*.html`.
 - PowerShell syntax validation passed across all `scripts\*.ps1` files via the PowerShell AST parser.
-- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build-android.ps1` passed and produced `C:\Users\frede\AppData\Local\Temp\localcode-android\LocalCode-Remote-debug.apk` with SHA-256 `3750d00df22675ce0af3b79a11e8ea9ca66c749090e701b87dcf48299ca634b4`.
+- `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build-android.ps1` passed and produced `<LOCAL_WINDOWS_PATH>` with SHA-256 `3750d00df22675ce0af3b79a11e8ea9ca66c749090e701b87dcf48299ca634b4`.
 - `dist\LocalCode-Setup.exe --silent` installed successfully to `%LOCALAPPDATA%\Programs\LocalCode`; installed binary hashes match the rebuilt `dist` artifacts; Start Menu/Desktop shortcuts exist; User `PATH` contains the install directory; HKCU uninstall metadata includes `UninstallString` and `QuietUninstallString`.
 - Browser UI smoke test `python scripts\ui-e2e-test.py` was repaired (added static asset routing in Playwright mock handler to serve `.js`/`.css`/`.svg` from `src/static/` and updated context menu selector) and passes 100% green (`FULL UI E2E OK 41 requests`).
 - Persistent Mission Knowledge (`src/agent_mission_knowledge.go`) implemented with JSON schema v1, project-hash naming, 64-item FIFO eviction, 128 KiB compaction, secret redaction, and atomic writes. Fully covered by `src/agent_mission_knowledge_persist_test.go`.
