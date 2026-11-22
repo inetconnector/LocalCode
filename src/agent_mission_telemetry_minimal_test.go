@@ -145,14 +145,25 @@ func TestAgentMinimalDesktopSourceStoreReadbackDoesNotLeak(t *testing.T) {
 		agentMissionDesktopStatuses.Unlock()
 	}()
 
-	data, err := agentMissionMinimalJSONForRun(testRun)
+	data, err := agentMissionMinimalJSONForBoundRun(testRun, raw.MissionID, raw.Project)
 	if err != nil || len(data) == 0 || bytes.Contains(data, []byte(agentMinimalFakeCanary)) {
 		t.Fatal("private process-local snapshot was not safely minimized")
 	}
-	if result, err := agentMissionMinimalJSONForRun("invalid\nrun"); len(result) != 0 || !errors.Is(err, errAgentMissionMinimalInvalid) {
-		t.Fatal("invalid run identifier was not blocked")
+	invalid := [][3]string{
+		{"invalid\nrun", raw.MissionID, raw.Project},
+		{"absent-minimal-run", raw.MissionID, raw.Project},
+		{testRun, "another-mission", raw.Project},
+		{testRun, raw.MissionID, "another-project"},
+		{testRun, "", raw.Project},
+		{testRun, raw.MissionID, ""},
 	}
-	if result, err := agentMissionMinimalJSONForRun("absent-minimal-run"); len(result) != 0 || !errors.Is(err, errAgentMissionMinimalInvalid) {
-		t.Fatal("unknown source run was not blocked")
+	for i, value := range invalid {
+		result, err := agentMissionMinimalJSONForBoundRun(value[0], value[1], value[2])
+		if len(result) != 0 || !errors.Is(err, errAgentMissionMinimalInvalid) {
+			t.Fatalf("cross-scope or invalid run binding %d was not blocked", i)
+		}
+		if strings.Contains(err.Error(), agentMinimalFakeCanary) {
+			t.Fatal("private project input leaked into error")
+		}
 	}
 }

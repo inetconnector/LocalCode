@@ -94,15 +94,21 @@ func agentMissionBuildMinimalJSON(status AgentMissionDesktopStatus) ([]byte, err
 	return encoded, nil
 }
 
-// agentMissionMinimalJSONForRun reads a snapshot from LocalCode's existing
-// process-local desktop status store and only serializes the strict allowlist.
-// It does not authenticate an external caller or authorize any transport.
-func agentMissionMinimalJSONForRun(executionRunID string) ([]byte, error) {
-	if !agentMissionMinimalID.MatchString(executionRunID) {
+// agentMissionMinimalJSONForBoundRun reads LocalCode's existing in-process
+// status store, verifies the exact operator-approved run/mission/project
+// labels, and serializes ONLY the strict public field allowlist. The private
+// project value is compared in memory but is never copied into the JSON.
+// The supplied labels must come from an independently trusted operator.
+// This function does not authenticate a caller or authorize any transport.
+func agentMissionMinimalJSONForBoundRun(executionRunID, missionID, project string) ([]byte, error) {
+	if !agentMissionMinimalID.MatchString(executionRunID) ||
+		!agentMissionMinimalID.MatchString(missionID) ||
+		project == "" {
 		return nil, errAgentMissionMinimalInvalid
 	}
 	status, ok := agentMissionDesktopStatusForRun(executionRunID)
-	if !ok || status.ExecutionRunID != executionRunID {
+	if !ok || status.ExecutionRunID != executionRunID ||
+		status.MissionID != missionID || status.Project != project {
 		return nil, errAgentMissionMinimalInvalid
 	}
 	return agentMissionBuildMinimalJSON(status)

@@ -4,9 +4,14 @@ Stand: 22.11.2026. **Nur interner Quellcode, keine Live-Anbindung und keine Ausf
 
 Die internen Go-Funktionen in `src/agent_mission_telemetry_minimal.go` lesen
 `AgentMissionDesktopStatus` beziehungsweise den existierenden
-`agentMissionDesktopStatusForRun`-Speicher. Sie konstruieren **vor jeder
-Serialisierung** ein neues, fest typisiertes Statusobjekt. Sie rufen keine
-Netzwerk-, HTTP-, IPC- oder Logging-Funktion auf.
+`agentMissionDesktopStatusForRun`-Speicher. Der gebundene Readback
+`agentMissionMinimalJSONForBoundRun` fordert vor der Projektion
+übereinstimmende Run-ID, Mission-ID **und den erwarteten Projektwert**.
+Der Projektwert wird nur intern verglichen und niemals serialisiert;
+die erwarteten Werte müssen außerhalb dieses Codes vertrauenswürdig
+festgelegt sein. Die Funktionen konstruieren **vor jeder
+Serialisierung** ein neues, fest typisiertes Statusobjekt. Sie rufen
+keine Netzwerk-, HTTP-, IPC- oder Logging-Funktion auf.
 
 Die Ausgabe enthält exakt sieben Top-Level-Felder:
 
