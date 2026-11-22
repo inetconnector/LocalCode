@@ -6,6 +6,10 @@ On Windows, LocalCode opens maximized, including setup, normal/fast startup and 
 
 Unter Windows öffnet LocalCode maximiert: bei Einrichtung, normalem/Schnellstart und erneutem Öffnen aus dem Tray. Titelleiste und Windows-Taskleiste bleiben verfügbar. Nach dem Start lässt sich das Fenster weiterhin manuell verkleinern; `/tray` startet weiterhin im Hintergrund.
 
+## Mission telemetry / Missionsstatus
+
+The private LocalCode source-side telemetry minimizer exposes only a fixed, bounded status schema and no transport or credentials. Its design and unreleased security gates are documented in [docs/mission_telemetry_minimal.md](docs/mission_telemetry_minimal.md). No live connection or autonomous development execution is enabled by this code.
+
 ## Windows development checks / Windows-Entwicklungsprüfungen
 
 Run `go fmt ./...`, `go vet ./...`, and `go test -race -count=1 ./...` from `src`. Windows race tests require CGO and a MinGW-w64 C compiler (runtime version 8 or newer); [w64devkit](https://github.com/skeeto/w64devkit) provides a portable toolchain. Add its `bin` directory to PATH, open a new terminal and set `$env:CGO_ENABLED='1'` before the race test. Check `gcc --version` and `gcc --print-file-name=libsynchronization.a`. The normal application build remains independent of CGO. Desktop text entry requires both a window title and a nonblank control name; invalid targets are rejected before desktop interaction.
