@@ -66,22 +66,41 @@ func minInt(a, b int) int {
 	return b
 }
 
+func isLocalOllamaURL(u string) bool {
+	u = strings.ToLower(strings.TrimSpace(u))
+	if u == "" {
+		return true
+	}
+	return isLocalHostURL(u) && strings.Contains(u, ":11434")
+}
+
+func effectiveCompactionContextLength(cfg Config) int {
+	contextLength := cfg.ContextLength
+	if contextLength < 4096 {
+		contextLength = 32768
+	}
+	// Match OllamaClient's local num_ctx cap (6144) so LocalCode compacts
+	// proactively before Ollama silently drops the system prompt or user task.
+	if isLocalOllamaURL(cfg.OllamaURL) && contextLength > 6144 {
+		return 6144
+	}
+	return contextLength
+}
+
 func shouldCompactMessages(messages []OllamaMessage, cfg Config) bool {
 	if !cfg.ContextCompactionEnabled || cfg.ContextLength < 4096 {
 		return false
 	}
-	threshold := cfg.ContextLength * cfg.ContextCompactionThresholdPercent / 100
+	effectiveCtx := effectiveCompactionContextLength(cfg)
+	threshold := effectiveCtx * cfg.ContextCompactionThresholdPercent / 100
 	if threshold <= 0 {
-		threshold = cfg.ContextLength * 68 / 100
+		threshold = effectiveCtx * 68 / 100
 	}
 	return estimateMessageTokens(messages) >= threshold
 }
 
 func postCompactionTokenTarget(cfg Config) int {
-	contextLength := cfg.ContextLength
-	if contextLength < 4096 {
-		contextLength = 32768
-	}
+	contextLength := effectiveCompactionContextLength(cfg)
 	target := contextLength * 55 / 100
 	if target < 2048 {
 		target = 2048
@@ -142,7 +161,7 @@ func renderCompactedState(state compactedContext) string {
 }
 
 func deterministicContextSummary(messages []OllamaMessage, originalTask string) compactedContext {
-	state := compactedContext{OriginalTask: strings.TrimSpace(originalTask)}
+	state := compactedContext{OriginalTask: truncateText(strings.TrimSpace(originalTask), 2400)}
 	var facts, commands, failures, decisions, open []string
 	for _, message := range messages {
 		content := strings.TrimSpace(message.Content)
@@ -152,29 +171,29 @@ func deterministicContextSummary(messages []OllamaMessage, originalTask string) 
 		lower := strings.ToLower(content)
 		switch {
 		case message.Role == "user" && strings.Contains(lower, "antwort des nutzers"):
-			decisions = append(decisions, truncateText(content, 1200))
+			decisions = append(decisions, truncateText(content, 800))
 		case strings.Contains(lower, "tool result"):
 			if strings.Contains(lower, "error:") || strings.Contains(lower, "status: fehler") || strings.Contains(lower, "exitcode: 1") {
-				failures = append(failures, truncateText(content, 1800))
+				failures = append(failures, truncateText(content, 1000))
 			} else {
-				commands = append(commands, truncateText(content, 1400))
+				commands = append(commands, truncateText(content, 600))
 			}
 		case message.Role == "assistant":
 			var action AgentAction
 			if json.Unmarshal([]byte(content), &action) == nil {
-				facts = append(facts, action.Action+": "+truncateText(action.Message, 500))
+				facts = append(facts, action.Action+": "+truncateText(action.Message, 240))
 				if action.Action == "ask_user" {
-					open = append(open, action.Message)
+					open = append(open, truncateText(action.Message, 240))
 				}
 			}
 		}
 	}
 	state.Summary = "Ältere Nachrichten wurden lokal verdichtet. Die zuletzt erhaltenen Nachrichten bleiben zusätzlich unverändert im Kontext."
-	state.Decisions = tailStrings(decisions, 8)
-	state.ProjectFacts = tailStrings(facts, 16)
-	state.Commands = tailStrings(commands, 12)
-	state.Failures = tailStrings(failures, 8)
-	state.OpenItems = tailStrings(open, 6)
+	state.Decisions = tailStrings(decisions, 4)
+	state.ProjectFacts = tailStrings(facts, 8)
+	state.Commands = tailStrings(commands, 6)
+	state.Failures = tailStrings(failures, 4)
+	state.OpenItems = tailStrings(open, 4)
 	state.NextRecommended = "Mit der nächsten sicheren, überprüfbaren Werkzeugaktion fortfahren und keine bereits geklärte Frage wiederholen."
 	return state
 }
@@ -187,11 +206,15 @@ func tailStrings(values []string, n int) []string {
 }
 
 func (s *AppState) compactAgentMessages(ctx context.Context, model string, messages []OllamaMessage, cfg Config, originalTask string) ([]OllamaMessage, bool) {
-	if !shouldCompactMessages(messages, cfg) || len(messages) < 4 {
+	effCfg := cfg
+	if strings.TrimSpace(effCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
+		effCfg.OllamaURL = s.Ollama.BaseURL
+	}
+	if !shouldCompactMessages(messages, effCfg) || len(messages) < 4 {
 		return messages, false
 	}
 	before := estimateMessageTokens(messages)
-	keep := cfg.ContextCompactionKeepRecent
+	keep := effCfg.ContextCompactionKeepRecent
 	if keep < 6 {
 		keep = 12
 	}
@@ -199,36 +222,39 @@ func (s *AppState) compactAgentMessages(ctx context.Context, model string, messa
 		keep = len(messages) - 2
 	}
 
-	prompt := `Verdichte den folgenden Verlauf eines Software-Agenten in einen belastbaren Arbeitszustand.
+	state := deterministicContextSummary(messages, originalTask)
+	mode := "deterministisch"
+	effectiveCtx := effectiveCompactionContextLength(effCfg)
+	if before <= effectiveCtx && effectiveCtx > 8192 {
+		prompt := `Verdichte den folgenden Verlauf eines Software-Agenten in einen belastbaren Arbeitszustand.
 Bewahre ausschließlich überprüfbare Fakten und ausdrücklich getroffene Entscheidungen. Erfinde nichts.
 Unbedingt erhalten: ursprüngliche Nutzeraufgabe, Nutzerfreigaben/Absagen, Projektstruktur und Buildsystem, gelesene/geänderte Dateien, ausgeführte Befehle mit Ergebnis, genaue Fehlerdiagnosen, Git-Zustand, offene Blocker und die nächste sinnvolle Aktion.
 Nicht aufnehmen: Gedankenkette, Smalltalk, redundante Statusmeldungen oder wiederholte Anweisungen.
 Der Zustand muss reichen, damit ein neuer Agentenlauf ohne ältere Nachrichten korrekt fortsetzen kann.
 
 ORIGINAL TASK:
-` + originalTask + "\n\nTRANSCRIPT:\n" + renderMessagesForCompaction(messages)
+` + truncateText(originalTask, 2400) + "\n\nTRANSCRIPT:\n" + truncateText(renderMessagesForCompaction(messages), effectiveCtx*2)
 
-	compactionMessages := []OllamaMessage{
-		{Role: "system", Content: "Du erstellst eine faktische, strukturierte Arbeitszusammenfassung für einen Coding-Agenten. Keine Gedankenkette."},
-		{Role: "user", Content: prompt},
-	}
-	compactionCtx, cancel := context.WithTimeout(ctx, minDuration(90*time.Second, timeDurationSeconds(cfg.ModelTimeout)))
-	defer cancel()
-	content, err := s.Ollama.Chat(compactionCtx, model, compactionMessages, compactionSchema)
-	state := deterministicContextSummary(messages, originalTask)
-	mode := "deterministisch"
-	if err == nil {
-		var parsed compactedContext
-		if json.Unmarshal([]byte(content), &parsed) == nil && strings.TrimSpace(parsed.Summary) != "" {
-			if strings.TrimSpace(parsed.OriginalTask) == "" {
-				parsed.OriginalTask = originalTask
+		compactionMessages := []OllamaMessage{
+			{Role: "system", Content: "Du erstellst eine faktische, strukturierte Arbeitszusammenfassung für einen Coding-Agenten. Keine Gedankenkette."},
+			{Role: "user", Content: prompt},
+		}
+		compactionCtx, cancel := context.WithTimeout(ctx, minDuration(45*time.Second, timeDurationSeconds(effCfg.ModelTimeout)))
+		defer cancel()
+		content, err := s.Ollama.Chat(compactionCtx, model, compactionMessages, compactionSchema)
+		if err == nil {
+			var parsed compactedContext
+			if json.Unmarshal([]byte(content), &parsed) == nil && strings.TrimSpace(parsed.Summary) != "" {
+				if strings.TrimSpace(parsed.OriginalTask) == "" {
+					parsed.OriginalTask = truncateText(originalTask, 2400)
+				}
+				state = parsed
+				mode = "modellgestützt"
 			}
-			state = parsed
-			mode = "modellgestützt"
 		}
 	}
 
-	target := postCompactionTokenTarget(cfg)
+	target := postCompactionTokenTarget(effCfg)
 	result := buildCompactedMessages(messages, state, keep)
 	after := estimateMessageTokens(result)
 	for after > target && keep > 4 {
@@ -260,11 +286,18 @@ func truncateCompactedRecentMessages(messages []OllamaMessage, target int) []Oll
 	if estimateMessageTokens(messages) <= target || len(messages) <= 2 {
 		return messages
 	}
+	// First trim older recent messages while preserving the very latest tool/read_file
+	// message so an agent that just read a file or test error can actually see it.
 	for _, limit := range []int{16000, 10000, 6000, 3500, 2000, 1200} {
 		candidate := append([]OllamaMessage(nil), messages...)
+		lastIdx := len(candidate) - 1
 		for i := 2; i < len(candidate); i++ {
-			if utf8.RuneCountInString(candidate[i].Content) > limit {
-				candidate[i].Content = truncateText(candidate[i].Content, limit) + "\n\n[Kontextbudget: diese neuere Nachricht wurde gekürzt; vollständige Ausgabe steht im Ausgabenbereich.]"
+			effLimit := limit
+			if i == lastIdx && effLimit < 4500 {
+				effLimit = 4500
+			}
+			if utf8.RuneCountInString(candidate[i].Content) > effLimit {
+				candidate[i].Content = truncateText(candidate[i].Content, effLimit) + "\n\n[Kontextbudget: diese neuere Nachricht wurde gekürzt; vollständige Ausgabe steht im Ausgabenbereich.]"
 			}
 			if utf8.RuneCountInString(candidate[i].Thinking) > 0 {
 				candidate[i].Thinking = ""

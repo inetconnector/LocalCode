@@ -50,7 +50,8 @@ func ensureWithinRoot(root, target string) (string, error) {
 		if filepath.IsAbs(target) {
 			absTarget, err = filepath.Abs(target)
 		} else {
-			absTarget, err = filepath.Abs(filepath.Join(absRoot, target))
+			relTarget := normalizeProjectRelativeTarget(absRoot, target)
+			absTarget, err = filepath.Abs(filepath.Join(absRoot, relTarget))
 		}
 		if err != nil {
 			return "", err
@@ -70,6 +71,84 @@ func ensureWithinRoot(root, target string) (string, error) {
 		return "", fmt.Errorf("path escapes project root: %s", target)
 	}
 	return absTarget, nil
+}
+
+// normalizeProjectRelativeTarget strips a redundant leading project-folder
+// segment (e.g. "product/src/engine.js" when absRoot ends in "product")
+// provided no actual subdirectory with that name exists inside absRoot.
+func normalizeProjectRelativeTarget(absRoot, target string) string {
+	trimmed := strings.TrimSpace(target)
+	slashed := filepath.ToSlash(trimmed)
+	for strings.HasPrefix(slashed, "./") {
+		slashed = strings.TrimPrefix(slashed, "./")
+	}
+	idx := strings.IndexByte(slashed, '/')
+	if idx <= 0 {
+		return target
+	}
+	firstSeg := slashed[:idx]
+	rest := strings.TrimLeft(slashed[idx+1:], "/")
+	if rest == "" || firstSeg == "." || firstSeg == ".." {
+		return target
+	}
+	rootBase := filepath.Base(absRoot)
+	if !strings.EqualFold(firstSeg, rootBase) {
+		return target
+	}
+	if _, err := os.Stat(filepath.Join(absRoot, firstSeg)); err == nil {
+		return target
+	}
+	return filepath.FromSlash(rest)
+}
+
+func normalizeProjectRelativeArgs(project string, args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	absRoot, err := filepath.Abs(project)
+	if err != nil {
+		return args
+	}
+	absRoot = filepath.Clean(absRoot)
+	out := make([]string, len(args))
+	for i, arg := range args {
+		out[i] = normalizeProjectRelativeTarget(absRoot, arg)
+	}
+	return out
+}
+
+func normalizeCommandProjectRelativePaths(project, command string) string {
+	absRoot, err := filepath.Abs(project)
+	if err != nil {
+		return command
+	}
+	absRoot = filepath.Clean(absRoot)
+	rootBase := filepath.Base(absRoot)
+	if rootBase == "" || rootBase == "." {
+		return command
+	}
+	if _, err := os.Stat(filepath.Join(absRoot, rootBase)); err == nil {
+		return command
+	}
+	fields := strings.Fields(command)
+	changed := false
+	for i, token := range fields {
+		quote := ""
+		inner := token
+		if len(token) >= 2 && ((strings.HasPrefix(token, `"`) && strings.HasSuffix(token, `"`)) || (strings.HasPrefix(token, `'`) && strings.HasSuffix(token, `'`))) {
+			quote = token[:1]
+			inner = token[1 : len(token)-1]
+		}
+		norm := normalizeProjectRelativeTarget(absRoot, inner)
+		if norm != inner {
+			fields[i] = quote + filepath.ToSlash(norm) + quote
+			changed = true
+		}
+	}
+	if !changed {
+		return command
+	}
+	return strings.Join(fields, " ")
 }
 
 // ensureExistingProjectDir validates both the canonical project boundary and

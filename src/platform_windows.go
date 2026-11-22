@@ -79,7 +79,6 @@ func openChromiumApp(url string, _ bool) error {
 		}
 		args := []string{"--app=" + url, "--no-first-run", "--force-dark-mode", "--enable-features=WebContentsForceDark", "--start-maximized"}
 		cmd := exec.Command(browser, args...)
-		hideCommandWindow(cmd)
 		if err := cmd.Start(); err == nil {
 			_ = cmd.Process.Release()
 			// Chromium may reuse an existing process and ignore launch geometry.
@@ -185,6 +184,7 @@ func runProjectCommand(ctx context.Context, project, command string, cfg Config)
 	if err := commandBlocked(cfg, command); err != nil {
 		return "", err
 	}
+	command = normalizeCommandProjectRelativePaths(project, command)
 	var cmd *exec.Cmd
 	resolutionNote := ""
 	if cfg.AgentEnvironment == "wsl" || cfg.TerminalShell == "wsl" {
@@ -287,12 +287,36 @@ func openInteractiveTerminal(project, command string, cfg Config) error {
 
 var startProjectTargetProcess = func(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	hideCommandWindow(cmd)
+	base := strings.ToLower(filepath.Base(name))
+	if base == "cmd.exe" || base == "powershell.exe" || base == "pwsh.exe" {
+		hideCommandWindow(cmd)
+	}
 	return cmd.Start()
 }
 
+func findVSCodeExecutable() string {
+	if code, err := exec.LookPath("Code.exe"); err == nil {
+		return code
+	}
+	if code, err := exec.LookPath("code.exe"); err == nil {
+		return code
+	}
+	for _, candidate := range []string{
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "Microsoft VS Code", "Code.exe"),
+		filepath.Join(os.Getenv("ProgramFiles"), "Microsoft VS Code", "Code.exe"),
+		filepath.Join(os.Getenv("ProgramFiles(x86)"), "Microsoft VS Code", "Code.exe"),
+	} {
+		if candidate != "" {
+			if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
 func openProjectTarget(project, target string, cfg Config) error {
-	startHidden := func(name string, args ...string) error {
+	startTarget := func(name string, args ...string) error {
 		if filepath.IsAbs(name) {
 			if st, err := os.Stat(name); err != nil || st.IsDir() {
 				return fmt.Errorf("executable not found: %s", name)
@@ -302,41 +326,40 @@ func openProjectTarget(project, target string, cfg Config) error {
 	}
 	switch strings.ToLower(strings.TrimSpace(target)) {
 	case "vscode":
-		if code, err := exec.LookPath("code.exe"); err == nil {
-			return startHidden(code, project)
+		if codeExe := findVSCodeExecutable(); codeExe != "" {
+			return startTarget(codeExe, project)
 		}
-		if code, err := exec.LookPath("code.cmd"); err == nil {
-			return startHidden("cmd.exe", "/D", "/S", "/C", "\""+code+"\" \""+project+"\"")
+		if codeCmd, err := exec.LookPath("code.cmd"); err == nil {
+			return startTarget("cmd.exe", "/D", "/C", "call", codeCmd, project)
 		}
 		return fmt.Errorf("%s", localizeConfigText(cfg, "Visual Studio Code wurde nicht gefunden", "Visual Studio Code was not found"))
 	case "visualstudio":
 		vsTarget := visualStudioProjectTarget(project)
 		if vsTarget == "" {
-			log.Printf("Visual Studio open requested for %s, but no solution/project file was found; opening Explorer instead", project)
-			return startHidden("explorer.exe", project)
+			vsTarget = project
 		}
 		if devenv, err := exec.LookPath("devenv.exe"); err == nil {
-			if err := startHidden(devenv, vsTarget); err == nil {
+			if err := startTarget(devenv, vsTarget); err == nil {
 				return nil
 			} else {
 				log.Printf("Visual Studio launch failed for %s via PATH: %v; opening Explorer instead", vsTarget, err)
-				return startHidden("explorer.exe", project)
+				return startTarget("explorer.exe", project)
 			}
 		}
 		for _, candidate := range visualStudioToolPaths("devenv") {
 			if st, err := os.Stat(candidate[0]); err == nil && !st.IsDir() {
-				if err := startHidden(candidate[0], vsTarget); err == nil {
+				if err := startTarget(candidate[0], vsTarget); err == nil {
 					return nil
 				} else {
 					log.Printf("Visual Studio launch failed for %s via %s: %v; opening Explorer instead", vsTarget, candidate[0], err)
-					return startHidden("explorer.exe", project)
+					return startTarget("explorer.exe", project)
 				}
 			}
 		}
 		log.Printf("Visual Studio was not found; opening Explorer for %s instead", project)
-		return startHidden("explorer.exe", project)
+		return startTarget("explorer.exe", project)
 	default:
-		return startHidden("explorer.exe", project)
+		return startTarget("explorer.exe", project)
 	}
 }
 

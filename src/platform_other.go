@@ -75,6 +75,7 @@ func runProjectCommand(ctx context.Context, project, command string, cfg Config)
 	if err := commandBlocked(cfg, command); err != nil {
 		return "", err
 	}
+	command = normalizeCommandProjectRelativePaths(project, command)
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-lc", command)
 	cmd.Dir = project
 	cmd.Env = commandEnvironment(cfg)
