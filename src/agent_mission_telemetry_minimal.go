@@ -17,7 +17,7 @@ const agentMissionMinimalTelemetrySchema = "nomamica.localcode.desktop-minimal.v
 const agentMissionMinimalTelemetryLimit = 1024
 
 var (
-	agentMissionMinimalID = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+	agentMissionMinimalID         = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 	errAgentMissionMinimalInvalid = errors.New("MINIMAL_TELEMETRY_INVALID")
 )
 
@@ -65,16 +65,16 @@ func agentMissionBuildMinimalTelemetry(
 		return agentMissionMinimalTelemetry{}, errAgentMissionMinimalInvalid
 	}
 	return agentMissionMinimalTelemetry{
-		SchemaVersion: agentMissionMinimalTelemetrySchema,
-		MissionID: status.MissionID,
+		SchemaVersion:  agentMissionMinimalTelemetrySchema,
+		MissionID:      status.MissionID,
 		ExecutionRunID: status.ExecutionRunID,
-		State: status.State,
-		StartedAt: status.StartedAt.UTC(),
-		UpdatedAt: status.UpdatedAt.UTC(),
+		State:          status.State,
+		StartedAt:      status.StartedAt.UTC(),
+		UpdatedAt:      status.UpdatedAt.UTC(),
 		Scheduler: agentMissionMinimalScheduler{
 			MissionID: status.Scheduler.MissionID,
-			Queued: status.Scheduler.Queued,
-			Running: status.Scheduler.Running,
+			Queued:    status.Scheduler.Queued,
+			Running:   status.Scheduler.Running,
 		},
 	}, nil
 }
