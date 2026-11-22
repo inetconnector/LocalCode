@@ -99,7 +99,10 @@ func publishAgentMissionDesktopStatus(status AgentMissionDesktopStatus) {
 	}
 	agentMissionDesktopStatuses.Lock()
 	defer agentMissionDesktopStatuses.Unlock()
-	if len(agentMissionDesktopStatuses.byRun) >= agentMissionDesktopStatusLimit {
+	// Updates must preserve all other runs; capacity eviction applies only
+	// when inserting a previously unknown execution run.
+	if _, exists := agentMissionDesktopStatuses.byRun[status.ExecutionRunID]; !exists &&
+		len(agentMissionDesktopStatuses.byRun) >= agentMissionDesktopStatusLimit {
 		var oldestRun string
 		var oldest time.Time
 		for runID, candidate := range agentMissionDesktopStatuses.byRun {
@@ -108,7 +111,7 @@ func publishAgentMissionDesktopStatus(status AgentMissionDesktopStatus) {
 				oldest = candidate.UpdatedAt
 			}
 		}
-		if oldestRun != "" && oldestRun != status.ExecutionRunID {
+		if oldestRun != "" {
 			delete(agentMissionDesktopStatuses.byRun, oldestRun)
 		}
 	}
