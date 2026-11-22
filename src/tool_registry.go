@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -757,6 +759,7 @@ func runResolvedTool(ctx context.Context, project, name string, args []string, c
 		}
 		return b.String(), &ToolNotFoundError{Info: info, Detail: b.String()}
 	}
+	args = normalizeProjectRelativeArgs(project, args)
 	res := runDirectTool(ctx, project, info.Path, args, cfg)
 	res.Tool = info.Name
 	if info.Name == "adb" {
@@ -906,7 +909,12 @@ func actionSignature(a AgentAction) string {
 	if a.Action == "ask_user" {
 		return "ask_user|" + normalizedQuestion(a.Message)
 	}
-	return strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination + "|" + a.Task + "|" + a.Name))
+	base := strings.ToLower(strings.TrimSpace(a.Action + "|" + a.Tool + "|" + a.Command + "|" + strings.Join(a.Args, "|") + "|" + a.Path + "|" + a.Query + "|" + a.URL + "|" + a.Source + "|" + a.Destination + "|" + a.Task + "|" + a.Name))
+	if a.Content != "" || a.OldText != "" || a.NewText != "" {
+		sum := sha256.Sum256([]byte(a.Content + "\x00" + a.OldText + "\x00" + a.NewText))
+		return base + "|" + hex.EncodeToString(sum[:8])
+	}
+	return base
 }
 
 func normalizedQuestion(s string) string {

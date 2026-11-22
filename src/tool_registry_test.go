@@ -502,6 +502,10 @@ func TestBlockedAvoidanceQuestion(t *testing.T) {
 	if !blocked {
 		t.Fatal("english new-project build-system question should be blocked")
 	}
+	blocked, _ = blockedAvoidanceQuestion("implementiere das spiel in product/src/engine.js", "Es wurde kein unterstütztes Buildsystem erkannt und keine relevanten Dateien oder Tests gefunden. Möchten Sie ein neues Projektlayout mit den erforderlichen Dateien und Struktur erstellen, bevor wir mit der Implementierung beginnen?")
+	if !blocked {
+		t.Fatal("greenfield project-layout permission question should be blocked")
+	}
 }
 
 func TestWindowsPromptAndRecoveryAvoidPOSIXRemoveTool(t *testing.T) {

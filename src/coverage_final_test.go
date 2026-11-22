@@ -317,9 +317,26 @@ func TestCoverageFinalServerInvalidPayloadsAndMethodBranches(t *testing.T) {
 		{"/api/mcp/setup", map[string]any{}},
 	}
 	for _, tc := range requests {
+		var projectBefore string
+		if tc.path == "/api/new-chat" {
+			state.mu.RLock()
+			projectBefore = state.Project
+			state.mu.RUnlock()
+		}
 		rr := serveCoverageRequest(t, server, http.MethodPost, tc.path, tc.body)
 		if rr.Code == 0 {
 			t.Fatalf("no response from %s", tc.path)
+		}
+		if tc.path == "/api/new-chat" && rr.Code != http.StatusBadRequest && rr.Code != http.StatusConflict {
+			t.Fatalf("invalid new-chat project status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if tc.path == "/api/new-chat" {
+			state.mu.RLock()
+			projectAfter := state.Project
+			state.mu.RUnlock()
+			if projectAfter != projectBefore {
+				t.Fatalf("invalid new-chat request changed active project from %q to %q", projectBefore, projectAfter)
+			}
 		}
 	}
 
@@ -335,6 +352,24 @@ func TestCoverageFinalServerInvalidPayloadsAndMethodBranches(t *testing.T) {
 	server.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("unknown route=%d", rr.Code)
+	}
+}
+
+func TestCoverageServerRejectsMissingTerminalProject(t *testing.T) {
+	base := isolateCoverageEnv(t)
+	root := filepath.Join(base, "projects")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	state := NewAppState(cfg, NewOllamaClient())
+	state.Project = filepath.Join(base, "outside")
+	t.Cleanup(state.Close)
+
+	rr := serveCoverageRequest(t, NewServer(state), http.MethodPost, "/api/open-terminal", map[string]any{})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("stale terminal project status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
 

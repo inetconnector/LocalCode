@@ -255,8 +255,9 @@ func agentResourceSnapshotsForDiagnostics(mission *AgentMissionDesktopStatus, li
 
 func agentOrchestrationDiagnostics(status Status, mission *AgentMissionDesktopStatus) AgentOrchestrationDiagnostics {
 	limits := agentResourceLimitsForDiagnostics(mission)
+	liveAgentRun := mission == nil && (status.Running || status.ActiveRunsCount > 0)
 	diagnostics := AgentOrchestrationDiagnostics{
-		MissionActive: mission != nil && mission.State == "running",
+		MissionActive: (mission != nil && mission.State == "running") || liveAgentRun,
 		Backend: AgentModelBackendDiagnostics{
 			Online:                 status.OllamaOnline,
 			SelectedModel:          strings.TrimSpace(status.SelectedModel),
@@ -287,6 +288,15 @@ func agentOrchestrationDiagnostics(status Status, mission *AgentMissionDesktopSt
 				waitingByClass[class]++
 			}
 		}
+	} else if liveAgentRun {
+		runningCount := status.ActiveRunsCount
+		if runningCount < 1 {
+			runningCount = 1
+		}
+		if rw := activeParallelReadWorkers(); rw > runningCount {
+			runningCount = rw
+		}
+		diagnostics.LogicalRunning = runningCount
 	}
 	queueLimit := limits.MaxQueued
 	queueAvailable := queueLimit - queued
@@ -314,6 +324,29 @@ func agentOrchestrationDiagnostics(status Status, mission *AgentMissionDesktopSt
 			limit, _ = limits.limitFor(resource.Class)
 		}
 		inUse := resource.InUse
+		if liveAgentRun && inUse == 0 {
+			phase := strings.ToLower(strings.TrimSpace(status.RunPhase))
+			switch resource.Class {
+			case AgentResourceModelInference:
+				if phase == "model" || phase == "" {
+					inUse = 1
+				}
+			case AgentResourceReadCPU:
+				if rw := activeParallelReadWorkers(); rw > 0 {
+					inUse = min(limit, rw)
+				} else if strings.HasPrefix(phase, "tool:subagent") || strings.HasPrefix(phase, "tool:read") || strings.HasPrefix(phase, "tool:search") || strings.HasPrefix(phase, "tool:list") || strings.HasPrefix(phase, "tool:project_info") {
+					inUse = min(limit, 4)
+				}
+			case AgentResourceBuild:
+				if strings.HasPrefix(phase, "tool:build") || strings.HasPrefix(phase, "tool:run_") || strings.HasPrefix(phase, "tool:deploy") {
+					inUse = 1
+				}
+			case AgentResourceIntegration:
+				if strings.HasPrefix(phase, "tool:write_") || strings.HasPrefix(phase, "tool:replace_") || strings.HasPrefix(phase, "tool:delete_") {
+					inUse = 1
+				}
+			}
+		}
 		available := limit - inUse
 		if available < 0 {
 			available = 0

@@ -57,10 +57,49 @@ type AgentAction struct {
 	expectedFileVersion *fileVersion
 }
 
+type orderedActionSchemaProperties struct {
+	Action        map[string]any `json:"action"`
+	Message       map[string]any `json:"message"`
+	Path          map[string]any `json:"path"`
+	Source        map[string]any `json:"source"`
+	Destination   map[string]any `json:"destination"`
+	Tool          map[string]any `json:"tool"`
+	Args          map[string]any `json:"args"`
+	Command       map[string]any `json:"command"`
+	Query         map[string]any `json:"query"`
+	MaxDepth      map[string]any `json:"max_depth"`
+	MaxResults    map[string]any `json:"max_results"`
+	Name          map[string]any `json:"name"`
+	Line          map[string]any `json:"line"`
+	Character     map[string]any `json:"character"`
+	Task          map[string]any `json:"task"`
+	Skill         map[string]any `json:"skill"`
+	Resource      map[string]any `json:"resource"`
+	Script        map[string]any `json:"script"`
+	Server        map[string]any `json:"server"`
+	URI           map[string]any `json:"uri"`
+	PromptName    map[string]any `json:"prompt_name"`
+	Arguments     map[string]any `json:"arguments"`
+	URL           map[string]any `json:"url"`
+	Selector      map[string]any `json:"selector"`
+	WindowTitle   map[string]any `json:"window_title"`
+	ControlName   map[string]any `json:"control_name"`
+	Text          map[string]any `json:"text"`
+	Width         map[string]any `json:"width"`
+	Height        map[string]any `json:"height"`
+	CommitMessage map[string]any `json:"commit_message"`
+	StageAll      map[string]any `json:"stage_all"`
+	MemoryID      map[string]any `json:"memory_id"`
+	Scope         map[string]any `json:"scope"`
+	OldText       map[string]any `json:"old_text"`
+	NewText       map[string]any `json:"new_text"`
+	Content       map[string]any `json:"content"`
+}
+
 var actionSchema = map[string]any{
 	"type": "object",
-	"properties": map[string]any{
-		"action": map[string]any{"type": "string", "enum": []string{
+	"properties": orderedActionSchemaProperties{
+		Action: map[string]any{"type": "string", "enum": []string{
 			"list_files", "read_file", "search_text", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
 			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"browser_navigate", "browser_inspect", "browser_click", "browser_type", "browser_screenshot", "browser_extract",
@@ -70,65 +109,43 @@ var actionSchema = map[string]any{
 			"memory_remember", "memory_list", "memory_forget",
 			"finish", "ask_user",
 		}},
-		"message": map[string]any{"type": "string"}, "path": map[string]any{"type": "string", "description": "Relative project path."},
-		"query": map[string]any{"type": "string"}, "content": map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file, image prompt for generate_image_asset, or memory text for memory_remember."},
-		"old_text": map[string]any{"type": "string", "minLength": 1}, "new_text": map[string]any{"type": "string"},
-		"command": map[string]any{"type": "string"}, "max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
-		"width": map[string]any{"type": "integer", "minimum": 1, "maximum": 4096}, "height": map[string]any{"type": "integer", "minimum": 1, "maximum": 4096},
-		"line": map[string]any{"type": "integer", "minimum": 1}, "character": map[string]any{"type": "integer", "minimum": 1},
-		"url": map[string]any{"type": "string"}, "max_results": map[string]any{"type": "integer", "minimum": 1, "maximum": 10},
-		"server": map[string]any{"type": "string"}, "tool": map[string]any{"type": "string"}, "uri": map[string]any{"type": "string"},
-		"prompt_name": map[string]any{"type": "string"}, "arguments": map[string]any{"type": "object"},
-		"args":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		"source": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"},
-		"commit_message": map[string]any{"type": "string"}, "stage_all": map[string]any{"type": "boolean"},
-		"task":         map[string]any{"type": "string"},
-		"name":         map[string]any{"type": "string"},
-		"memory_id":    map[string]any{"type": "string"},
-		"scope":        map[string]any{"type": "string", "enum": []string{"project", "global"}},
-		"skill":        map[string]any{"type": "string"},
-		"resource":     map[string]any{"type": "string"},
-		"script":       map[string]any{"type": "string"},
-		"selector":     map[string]any{"type": "string"},
-		"window_title": map[string]any{"type": "string"},
-		"control_name": map[string]any{"type": "string"},
-		"text":         map[string]any{"type": "string"},
+		Message:       map[string]any{"type": "string"},
+		Path:          map[string]any{"type": "string", "description": "Relative project path."},
+		Source:        map[string]any{"type": "string"},
+		Destination:   map[string]any{"type": "string"},
+		Tool:          map[string]any{"type": "string"},
+		Args:          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		Command:       map[string]any{"type": "string"},
+		Query:         map[string]any{"type": "string"},
+		MaxDepth:      map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
+		MaxResults:    map[string]any{"type": "integer", "minimum": 1, "maximum": 10},
+		Name:          map[string]any{"type": "string"},
+		Line:          map[string]any{"type": "integer", "minimum": 1},
+		Character:     map[string]any{"type": "integer", "minimum": 1},
+		Task:          map[string]any{"type": "string"},
+		Skill:         map[string]any{"type": "string"},
+		Resource:      map[string]any{"type": "string"},
+		Script:        map[string]any{"type": "string"},
+		Server:        map[string]any{"type": "string"},
+		URI:           map[string]any{"type": "string"},
+		PromptName:    map[string]any{"type": "string"},
+		Arguments:     map[string]any{"type": "object"},
+		URL:           map[string]any{"type": "string"},
+		Selector:      map[string]any{"type": "string"},
+		WindowTitle:   map[string]any{"type": "string"},
+		ControlName:   map[string]any{"type": "string"},
+		Text:          map[string]any{"type": "string"},
+		Width:         map[string]any{"type": "integer", "minimum": 1, "maximum": 4096},
+		Height:        map[string]any{"type": "integer", "minimum": 1, "maximum": 4096},
+		CommitMessage: map[string]any{"type": "string"},
+		StageAll:      map[string]any{"type": "boolean"},
+		MemoryID:      map[string]any{"type": "string"},
+		Scope:         map[string]any{"type": "string", "enum": []string{"project", "global"}},
+		OldText:       map[string]any{"type": "string", "minLength": 1},
+		NewText:       map[string]any{"type": "string"},
+		Content:       map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file, image prompt for generate_image_asset, or memory text for memory_remember."},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
-	"allOf": []map[string]any{
-		conditionalRequired("read_file", "path"),
-		conditionalRequired("delete_file", "path"),
-		conditionalRequired("search_text", "query"),
-		conditionalRequired("lsp", "path", "name"),
-		conditionalRequired("replace_text", "path", "old_text"),
-		conditionalRequired("write_file", "path", "content"),
-		conditionalRequired("create_svg_asset", "path", "content"),
-		conditionalRequired("create_image_asset", "path", "content"),
-		conditionalRequired("generate_image_asset", "path", "content"),
-		conditionalRequired("convert_image_asset", "source", "destination"),
-		conditionalRequired("render_asset", "source", "destination"),
-		conditionalRequired("subagent_analyze", "task"),
-		conditionalRequired("command_read", "name"),
-		conditionalRequired("run_tool", "tool"),
-		conditionalRequired("discover_tool", "tool"),
-		conditionalRequired("run_command", "command"),
-		conditionalRequired("open_terminal", "command"),
-		conditionalRequired("web_fetch", "url"),
-		conditionalRequired("browser_navigate", "url"),
-		conditionalRequired("browser_click", "selector"),
-		conditionalRequired("browser_type", "selector", "text"),
-		conditionalRequired("desktop_inspect", "window_title"),
-		conditionalRequired("desktop_click", "window_title", "control_name"),
-		conditionalRequired("desktop_type", "window_title", "control_name", "text"),
-		conditionalRequired("mcp_call_tool", "server", "tool"),
-		conditionalRequired("skill_read", "skill"),
-		conditionalRequired("skill_list_resources", "skill"),
-		conditionalRequired("skill_read_resource", "skill", "resource"),
-		conditionalRequired("skill_copy_resource", "skill", "resource", "destination"),
-		conditionalRequired("skill_run_script", "skill", "script"),
-		conditionalRequired("memory_remember", "content"),
-		conditionalRequired("memory_forget", "memory_id"),
-	},
 }
 
 func conditionalRequired(action string, fields ...string) map[string]any {
@@ -169,6 +186,9 @@ Arbeitsweise:
   Mutierende oder ausführende Werkzeuge werden nur eingesetzt, wenn der jeweilige Schritt zwingend eine Zustandsänderung verlangt.
 - Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code, OpenCode oder Claw Code) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
+- Bei Aufgaben mit mehreren Dateien: erstelle oder bearbeite jeweils genau eine fokussierte, kompakte, vollständig funktionsfähige Datei pro write_file-Aktion (ca. 60–220 Zeilen ohne redundante Kommentare), damit jede JSON-Antwort schnell und fehlerfrei verarbeitet wird.
+- Schreibe bei write_file NIEMALS bloße Grundgerüste, leere Funktionsrümpfe oder Platzhalterkommentare wie "// Render ...", "// Handle ..." oder "// Update ...", sondern implementiere jede Datei sofort im ersten Durchgang vollständig mit der gesamten geforderten Fach- und Laufzeitlogik.
+- Wenn Node.js-Tests ohne externe Test-Runner (wie "node --test") gefordert sind, verwende die eingebauten Node-Module "node:test" und "node:assert/strict" (kein Jest/Mocha "expect" oder "beforeEach" ohne Import), und mache JavaScript-Module sowohl in Node.js als auch im Browser (globalThis/window) lauffähig.
 - Für Icons, Diagramme und lokale Vektor-Bilder ist create_svg_asset bevorzugt, wenn eine SVG-Datei passt. Liefere vollständiges, gültiges SVG mit viewBox/Größe; LocalCode prüft XML-Struktur und blockiert Skripte/Event-Handler.
 - Für lokale Rasterbilder und Icon-Dateien ist create_image_asset geeignet, wenn du vollständige Bildbytes als data:image/...;base64,... oder Base64 hast. Unterstützt werden PNG, JPG/JPEG, GIF, WebP, ICO und BMP; LocalCode prüft Format-Signatur, Größe und Dimensionen vor dem Schreiben.
 - Wenn du ein neues lokales Rasterbild per Bildmodell erzeugen sollst, nutze generate_image_asset(path,content,width,height). content ist der Bildprompt. LocalCode nutzt den lokal konfigurierten AUTOMATIC1111-/Forge-kompatiblen Loopback-API-Endpunkt, schreibt PNG/JPG/JPEG/WebP/ICO erst nach Bildvalidierung und meldet sauber, wenn kein lokaler Generator erreichbar ist.
@@ -353,6 +373,19 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	if t := s.Threads[s.CurrentThread]; t != nil {
 		if !isContinuation && (t.Title == "" || t.Title == "Neuer Chat") {
 			t.Title = threadTitle(userMessage)
+			for otherID, other := range s.Threads {
+				if other == nil || otherID == s.CurrentThread || !strings.EqualFold(filepath.Clean(other.Project), filepath.Clean(project)) {
+					continue
+				}
+				if s.ActiveRuns[otherID] != nil {
+					continue
+				}
+				if len(other.Events) == 0 && (other.Title == "" || other.Title == "Neuer Chat") {
+					delete(s.Threads, otherID)
+				} else if other.Title == t.Title {
+					other.Archived = true
+				}
+			}
 		}
 		t.Model = model
 		t.UpdatedAt = time.Now()
@@ -393,7 +426,9 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	s.beginRunJournal(runID, project, model, journalTask, threadID, now)
 
 	_ = saveConfig(cfg)
-	_ = ensureProjectDocs(project, cfg)
+	if cfg.CreateProjectDocs {
+		_ = ensureProjectDocs(project, cfg)
+	}
 	if isContinuation {
 		s.UpdateProjectState("Nutzer hat Rückfrage beantwortet")
 	} else {
@@ -681,18 +716,28 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		instructions += "\n\n" + recoveryContext
 		s.AddEvent(UIEvent{Type: "recovery", Message: localizeConfigText(cfg, "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", "Interrupted task is resuming from the last confirmed state"), Detail: localizeConfigText(cfg, "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft.", "Current files and Git state are re-checked before any mutating action.")})
 	}
+	if nomaPlan := runNomaMicaSuitePreflight(ctx, s, project, effectiveTask, cfg); nomaPlan != "" {
+		instructions += nomaPlan
+	}
 	engine := normalizeEditingEngine(cfg.EditingEngine)
 	engineHint := "ENGINE-HINWEIS: Für mehrdateilige Codeänderungen ist engine_edit verfügbar."
 	if engine == editingEngineNative {
 		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
 	}
-	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nPROJEKT-COMMANDS:\n%s\nWERKZEUGERKENNUNG:\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint, mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), projectCommandsContext(project), toolInventorySummary(project, cfg))
+	promptCfg := cfg
+	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
+		promptCfg.OllamaURL = s.Ollama.BaseURL
+	}
+	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint)
+	if effectiveCompactionContextLength(promptCfg) > 8192 {
+		capabilityContext += fmt.Sprintf("\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nPROJEKT-COMMANDS:\n%s\nWERKZEUGERKENNUNG:\n%s", mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), projectCommandsContext(project), toolInventorySummary(project, cfg))
+	}
 	personalization := strings.TrimSpace(cfg.UserInstructions)
 	if personalization == "" {
 		personalization = "Keine zusätzlichen persönlichen Anweisungen."
 	}
 	language := responseLanguage(cfg)
-	systemPrompt := agentSystemPrompt + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
+	systemPrompt := systemPromptForConfig(promptCfg) + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
 	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
@@ -863,6 +908,8 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	failedActions := map[string]int{}
 	changedPaths := map[string]bool{}
 	changedSinceVerification := false
+	lastVerificationFailed := false
+	lastCompletionGuardBlocked := false
 	compactionCount := 0
 	lastSignature := ""
 	repeatBlocks := 0
@@ -901,11 +948,28 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			compactionCount++
 		}
 		s.setRunPhase(runID, "model")
-		stepInfo := localizeConfigText(cfg, fmt.Sprintf("%s · Schritt %d/%d", model, step, maxSteps), fmt.Sprintf("%s · Step %d/%d", model, step, maxSteps))
+		nomaBadge, nomaTitle, nomaDetail, nomaDirective := nomaNextStepPlan(project, originalTask, changedPaths, changedSinceVerification, lastVerificationFailed || lastCompletionGuardBlocked, step, maxSteps)
+		stepInfo := localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps), fmt.Sprintf("NOMA × MICA × AgentOS · Step %d/%d", step, maxSteps))
+		thinkingMsg := localizeConfigText(cfg, "Analysiere Aufgabe & plane nächsten Schritt...", "Analyzing task & planning next step...")
+		if step == 1 {
+			thinkingMsg = localizeConfigText(cfg, "AgentOS & NOMA · Erfasse Projektstruktur, Buildsystem und Systemkontext...", "AgentOS & NOMA · Inspecting project structure, build system, and context...")
+		} else if completedActions["project_info"] && !completedActions["subagent_analyze"] {
+			thinkingMsg = localizeConfigText(cfg, "AgentOS Multi-Thread Preflight · Führe parallele Read-Only-Repository-Analyse (4 Read-CPU Worker) durch...", "AgentOS Multi-Thread Preflight · Running parallel read-only repository analysis (4 Read-CPU workers)...")
+		} else if nomaTitle != "" {
+			stepInfo = nomaBadge
+			thinkingMsg = nomaTitle
+			if nomaDetail != "" {
+				thinkingMsg += " — " + nomaDetail
+			}
+		} else if len(changedPaths) > 0 {
+			thinkingMsg = localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA · Implementierung läuft (%d Projektdatei(en) bearbeitet) – generiere nächsten Code-/Verifikationsschritt...", len(changedPaths)), fmt.Sprintf("NOMA × MICA · Implementation in progress (%d project file(s) edited) – generating next code/verification step...", len(changedPaths)))
+		} else if completedActions["subagent_analyze"] {
+			thinkingMsg = localizeConfigText(cfg, "NOMA × MICA · Preflight abgeschlossen – synthetisiere Projektimplementierung...", "NOMA × MICA · Preflight complete – synthesizing project implementation...")
+		}
 		s.AddEvent(UIEvent{
 			Type:    "progress",
 			Action:  "thinking",
-			Message: localizeConfigText(cfg, "Analysiere Aufgabe & plane nächsten Schritt...", "Analyzing task & planning next step..."),
+			Message: thinkingMsg,
 			Detail:  stepInfo,
 		})
 		var action AgentAction
@@ -915,13 +979,13 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			action = *forced
 			s.AddEvent(UIEvent{Type: "agent_step", Message: "Deterministische Aufgabensteuerung: " + action.Message, Action: action.Action})
 		} else {
-			modelTimeout := time.Duration(cfg.ModelTimeout) * time.Second
-			if modelTimeout <= 0 {
-				modelTimeout = 4 * time.Minute
-			}
-			stepCtx, stepCancel := context.WithTimeout(ctx, modelTimeout)
+			stepCtx, stepCancel := context.WithCancel(ctx)
 			s.setSteeringModelCancel(runID, stepCancel)
-			action, usedModel, err = s.nextAgentAction(stepCtx, model, messages)
+			stepMessages := messages
+			if nomaDirective != "" {
+				stepMessages = append(append([]OllamaMessage(nil), messages...), OllamaMessage{Role: "user", Content: nomaDirective})
+			}
+			action, usedModel, err = s.nextAgentAction(stepCtx, model, stepMessages)
 			s.setSteeringModelCancel(runID, nil)
 			stepCancel()
 		}
@@ -939,6 +1003,14 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 				s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
 				return "cancelled"
+			}
+			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+				invalidActionBlocks++
+				if invalidActionBlocks <= 3 {
+					s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Modellaufruf wegen Zeitüberschreitung wiederholt", "Model call timed out; retrying with concise action directive"), Detail: fmt.Sprintf("Zeitlimit pro Aufruf: %d Sekunden.", cfg.ModelTimeout)})
+					messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Der letzte Modellaufruf hat das Zeitlimit überschritten, weil die Antwort zu umfangreich war. Liefere jetzt genau eine kompakte JSON-Aktion: schreibe bei write_file jeweils nur eine einzelne, fokussierte Datei ohne überflüssige Kommentare."})
+					continue
+				}
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
 				s.AddEvent(UIEvent{Type: "error", Message: "Modellaufruf wegen Zeitüberschreitung beendet", Detail: fmt.Sprintf("Zeitlimit: %d Sekunden. Das Zeitlimit kann in den Einstellungen geändert werden.", cfg.ModelTimeout)})
@@ -1048,6 +1120,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			issues := completionGuardIssues(project, intent, originalTask, changedPaths, changedSinceVerification)
 			if len(issues) > 0 {
 				supervisorBlocks++
+				lastCompletionGuardBlocked = true
 				detail := "- " + strings.Join(issues, "\n- ")
 				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussprüfung blockiert", "Completion guard blocked finish"), Detail: detail})
 				signature := strings.Join(issues, "\n")
@@ -1094,6 +1167,18 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 			s.AddEvent(UIEvent{Type: "tool_result", Message: localizeConfigText(cfg, "Hook vor Werkzeug ausgeführt", "Before-tool hook executed"), Detail: truncateText(hookOut, 12000), Action: "hook_before_tool"})
 		}
+		var prevFileSize int64
+		var prevFileBytes []byte
+		var prevFullPath string
+		if action.Action == "write_file" && strings.TrimSpace(action.Path) != "" {
+			if fullPrev, prevErr := ensureWithinRoot(project, normalizeProjectRelativeTarget(project, action.Path)); prevErr == nil {
+				prevFullPath = fullPrev
+				if prevData, readErr := os.ReadFile(fullPrev); readErr == nil {
+					prevFileBytes = prevData
+					prevFileSize = int64(len(prevData))
+				}
+			}
+		}
 		result, done := s.handleAgentAction(ctx, project, action)
 		if done {
 			return "done"
@@ -1109,6 +1194,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		completedActions[action.Action] = true
 		repeatBlocks = 0
 		toolFailed := agentToolResultFailed(result)
+		var micaPostNote string
 		if actionMutatesProject(action) && !toolFailed {
 			for _, path := range mutatedActionPaths(action) {
 				if strings.TrimSpace(path) != "" {
@@ -1116,15 +1202,44 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 				}
 			}
 			changedSinceVerification = true
+			lastVerificationFailed = false
+			lastCompletionGuardBlocked = false
+			if discoverNomaMicaRoot(project) != "" {
+				micaPostNote = runMicaPostActionVerify(ctx, s, project, action, cfg, prevFileSize)
+				if prevFullPath != "" && len(prevFileBytes) >= 400 && (strings.Contains(micaPostNote, "SYNTAX_ERROR") || strings.Contains(micaPostNote, "MICA SYNTAX-GATE FEHLER") || strings.Contains(micaPostNote, "DESTRUCTIVE_SHRINK_WARNING")) {
+					if restoreErr := os.WriteFile(prevFullPath, prevFileBytes, 0o600); restoreErr == nil {
+						micaPostNote += fmt.Sprintf("\n[MICA ATOMIC ROLLBACK]: Die vorherige gültige Dateiversion (%d Bytes) wurde automatisch auf der Festplatte wiederhergestellt, damit keine bestehende Implementierung zerstört wird.", len(prevFileBytes))
+					}
+				}
+			}
 		}
-		if actionVerifiesProject(action, originalTask) && !toolFailed {
-			changedSinceVerification = false
+		if actionVerifiesProject(action, originalTask) {
+			if toolFailed {
+				lastVerificationFailed = true
+			} else {
+				changedSinceVerification = false
+				lastVerificationFailed = false
+			}
 		}
 		loopGuard.Observe(action, result, toolFailed, originalTask)
-		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(result, contextToolResultLimit(cfg))
+		resultForModel := result
+		if !toolFailed && action.Action == "write_file" && len(resultForModel) > 1200 {
+			if idx := strings.LastIndex(resultForModel, "POSTCONDITION:"); idx >= 0 {
+				resultForModel = fmt.Sprintf("Datei %s erfolgreich geschrieben.\n%s", action.Path, resultForModel[idx:])
+			} else {
+				resultForModel = truncateText(resultForModel, 1200)
+			}
+		}
+		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(resultForModel, contextToolResultLimit(cfg)) + micaPostNote
 		if toolFailed {
 			failedActions[actionSignature(action)]++
 			toolMessage += "\n\n" + toolFailureRecoveryDirective(action, result, errors.New("Werkzeugaktion fehlgeschlagen"), originalTask)
+			if action.Action == "replace_text" && strings.Contains(result, "old_text") {
+				toolMessage += "\nDIAGNOSE-HINWEIS: `replace_text` konnte `old_text` nicht eindeutig finden. Schreibe die korrigierte Datei jetzt direkt vollständig mit `\"action\": \"write_file\"`."
+			}
+			if action.Action == "run_tool" && (strings.Contains(result, "AssertionError") || strings.Contains(result, "TypeError") || strings.Contains(result, "ReferenceError") || strings.Contains(result, "FAIL")) {
+				toolMessage += "\nDIAGNOSE-HINWEIS: Lies bei Test- oder Signaturfehlern zuerst die betroffene Quell- und Testdatei mit `read_file` und behebe den konkreten Fehler gezielt per `write_file`, statt die Implementierung durch einen Minimal-Stub zu ersetzen."
+			}
 			if failedActions[actionSignature(action)] >= 2 {
 				toolMessage += "\nDie gleiche Aktion ist bereits mehrfach fehlgeschlagen. Verwende jetzt eine andere Diagnose oder beende mit einer präzisen Fehlerursache; keine identische Wiederholung."
 			}
@@ -1246,12 +1361,70 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 		}
 	}
 	for _, m := range models {
+		lower := strings.ToLower(m.Name)
+		if strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "0.8b") {
+			continue
+		}
 		add(m.Name, true)
 	}
 	if len(out) == 0 && requested != "" {
 		out = append(out, requested)
 	}
 	return out
+}
+
+func (s *AppState) perModelCallTimeout() time.Duration {
+	s.mu.RLock()
+	sec := s.Config.ModelTimeout
+	s.mu.RUnlock()
+	if sec <= 0 {
+		return 4 * time.Minute
+	}
+	return time.Duration(sec) * time.Second
+}
+
+func (s *AppState) chatWithPerCallTimeout(ctx context.Context, model string, messages []OllamaMessage, schema any) (string, error) {
+	idleTimeout := s.perModelCallTimeout()
+	maxTotal := idleTimeout * 3
+	if maxTotal < 10*time.Minute {
+		maxTotal = 10 * time.Minute
+	}
+	totalCtx, totalCancel := context.WithTimeout(ctx, maxTotal)
+	defer totalCancel()
+	callCtx, cancel := context.WithCancelCause(totalCtx)
+	defer cancel(nil)
+	idleTimer := time.AfterFunc(idleTimeout, func() {
+		cancel(context.DeadlineExceeded)
+	})
+	defer idleTimer.Stop()
+	s.mu.Lock()
+	s.LiveStreamText = ""
+	s.LiveStreamTokens = 0
+	s.LiveStreamTPS = 0
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.LiveStreamText = ""
+		s.LiveStreamTokens = 0
+		s.LiveStreamTPS = 0
+		s.mu.Unlock()
+	}()
+	out, err := s.Ollama.ChatStream(callCtx, model, messages, schema, func(accumulated string, tokens int, tps float64) {
+		// Active token streaming extends the idle deadline so slower laptop GPUs
+		// are never killed mid-file while actively generating valid code.
+		idleTimer.Reset(idleTimeout)
+		preview := extractLiveStreamPreview(accumulated)
+		s.mu.Lock()
+		s.LiveStreamText = preview
+		s.LiveStreamTokens = tokens
+		s.LiveStreamTPS = tps
+		s.LastProgressAt = time.Now()
+		s.mu.Unlock()
+	})
+	if err != nil && errors.Is(context.Cause(callCtx), context.DeadlineExceeded) {
+		return out, context.DeadlineExceeded
+	}
+	return out, err
 }
 
 func (s *AppState) nextAgentAction(ctx context.Context, requestedModel string, messages []OllamaMessage) (AgentAction, string, error) {
@@ -1262,10 +1435,13 @@ func (s *AppState) nextAgentAction(ctx context.Context, requestedModel string, m
 	}
 	errs := []string{}
 	for _, candidate := range candidates {
-		content, err := s.Ollama.Chat(ctx, candidate, messages, actionSchema)
+		content, err := s.chatWithPerCallTimeout(ctx, candidate, messages, actionSchema)
 		if err != nil {
 			if ctx.Err() != nil {
 				return zero, candidate, ctx.Err()
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return zero, candidate, err
 			}
 			errs = append(errs, candidate+": "+err.Error())
 			continue
@@ -1276,8 +1452,8 @@ func (s *AppState) nextAgentAction(ctx context.Context, requestedModel string, m
 		}
 		incompleteAction := action
 		retry := append([]OllamaMessage(nil), messages...)
-		retry = append(retry, OllamaMessage{Role: "assistant", Content: content}, OllamaMessage{Role: "user", Content: "Antwort ungültig. Antworte ausschließlich mit einem JSON-Objekt des Schemas. Fehler: " + err.Error()})
-		content, retryErr := s.Ollama.Chat(ctx, candidate, trimMessages(retry), actionSchema)
+		retry = append(retry, OllamaMessage{Role: "assistant", Content: truncateText(content, 2000)}, OllamaMessage{Role: "user", Content: "Antwort ungültig oder wegen Überlänge abgeschnitten. Antworte ausschließlich mit einem kompakten, vollständigen JSON-Objekt des Schemas (bei write_file jeweils nur eine fokussierte Datei ohne überflüssige Kommentare). Fehler: " + err.Error()})
+		content, retryErr := s.chatWithPerCallTimeout(ctx, candidate, trimMessages(retry), actionSchema)
 		if retryErr == nil {
 			action, retryErr = parseAgentAction(content)
 		}
@@ -1311,9 +1487,9 @@ func (s *AppState) repairIncompleteAgentAction(ctx context.Context, model string
 	repairPrompt := fmt.Sprintf(`Die vorherige Aktion war unvollständig und wurde nicht ausgeführt:
 {"action":"write_file","message":%q,"path":%q}
 
-Erzeuge jetzt ausschließlich den vollständigen nicht-leeren Inhalt für diese Datei. Antworte nur mit dem JSON-Objekt {"content":"..."} gemäß Schema. Schreibe keinen Markdown-Zaun. Der Inhalt muss direkt als Dateiinhalt verwendbar sein.`, action.Message, action.Path)
+Erzeuge jetzt ausschließlich den vollständigen nicht-leeren Inhalt für diese Datei. Antworte nur mit dem JSON-Objekt {"content":"..."} gemäß Schema. Schreibe keinen Markdown-Zaun. Halte den Code kompakt und ohne überflüssige Kommentare. Der Inhalt muss direkt als Dateiinhalt verwendbar sein.`, action.Message, action.Path)
 	repairMessages = append(repairMessages, OllamaMessage{Role: "user", Content: repairPrompt})
-	content, err := s.Ollama.Chat(ctx, model, trimMessages(repairMessages), writeFileContentSchema)
+	content, err := s.chatWithPerCallTimeout(ctx, model, trimMessages(repairMessages), writeFileContentSchema)
 	if err != nil {
 		return AgentAction{}, err
 	}
@@ -1384,7 +1560,11 @@ func parseAgentAction(content string) (AgentAction, error) {
 		start := strings.Index(content, "{")
 		end := strings.LastIndex(content, "}")
 		if start < 0 || end <= start || json.Unmarshal([]byte(content[start:end+1]), &a) != nil {
-			return a, err
+			partial := extractPartialAgentActionFields(content)
+			if partial.Action == "write_file" && strings.TrimSpace(partial.Path) != "" {
+				return partial, fmt.Errorf("write_file action content was truncated or invalid JSON: %w", err)
+			}
+			return partial, err
 		}
 	}
 	if a.Action == "" {
@@ -1399,67 +1579,132 @@ func parseAgentAction(content string) (AgentAction, error) {
 	}
 	return a, nil
 }
+
+func extractPartialAgentActionFields(content string) AgentAction {
+	var a AgentAction
+	extract := func(key string) string {
+		re := regexp.MustCompile(`"` + regexp.QuoteMeta(key) + `"\s*:\s*"((?:\\.|[^"\\])*)"`)
+		if m := re.FindStringSubmatch(content); len(m) >= 2 {
+			var unescaped string
+			if json.Unmarshal([]byte(`"`+m[1]+`"`), &unescaped) == nil {
+				return unescaped
+			}
+			return m[1]
+		}
+		return ""
+	}
+	a.Action = extract("action")
+	a.Path = extract("path")
+	a.Message = extract("message")
+	if a.Message == "" && a.Action != "" {
+		a.Message = a.Action
+	}
+	return a
+}
 func mustJSON(v any) string { data, _ := json.Marshal(v); return string(data) }
 
 func fillAgentActionFromArguments(a AgentAction) AgentAction {
-	if len(a.Arguments) == 0 {
-		return a
+	if len(a.Arguments) > 0 {
+		if a.Path == "" {
+			a.Path = stringMapArg(a.Arguments, "path")
+		}
+		if a.Content == "" {
+			a.Content = stringMapArg(a.Arguments, "content")
+		}
+		if a.Query == "" {
+			a.Query = stringMapArg(a.Arguments, "query")
+		}
+		if a.OldText == "" {
+			a.OldText = stringMapArg(a.Arguments, "old_text")
+		}
+		if a.NewText == "" {
+			a.NewText = stringMapArg(a.Arguments, "new_text")
+		}
+		if a.Command == "" {
+			a.Command = stringMapArg(a.Arguments, "command")
+		}
+		if a.Task == "" {
+			a.Task = stringMapArg(a.Arguments, "task")
+		}
+		if a.Name == "" {
+			a.Name = stringMapArg(a.Arguments, "name")
+		}
+		if a.Tool == "" {
+			a.Tool = stringMapArg(a.Arguments, "tool")
+		}
+		if a.Source == "" {
+			a.Source = stringMapArg(a.Arguments, "source")
+		}
+		if a.Destination == "" {
+			a.Destination = stringMapArg(a.Arguments, "destination")
+		}
+		if a.Width == 0 {
+			a.Width = intMapArg(a.Arguments, "width")
+		}
+		if a.Height == 0 {
+			a.Height = intMapArg(a.Arguments, "height")
+		}
+		if a.MemoryID == "" {
+			a.MemoryID = stringMapArg(a.Arguments, "memory_id")
+		}
+		if a.Scope == "" {
+			a.Scope = stringMapArg(a.Arguments, "scope")
+		}
+		if a.Skill == "" {
+			a.Skill = stringMapArg(a.Arguments, "skill")
+		}
+		if a.Resource == "" {
+			a.Resource = stringMapArg(a.Arguments, "resource")
+		}
+		if a.Script == "" {
+			a.Script = stringMapArg(a.Arguments, "script")
+		}
 	}
-	if a.Path == "" {
-		a.Path = stringMapArg(a.Arguments, "path")
+	if (a.Action == "run_tool" || a.Action == "discover_tool") && strings.Contains(strings.TrimSpace(a.Tool), " ") && !filepath.IsAbs(strings.TrimSpace(a.Tool)) {
+		fields := strings.Fields(a.Tool)
+		if len(fields) > 1 {
+			if _, ok := knownToolName(fields[0]); ok {
+				a.Tool = fields[0]
+				if a.Action == "run_tool" {
+					a.Args = append(fields[1:], a.Args...)
+				}
+			}
+		}
 	}
-	if a.Content == "" {
-		a.Content = stringMapArg(a.Arguments, "content")
-	}
-	if a.Query == "" {
-		a.Query = stringMapArg(a.Arguments, "query")
-	}
-	if a.OldText == "" {
-		a.OldText = stringMapArg(a.Arguments, "old_text")
-	}
-	if a.NewText == "" {
-		a.NewText = stringMapArg(a.Arguments, "new_text")
-	}
-	if a.Command == "" {
-		a.Command = stringMapArg(a.Arguments, "command")
-	}
-	if a.Task == "" {
-		a.Task = stringMapArg(a.Arguments, "task")
-	}
-	if a.Name == "" {
-		a.Name = stringMapArg(a.Arguments, "name")
-	}
-	if a.Tool == "" {
-		a.Tool = stringMapArg(a.Arguments, "tool")
-	}
-	if a.Source == "" {
-		a.Source = stringMapArg(a.Arguments, "source")
-	}
-	if a.Destination == "" {
-		a.Destination = stringMapArg(a.Arguments, "destination")
-	}
-	if a.Width == 0 {
-		a.Width = intMapArg(a.Arguments, "width")
-	}
-	if a.Height == 0 {
-		a.Height = intMapArg(a.Arguments, "height")
-	}
-	if a.MemoryID == "" {
-		a.MemoryID = stringMapArg(a.Arguments, "memory_id")
-	}
-	if a.Scope == "" {
-		a.Scope = stringMapArg(a.Arguments, "scope")
-	}
-	if a.Skill == "" {
-		a.Skill = stringMapArg(a.Arguments, "skill")
-	}
-	if a.Resource == "" {
-		a.Resource = stringMapArg(a.Arguments, "resource")
-	}
-	if a.Script == "" {
-		a.Script = stringMapArg(a.Arguments, "script")
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(a.Path)))
+	if ext != ".md" && ext != ".markdown" {
+		if a.Action == "write_file" && a.Content != "" {
+			a.Content = stripOuterMarkdownFence(a.Content)
+		}
+		if a.Action == "replace_text" {
+			if a.OldText != "" {
+				a.OldText = stripOuterMarkdownFence(a.OldText)
+			}
+			if a.NewText != "" {
+				a.NewText = stripOuterMarkdownFence(a.NewText)
+			}
+		}
 	}
 	return a
+}
+
+func stripOuterMarkdownFence(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if !strings.HasPrefix(trimmed, "```") || !strings.HasSuffix(trimmed, "```") {
+		return s
+	}
+	firstNL := strings.IndexByte(trimmed, '\n')
+	if firstNL < 0 {
+		return s
+	}
+	body := trimmed[firstNL+1:]
+	if !strings.HasSuffix(body, "```") {
+		return s
+	}
+	body = strings.TrimSuffix(body, "```")
+	body = strings.TrimSuffix(body, "\r")
+	body = strings.TrimSuffix(body, "\n")
+	return body
 }
 
 func stringMapArg(values map[string]any, name string) string {
@@ -1538,10 +1783,16 @@ func validateAgentAction(a AgentAction) error {
 		if err := require("path", a.Path); err != nil {
 			return err
 		}
+		if strings.Contains(a.OldText, "[omitted from model history:") || strings.Contains(a.NewText, "[omitted from model history:") {
+			return errors.New("replace_text must contain real code, never the '[omitted from model history:...]' history placeholder")
+		}
 		return require("old_text", a.OldText)
 	case "write_file":
 		if err := require("path", a.Path); err != nil {
 			return err
+		}
+		if strings.Contains(a.Content, "[omitted from model history:") {
+			return errors.New("write_file content must contain complete real file code, never the '[omitted from model history:...]' history placeholder")
 		}
 		return require("content", a.Content)
 	case "create_svg_asset", "create_image_asset", "generate_image_asset":
@@ -1608,13 +1859,19 @@ func completionGuardIssues(project string, intent taskIntent, originalTask strin
 		issues = append(issues, "Es wurde keine erfolgreiche Projektänderung erkannt.")
 	}
 	mentioned := mentionedProjectFiles(originalTask)
-	for _, path := range mentioned {
-		if _, ok := changedPaths[path]; !ok {
-			changedPaths[path] = false
+	checkPaths := make(map[string]bool, len(changedPaths)+len(mentioned))
+	for k, v := range changedPaths {
+		if v {
+			checkPaths[k] = true
 		}
 	}
-	paths := make([]string, 0, len(changedPaths))
-	for path := range changedPaths {
+	for _, path := range mentioned {
+		if _, ok := checkPaths[path]; !ok {
+			checkPaths[path] = false
+		}
+	}
+	paths := make([]string, 0, len(checkPaths))
+	for path := range checkPaths {
 		if concreteProjectPath(path) {
 			paths = append(paths, path)
 		}
@@ -1640,7 +1897,15 @@ func completionGuardIssues(project string, intent taskIntent, originalTask strin
 		}
 	}
 	var combined strings.Builder
+	seenResolved := map[string]bool{}
 	for _, path := range paths {
+		if resolved, err := ensureWithinRoot(project, path); err == nil {
+			key := strings.ToLower(filepath.Clean(resolved))
+			if seenResolved[key] {
+				continue
+			}
+			seenResolved[key] = true
+		}
 		content, err := readProjectFile(project, path)
 		if err != nil {
 			if isMentionedPath(path, mentioned) {
@@ -1989,6 +2254,10 @@ func taskQualityHint(task string) string {
 	b.WriteString("- Für Dateioperationen wie Kopieren, Verschieben, Umbenennen oder Konvertieren: führe die Operation wirklich aus, prüfe Quelle/Ziel, Dateigröße oder Inhalt/Hash soweit sinnvoll, und melde keine Fertigstellung, wenn Zielpfade fehlen.\n")
 	b.WriteString("- Für Bild-, Zeichen-, Diagramm- oder Asset-Aufgaben: erstelle ein konkretes Artefakt im passenden Format (z. B. SVG/HTML-Canvas/CSS/Projektasset oder ein vorhandenes verfügbares Bildwerkzeug), prüfe dass die Datei existiert, nicht leer ist und syntaktisch/strukturell zum Format passt. Wenn echte Raster-KI-Bildgenerierung lokal nicht verfügbar ist, wähle ein lokales darstellbares Format oder benenne diese Grenze offen.\n")
 	b.WriteString("- Nach jeder Codeänderungsrunde verifiziere passend zur Technik: Syntax-/Unit-/Build-Prüfung und bei sichtbaren Browser-UIs nach Möglichkeit zusätzlich Browser-/DOM-Smoke-Test. Melde finish erst nach erfolgreicher Prüfung nach der letzten Änderung.\n")
+	if containsNormalizedAny(normalizedTask, []string{"node --test", "engine.test.js"}) {
+		b.WriteString("- WICHTIG FÜR HEADLESS NODE-TESTS (node --test): Ein Core-/Engine-Modul (wie src/engine.js), das mit 'node --test' getestet wird, läuft in Node.js OHNE DOM! Greife in src/engine.js NIEMALS auf 'document' oder 'canvas.getContext' zu (DOM und Canvas gehören ausschließlich in src/renderer.js und src/game.js). Exportiere die Engine- und Diagnose-API in src/engine.js sowohl auf 'globalThis.window = globalThis.window || globalThis; globalThis.window.arcadeDiagnostics = ...' als auch per CommonJS/ESM, und verwende in tests/engine.test.js ausschließlich 'const test = require(\"node:test\"); const assert = require(\"node:assert/strict\");' (kein Jest describe/beforeEach/expect!).\n")
+		b.WriteString("- Setze alle in der Aufgabe geforderten Zahlen- und Strukturinvarianten (z. B. exakt 240 Sammelobjekte = 236 Punkte à 10 Punkte + 4 Energizer à 50 Punkte im Maze, 4 Gegner mit eigenen Strategien und Serie 200/400/800/1600, Extraleben bei 10000, reset({seed,level}), snapshot() mit level,score,lives,pelletsRemaining,mode,player,ghosts, step({ticks,input})) sofort vollständig in src/engine.js um.\n")
+	}
 	if containsNormalizedAny(normalizedTask, []string{"pac man", "pacman", "pac-man"}) {
 		b.WriteString("- Für einen Pac-Man-Klon sind intern mindestens erforderlich: rechteckiges Maze, Wände, Pellets mit Entfernung und Score-Erhöhung, spielbarer Pac-Man, automatisch bewegte Geister, Wandkollisionen, Geisterkollisionen mit Lebensverlust, Game-over-Zustand, Gewinnzustand, Pause, Restart per Taste und Button sowie Tastatursteuerung per Pfeiltasten und WASD.\n")
 		b.WriteString("- Parse Startpositionen aus dem Maze oder halte feste Startdaten; setze Gegner beim Restart/Lebensverlust nie zufällig auf mögliche Wände.\n")
@@ -2572,6 +2841,10 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	s.mu.RLock()
 	cfg := s.Config
 	s.mu.RUnlock()
+	if blockedMsg := offlinePackageInstallBlocked(cfg, a); blockedMsg != "" {
+		s.AddEvent(UIEvent{Type: "tool_error", Message: localizeConfigText(cfg, "Offline-Policy blockiert Paketinstallation", "Offline policy blocked package installation"), Detail: blockedMsg, Action: a.Action, Command: a.Command})
+		return blockedMsg, false
+	}
 	if a.Action == "mcp_call_tool" {
 		var preparation string
 		var wait bool
@@ -2600,6 +2873,11 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 	}
 	precondition, err := captureApprovedFilePrecondition(project, a)
 	if err != nil {
+		if a.Action == "write_file" && errors.Is(err, errNoObservableProjectChanges) {
+			msg := fmt.Sprintf("Datei %s existiert bereits mit exakt diesem Inhalt (keine erneute Schreiboperation erforderlich). Wiederhole write_file nicht mit unverändertem Inhalt für %s, sondern bearbeite jetzt sofort die nächste noch fehlende oder zu vervollständigende Projektdatei oder führe die Tests mit run_tool/run_command aus.", a.Path, a.Path)
+			s.AddEvent(UIEvent{Type: "action_done", Message: a.Message, Detail: msg, Action: a.Action, Path: a.Path})
+			return msg, false
+		}
 		return "ERROR: " + err.Error(), false
 	}
 	preview, err := previewAction(project, cfg, a)

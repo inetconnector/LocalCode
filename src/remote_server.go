@@ -467,9 +467,11 @@ func (s *RemoteServer) handleSelectProject(w http.ResponseWriter, r *http.Reques
 	s.state.mu.RLock()
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
-	if err := ensureProjectDocs(full, cfg); err != nil {
-		http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
-		return
+	if cfg.CreateProjectDocs {
+		if err := ensureProjectDocs(full, cfg); err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	cfg, err = s.state.mutateConfig(func(next *Config) error {
 		next.LastProject = full
@@ -510,6 +512,17 @@ func (s *RemoteServer) handleNewChat(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if strings.TrimSpace(req.Project) != "" {
+		s.state.mu.RLock()
+		cfg := s.state.Config
+		s.state.mu.RUnlock()
+		full, err := ensureExistingProjectDir(cfg.RootProjectDir, req.Project)
+		if err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektverzeichnis ist ungültig: ", "Project directory is invalid: ")+err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Project = full
 	}
 	t, err := s.state.NewChat(req.Project)
 	if err != nil {

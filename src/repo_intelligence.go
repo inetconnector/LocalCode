@@ -211,6 +211,7 @@ func repositoryIntelligence(project, task string) (string, error) {
 }
 
 func repoIntelTerms(task string) []string {
+	task = extractSubagentUserTask(task)
 	seen := map[string]bool{}
 	terms := make([]string, 0, 12)
 	for _, word := range significantWords(task) {

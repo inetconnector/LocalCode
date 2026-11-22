@@ -90,8 +90,8 @@ func TestOpenProjectTargetVisualStudioFallsBackWithoutProjectFile(t *testing.T) 
 	if err := openProjectTarget(root, "visualstudio", cfg); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || !strings.HasPrefix(strings.ToLower(calls[0]), "explorer.exe ") || !strings.Contains(calls[0], root) {
-		t.Fatalf("Visual Studio without a solution/project should fall back to Explorer, calls=%#v", calls)
+	if len(calls) != 1 || (!strings.HasPrefix(strings.ToLower(calls[0]), "explorer.exe ") && !strings.Contains(strings.ToLower(calls[0]), "devenv.exe ")) || !strings.Contains(calls[0], root) {
+		t.Fatalf("Visual Studio without a solution/project should open folder in devenv.exe or fall back to Explorer, calls=%#v", calls)
 	}
 
 	sln := filepath.Join(root, "Demo.sln")
