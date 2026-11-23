@@ -86,6 +86,11 @@ func defaultMCPServers() []MCPServerConfig {
 			Enabled: false, Transport: "stdio", Preset: "playwright", Command: "npx", Args: []string{"-y", "@playwright/mcp@0.0.78", "--browser", "msedge", "--user-data-dir", "${APP_DATA}\browser-profile", "--output-dir", "${APP_DATA}\browser-output"},
 			AutoInstall: true, ProjectScoped: true, TimeoutSec: 180,
 		},
+		{
+			Name: "exactscene", DisplayName: "ExactScene Vision", Description: "Deterministischer MCP-Server für verlustfreie Bilderkennung, Szenenrekonstruktion, Geometrie-, Layout- & Web-Grafikanalyse (NOMA × MICA).",
+			Enabled: false, Transport: "stdio", Preset: "exactscene", Command: "python", Args: []string{"-m", "exactscene.mcp_server"},
+			Env: map[string]string{"PYTHONIOENCODING": "utf-8"}, TimeoutSec: 120,
+		},
 	}
 }
 

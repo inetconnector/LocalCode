@@ -758,3 +758,41 @@ func TestNomaWebResearchAndWorldModuleOrderingAndRetryTemperature(t *testing.T) 
 		t.Fatalf("guarded dual-module require should pass, got %q", msg)
 	}
 }
+
+func TestExactSceneMCPServerDefaultAndAttachmentHelpers(t *testing.T) {
+	found := false
+	for _, srv := range defaultMCPServers() {
+		if srv.Name == "exactscene" {
+			found = true
+			if srv.Transport != "stdio" || srv.Enabled {
+				t.Fatalf("exactscene MCP server must be opt-in stdio, got %+v", srv)
+			}
+			if len(srv.Args) < 2 || srv.Args[0] != "-m" || srv.Args[1] != "exactscene.mcp_server" {
+				t.Fatalf("unexpected exactscene MCP args: %v", srv.Args)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("defaultMCPServers() missing exactscene entry")
+	}
+
+	cfg := defaultConfig()
+	cfg.NetworkEnabled = false
+	if got := runExactSceneWebImageReference(context.Background(), t.TempDir(), cfg, "test diagram"); got != "" {
+		t.Fatalf("expected empty web image reference when network disabled, got %q", got)
+	}
+	if got := runExactSceneAttachmentAnalysis(context.Background(), t.TempDir(), cfg, "", nil); got != "" {
+		t.Fatalf("expected empty attachment analysis for nil images, got %q", got)
+	}
+	env := exactScenePythonEnv(t.TempDir())
+	hasUTF8 := false
+	for _, kv := range env {
+		if kv == "PYTHONIOENCODING=utf-8" {
+			hasUTF8 = true
+			break
+		}
+	}
+	if !hasUTF8 {
+		t.Fatal("exactScenePythonEnv missing PYTHONIOENCODING=utf-8")
+	}
+}
