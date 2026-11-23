@@ -1372,7 +1372,7 @@ async function rollbackToCheckpoint(checkpointId){
     if(!summaryParts.length)summaryParts.push(tx('Keine Dateiänderungen im Projekt'));
     const warnLine=(prev.warnings&&prev.warnings.length)?`\n\n⚠ ${prev.warnings.join('\n⚠ ')}`:'';
     const help=`${tx('Projekt und Chat werden vollständig auf den Zustand vor dieser Eingabe zurückgerollt')} (${turns} ${turns===1?tx('Entwicklungsstufe'):tx('Entwicklungsstufen')}):\n• ${summaryParts.join('\n• ')}${warnLine}`;
-    const ok=await openActionModal({title:tx('Stand vollständig rückgängig machen?'),help,confirm:tx('Rückgängig machen'),danger:true});
+    const ok=await openActionModal({title:tx('Stand vollständig rückgängig machen?'),help,confirm:tx('Rückgängig machen'),danger:true,input:false});
     if(!ok)return;
     const res=await api('/api/checkpoints/rollback',{method:'POST',body:JSON.stringify({thread_id:state.currentThread||'',checkpoint_id:checkpointId})},60000);
     await loadThreads();

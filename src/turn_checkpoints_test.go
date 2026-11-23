@@ -327,6 +327,7 @@ func TestSidebarIconsTreeExpandAndUndoUIContract(t *testing.T) {
 		`class="chevron-hit"`,
 		`class="msg-undo-btn"`,
 		`async function rollbackToCheckpoint(checkpointId)`,
+		`danger:true,input:false`,
 		`/api/checkpoints/preview?thread_id=`,
 		`/api/checkpoints/rollback`,
 		`ev.type==='thread_rolled_back'`,
