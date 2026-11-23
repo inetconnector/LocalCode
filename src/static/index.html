@@ -136,6 +136,21 @@ body.has-approval .composer-zone{padding-bottom:120px}body.has-approval .setting
 .tool-step, .trajectory-card{background:#14171d;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:9px 12px;margin:7px 0 7px 34px;font-size:12.5px;box-shadow:0 2px 8px rgba(0,0,0,0.25);transition:border-color .15s, background .15s}
 .tool-step:hover, .trajectory-card:hover{border-color:rgba(255,255,255,0.14)}
 .tool-step.active-running, .trajectory-card.active-running{border-color:rgba(56,189,248,0.4);box-shadow:0 0 16px rgba(56,189,248,0.12)}
+.trajectory-group-panel{background:#13171e;border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin:6px 0 10px 34px;padding:2px 0;box-shadow:0 2px 10px rgba(0,0,0,0.25);overflow:hidden}
+.trajectory-group-panel > .trajectory-card,
+.trajectory-group-panel > .tool-card,
+.trajectory-group-panel > .activity-row{margin:0!important;border:0!important;border-bottom:1px solid rgba(255,255,255,0.045)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:4px 10px!important}
+.trajectory-group-panel > *:last-child{border-bottom:0!important}
+.trajectory-group-panel > .tool-card > summary{padding:2px 0!important}
+.trajectory-group-panel > .trajectory-card > .trajectory-summary{padding:2px 0!important;font-size:12px}
+.trajectory-group-panel > .trajectory-card[open] > .trajectory-summary{margin-bottom:5px;padding-bottom:4px}
+.trajectory-group-panel > .trajectory-card:hover,
+.trajectory-group-panel > .tool-card:hover,
+.trajectory-group-panel > .activity-row:hover{background:rgba(255,255,255,0.025)!important}
+.trajectory-group-panel > .activity-row{border-bottom:0!important;padding:2px 10px!important}
+.trajectory-group-panel > .activity-row + .trajectory-card,
+.trajectory-group-panel > .activity-row + .tool-card{border-top:1px solid rgba(255,255,255,0.045)!important}
+.repeat-count-badge{margin-left:6px;background:rgba(148,163,184,0.16);color:#94a3b8;border:1px solid rgba(148,163,184,0.25);border-radius:999px;padding:0 6px;font:10px var(--code-font)}
 .event-summary, .trajectory-summary{cursor:pointer;color:#e2e8f0;list-style:none;display:flex;align-items:center;gap:7px;font-weight:500;user-select:none}
 .event-summary::-webkit-details-marker, .trajectory-summary::-webkit-details-marker{display:none}
 .tool-chevron{display:inline-block;transition:transform .2s ease;font-size:13px;color:#94a3b8;flex-shrink:0}
@@ -796,10 +811,16 @@ function chatEventHTML(ev, i, events){
   const editActions=['replace_text','write_file','delete_file','aider_edit','engine_edit','edit','patch_file'];
   const cmdActions=['run_command','exec','shell','run_tool','terminal','bash','pwsh'];
   const exploreActions=['read_file','view_file','search_text','grep_search','list_files','list_dir','find_by_name','view_outline','read_url_content'];
-  if(type==='agent_step'||type==='action_running'){
+  if(type==='agent_step'||type==='action_running'||type==='action_done'){
     for(let j=i+1;j<events.length;j++){
       const nextEv=events[j];
       if(nextEv.action==='thinking'||nextEv.type==='progress')break;
+      if(type==='action_done'){
+        if(['tool_result','tool_error'].includes(nextEv.type)&&nextEv.action===ev.action&&(nextEv.path||'')===(ev.path||'')){
+          return '';
+        }
+        break;
+      }
       if(['agent_step','action_running','action_done','tool_result','tool_error'].includes(nextEv.type)&&nextEv.action===ev.action){
         return '';
       }
@@ -848,7 +869,9 @@ function chatEventHTML(ev, i, events){
   }
 
   if(type==='context_compacted'){
-    return `<details data-card-key="${cardKey}" class="tool-card" ${isCardOpen(true)?'open':''}><summary><span class="tool-chevron">›</span><span class="tool-name">context</span><span class="tool-message">${esc(btx(ev.message||tx('Kontext komprimiert')))}</span><span class="tool-status">${tx('Arbeitszustand')}</span></summary>${ev.detail?`<div class="tool-body"><pre>${esc(btx(ev.detail))}</pre></div>`:''}</details>`;
+    const tokMatch=(ev.detail||'').match(/(\d+\s*→\s*\d+)/);
+    const compactLabel=btx(ev.message||tx('Kontext komprimiert'))+(tokMatch?` (${tokMatch[1]} Tokens)`:'');
+    return `<details data-card-key="${cardKey}" class="tool-card" ${isCardOpen(false)?'open':''}><summary><span class="tool-chevron">›</span><span class="tool-name">context</span><span class="tool-message">${esc(compactLabel)}</span><span class="tool-status">${tx('Arbeitszustand')}</span></summary>${ev.detail?`<div class="tool-body"><pre>${esc(btx(ev.detail))}</pre></div>`:''}</details>`;
   }
 
   if(type==='question'||(ev.message||'').includes('implementation_plan.md')){
@@ -860,7 +883,7 @@ function chatEventHTML(ev, i, events){
   if(['tool_result','action_done','tool_error','action_running'].includes(type)){
     const detail=toolDetail(ev),status=tx(type==='tool_error'?'Fehler':type==='action_running'?'Läuft':'Ausgabe');
     const isSuiteCard=['agentos_utp','noma_framing','mica_ffi'].includes(ev.action);
-    const defaultOpen=type==='action_running'||type==='tool_error'||(isSuiteCard&&!ev.path);
+    const defaultOpen=type==='action_running';
     const badgeColor=ev.action==='agentos_utp'?'background:rgba(56,189,248,0.18);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);':ev.action==='noma_framing'?'background:rgba(168,85,247,0.18);color:#c084fc;border:1px solid rgba(168,85,247,0.35);':ev.action==='mica_ffi'?'background:rgba(16,185,129,0.18);color:#34d399;border:1px solid rgba(16,185,129,0.35);':'';
     const badgeLabel=ev.action==='agentos_utp'?'AgentOS · UTP':ev.action==='noma_framing'?'NOMA · Framing':ev.action==='mica_ffi'?'MICA · Rust FFI':(ev.action||'tool');
     return `<details data-card-key="${cardKey}" class="tool-card ${type==='tool_error'?'error':''}" ${isCardOpen(defaultOpen)?'open':''}><summary><span class="tool-chevron">›</span><span class="tool-name" style="${badgeColor}">${esc(badgeLabel)}</span><span class="tool-message">${esc(btx(ev.message||status))}</span><span class="tool-status">${isSuiteCard?'Verifiziert':status}</span></summary>${detail?`<div class="tool-body"><div class="tool-meta">${ev.path?`<span>${esc(ev.path)}</span>`:''}${ev.command?`<span>${esc(ev.command)}</span>`:''}</div><pre>${esc(btx(detail))}</pre></div>`:''}</details>`;
@@ -879,6 +902,45 @@ function chatEventHTML(ev, i, events){
     return `<div class="message ${cls}"><div class="avatar">LC</div><div class="bubble"><div class="meta">NomaMica · LocalCode · ${eventTime(ev)}</div>${renderMarkdownTabs(msgText,`${cardKey}-final`,'Bericht')}${ev.detail?`<pre class="codeblock">${esc(btx(ev.detail))}</pre>`:''}</div></div>`;
   }
   return `<div class="message ${cls}"><div class="avatar">LC</div><div class="bubble"><div class="meta">LocalCode · ${eventTime(ev)}</div><div class="content" data-no-i18n>${esc(msgText)}</div>${ev.detail?`<pre class="codeblock">${esc(btx(ev.detail))}</pre>`:''}</div></div>`;
+}
+function renderGroupedChatEvents(events){
+  const items=[];
+  for(let i=0;i<events.length;i++){
+    const ev=events[i];
+    const html=chatEventHTML(ev,i,events);
+    if(!html)continue;
+    const type=ev.type||'';
+    const isPlan=(ev.message||'').includes('implementation_plan.md');
+    const isBubble=['user','final','question','error','warning'].includes(type)||isPlan;
+    const dedupKey=isBubble?'':`${ev.action||type}|${ev.path||''}|${ev.command||''}|${ev.message||''}|${(ev.detail||'').slice(0,120)}`;
+    if(!isBubble&&items.length>0&&!items[items.length-1].isBubble&&items[items.length-1].dedupKey===dedupKey){
+      items[items.length-1].count=(items[items.length-1].count||1)+1;
+      items[items.length-1].html=html;
+      continue;
+    }
+    items.push({html,isBubble,dedupKey,count:1});
+  }
+  const out=[];
+  let stepGroup=[];
+  const flushGroup=()=>{
+    if(!stepGroup.length)return;
+    out.push(`<div class="trajectory-group-panel">${stepGroup.join('')}</div>`);
+    stepGroup=[];
+  };
+  for(const item of items){
+    let rowHtml=item.html;
+    if(item.count>1){
+      rowHtml=rowHtml.replace('</summary>',`<span class="repeat-count-badge">×${item.count}</span></summary>`);
+    }
+    if(item.isBubble){
+      flushGroup();
+      out.push(rowHtml);
+    }else{
+      stepGroup.push(rowHtml);
+    }
+  }
+  flushGroup();
+  return out.join('');
 }
 function computeChatSignature(){
   const n=state.events.length;
@@ -947,7 +1009,7 @@ function renderChat(){
   const prevScrollTop=chat.scrollTop;
   const wasEmpty=chat.children.length<=1;
   const wasNearBottom=wasEmpty||(chat.scrollHeight-chat.scrollTop-chat.clientHeight)<95;
-  const eventsHtml=state.events.map((ev,i)=>chatEventHTML(ev,i,state.events)).join('');
+  const eventsHtml=renderGroupedChatEvents(state.events);
   const summaryHtml=renderFilesWithChanges(state.events);
   let bottomThinkingHtml='';
   if(state.running){

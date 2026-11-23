@@ -229,7 +229,7 @@ func TestIndexHTMLIncludesMarkdownTabsFastRenderAndNomaMicaEngine(t *testing.T) 
 		t.Fatal(err)
 	}
 	html := string(raw)
-	for _, needle := range []string{"renderMarkdownTabs", "renderMarkdownHTML", ">Vorschau<", ">Quelltext<", "updateLiveStreamInPlace", "computeChatSignature", "LocalCode · NomaMica"} {
+	for _, needle := range []string{"renderMarkdownTabs", "renderMarkdownHTML", ">Vorschau<", ">Quelltext<", "updateLiveStreamInPlace", "computeChatSignature", "LocalCode · NomaMica", "renderGroupedChatEvents", "trajectory-group-panel"} {
 		if !strings.Contains(html, needle) {
 			t.Fatalf("static/index.html missing expected marker %q", needle)
 		}
