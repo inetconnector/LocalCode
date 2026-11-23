@@ -1,5 +1,7 @@
 param(
-    [string]$OutputDirectory = ""
+    [string]$OutputDirectory = "",
+    [string]$VersionName = "",
+    [int]$VersionCode = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,10 +61,25 @@ $dex = Join-Path $stagingDir 'dex'
 $compiledRes = Join-Path $stagingDir 'compiled-res'
 New-Item -ItemType Directory -Path $classes,$dex,$compiledRes -Force | Out-Null
 
+$versionFile = Join-Path $repo 'VERSION.txt'
+if ([string]::IsNullOrWhiteSpace($VersionName)) {
+    if (Test-Path -LiteralPath $versionFile -PathType Leaf) {
+        $VersionName = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+    } else {
+        $VersionName = '1.0.0'
+    }
+}
+if ($VersionCode -le 0) {
+    if ($VersionName -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].*)?$') {
+        $VersionCode = ([int]$Matches['major'] * 10000) + ([int]$Matches['minor'] * 100) + [int]$Matches['patch']
+    } else {
+        $VersionCode = 1
+    }
+}
+
 $unsigned = Join-Path $stagingDir 'LocalCode-Remote-unsigned.apk'
 $aligned = Join-Path $stagingDir 'LocalCode-Remote-aligned.apk'
 $signed = Join-Path $stagingDir 'LocalCode-Remote-debug.apk'
-$keystore = Join-Path $stagingDir 'debug.keystore'
 
 $resourceArgs = @()
 if (Test-Path -LiteralPath $resDir -PathType Container) {
@@ -70,7 +87,7 @@ if (Test-Path -LiteralPath $resDir -PathType Container) {
     if ($LASTEXITCODE -ne 0) { throw "aapt2 compile resources failed with exit code $LASTEXITCODE" }
     $resourceArgs = @(Get-ChildItem -LiteralPath $compiledRes -Recurse -File -Filter *.flat | ForEach-Object FullName)
 }
-& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code 1 --version-name '1.0' -o $unsigned @resourceArgs
+& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code $VersionCode --version-name $VersionName -o $unsigned @resourceArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed with exit code $LASTEXITCODE" }
 
 & $javac -encoding UTF-8 -source 17 -target 17 -classpath $androidJar -d $classes $javaSource
@@ -93,14 +110,24 @@ try {
 & $zipalign -f 4 $unsigned $aligned
 if ($LASTEXITCODE -ne 0) { throw "zipalign failed with exit code $LASTEXITCODE" }
 
-$releaseKeystore = '\\diskstation\dani\apk-sign\4711Google!'
-if (Test-Path -LiteralPath $releaseKeystore -PathType Leaf) {
-    & $apksigner sign --ks $releaseKeystore --ks-pass "pass:4711Google!" --ks-key-alias "key0" --key-pass "pass:4711Google!" --out $signed $aligned
+$envKeystore = if ($null -ne $env:LOCALCODE_ANDROID_KEYSTORE) { $env:LOCALCODE_ANDROID_KEYSTORE.Trim() } else { '' }
+if (-not [string]::IsNullOrWhiteSpace($envKeystore) -and (Test-Path -LiteralPath $envKeystore -PathType Leaf)) {
+    $ksAlias = if ($null -ne $env:LOCALCODE_ANDROID_KEY_ALIAS -and $env:LOCALCODE_ANDROID_KEY_ALIAS.Trim() -ne '') { $env:LOCALCODE_ANDROID_KEY_ALIAS.Trim() } else { 'key0' }
+    $keyPassArg = if ($null -ne $env:LOCALCODE_ANDROID_KEY_PASS -and $env:LOCALCODE_ANDROID_KEY_PASS -ne '') { 'env:LOCALCODE_ANDROID_KEY_PASS' } else { 'env:LOCALCODE_ANDROID_KEYSTORE_PASS' }
+    & $apksigner sign --ks $envKeystore --ks-pass 'env:LOCALCODE_ANDROID_KEYSTORE_PASS' --ks-key-alias $ksAlias --key-pass $keyPassArg --out $signed $aligned
     if ($LASTEXITCODE -ne 0) { throw "apksigner release sign failed with exit code $LASTEXITCODE" }
 } else {
-    & $keytool -genkeypair -keystore $keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
-    if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
-    & $apksigner sign --ks $keystore --ks-pass pass:android --key-pass pass:android --out $signed $aligned
+    $localAppDataRoot = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $env:LOCALAPPDATA } else { Join-Path $HOME '.localcode' }
+    $debugKeystoreDir = Join-Path $localAppDataRoot 'LocalCode'
+    if (-not (Test-Path -LiteralPath $debugKeystoreDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $debugKeystoreDir -Force | Out-Null
+    }
+    $debugKeystore = Join-Path $debugKeystoreDir 'android-debug.keystore'
+    if (-not (Test-Path -LiteralPath $debugKeystore -PathType Leaf)) {
+        & $keytool -genkeypair -keystore $debugKeystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
+        if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
+    }
+    & $apksigner sign --ks $debugKeystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out $signed $aligned
     if ($LASTEXITCODE -ne 0) { throw "apksigner debug sign failed with exit code $LASTEXITCODE" }
 }
 & $apksigner verify --verbose $signed
@@ -117,13 +144,28 @@ if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
 $targetApk = Join-Path $OutputDirectory 'LocalCode-Remote-debug.apk'
 Copy-Item -LiteralPath $signed -Destination $targetApk -Force
 
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
+$sizeBytes = (Get-Item -LiteralPath $targetApk).Length
+$metaObj = [ordered]@{
+    version_name = $VersionName
+    version_code = $VersionCode
+    sha256       = $hash
+    size_bytes   = $sizeBytes
+    built_at     = (Get-Date).ToUniversalTime().ToString('o')
+}
+$metaJson = $metaObj | ConvertTo-Json -Depth 3
+$targetMeta = $targetApk + '.json'
+Set-Content -LiteralPath $targetMeta -Value $metaJson -Encoding UTF8
+
 $distDir = Join-Path $repo 'dist'
 if ((Test-Path -LiteralPath $distDir -PathType Container) -and ([IO.Path]::GetFullPath($OutputDirectory) -ne [IO.Path]::GetFullPath($distDir))) {
-    Copy-Item -LiteralPath $signed -Destination (Join-Path $distDir 'LocalCode-Remote-debug.apk') -Force
+    $distApk = Join-Path $distDir 'LocalCode-Remote-debug.apk'
+    Copy-Item -LiteralPath $signed -Destination $distApk -Force
+    Set-Content -LiteralPath ($distApk + '.json') -Value $metaJson -Encoding UTF8
 }
 
 Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
 
-$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
 Write-Host "Android APK: $targetApk"
+Write-Host "Android APK Version: $VersionName ($VersionCode)"
 Write-Host "Android APK SHA-256: $hash"

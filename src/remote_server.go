@@ -57,6 +57,8 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
 	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
 	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
+	s.mux.HandleFunc("/remote/api/android-update", s.withAuth(s.handleAndroidUpdateInfo))
+	s.mux.HandleFunc("/remote/api/android-update/download", s.withAuth(s.handleAndroidUpdateDownload))
 }
 
 func (s *RemoteServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
