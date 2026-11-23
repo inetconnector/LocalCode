@@ -237,3 +237,80 @@ func TestMobileRemoteTasksTabConfigurableAndHiddenByDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteQRInstantPairingAndAutoDismissContract(t *testing.T) {
+	// 1. Verify PairRemoteDevice broadcasts remote_paired event immediately for Desktop auto-dismiss
+	cfg := defaultConfig()
+	cfg.RemoteEnabled = true
+	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
+	state.RemoteTLSFingerprint = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+	ch := state.Subscribe()
+	defer state.Unsubscribe(ch)
+
+	code, _, _, err := state.StartRemotePairing()
+	if err != nil {
+		t.Fatalf("StartRemotePairing failed: %v", err)
+	}
+	token, dev, err := state.PairRemoteDevice(code, "Pixel 9")
+	if err != nil || token == "" || dev.ID == "" {
+		t.Fatalf("PairRemoteDevice failed: token=%q dev=%+v err=%v", token, dev, err)
+	}
+	select {
+	case ev := <-ch:
+		if ev.Type != "remote_paired" || ev.Action != dev.ID {
+			t.Fatalf("expected remote_paired event for %s, got %+v", dev.ID, ev)
+		}
+	default:
+		t.Fatal("expected immediate remote_paired broadcast after PairRemoteDevice")
+	}
+
+	// 2. Verify Desktop UI auto-closes pairing modals on remote_paired & polls /api/remote/devices
+	indexBytes, err := os.ReadFile(filepath.Join("static", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexHTML := string(indexBytes)
+	for _, required := range []string{
+		`function closeRemotePairingModals()`,
+		`ev.type==='remote_paired'`,
+		`state.pairWatchTimer=setInterval`,
+		`detailObj.id||req.action||req.id`,
+	} {
+		if !strings.Contains(indexHTML, required) {
+			t.Fatalf("desktop index.html auto-dismiss contract missing %q", required)
+		}
+	}
+
+	// 3. Verify Remote UI supports instant pairWithCode + hashchange without flashing manual screen
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteHTML := string(remoteBytes)
+	for _, required := range []string{
+		`async function pairWithCode(rawCode)`,
+		`window.addEventListener('hashchange'`,
+		`pairWithCode:async code=>pairWithCode(code)`,
+	} {
+		if !strings.Contains(remoteHTML, required) {
+			t.Fatalf("mobile remote.html instant QR pairing contract missing %q", required)
+		}
+	}
+
+	// 4. Verify Android manifest singleTop & MainActivity direct pairWithCode handoff
+	manifestBytes, err := os.ReadFile(filepath.Join("..", "android", "app", "src", "main", "AndroidManifest.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifestBytes), `android:launchMode="singleTop"`) {
+		t.Fatal("AndroidManifest.xml must declare singleTop so QR deep-links reuse the activity")
+	}
+	javaBytes, err := os.ReadFile(filepath.Join("..", "android", "app", "src", "main", "java", "com", "inetconnector", "localcode", "MainActivity.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(javaBytes), `LocalCodeRemote.pairWithCode(`) {
+		t.Fatal("MainActivity.java must hand scanned QR codes directly to LocalCodeRemote.pairWithCode")
+	}
+}

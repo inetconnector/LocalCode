@@ -196,6 +196,7 @@ func startMobileSafeProductionRemoteServer(state *AppState, cfg Config) ([]strin
 	state.mu.Lock()
 	state.RemoteListenAddr = ln.Addr().String()
 	state.RemoteURLs = append([]string(nil), urls...)
+	state.RemoteTLSFingerprint = fingerprint
 	state.mu.Unlock()
 
 	remote := newMobileSafeRemoteServer(state)

@@ -788,6 +788,12 @@ func (s *AppState) PairRemoteDevice(code, deviceName string) (string, RemoteDevi
 	}); err != nil {
 		return "", RemoteDevice{}, err
 	}
+	s.Broadcast(UIEvent{
+		Type:      "remote_paired",
+		Message:   device.Name,
+		Action:    device.ID,
+		Timestamp: now,
+	})
 	return token, device, nil
 }
 
@@ -804,6 +810,12 @@ func (s *AppState) DirectPairRemoteDevice(deviceName string) (string, RemoteDevi
 	}); err != nil {
 		return "", RemoteDevice{}, err
 	}
+	s.Broadcast(UIEvent{
+		Type:      "remote_paired",
+		Message:   device.Name,
+		Action:    device.ID,
+		Timestamp: now,
+	})
 	return token, device, nil
 }
 
@@ -1018,13 +1030,14 @@ func (s *Server) handleRemotePairing(w http.ResponseWriter, r *http.Request) {
 	webLink := fmt.Sprintf("%s#code=%s&fp=%s", pairUrl, code, fp)
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{
-		"ok":          true,
-		"code":        code,
-		"expires_at":  expires,
-		"remote_urls": urls,
-		"fingerprint": fp,
-		"deep_link":   deepLink,
-		"web_link":    webLink,
+		"ok":           true,
+		"code":         code,
+		"expires_at":   expires,
+		"remote_urls":  urls,
+		"fingerprint":  fp,
+		"deep_link":    deepLink,
+		"web_link":     webLink,
+		"paired_count": len(s.state.RemoteDeviceViews()),
 	})
 }
 

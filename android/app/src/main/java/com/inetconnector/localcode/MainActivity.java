@@ -1027,8 +1027,15 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void onAppReady() {
             runOnUiThread(() -> {
+                stopDiscovery();
+                if (discoveryPanel != null) {
+                    discoveryPanel.setVisibility(View.GONE);
+                }
                 if (connectingOverlay != null) {
                     connectingOverlay.setVisibility(View.GONE);
+                }
+                if (webView != null) {
+                    webView.setVisibility(View.VISIBLE);
                 }
             });
         }
@@ -1208,6 +1215,16 @@ public final class MainActivity extends Activity {
                 return;
             } catch (Exception ignored) {}
         }
+        try {
+            Intent liveCameraIntent = new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+            if (liveCameraIntent.resolveActivity(getPackageManager()) != null) {
+                startActivity(liveCameraIntent);
+                setStatus(tr(
+                        "Kamera geöffnet: QR-Code auf dem PC scannen und Link antippen.",
+                        "Camera opened: scan the QR code on your PC and tap the link."));
+                return;
+            }
+        } catch (Exception ignored) {}
         try {
             Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             startActivity(cameraIntent);
@@ -1605,10 +1622,35 @@ public final class MainActivity extends Activity {
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
         String code = data.getQueryParameter("code");
         if (target != null && isAllowedRemoteUrl(target)) {
-            expectedFingerprint = fp;
-            if (code != null && !code.trim().isEmpty()) {
-                String separator = target.contains("#") ? "&" : "#";
-                openRemote(target + separator + "code=" + Uri.encode(code.trim()));
+            stopDiscovery();
+            if (validFingerprint(fp) || expectedFingerprint.isEmpty()) {
+                expectedFingerprint = fp;
+            }
+            String trimmedCode = code == null ? "" : code.trim();
+            if (!trimmedCode.isEmpty()) {
+                String cleanTarget = cleanRemoteBaseUrl(target);
+                boolean alreadyOnSameOrigin = webView != null
+                        && webView.getUrl() != null
+                        && !webView.getUrl().isEmpty()
+                        && sameRemoteOrigin(Uri.parse(cleanTarget));
+                if (alreadyOnSameOrigin) {
+                    currentRemoteUrl = cleanTarget;
+                    persistConnection(cleanTarget, expectedFingerprint);
+                    runOnUiThread(() -> {
+                        if (discoveryPanel != null) discoveryPanel.setVisibility(View.GONE);
+                        if (connectingOverlay != null) connectingOverlay.setVisibility(View.VISIBLE);
+                        if (webView != null) {
+                            webView.setVisibility(View.VISIBLE);
+                            webView.evaluateJavascript(
+                                    "window.LocalCodeRemote&&window.LocalCodeRemote.pairWithCode(" + JSONObject.quote(trimmedCode) + ")",
+                                    null);
+                        }
+                    });
+                } else {
+                    String encodedCode = Uri.encode(trimmedCode);
+                    String querySep = cleanTarget.contains("?") ? "&" : "?";
+                    openRemote(cleanTarget + querySep + "code=" + encodedCode + "&t=" + System.currentTimeMillis() + "#code=" + encodedCode);
+                }
             } else {
                 openRemote(target);
             }
