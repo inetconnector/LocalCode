@@ -252,3 +252,37 @@ func TestParseAgentActionSplitsCompoundRunToolString(t *testing.T) {
 		t.Fatalf("expected outer markdown fence stripped from non-md write_file, got %q", wAct.Content)
 	}
 }
+
+func TestRunNomaMicaPreflightAndModuleHintsCoverage(t *testing.T) {
+	project := t.TempDir()
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	state := NewAppState(cfg, NewOllamaClient())
+	state.Project = project
+
+	fakeRoot := t.TempDir()
+	nomaDir := filepath.Join(fakeRoot, "NOMA", "noma_runtime", "coding")
+	if err := os.MkdirAll(nomaDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nomaDir, "problem_framing.py"), []byte("# stub\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NOMAMICA_ROOT", fakeRoot)
+	if gotRoot := discoverNomaMicaRoot(project); gotRoot != fakeRoot {
+		t.Fatalf("discoverNomaMicaRoot = %q, want %q", gotRoot, fakeRoot)
+	}
+	plan := runNomaMicaPreflight(context.Background(), state, project, "Implement src/engine.js, src/renderer.js, src/game.js, index.html, tests/engine.test.js, README.md, style.css", cfg)
+	if !strings.Contains(plan, "NOMA × MICA × AGENTOS ARCHITEKTUR-") {
+		t.Fatalf("unexpected preflight plan: %q", plan)
+	}
+	for _, mod := range []string{"src/engine.js", "src/renderer.js", "src/game.js", "tests/engine.test.js", "index.html", "README.md", "style.css", "other.txt"} {
+		if describeModuleHint(mod) == "" {
+			t.Fatalf("empty module hint for %s", mod)
+		}
+	}
+	preview := extractLiveStreamPreview(`{"action":"write_file","content":"line1\n\t\"quoted\"\\slash"}`)
+	if !strings.Contains(preview, "line1\n\t\"quoted\"\\slash") {
+		t.Fatalf("unexpected preview: %q", preview)
+	}
+}
