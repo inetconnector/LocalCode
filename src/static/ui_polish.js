@@ -141,10 +141,21 @@
     .sidebar{background:#121519}
     .project-tree{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important}
     .section-title{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-right:8px}
-    .section-title-action{height:24px;flex:0 0 auto;border:1px solid rgba(255,255,255,0.08);border-radius:9999px;background:rgba(255,255,255,0.04);color:#c0c0c0;display:grid;place-items:center;font-size:12px;padding:0 6px;transition:all .15s}
-    .section-title-action.text{padding:0 8px;font-size:10.5px;font-weight:600;white-space:nowrap}
-    .section-title-action:hover{background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.18)}
+    .section-title-action{height:26px;width:26px;flex:0 0 auto;border:1px solid rgba(255,255,255,0.08);border-radius:7px;background:rgba(255,255,255,0.04);color:#c0c0c0;display:inline-flex;align-items:center;justify-content:center;font-size:12px;padding:0;cursor:pointer;transition:all .15s}
+    .section-title-action svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+    .section-title-action:hover{background:rgba(255,255,255,0.10);color:#fff;border-color:rgba(255,255,255,0.22)}
     .project-header-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
+    .project-row .chevron-hit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;flex:0 0 auto;margin-left:-3px}
+    .project-row .chevron-hit:hover{background:rgba(255,255,255,0.10);color:#fff}
+    .subdir-group{margin:1px 0}
+    .subdir-group > .subdir-children{display:none;padding-left:14px}
+    .subdir-group.open > .subdir-children{display:block}
+    .subdir-group.open > .project-row .chevron{transform:rotate(90deg)}
+    .message.user .meta{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .msg-undo-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);color:#94a3b8;cursor:pointer;padding:0;transition:all .15s;flex:0 0 auto}
+    .msg-undo-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+    .msg-undo-btn:hover:not(:disabled){background:rgba(56,189,248,0.14);border-color:rgba(56,189,248,0.45);color:#e0f2fe}
+    .msg-undo-btn:disabled{opacity:0.35;cursor:not-allowed}
     .project-row.active{background:rgba(255,255,255,0.09);box-shadow:inset 2px 0 0 var(--accent)}
     .context-menu{background:#1c2026;border-color:rgba(255,255,255,0.12);box-shadow:0 14px 44px rgba(0,0,0,.65);border-radius:9px}
     .context-menu-item:hover,.context-menu-item:focus,.context-menu-item.open{background:rgba(255,255,255,0.08);border-radius:5px}
@@ -255,13 +266,18 @@
     section.appendChild(label);
     const actions = document.createElement('span');
     actions.className = 'project-header-actions';
-    const addButton = (id, labelKey, handler, compact = false) => {
+    const icons = {
+      newProjectBtn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 12v6M9 15h6"/></svg>',
+      newFolderBtn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M12 11v6M9 14h6"/></svg>',
+      projectTrashBtn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/><path d="M10 11v6M14 11v6"/></svg>'
+    };
+    const addButton = (id, labelKey, handler) => {
       const button = document.createElement('button');
       button.id = id;
-      button.className = 'section-title-action' + (compact ? '' : ' text');
+      button.className = 'section-title-action';
       button.type = 'button';
       button.dataset.projectHeaderLabel = labelKey;
-      button.textContent = compact ? '♲' : `+ ${tr(labelKey)}`;
+      button.innerHTML = icons[id] || '+';
       button.title = tr(labelKey);
       button.setAttribute('aria-label', tr(labelKey));
       button.addEventListener('click', event => {
@@ -272,7 +288,7 @@
     };
     addButton('newProjectBtn', 'Neues Projekt', createLocalCodeProject);
     addButton('newFolderBtn', 'Neuer Ordner', createProjectFolder);
-    addButton('projectTrashBtn', 'Papierkorb', openProjectTrash, true);
+    addButton('projectTrashBtn', 'Papierkorb', openProjectTrash);
     section.appendChild(actions);
   }
 
@@ -574,8 +590,6 @@
     if (section) section.textContent = tr('Projekte');
     document.querySelectorAll('[data-project-header-label]').forEach(button => {
       const key = button.dataset.projectHeaderLabel;
-      const compact = button.id === 'projectTrashBtn';
-      button.textContent = compact ? '♲' : `+ ${tr(key)}`;
       button.title = tr(key);
       button.setAttribute('aria-label', tr(key));
     });

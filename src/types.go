@@ -245,17 +245,18 @@ type Status struct {
 }
 
 type UIEvent struct {
-	ID          string              `json:"id"`
-	ThreadID    string              `json:"thread_id,omitempty"`
-	Type        string              `json:"type"`
-	Message     string              `json:"message,omitempty"`
-	Detail      string              `json:"detail,omitempty"`
-	Action      string              `json:"action,omitempty"`
-	Path        string              `json:"path,omitempty"`
-	Command     string              `json:"command,omitempty"`
-	Preview     string              `json:"preview,omitempty"`
-	Attachments []AttachmentSummary `json:"attachments,omitempty"`
-	Timestamp   time.Time           `json:"timestamp"`
+	ID           string              `json:"id"`
+	ThreadID     string              `json:"thread_id,omitempty"`
+	Type         string              `json:"type"`
+	Message      string              `json:"message,omitempty"`
+	Detail       string              `json:"detail,omitempty"`
+	Action       string              `json:"action,omitempty"`
+	Path         string              `json:"path,omitempty"`
+	Command      string              `json:"command,omitempty"`
+	Preview      string              `json:"preview,omitempty"`
+	Attachments  []AttachmentSummary `json:"attachments,omitempty"`
+	CheckpointID string              `json:"checkpoint_id,omitempty"`
+	Timestamp    time.Time           `json:"timestamp"`
 }
 
 type PendingAction struct {

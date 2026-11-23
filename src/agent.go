@@ -370,7 +370,11 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 		isContinuation = false
 		continuation = nil
 	}
+	titleBeforeTurn := "Neuer Chat"
 	if t := s.Threads[s.CurrentThread]; t != nil {
+		if strings.TrimSpace(t.Title) != "" {
+			titleBeforeTurn = t.Title
+		}
 		if !isContinuation && (t.Title == "" || t.Title == "Neuer Chat") {
 			t.Title = threadTitle(userMessage)
 			for otherID, other := range s.Threads {
@@ -434,7 +438,15 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	} else {
 		s.UpdateProjectState("Agentenaufgabe gestartet")
 	}
-	s.AddEvent(UIEvent{Type: "user", Message: userMessage, Attachments: attachmentSummaries(attachments)})
+	checkpointID := ""
+	if cp, cpErr := s.CreateTurnCheckpoint(threadID, project, userMessage); cpErr == nil && cp != nil {
+		if titleBeforeTurn != "" && cp.ThreadTitleBefore != titleBeforeTurn {
+			cp.ThreadTitleBefore = titleBeforeTurn
+			_ = saveTurnCheckpointManifest(cp)
+		}
+		checkpointID = cp.ID
+	}
+	s.AddEvent(UIEvent{Type: "user", Message: userMessage, Attachments: attachmentSummaries(attachments), CheckpointID: checkpointID})
 	if isDirectMemory {
 		result, memoryErr := s.executeDirectMemoryRequest(project, directMemory)
 		if memoryErr != nil {
