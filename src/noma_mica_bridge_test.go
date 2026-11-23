@@ -330,3 +330,352 @@ func TestRunNomaMicaPreflightAndModuleHintsCoverage(t *testing.T) {
 		t.Fatalf("expected completion gate plan, got %q / %q", gateBadge, gateDir)
 	}
 }
+
+func TestBuildWorkspaceContractManifestCoversHTMLJSGoPyRust(t *testing.T) {
+	project := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(project, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("index.html", `<!doctype html><html><body><canvas id="stage" width="640" height="480"></canvas><button id="startBtn">Start</button><script src="src/core.js"></script><script type="module" src="src/mod.mjs"></script></body></html>`)
+	write("src/core.js", "class Engine {}\nfunction createState(seed) { return { seed }; }\nwindow.CoreAPI = { Engine, createState };\nexports.helper = () => 1;\nif (typeof module !== 'undefined' && module.exports) { module.exports = { Engine, createState }; }\n")
+	write("src/mod.mjs", "export function boot() { return true; }\n")
+	write("tools/calc.py", "class Solver:\n    pass\ndef run_calc(x):\n    return x\n")
+	write("pkg/service.go", "package pkg\ntype Runner struct{}\nfunc RunAll() {}\n")
+	write("crates/lib.rs", "pub struct Engine {}\npub fn tick() {}\n")
+	write("node_modules/ignored/index.js", "window.ShouldNotAppear = 1;\n")
+
+	manifest := buildWorkspaceContractManifest(project)
+	for _, want := range []string{
+		"NOMA LIVE WORKSPACE-MANIFEST",
+		"index.html: scripts=[src/core.js, src/mod.mjs[module]] ids=[canvas#stage, button#startBtn]",
+		"src/core.js:",
+		"globals=[CoreAPI]",
+		"exports=[Engine, createState, helper]",
+		"class Engine",
+		"createState(seed)",
+		"src/mod.mjs: exports=[boot]",
+		"tools/calc.py: defs=[Solver, run_calc]",
+		"pkg/service.go: exported=[Runner, RunAll]",
+		"crates/lib.rs: pub=[Engine, tick]",
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("manifest missing %q:\n%s", want, manifest)
+		}
+	}
+	if strings.Contains(manifest, "ShouldNotAppear") {
+		t.Fatalf("manifest should ignore node_modules:\n%s", manifest)
+	}
+	if buildWorkspaceContractManifest(t.TempDir()) != "" {
+		t.Fatal("expected empty manifest for empty directory")
+	}
+}
+
+func TestDetectMicaRule7StubExtendedPatterns(t *testing.T) {
+	cases := []struct {
+		path    string
+		code    string
+		wantHit bool
+	}{
+		{"src/app.js", "function update(dt) {\n  // comment only\n}\n", true},
+		{"src/app.js", "function noop() {}\nfunction step(x) { return x + 1; }\n", false},
+		{"tests/app.test.js", "function dummyMock() {}\n", false},
+		{"src/app.js", "function f() { throw new Error('Not implemented yet'); }\n", true},
+		{"src/app.py", "def f():\n    raise NotImplementedError\n", true},
+		{"src/lib.rs", "pub fn f() { todo!() }\n", true},
+		{"src/app.js", "function f() {\n  // ... rest of logic\n  return 1;\n}\n", true},
+		{"src/app.js", "function f(x) { return x * 2; }\n", false},
+		{"README.md", "// TODO: docs\n", false},
+	}
+	for _, tc := range cases {
+		got := detectMicaRule7Stub(tc.path, tc.code)
+		if tc.wantHit && got == "" {
+			t.Fatalf("expected stub detection for %s:\n%s", tc.path, tc.code)
+		}
+		if !tc.wantHit && got != "" {
+			t.Fatalf("unexpected stub detection %q for %s:\n%s", got, tc.path, tc.code)
+		}
+	}
+}
+
+func TestVerifyWebAppIntegrityCatchesCommonWhiteScreenBugs(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.NetworkEnabled = false
+
+	// 1. Clean working browser app with dual-export + canvas draw calls passes static + Node vm smoke test.
+	goodDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(goodDir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(goodDir, "style.css"), []byte("body { background: #111; }\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(goodDir, "index.html"), []byte(`<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><canvas id="stage" width="320" height="240"></canvas><div id="hud">0</div><script src="src/core.js"></script><script src="src/app.js"></script></body></html>`), 0o600)
+	_ = os.WriteFile(filepath.Join(goodDir, "src", "core.js"), []byte(`(function(root){
+function createState() { return { score: 10 }; }
+root.AppCore = { createState };
+if (typeof module !== 'undefined' && module.exports) { module.exports = { createState }; }
+})(typeof window !== 'undefined' ? window : globalThis);
+`), 0o600)
+	_ = os.WriteFile(filepath.Join(goodDir, "src", "app.js"), []byte(`document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('stage') || document.getElementById('fallback');
+  const hud = document.querySelector('#hud');
+  const dyn = document.createElement('div');
+  dyn.id = 'dynNote';
+  document.body.appendChild(dyn);
+  const foundDyn = document.getElementById('dynNote');
+  const ctx = canvas.getContext('2d');
+  const st = window.AppCore.createState();
+  hud.textContent = String(st.score) + (foundDyn ? '' : '!');
+  function frame() {
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+});
+`), 0o600)
+	if issues := verifyWebAppIntegrity(context.Background(), goodDir, cfg, true); len(issues) > 0 {
+		t.Fatalf("expected clean web app to pass integrity + smoke check, got: %v", issues)
+	}
+
+	// 2. Static violations: external CDN, missing css/js, unguarded require(), bare export, missing DOM ID.
+	badDir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(badDir, "src"), 0o755)
+	_ = os.WriteFile(filepath.Join(badDir, "index.html"), []byte(`<!doctype html><html><head>
+<link rel="stylesheet" href="https://cdn.example.com/a.css">
+<link rel="stylesheet" href="missing.css">
+</head><body>
+<canvas id="stage"></canvas>
+<script src="https://cdn.example.com/lib.js"></script>
+<script src="src/missing.js"></script>
+<script src="src/bad_req.js"></script>
+<script src="src/bad_esm.js"></script>
+</body></html>`), 0o600)
+	_ = os.WriteFile(filepath.Join(badDir, "src", "bad_req.js"), []byte("const core = require('./core');\nconst el = document.getElementById('nonExistentId');\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(badDir, "src", "bad_esm.js"), []byte("export function boot() { return 1; }\n"), 0o600)
+	badIssues := strings.Join(verifyWebAppIntegrity(context.Background(), badDir, cfg, false), "\n")
+	for _, needle := range []string{
+		"externes Stylesheet",
+		"fehlendes lokales Stylesheet",
+		"externes Skript",
+		"fehlendes lokales Skript",
+		"ReferenceError: require is not defined",
+		"ES-Modul-Syntax",
+		"nonExistentId",
+	} {
+		if !strings.Contains(badIssues, needle) {
+			t.Fatalf("expected issue containing %q, got:\n%s", needle, badIssues)
+		}
+	}
+
+	// 3. Runtime ReferenceError during browser boot smoke test.
+	crashDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(crashDir, "index.html"), []byte(`<!doctype html><html><body><canvas id="stage"></canvas><script src="boot.js"></script></body></html>`), 0o600)
+	_ = os.WriteFile(filepath.Join(crashDir, "boot.js"), []byte("window.addEventListener('load', () => { undefinedSymbol(); });\n"), 0o600)
+	crashIssues := strings.Join(verifyWebAppIntegrity(context.Background(), crashDir, cfg, true), "\n")
+	if !strings.Contains(crashIssues, "ReferenceError") {
+		t.Fatalf("expected runtime ReferenceError from smoke test, got:\n%s", crashIssues)
+	}
+
+	// 4. Blank canvas (0 draw calls) detected by smoke test.
+	blankDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(blankDir, "index.html"), []byte(`<!doctype html><html><body><canvas id="stage"></canvas><script>const c = document.getElementById('stage'); c.getContext('2d');</script></body></html>`), 0o600)
+	blankIssues := strings.Join(verifyWebAppIntegrity(context.Background(), blankDir, cfg, true), "\n")
+	if !strings.Contains(blankIssues, "0 Zeichenaufrufe") {
+		t.Fatalf("expected blank canvas warning from smoke test, got:\n%s", blankIssues)
+	}
+
+	// 5. Bundler project skips classic script require/ESM checks.
+	viteDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(viteDir, "package.json"), []byte(`{"devDependencies":{"vite":"^5.0.0"}}`), 0o600)
+	_ = os.WriteFile(filepath.Join(viteDir, "index.html"), []byte(`<!doctype html><html><body><div id="app"></div><script src="main.js"></script></body></html>`), 0o600)
+	_ = os.WriteFile(filepath.Join(viteDir, "main.js"), []byte("import './x';\nexport const ok = true;\n"), 0o600)
+	if viteIssues := verifyWebAppIntegrity(context.Background(), viteDir, cfg, true); len(viteIssues) > 0 {
+		t.Fatalf("expected bundler project to skip classic script errors, got: %v", viteIssues)
+	}
+}
+
+func TestNomaNextStepPlanDynamicPromptWithoutExplicitFilesAndStubFocus(t *testing.T) {
+	project := t.TempDir()
+	task := "Erstelle eine spielbare Web-Anwendung mit HTML5 Canvas und Tests."
+
+	// 1. Empty workspace without explicit file paths emits dynamic architecture directive.
+	badge, title, _, dir := nomaNextStepPlan(project, task, map[string]bool{}, false, false, 1, 60)
+	if !strings.Contains(badge, "Architektur") || title == "" || !strings.Contains(dir, "DYNAMISCHE ARCHITEKTUR-STEUERUNG") {
+		t.Fatalf("unexpected dynamic architecture directive: badge=%q title=%q dir=%q", badge, title, dir)
+	}
+
+	// 2. Non-edit intent without target files returns empty directive.
+	_, _, _, readDir := nomaNextStepPlan(project, "Analysiere dieses Repository", map[string]bool{}, false, false, 1, 60)
+	if readDir != "" {
+		t.Fatalf("expected empty directive for read-only intent, got %q", readDir)
+	}
+
+	// 3. Pending stub file takes top priority.
+	_ = os.MkdirAll(filepath.Join(project, "src"), 0o755)
+	_ = os.WriteFile(filepath.Join(project, "src", "core.js"), []byte("function step() {}\nwindow.Core = { step };\n"), 0o600)
+	stubBadge, _, _, stubDir := nomaNextStepPlan(project, task, map[string]bool{"src/core.js": true}, true, false, 2, 60)
+	if !strings.Contains(stubBadge, "Rule-7") || !strings.Contains(stubDir, "RULE-7 VERVOLLSTÄNDIGUNGS-STEUERUNG") || !strings.Contains(stubDir, "NOMA LIVE WORKSPACE-MANIFEST") {
+		t.Fatalf("expected stub focus directive with manifest, got badge=%q dir=%q", stubBadge, stubDir)
+	}
+
+	// 4. After fixing stub, failed verification enters repair mode with live manifest.
+	_ = os.WriteFile(filepath.Join(project, "src", "core.js"), []byte("function step(v) { return v + 1; }\nwindow.Core = { step };\n"), 0o600)
+	_ = os.MkdirAll(filepath.Join(project, "tests"), 0o755)
+	_ = os.WriteFile(filepath.Join(project, "tests", "core.test.js"), []byte("const test = require('node:test');\n"), 0o600)
+	repBadge, _, _, repDir := nomaNextStepPlan(project, task, map[string]bool{"src/core.js": true}, true, true, 3, 60)
+	if !strings.Contains(repBadge, "Reparatur") || !strings.Contains(repDir, "globals=[Core]") {
+		t.Fatalf("expected repair mode with manifest, got badge=%q dir=%q", repBadge, repDir)
+	}
+
+	// 5. Changed since verification mentions discovered test file + manifest.
+	progBadge, _, _, progDir := nomaNextStepPlan(project, task, map[string]bool{"src/core.js": true}, true, false, 4, 60)
+	if !strings.Contains(progBadge, "Umsetzung") || !strings.Contains(progDir, "tests/core.test.js") || !strings.Contains(progDir, "globals=[Core]") {
+		t.Fatalf("expected progress/verification directive with test file, got badge=%q dir=%q", progBadge, progDir)
+	}
+
+	// 6. Verified state still provides manifest.
+	_, _, _, okDir := nomaNextStepPlan(project, task, map[string]bool{"src/core.js": true}, false, false, 5, 60)
+	if !strings.Contains(okDir, "NOMA LIVE WORKSPACE-MANIFEST") {
+		t.Fatalf("expected status directive with manifest, got %q", okDir)
+	}
+}
+
+func TestNomaArchitectureBlueprintAndNodeTestDOMGuard(t *testing.T) {
+	project := t.TempDir()
+	longTask := "Erzeuge eine vollständige modulare Web-Anwendung mit HTML5 Canvas, Physik-Engine, Soundeffekten, Punkte-/Levelsystem und Offline-Unit-Tests."
+	if !shouldDeriveNomaArchitectureBlueprint(project, longTask, classifyTaskIntent(longTask)) {
+		t.Fatal("expected blueprint derivation for empty workspace with long plain edit prompt")
+	}
+	if shouldDeriveNomaArchitectureBlueprint(project, "Kurze Aufgabe", classifyTaskIntent("Kurze Aufgabe")) {
+		t.Fatal("short prompt should not trigger blueprint derivation")
+	}
+	if shouldDeriveNomaArchitectureBlueprint(project, "Create src/engine.js and index.html with full tests and rendering logic.", classifyTaskIntent("Create src/engine.js")) {
+		t.Fatal("prompt with explicit filenames should not trigger blueprint derivation")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := `{"message":{"role":"assistant","content":"{\"summary\":\"Modular web app\",\"modules\":[{\"path\":\"tests/engine.test.js\",\"role\":\"Unit tests\",\"features\":[\"Verify state\"],\"exports\":[]},{\"path\":\"index.html\",\"role\":\"Entry HTML\",\"features\":[\"Canvas & HUD\"],\"exports\":[]},{\"path\":\"src/renderer.js\",\"role\":\"Canvas renderer\",\"features\":[\"Draw entities\"],\"exports\":[\"render\"]},{\"path\":\"src/engine.js\",\"role\":\"DOM-free core\",\"features\":[\"State machine\",\"Scoring\"],\"exports\":[\"createState\",\"step\"]},{\"path\":\"../escape.js\",\"role\":\"Bad\",\"features\":[\"Nope\"]}]}"}}`
+		fmt.Fprintln(w, resp)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient()
+	client.BaseURL = server.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	state := NewAppState(cfg, client)
+	state.Project = project
+
+	plan := state.nomaPlanProjectArchitecture(context.Background(), "qwen2.5-coder:14b", project, longTask, cfg)
+	if plan == nil || len(plan.Modules) != 4 {
+		t.Fatalf("expected 4 sanitized modules (escape.js filtered), got %#v", plan)
+	}
+	if plan.Modules[0].Path != "src/engine.js" || plan.Modules[1].Path != "src/renderer.js" || plan.Modules[2].Path != "index.html" || plan.Modules[3].Path != "tests/engine.test.js" {
+		t.Fatalf("unexpected blueprint module order: %#v", plan.Modules)
+	}
+	badge, title, _, dir := nomaNextStepPlanWithBlueprint(project, longTask, plan, map[string]bool{}, false, false, 1, 60)
+	if !strings.Contains(badge, "Modul 1/4") || !strings.Contains(title, "src/engine.js") || !strings.Contains(dir, "PFLICHT-FEATURES") || !strings.Contains(dir, "State machine") || !strings.Contains(dir, "createState, step") {
+		t.Fatalf("unexpected blueprint directive: badge=%q title=%q dir=%q", badge, title, dir)
+	}
+
+	// Node test DOM guard catches unmocked document usage in tests, allows mocked or pure tests.
+	if msg := detectNodeTestDOMViolation("tests/app.test.js", "const c = document.createElement('canvas');\n"); !strings.Contains(msg, "ReferenceError: document is not defined") {
+		t.Fatalf("expected Node test DOM violation, got %q", msg)
+	}
+	if msg := detectNodeTestDOMViolation("tests/app.test.js", "global.document = {}; const c = document.createElement('canvas');\n"); msg != "" {
+		t.Fatalf("expected mocked global.document to be allowed, got %q", msg)
+	}
+	if msg := detectNodeTestDOMViolation("src/app.js", "const c = document.createElement('canvas');\n"); msg != "" {
+		t.Fatalf("browser source file should not trigger Node test DOM violation, got %q", msg)
+	}
+	badTest := filepath.Join(project, "tests", "bad.test.js")
+	_ = os.MkdirAll(filepath.Dir(badTest), 0o755)
+	_ = os.WriteFile(badTest, []byte("const c = document.createElement('canvas');\n"), 0o600)
+	note := runMicaPostActionVerify(context.Background(), state, project, AgentAction{Action: "write_file", Path: "tests/bad.test.js"}, cfg, 0)
+	if !strings.Contains(note, "document is not defined") {
+		t.Fatalf("expected NODE_TEST_DOM_VIOLATION in post-action verify, got %q", note)
+	}
+	if isPathCompletedInRun(project, "tests/bad.test.js", map[string]bool{"tests/bad.test.js": true}) {
+		t.Fatal("test file with Node DOM violation must not count as completed")
+	}
+
+	// Empty class methods & comment-only control blocks must be flagged by Rule 7.
+	if hit := detectMicaRule7Stub("src/core.js", "class S {\n  initialize() {\n    // Setup initial state\n  }\n}\n"); !strings.Contains(hit, "leere Klassenmethode") {
+		t.Fatalf("expected empty class method violation, got %q", hit)
+	}
+	if hit := detectMicaRule7Stub("src/core.js", "class S {\n  update() {\n    if (true) {\n      // Handle collision\n    }\n  }\n}\n"); !strings.Contains(hit, "Kommentar-Block") {
+		t.Fatalf("expected comment-only block violation, got %q", hit)
+	}
+
+	// Fake test runner that catches errors and exits 0 must be caught.
+	fakeTest := "function test(name, fn) { try { fn(); } catch (err) { console.error('FAIL: ' + err.message); } }\n"
+	if msg := detectFakeNodeTestRunner("tests/fake.test.js", fakeTest); !strings.Contains(msg, "node:test") {
+		t.Fatalf("expected fake test runner violation, got %q", msg)
+	}
+	if msg := detectFakeNodeTestRunner("tests/real.test.js", "const test = require('node:test');\nconst assert = require('node:assert/strict');\n"); msg != "" {
+		t.Fatalf("real node:test file should not trigger fake runner violation, got %q", msg)
+	}
+
+	// Classic .js file with bare ES export without bundler or type:module must be flagged immediately.
+	if msg := detectClassicScriptESMSyntax(project, "src/audio.js", "export const audio = {};\n"); !strings.Contains(msg, "ES-Modul-Syntax") {
+		t.Fatalf("expected classic script ESM violation, got %q", msg)
+	}
+	// Missing local media asset (.mp3) referenced by browser script must be caught by verifyWebAppIntegrity.
+	mediaDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(mediaDir, "index.html"), []byte(`<!doctype html><html><body><canvas id="c"></canvas><script src="app.js"></script></body></html>`), 0o600)
+	_ = os.WriteFile(filepath.Join(mediaDir, "app.js"), []byte(`const url = 'sounds/jump.mp3'; document.getElementById('c').getContext('2d').fillRect(0,0,1,1);`), 0o600)
+	mediaIssues := strings.Join(verifyWebAppIntegrity(context.Background(), mediaDir, cfg, false), "\n")
+	if !strings.Contains(mediaIssues, "sounds/jump.mp3") {
+		t.Fatalf("expected missing local media asset warning, got %q", mediaIssues)
+	}
+
+	// Class methods & constructor fields must appear in Live Workspace Manifest.
+	clsDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(clsDir, "engine.js"), []byte("class Engine {\n  constructor() {\n    this.score = 0;\n    this.lives = 3;\n  }\n  step(dt) {\n    this.score += dt;\n  }\n}\nwindow.Engine = Engine;\n"), 0o600)
+	clsManifest := buildWorkspaceContractManifest(clsDir)
+	for _, want := range []string{"methods=[.step(dt)]", "fields=[score, lives]"} {
+		if !strings.Contains(clsManifest, want) {
+			t.Fatalf("manifest missing %q:\n%s", want, clsManifest)
+		}
+	}
+
+	// Bracketed placeholder description in write_file must be rejected for non-JSON files.
+	if err := validateAgentAction(AgentAction{Action: "write_file", Path: "src/engine.js", Content: "[complete and valid JavaScript code for src/engine.js]"}); err == nil {
+		t.Fatal("expected bracketed placeholder write_file content to be rejected")
+	}
+	if err := validateAgentAction(AgentAction{Action: "write_file", Path: "data.json", Content: "[1, 2, 3]"}); err != nil {
+		t.Fatalf("valid JSON array file should not be rejected: %v", err)
+	}
+
+	// Stub context excerpt must include line numbers around detected stub lines.
+	exDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(exDir, "a.js"), []byte("line1();\nline2();\n// Placeholder\nline4();\n"), 0o600)
+	exHit := detectMicaRule7Stub("a.js", "line1();\nline2();\n// Placeholder\nline4();\n")
+	excerpt := extractStubContextExcerpt(exDir, "a.js", exHit)
+	if !strings.Contains(excerpt, "3: // Placeholder") || !strings.Contains(excerpt, "2: line2();") {
+		t.Fatalf("unexpected stub context excerpt: %q", excerpt)
+	}
+
+	// Unguarded window assignment in dual-export module must be caught; guarded must pass.
+	if msg := detectUnguardedWindowInDualModule("src/engine.js", "module.exports = { a: 1 };\nwindow.App = { a: 1 };\n"); !strings.Contains(msg, "ReferenceError: window is not defined") {
+		t.Fatalf("expected unguarded window violation, got %q", msg)
+	}
+	if msg := detectUnguardedWindowInDualModule("src/engine.js", "module.exports = { a: 1 };\nif (typeof window !== 'undefined') {\n  window.App = { a: 1 };\n}\n"); msg != "" {
+		t.Fatalf("guarded window assignment should pass, got %q", msg)
+	}
+
+	// Jest API hallucinations in node:test files must be caught.
+	if msg := detectJestAPIInNodeTest(project, "tests/engine.test.js", "const fn = jest.fn();\n"); !strings.Contains(msg, "Jest-API") {
+		t.Fatalf("expected Jest API violation, got %q", msg)
+	}
+	if msg := detectJestAPIInNodeTest(project, "tests/engine.test.js", "const test = require('node:test');\nconst assert = require('node:assert/strict');\n"); msg != "" {
+		t.Fatalf("clean node:test file should pass, got %q", msg)
+	}
+}

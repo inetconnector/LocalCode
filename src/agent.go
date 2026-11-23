@@ -716,6 +716,15 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		instructions += "\n\n" + recoveryContext
 		s.AddEvent(UIEvent{Type: "recovery", Message: localizeConfigText(cfg, "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", "Interrupted task is resuming from the last confirmed state"), Detail: localizeConfigText(cfg, "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft.", "Current files and Git state are re-checked before any mutating action.")})
 	}
+	promptCfg := cfg
+	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
+		promptCfg.OllamaURL = s.Ollama.BaseURL
+	}
+	compactLocal := effectiveCompactionContextLength(promptCfg) <= 8192
+	if compactLocal {
+		instructions = truncateText(instructions, 2200)
+		tree = truncateText(tree, 1200)
+	}
 	if nomaPlan := runNomaMicaSuitePreflight(ctx, s, project, effectiveTask, cfg); nomaPlan != "" {
 		instructions += nomaPlan
 	}
@@ -724,12 +733,8 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if engine == editingEngineNative {
 		engineHint = "ENGINE-HINWEIS: LocalCode nativ ist aktiv. Verwende nicht engine_edit; schreibe Änderungen mit read_file/search_text/replace_text/write_file und gib bei write_file immer vollständigen nicht-leeren content an."
 	}
-	promptCfg := cfg
-	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
-		promptCfg.OllamaURL = s.Ollama.BaseURL
-	}
 	capabilityContext := fmt.Sprintf("KONFIGURATION:\nApproval=%s; Sandbox=%s; Network=%t; Web=%s; Git=%t; Umgebung=%s; Tempo=%s; EditingEngine=%s\n%s", cfg.ApprovalMode, cfg.SandboxMode, cfg.NetworkEnabled, cfg.WebSearchProvider, cfg.GitEnabled, cfg.AgentEnvironment, cfg.ResponseSpeed, codingEngineDisplayName(engine), engineHint)
-	if effectiveCompactionContextLength(promptCfg) > 8192 {
+	if !compactLocal {
 		capabilityContext += fmt.Sprintf("\nMCP-SERVER:\n%s\nERINNERUNGEN:\n%s\nPROJEKT-COMMANDS:\n%s\nWERKZEUGERKENNUNG:\n%s", mcpServersSummaryForAgent(ctx, project, cfg), memoryContextForAgent(cfg, project), projectCommandsContext(project), toolInventorySummary(project, cfg))
 	}
 	personalization := strings.TrimSpace(cfg.UserInstructions)
@@ -740,7 +745,12 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	systemPrompt := systemPromptForConfig(promptCfg) + "\n\nNUTZERPRÄFERENZEN:\n- Antworte in " + language + ".\n- Arbeitsmodus: " + cfg.ResponseSpeed + ".\n- Zusätzliche Anweisungen:\n" + personalization
 	automationHint := taskAutomationHint(effectiveTask)
 	qualityHint := taskQualityHint(effectiveTask)
-	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitContextForTask(project, cfg, effectiveTask), recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
+	gitCtx := gitContextForTask(project, cfg, effectiveTask)
+	if compactLocal {
+		gitCtx = truncateText(gitCtx, 700)
+		recentContext = truncateText(recentContext, 900)
+	}
+	messages := []OllamaMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: fmt.Sprintf("PROJEKT: %s\n\n%s\n\nPROJEKTDOKUMENTE:\n%s\n\nPROJEKTSTRUKTUR:\n%s\n\nGIT-KONTEXT:\n%s%s\n\nAUFGABE:\n%s%s\n\n%s%s", filepath.Base(project), capabilityContext, instructions, tree, gitCtx, recentContext, effectiveTask, attachmentContext, qualityHint, automationHint)}}
 	s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Arbeite...", "Working..."), Detail: model})
 
 	if hook := strings.TrimSpace(cfg.HookBeforeTask); hook != "" {
@@ -910,6 +920,8 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	changedSinceVerification := false
 	lastVerificationFailed := false
 	lastCompletionGuardBlocked := false
+	var lastGuardIssues []string
+	lastMicaError := ""
 	compactionCount := 0
 	lastSignature := ""
 	repeatBlocks := 0
@@ -937,6 +949,17 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		return len(items) > 0
 	}
+	var nomaBlueprint *nomaArchitecturePlan
+	if discoverNomaMicaRoot(project) != "" && shouldDeriveNomaArchitectureBlueprint(project, originalTask, intent) {
+		s.setRunPhase(runID, "model")
+		s.AddEvent(UIEvent{
+			Type:    "progress",
+			Action:  "thinking",
+			Message: localizeConfigText(cfg, "NOMA · Leite modularen Architektur-Blueprint aus der Nutzeraufgabe ab...", "NOMA · Deriving modular architecture blueprint from task..."),
+			Detail:  localizeConfigText(cfg, "NOMA × MICA × AgentOS · Architekturplanung", "NOMA × MICA × AgentOS · Architecture planning"),
+		})
+		nomaBlueprint = s.nomaPlanProjectArchitecture(ctx, model, project, originalTask, cfg)
+	}
 	for step := 1; step <= maxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
@@ -948,7 +971,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			compactionCount++
 		}
 		s.setRunPhase(runID, "model")
-		nomaBadge, nomaTitle, nomaDetail, nomaDirective := nomaNextStepPlan(project, originalTask, changedPaths, changedSinceVerification, lastVerificationFailed || lastCompletionGuardBlocked, step, maxSteps)
+		nomaBadge, nomaTitle, nomaDetail, nomaDirective := nomaNextStepPlanWithBlueprint(project, originalTask, nomaBlueprint, changedPaths, changedSinceVerification, lastVerificationFailed || lastCompletionGuardBlocked, step, maxSteps)
+		if lastCompletionGuardBlocked && len(lastGuardIssues) > 0 {
+			nomaDirective += "\n[OFFENE ABSCHLUSS-MÄNGEL — BEHEBE DIESE KONKRETEN PUNKTE JETZT MIT write_file, RUFE NICHT ERNEUT finish AUF!]:\n- " + strings.Join(lastGuardIssues, "\n- ") + "\n"
+		}
 		stepInfo := localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps), fmt.Sprintf("NOMA × MICA × AgentOS · Step %d/%d", step, maxSteps))
 		thinkingMsg := localizeConfigText(cfg, "Analysiere Aufgabe & plane nächsten Schritt...", "Analyzing task & planning next step...")
 		if step == 1 {
@@ -1085,7 +1111,18 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if signature == lastSignature && action.Action != "finish" {
 			repeatBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})
-			messages = append(messages, OllamaMessage{Role: "user", Content: agentImmediateRepeatHint(cfg, repeatBlocks)})
+			hint := agentImmediateRepeatHint(cfg, repeatBlocks)
+			if action.Action == "write_file" && lastMicaError != "" {
+				hint += "\nLETZTER MICA-FEHLER (muss im neuen Inhalt BEHOBEN sein — NICHT denselben fehlerhaften Code wiederholen!):\n" + lastMicaError
+			}
+			if repeatBlocks >= 3 && action.Action == "write_file" && strings.TrimSpace(action.Path) != "" {
+				// Break deterministic sampling deadlock by reading the current disk file into context.
+				if cur, readErr := readProjectFile(project, action.Path); readErr == nil && strings.TrimSpace(cur) != "" {
+					hint += "\nAKTUELLER STAND VON `" + action.Path + "` (korrigiere nur den Fehler und liefere veränderten, syntaktisch gültigen Code):\n" + truncateText(cur, 2800)
+				}
+				lastSignature = ""
+			}
+			messages = append(messages, OllamaMessage{Role: "user", Content: hint})
 			continue
 		}
 		if reason := loopGuard.ShouldBlock(action); reason != agentLoopBlockNone {
@@ -1118,9 +1155,23 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		if action.Action == "finish" {
 			issues := completionGuardIssues(project, intent, originalTask, changedPaths, changedSinceVerification)
+			if intent.Kind == "edit" && len(changedPaths) > 0 {
+				if nomaBlueprint != nil {
+					for _, mod := range nomaBlueprint.Modules {
+						if !isPathCompletedInRun(project, mod.Path, changedPaths) {
+							issues = append(issues, fmt.Sprintf("Geplantes Architektur-Modul `%s` fehlt noch oder ist unvollständig (%s).", mod.Path, mod.Role))
+						}
+					}
+				}
+				if stubPath, stubHit := detectPendingStubFile(project, changedPaths); stubPath != "" {
+					issues = append(issues, fmt.Sprintf("Rule-7 Zero-Stub Verstoß in `%s`: %s.", stubPath, stubHit))
+				}
+				issues = append(issues, verifyWebAppIntegrity(ctx, project, cfg, true)...)
+			}
 			if len(issues) > 0 {
 				supervisorBlocks++
 				lastCompletionGuardBlocked = true
+				lastGuardIssues = append([]string(nil), issues...)
 				detail := "- " + strings.Join(issues, "\n- ")
 				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Abschlussprüfung blockiert", "Completion guard blocked finish"), Detail: detail})
 				signature := strings.Join(issues, "\n")
@@ -1204,9 +1255,15 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			changedSinceVerification = true
 			lastVerificationFailed = false
 			lastCompletionGuardBlocked = false
+			lastGuardIssues = nil
 			if discoverNomaMicaRoot(project) != "" {
 				micaPostNote = runMicaPostActionVerify(ctx, s, project, action, cfg, prevFileSize)
-				if prevFullPath != "" && len(prevFileBytes) >= 400 && (strings.Contains(micaPostNote, "SYNTAX_ERROR") || strings.Contains(micaPostNote, "MICA SYNTAX-GATE FEHLER") || strings.Contains(micaPostNote, "DESTRUCTIVE_SHRINK_WARNING")) {
+				if strings.Contains(micaPostNote, "SYNTAX_ERROR") || strings.Contains(micaPostNote, "RULE7_ZERO_STUB_VIOLATION") || strings.Contains(micaPostNote, "VIOLATION") {
+					lastMicaError = truncateText(strings.TrimSpace(micaPostNote), 900)
+				} else {
+					lastMicaError = ""
+				}
+				if prevFullPath != "" && len(prevFileBytes) >= 400 && (strings.Contains(micaPostNote, "SYNTAX_ERROR") || strings.Contains(micaPostNote, "DESTRUCTIVE_SHRINK_WARNING")) {
 					if restoreErr := os.WriteFile(prevFullPath, prevFileBytes, 0o600); restoreErr == nil {
 						micaPostNote += fmt.Sprintf("\n[MICA ATOMIC ROLLBACK]: Die vorherige gültige Dateiversion (%d Bytes) wurde automatisch auf der Festplatte wiederhergestellt, damit keine bestehende Implementierung zerstört wird.", len(prevFileBytes))
 					}
@@ -1237,7 +1294,9 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			if action.Action == "replace_text" && strings.Contains(result, "old_text") {
 				toolMessage += "\nDIAGNOSE-HINWEIS: `replace_text` konnte `old_text` nicht eindeutig finden. Schreibe die korrigierte Datei jetzt direkt vollständig mit `\"action\": \"write_file\"`."
 			}
-			if action.Action == "run_tool" && (strings.Contains(result, "AssertionError") || strings.Contains(result, "TypeError") || strings.Contains(result, "ReferenceError") || strings.Contains(result, "FAIL")) {
+			if action.Action == "run_tool" && (strings.Contains(result, "ReferenceError: document is not defined") || strings.Contains(result, "ReferenceError: window is not defined")) {
+				toolMessage += "\nDIAGNOSE-HINWEIS: Node.js hat kein Browser-DOM (`document`/`window`)! Schreibe KEINEN Test, der `document.createElement` oder `document.getElementById` in Node.js aufruft. Importiere stattdessen das DOM-freie Kernmodul direkt per `require(...)` und teste dessen reine Funktionen/Zustände mit `node:test` und `node:assert/strict`."
+			} else if action.Action == "run_tool" && (strings.Contains(result, "AssertionError") || strings.Contains(result, "TypeError") || strings.Contains(result, "ReferenceError") || strings.Contains(result, "FAIL")) {
 				toolMessage += "\nDIAGNOSE-HINWEIS: Lies bei Test- oder Signaturfehlern zuerst die betroffene Quell- und Testdatei mit `read_file` und behebe den konkreten Fehler gezielt per `write_file`, statt die Implementierung durch einen Minimal-Stub zu ersetzen."
 			}
 			if failedActions[actionSignature(action)] >= 2 {
@@ -1794,6 +1853,10 @@ func validateAgentAction(a AgentAction) error {
 		if strings.Contains(a.Content, "[omitted from model history:") {
 			return errors.New("write_file content must contain complete real file code, never the '[omitted from model history:...]' history placeholder")
 		}
+		trimmedContent := strings.TrimSpace(a.Content)
+		if len(trimmedContent) < 180 && strings.HasPrefix(trimmedContent, "[") && strings.HasSuffix(trimmedContent, "]") && !strings.EqualFold(filepath.Ext(a.Path), ".json") {
+			return errors.New("write_file content appears to be a bracketed placeholder description instead of real source code")
+		}
 		return require("content", a.Content)
 	case "create_svg_asset", "create_image_asset", "generate_image_asset":
 		if err := require("path", a.Path); err != nil {
@@ -2031,11 +2094,17 @@ func taskAllowsReadOnlyVerification(task string) bool {
 
 func agentToolResultFailed(result string) bool {
 	lowerResult := strings.ToLower(result)
-	return strings.Contains(lowerResult, "error:") ||
+	if strings.Contains(lowerResult, "error:") ||
 		strings.Contains(lowerResult, "status: fehler") ||
 		strings.Contains(lowerResult, "status: timeout") ||
 		strings.Contains(lowerResult, "exitcode: 1") ||
-		strings.Contains(lowerResult, "exitcode: -1")
+		strings.Contains(lowerResult, "exitcode: -1") {
+		return true
+	}
+	if strings.Contains(result, "\nFAIL:") || strings.HasPrefix(strings.TrimSpace(result), "FAIL:") {
+		return true
+	}
+	return false
 }
 
 func mentionedProjectFiles(task string) []string {
@@ -2427,10 +2496,12 @@ func missingGameImplementationMarkers(task, content string) []string {
 	if containsNormalizedAny(normalizedTask, []string{"labyrinth", "maze"}) && !regexp.MustCompile(`(?i)\bmaze\b|labyrinth|wall|wand|#`).MatchString(content) {
 		issues = append(issues, "Die Aufgabe verlangt ein Labyrinth/Maze, aber die geänderten Dateien enthalten keine erkennbare Maze-/Wand-Implementierung.")
 	}
-	if containsNormalizedAny(normalizedTask, []string{"pellet", "pellets", "punkte"}) {
+	if containsNormalizedAny(normalizedTask, []string{"pellet", "pellets"}) {
 		if !regexp.MustCompile(`(?i)\bpellet(s)?\b|powerPellet|dot(s)?`).MatchString(content) {
 			issues = append(issues, "Die Aufgabe verlangt Pellets/Punkte, aber es ist keine konkrete Pellet-Implementierung erkennbar.")
 		}
+	}
+	if containsNormalizedAny(normalizedTask, []string{"pellet", "pellets", "punkte"}) {
 		if !regexp.MustCompile(`(?i)\bscore\s*(\+\+|\+=|=\s*score\s*\+)`).MatchString(content) {
 			issues = append(issues, "Die Aufgabe verlangt Score durch Spielaktionen, aber keine konkrete Score-Erhöhung ist erkennbar.")
 		}
