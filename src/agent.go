@@ -1006,6 +1006,9 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			s.AddEvent(UIEvent{Type: "agent_step", Message: "Deterministische Aufgabensteuerung: " + action.Message, Action: action.Action})
 		} else {
 			stepCtx, stepCancel := context.WithCancel(ctx)
+			if repeatBlocks > 0 {
+				stepCtx = withRetryTemperature(stepCtx, 0.35)
+			}
 			s.setSteeringModelCancel(runID, stepCancel)
 			stepMessages := messages
 			if nomaDirective != "" {
@@ -1112,13 +1115,17 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			repeatBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})
 			hint := agentImmediateRepeatHint(cfg, repeatBlocks)
-			if action.Action == "write_file" && lastMicaError != "" {
+			if (action.Action == "write_file" || action.Action == "replace_text") && lastMicaError != "" {
 				hint += "\nLETZTER MICA-FEHLER (muss im neuen Inhalt BEHOBEN sein — NICHT denselben fehlerhaften Code wiederholen!):\n" + lastMicaError
 			}
-			if repeatBlocks >= 3 && action.Action == "write_file" && strings.TrimSpace(action.Path) != "" {
-				// Break deterministic sampling deadlock by reading the current disk file into context.
+			if action.Action == "replace_text" {
+				hint += "\nSTRATEGIE-WECHSEL: Wiederhole `replace_text` NICHT noch einmal! Schreibe `" + action.Path + "` jetzt einmalig sauber und syntaktisch korrekt mit `\"action\": \"write_file\"` neu."
+				lastSignature = ""
+			}
+			if repeatBlocks >= 2 && (action.Action == "write_file" || action.Action == "replace_text") && strings.TrimSpace(action.Path) != "" {
+				// Break deterministic sampling deadlock by providing the current disk file and resetting signature.
 				if cur, readErr := readProjectFile(project, action.Path); readErr == nil && strings.TrimSpace(cur) != "" {
-					hint += "\nAKTUELLER STAND VON `" + action.Path + "` (korrigiere nur den Fehler und liefere veränderten, syntaktisch gültigen Code):\n" + truncateText(cur, 2800)
+					hint += "\nAKTUELLER STAND VON `" + action.Path + "` (korrigiere nur den Fehler und liefere veränderten, syntaktisch gültigen Code):\n" + truncateText(cur, 2400)
 				}
 				lastSignature = ""
 			}
@@ -1221,7 +1228,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		var prevFileSize int64
 		var prevFileBytes []byte
 		var prevFullPath string
-		if action.Action == "write_file" && strings.TrimSpace(action.Path) != "" {
+		if (action.Action == "write_file" || action.Action == "replace_text") && strings.TrimSpace(action.Path) != "" {
 			if fullPrev, prevErr := ensureWithinRoot(project, normalizeProjectRelativeTarget(project, action.Path)); prevErr == nil {
 				prevFullPath = fullPrev
 				if prevData, readErr := os.ReadFile(fullPrev); readErr == nil {

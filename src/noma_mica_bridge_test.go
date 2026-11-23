@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFastOllamaFormatSimplifiesComplexObjectSchema(t *testing.T) {
@@ -677,5 +678,67 @@ func TestNomaArchitectureBlueprintAndNodeTestDOMGuard(t *testing.T) {
 	}
 	if msg := detectJestAPIInNodeTest(project, "tests/engine.test.js", "const test = require('node:test');\nconst assert = require('node:assert/strict');\n"); msg != "" {
 		t.Fatalf("clean node:test file should pass, got %q", msg)
+	}
+}
+
+func TestNomaWebResearchAndWorldModuleOrderingAndRetryTemperature(t *testing.T) {
+	if got := temperatureForContext(context.Background(), 0.1); got != 0.1 {
+		t.Fatalf("default temperature = %v, want 0.1", got)
+	}
+	if got := temperatureForContext(withRetryTemperature(context.Background(), 0.35), 0.1); got != 0.35 {
+		t.Fatalf("retry temperature = %v, want 0.35", got)
+	}
+
+	// Mock DuckDuckGo HTML endpoint & webHTTPClient for deterministic offline test.
+	ddgSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<a class="result__a" href="https://example.org/spec">Reference Layout Specification</a><a class="result__snippet">Six tilted platforms connected by ladders with top goal platform and rolling obstacles.</a>`)
+	}))
+	defer ddgSrv.Close()
+	origDDG := duckDuckGoSearchEndpoint
+	origClient := webHTTPClient
+	duckDuckGoSearchEndpoint = ddgSrv.URL
+	webHTTPClient = func(timeout time.Duration, maxRedirects int) *http.Client { return ddgSrv.Client() }
+	defer func() {
+		duckDuckGoSearchEndpoint = origDDG
+		webHTTPClient = origClient
+	}()
+
+	callIdx := 0
+	ollamaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callIdx++
+		w.Header().Set("Content-Type", "application/json")
+		if callIdx == 1 {
+			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"{\"query\":\"classic platformer arcade layout rules\"}"}}`)
+			return
+		}
+		fmt.Fprintln(w, `{"message":{"role":"assistant","content":"{\"summary\":\"Split world+engine web app\",\"modules\":[{\"path\":\"tests/engine.test.js\",\"role\":\"Tests\",\"features\":[\"Verify physics\"]},{\"path\":\"src/engine.js\",\"role\":\"Core simulation\",\"features\":[\"Physics\",\"Scoring\"]},{\"path\":\"src/world.js\",\"role\":\"Layout & constants\",\"features\":[\"Tilted platforms\",\"Ladders\"]},{\"path\":\"index.html\",\"role\":\"Entry\",\"features\":[\"Canvas\"]}]}"}}`)
+	}))
+	defer ollamaSrv.Close()
+
+	project := t.TempDir()
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.NetworkEnabled = true
+	cfg.WebSearchProvider = "duckduckgo"
+	client := NewOllamaClient()
+	client.BaseURL = ollamaSrv.URL
+	state := NewAppState(cfg, client)
+	state.Project = project
+
+	task := "Erzeuge eine vollständige modulare Web-Anwendung mit geneigten Plattformen, Leitern, Physik, Punkten und Unit-Tests."
+	plan := state.nomaPlanProjectArchitecture(context.Background(), "qwen2.5-coder:14b", project, task, cfg)
+	if plan == nil || len(plan.Modules) != 4 {
+		t.Fatalf("expected 4 planned modules, got %#v", plan)
+	}
+	if plan.Modules[0].Path != "src/world.js" || plan.Modules[1].Path != "src/engine.js" {
+		t.Fatalf("expected src/world.js before src/engine.js, got %#v", plan.Modules)
+	}
+	if !strings.Contains(plan.ResearchBrief, "Reference Layout Specification") {
+		t.Fatalf("expected researched reference brief in plan, got %q", plan.ResearchBrief)
+	}
+	_, _, _, dir := nomaNextStepPlanWithBlueprint(project, task, plan, map[string]bool{}, false, false, 1, 60)
+	if !strings.Contains(dir, "NOMA WEB-RECHERCHE-REFERENZ") {
+		t.Fatalf("expected web research reference injected into module 1 directive, got %q", dir)
 	}
 }

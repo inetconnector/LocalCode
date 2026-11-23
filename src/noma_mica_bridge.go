@@ -1464,11 +1464,11 @@ func genericModuleContract(relPath string) string {
 		return `GENERISCHER MODUL-VERTRAG (NOMA × MICA):
 - Erzeuge alle Soundeffekte prozedural mit Web Audio API (AudioContext, OscillatorNode, GainNode) — lade NIEMALS externe/nicht-existente .mp3- oder .wav-Dateien per fetch/XMLHttpRequest!
 - Verwende KEINE ES-import/export-Syntax; stelle das Modul über window.<Name> = ... (und optional geschütztes module.exports) bereit.`
-	case strings.Contains(low, "engine") || strings.Contains(low, "core"):
+	case strings.Contains(low, "world") || strings.Contains(low, "level") || strings.Contains(low, "data") || strings.Contains(low, "config") || strings.Contains(low, "engine") || strings.Contains(low, "core"):
 		return `GENERISCHER MODUL-VERTRAG (NOMA × MICA):
-- Halte das Kernmodul frei von Top-Level-DOM-/Browser-Abhängigkeiten, damit es sowohl headless in Unit-Tests als auch im Browser läuft.
+- Halte das Kern-/Datenmodul komplett frei von Top-Level-DOM-/Browser-Abhängigkeiten (kein document, kein ungeschütztes window.*!), damit es sowohl headless in Node-Unit-Tests als auch im Browser läuft.
 - Implementiere sämtliche Funktionen, Methoden, Zustandsübergänge, Reset/Neustart und Exporte vollständig (Rule 7: keine TODO-/Placeholder-Kommentare, keine leeren Methoden oder Kommentar-Blöcke!).
-- KEINE ES-import/export-Syntax! Unterstütze Dual-Export (window.<Name> = ... + if (typeof module !== 'undefined' && module.exports) module.exports = ...) ohne externe npm-Abhängigkeiten.`
+- KEINE ES-import/export-Syntax! Unterstütze Dual-Export (if (typeof window !== 'undefined') window.<Name> = ...; if (typeof module !== 'undefined' && module.exports) module.exports = ...) ohne externe npm-Abhängigkeiten.`
 	case strings.Contains(low, "render") || strings.Contains(low, "view"):
 		return `GENERISCHER MODUL-VERTRAG (NOMA × MICA):
 - Trenne Rendering sauber vom Kernmodul, greife EXAKT auf die Felder/Methoden aus dem Live-Manifest zu und überschreibe keinesfalls globale API-Objekte des Kernmoduls.
@@ -1499,8 +1499,9 @@ type nomaPlannedModule struct {
 }
 
 type nomaArchitecturePlan struct {
-	Summary string              `json:"summary"`
-	Modules []nomaPlannedModule `json:"modules"`
+	Summary       string              `json:"summary"`
+	Modules       []nomaPlannedModule `json:"modules"`
+	ResearchBrief string              `json:"-"`
 }
 
 var nomaArchitecturePlanSchema = map[string]any{
@@ -1558,7 +1559,7 @@ func sortPlannedModules(project string, raw []nomaPlannedModule) []nomaPlannedMo
 		}
 		m.Exports = exps
 		cleaned = append(cleaned, m)
-		if len(cleaned) >= 6 {
+		if len(cleaned) >= 7 {
 			break
 		}
 	}
@@ -1581,8 +1582,11 @@ func sortPlannedModules(project string, raw []nomaPlannedModule) []nomaPlannedMo
 		if strings.Contains(base, "render") || strings.Contains(base, "view") || strings.Contains(base, "ui") {
 			return 20
 		}
-		if strings.Contains(base, "audio") || strings.Contains(base, "sound") || strings.Contains(base, "util") || strings.Contains(base, "level") || strings.Contains(base, "data") {
+		if strings.Contains(base, "audio") || strings.Contains(base, "sound") || strings.Contains(base, "util") {
 			return 15
+		}
+		if strings.Contains(base, "world") || strings.Contains(base, "level") || strings.Contains(base, "data") || strings.Contains(base, "config") || strings.Contains(base, "layout") || strings.Contains(base, "const") {
+			return 8
 		}
 		if strings.Contains(base, "engine") || strings.Contains(base, "core") || strings.Contains(base, "model") || strings.Contains(base, "logic") {
 			return 10
@@ -1638,25 +1642,112 @@ func shouldDeriveNomaArchitectureBlueprint(project, task string, intent taskInte
 	return len(collectWorkspaceSourceFiles(project, 2)) == 0
 }
 
+var nomaWebSearchQuerySchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"query": map[string]any{"type": "string"},
+	},
+	"required": []string{"query"},
+}
+
+func (s *AppState) nomaResearchReferenceSpec(ctx context.Context, model, task string, cfg Config) string {
+	if s == nil || s.Ollama == nil || !cfg.NetworkEnabled {
+		return ""
+	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.WebSearchProvider))
+	if provider == "" || provider == "disabled" || provider == "none" {
+		return ""
+	}
+	qCtx, qCancel := context.WithTimeout(ctx, 20*time.Second)
+	rawQ, err := s.Ollama.Chat(qCtx, model, []OllamaMessage{
+		{Role: "system", Content: "Erzeuge genau eine kurze, präzise englische Web-Suchanfrage (4-9 Wörter) für technische Spezifikationen, Layouts, Spielregeln oder Architekturdetails zur Nutzeraufgabe. Antworte nur als JSON: {\"query\":\"...\"}."},
+		{Role: "user", Content: truncateText(strings.TrimSpace(task), 1200)},
+	}, nomaWebSearchQuerySchema)
+	qCancel()
+	var query string
+	if err == nil {
+		cleaned := stripOuterMarkdownFence(strings.TrimSpace(rawQ))
+		if start := strings.IndexByte(cleaned, '{'); start >= 0 {
+			if end := strings.LastIndexByte(cleaned, '}'); end > start {
+				cleaned = cleaned[start : end+1]
+			}
+		}
+		var parsed struct {
+			Query string `json:"query"`
+		}
+		if json.Unmarshal([]byte(cleaned), &parsed) == nil {
+			query = strings.TrimSpace(parsed.Query)
+		}
+	}
+	if query == "" {
+		return ""
+	}
+	searchCtx, sCancel := context.WithTimeout(ctx, 25*time.Second)
+	results, searchErr := webSearch(searchCtx, cfg, query, 4)
+	sCancel()
+	if searchErr != nil || len(results) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	var urls []string
+	b.WriteString("[NOMA WEB-RECHERCHE-REFERENZ (Suchanfrage: " + query + ")]:\n")
+	for idx, r := range results {
+		if idx >= 4 {
+			break
+		}
+		title := truncateText(strings.TrimSpace(r.Title), 100)
+		snippet := truncateText(strings.TrimSpace(r.Content), 240)
+		if title == "" && snippet == "" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("- %s: %s\n", title, snippet))
+		if strings.TrimSpace(r.URL) != "" {
+			urls = append(urls, strings.TrimSpace(r.URL))
+		}
+		if b.Len() > 1100 {
+			break
+		}
+	}
+	brief := strings.TrimSpace(b.String())
+	if brief == "" {
+		return ""
+	}
+	s.AddEvent(UIEvent{
+		Type:    "tool_result",
+		Action:  "noma_web_research",
+		Message: fmt.Sprintf("NOMA · Web-Recherche abgeschlossen (%d Treffer): %s", len(results), query),
+		Detail:  brief + "\nQuellen:\n- " + strings.Join(urls, "\n- "),
+	})
+	return brief
+}
+
 func (s *AppState) nomaPlanProjectArchitecture(ctx context.Context, model, project, task string, cfg Config) *nomaArchitecturePlan {
 	if s == nil || s.Ollama == nil {
 		return nil
 	}
-	planPrompt := `Du bist der NOMA-Architekturplaner. Zerlege die folgende Nutzeraufgabe in 3 bis 6 saubere, modulare Projektdateien (nur JSON, keine Erklärungen außerhalb von JSON).
+	researchBrief := s.nomaResearchReferenceSpec(ctx, model, task, cfg)
+	researchBlock := ""
+	if researchBrief != "" {
+		researchBlock = "\n\n" + researchBrief + "\nBerücksichtige diese recherchierten Layout-, Regel- und Spezifikationsdetails im Architektur-Blueprint!"
+	}
+	planPrompt := `Du bist der NOMA-Architekturplaner. Zerlege die folgende Nutzeraufgabe in 4 bis 7 kompakte, modulare Projektdateien (nur JSON, keine Erklärungen außerhalb von JSON).
 
 Regeln:
-1. Jede einzelne Anforderung aus der Nutzeraufgabe MUSS explizit als konkreter Punkt im Feld "features" eines Moduls zugeordnet sein.
-2. Bei Browser-/Web-/Canvas-Anwendungen (HTML + JS):
-   - Trenne ZWINGEND ein DOM-freies, headless-testbares Kernmodul (z. B. "src/engine.js", das Zustände, Physik/Regeln, Kollisionen, Punktestand, Level, Zustandsübergänge komplett ohne document/window-Zugriff kapselt und per window.<Name> + if (typeof module !== 'undefined' && module.exports) exportiert).
-   - Trenne Darstellung/Rendering ("src/renderer.js"), optional Sound ("src/audio.js"), Eingabe/Loop ("src/main.js"), Einstiegspunkt ("index.html") und Offline-Unit-Tests ("tests/engine.test.js", die ausschließlich das DOM-freie Kernmodul mit node:test und node:assert/strict testen — NIEMALS document in Node-Tests!).
-3. Bei anderen Sprachen (Python/Go/Rust/CLI): trenne analog Kernlogik, Einstiegspunkt und Unit-Tests.
-4. Maximal 6 Dateien, realistische relative Pfade, kurze präzise Funktions-/Exportnamen.
+1. Jede einzelne Datei MUSS kompakt und fokussiert bleiben (Zielgröße ca. 70-140 Zeilen pro Datei), damit jedes Modul im ersten Durchgang vollständig und fehlerfrei ohne Stubs implementiert werden kann.
+2. Jede Anforderung aus der Nutzeraufgabe MUSS explizit als konkreter Punkt im Feld "features" eines Moduls zugeordnet sein.
+3. Bei Browser-/Web-/Canvas-Anwendungen (HTML + JS):
+   - Trenne komplexe Fachlogik in ZWEI kompakte DOM-freie Kernmodule:
+     a) "src/world.js" (oder "src/data.js"): reine Level-/Layout-Daten, Plattform-/Objekt-Definitionen, Konstanten und Initialzustand (DOM-frei, Dual-Export: if (typeof window !== 'undefined') window.World = ...; if (typeof module !== 'undefined' && module.exports) module.exports = ...).
+     b) "src/engine.js": Physik, Bewegung, Kollisionen, Gegner-/Objekt-Updates, Powerups, Punktestand/Bonus/Leben/Level/Reset (DOM-frei, lädt World per: const World = (typeof module !== 'undefined' && module.exports) ? require('./world') : window.World; und exportiert sauber per if (typeof window !== 'undefined') window.GameEngine = ...; if (typeof module !== 'undefined' && module.exports) module.exports = ...).
+   - Trenne danach prozedurales Web Audio ("src/audio.js", nur OscillatorNode/GainNode, KEINE .mp3/.wav-Dateien), Canvas-Renderer ("src/renderer.js"), Eingabe/Loop ("src/main.js"), Einstiegspunkt ("index.html") und Offline-Unit-Tests ("tests/engine.test.js", ausschließlich node:test + node:assert/strict gegen das DOM-freie Kernmodul — KEIN document, KEIN jest!).
+4. Bei anderen Sprachen (Python/Go/Rust/CLI): trenne analog Daten/Modelle, Kernlogik, Einstiegspunkt und Unit-Tests.
+5. Maximal 7 Dateien, realistische relative Pfade, kurze präzise Funktions-/Exportnamen.
 
 Antworte ausschließlich mit gültigem JSON im Format:
-{"summary":"...","modules":[{"path":"src/engine.js","role":"...","features":["..."],"exports":["..."]}]}
+{"summary":"...","modules":[{"path":"src/world.js","role":"...","features":["..."],"exports":["..."]}]}
 
 NUTZERAUFGABE:
-` + truncateText(strings.TrimSpace(task), 2400)
+` + truncateText(strings.TrimSpace(task), 2200) + researchBlock
 
 	planCtx, cancel := context.WithTimeout(ctx, minDuration(60*time.Second, timeDurationSeconds(cfg.ModelTimeout)))
 	defer cancel()
@@ -1671,6 +1762,7 @@ NUTZERAUFGABE:
 	if plan == nil {
 		return nil
 	}
+	plan.ResearchBrief = researchBrief
 	var paths []string
 	var detailLines []string
 	if plan.Summary != "" {
@@ -1788,11 +1880,11 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 		var d strings.Builder
 		d.WriteString("[NOMA × MICA × AGENTOS RULE-7 VERVOLLSTÄNDIGUNGS-STEUERUNG]\n")
 		d.WriteString(fmt.Sprintf("- In `%s` wurden folgende unvollständige Stubs/leere Rümpfe erkannt: %s\n", stubPath, stubHit))
-		if excerpt := extractStubContextExcerpt(project, stubPath, stubHit); excerpt != "" {
+		if excerpt := extractStubContextExcerpt(project, stubPath, stubHit); excerpt != "" && strings.Count(stubHit, "|") < 2 {
 			d.WriteString("- BETROFFENE CODE-ZEILEN IN `" + stubPath + "`:\n```\n" + excerpt + "\n```\n")
-			d.WriteString(fmt.Sprintf("- AKTUELLER PFLICHTSCHRITT: Ersetze diese konkreten Platzhalter-Zeilen in `%s` SCHNELL und GEZIELT mit `replace_text` (ersetze die exakte Funktion/den Block durch vollständige echte Logik — NICHT die ganze Datei neu schreiben und keine doppelten Funktionsköpfe verschachteln!), BEVOR du zur nächsten Datei gehst.\n", stubPath))
+			d.WriteString(fmt.Sprintf("- AKTUELLER PFLICHTSCHRITT: Ersetze diese konkreten Platzhalter-Zeilen in `%s` SCHNELL und GEZIELT mit `replace_text` (oder sauber mit `write_file`, falls mehrere Stellen betroffen sind), BEVOR du zur nächsten Datei gehst.\n", stubPath))
 		} else {
-			d.WriteString(fmt.Sprintf("- AKTUELLER PFLICHTSCHRITT: Vervollständige `%s` jetzt sauber ohne die oben gelisteten Platzhalter/leeren Methoden, BEVOR du zur nächsten Datei gehst.\n", stubPath))
+			d.WriteString(fmt.Sprintf("- AKTUELLER PFLICHTSCHRITT: Schreibe `%s` jetzt EINMALIG, KOMPAKT und VOLLSTÄNDIG mit `write_file` ohne irgendeinen der oben gelisteten Platzhalter/leeren Methoden, BEVOR du zur nächsten Datei gehst.\n", stubPath))
 		}
 		appendWorkspaceManifest(&d, manifest)
 		return stepBadge, stepTitle, stepDetail, d.String()
@@ -1895,6 +1987,9 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 			if len(spec.Exports) > 0 {
 				d.WriteString("- Geplante Exporte/Schnittstellen: " + strings.Join(spec.Exports, ", ") + "\n")
 			}
+		}
+		if blueprint != nil && blueprint.ResearchBrief != "" && doneCount < 3 {
+			d.WriteString("\n" + blueprint.ResearchBrief + "\n")
 		}
 		if contract := genericModuleContract(nextFile); contract != "" {
 			d.WriteString("\n" + contract + "\n")

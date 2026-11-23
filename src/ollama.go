@@ -584,6 +584,24 @@ func fastOllamaFormat(schema any) any {
 	return schema
 }
 
+type retryTemperatureKey struct{}
+
+func withRetryTemperature(ctx context.Context, temp float64) context.Context {
+	if temp <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, retryTemperatureKey{}, temp)
+}
+
+func temperatureForContext(ctx context.Context, fallback float64) float64 {
+	if ctx != nil {
+		if v, ok := ctx.Value(retryTemperatureKey{}).(float64); ok && v > 0 {
+			return v
+		}
+	}
+	return fallback
+}
+
 func (o *OllamaClient) Chat(ctx context.Context, model string, messages []OllamaMessage, schema any) (string, error) {
 	return o.ChatStream(ctx, model, messages, schema, nil)
 }
@@ -598,7 +616,7 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 		Think:     thinkingModeForModel(model),
 		KeepAlive: "30m",
 		Options: map[string]any{
-			"temperature":    0.1,
+			"temperature":    temperatureForContext(ctx, 0.1),
 			"top_p":          0.9,
 			"repeat_penalty": 1.08,
 			"num_ctx": func() int {
