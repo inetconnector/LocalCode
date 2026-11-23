@@ -261,6 +261,7 @@ func startProductionRemoteServer(state *AppState, cfg Config) ([]string, error) 
 	state.mu.Lock()
 	state.RemoteListenAddr = ln.Addr().String()
 	state.RemoteURLs = append([]string(nil), urls...)
+	state.RemoteTLSFingerprint = fingerprint
 	state.mu.Unlock()
 
 	remote := NewRemoteServer(state)
