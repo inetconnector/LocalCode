@@ -292,4 +292,41 @@ func TestRunNomaMicaPreflightAndModuleHintsCoverage(t *testing.T) {
 	if !strings.Contains(preview, "line1\n\t\"quoted\"\\slash") {
 		t.Fatalf("unexpected preview: %q", preview)
 	}
+	if extractLiveStreamPreview("") != "" || len(extractLiveStreamPreview(strings.Repeat("x", 1500))) != 1200 {
+		t.Fatal("unexpected extractLiveStreamPreview fallback")
+	}
+	if stripOuterMarkdownFence("plain") != "plain" || stripOuterMarkdownFence("```no-newline```") != "```no-newline```" {
+		t.Fatal("unexpected stripOuterMarkdownFence fallback")
+	}
+	rAct, err := parseAgentAction("{\"action\":\"replace_text\",\"path\":\"src/a.js\",\"old_text\":\"```js\\nold();\\n```\",\"new_text\":\"```js\\nnew();\\n```\"}")
+	if err != nil || rAct.OldText != "old();" || rAct.NewText != "new();" {
+		t.Fatalf("unexpected replace_text fence strip: err=%v old=%q new=%q", err, rAct.OldText, rAct.NewText)
+	}
+	jsPath := filepath.Join(project, "src", "ext.js")
+	if err := os.MkdirAll(filepath.Dir(jsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(jsPath, []byte("const x = require('express');\nconst builtin = require('fs');\nconst rel = require('./local');\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.NetworkEnabled = false
+	offNote := runMicaPostActionVerify(context.Background(), state, project, AgentAction{Action: "write_file", Path: "src/ext.js"}, cfg, 0)
+	if !strings.Contains(offNote, "Verbotene externe Offline-Abhängigkeit") {
+		t.Fatalf("expected offline dependency violation note, got %q", offNote)
+	}
+	if err := os.WriteFile(jsPath, []byte(strings.Repeat("var ok = 1;\n", 10)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	okNote := runMicaPostActionVerify(context.Background(), state, project, AgentAction{Action: "write_file", Path: "src/ext.js"}, cfg, 0)
+	if !strings.Contains(okNote, "MICA ZERTIFIKAT") {
+		t.Fatalf("expected MICA ZERTIFIKAT note, got %q", okNote)
+	}
+	verBadge, _, _, verDir := nomaNextStepPlan(project, "Create src/ext.js", map[string]bool{"src/ext.js": true}, true, false, 5, 70)
+	if !strings.Contains(verBadge, "Verifikation") || !strings.Contains(verDir, "VERIFIKATIONS-STEUERUNG") {
+		t.Fatalf("expected verification plan, got %q / %q", verBadge, verDir)
+	}
+	gateBadge, _, _, gateDir := nomaNextStepPlan(project, "Create src/ext.js", map[string]bool{"src/ext.js": true}, false, false, 6, 70)
+	if !strings.Contains(gateBadge, "Abschluss-Gate") || !strings.Contains(gateDir, "ABSCHLUSS-FREIGABE") {
+		t.Fatalf("expected completion gate plan, got %q / %q", gateBadge, gateDir)
+	}
 }
