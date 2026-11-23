@@ -262,23 +262,30 @@ func TestRunNomaMicaPreflightAndModuleHintsCoverage(t *testing.T) {
 
 	fakeRoot := t.TempDir()
 	nomaDir := filepath.Join(fakeRoot, "NOMA", "noma_runtime", "coding")
+	agentosDir := filepath.Join(fakeRoot, "AgentOS", "src", "agentos", "integration")
 	if err := os.MkdirAll(nomaDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(agentosDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(nomaDir, "problem_framing.py"), []byte("# stub\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentosDir, "utp_v1.py"), []byte("# stub\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("NOMAMICA_ROOT", fakeRoot)
 	if gotRoot := discoverNomaMicaRoot(project); gotRoot != fakeRoot {
 		t.Fatalf("discoverNomaMicaRoot = %q, want %q", gotRoot, fakeRoot)
 	}
-	plan := runNomaMicaPreflight(context.Background(), state, project, "Implement src/engine.js, src/renderer.js, src/game.js, index.html, tests/engine.test.js, README.md, style.css", cfg)
+	plan := runNomaMicaSuitePreflight(context.Background(), state, project, "Implement src/engine.js, src/renderer.js, src/game.js, index.html, tests/engine.test.js, README.md, style.css", cfg)
 	if !strings.Contains(plan, "NOMA × MICA × AGENTOS ARCHITEKTUR-") {
 		t.Fatalf("unexpected preflight plan: %q", plan)
 	}
 	for _, mod := range []string{"src/engine.js", "src/renderer.js", "src/game.js", "tests/engine.test.js", "index.html", "README.md", "style.css", "other.txt"} {
-		if describeModuleHint(mod) == "" {
-			t.Fatalf("empty module hint for %s", mod)
+		if describeTargetFileRole(mod) == "" || genericModuleContract(mod) == "" {
+			t.Fatalf("empty module role or contract for %s", mod)
 		}
 	}
 	preview := extractLiveStreamPreview(`{"action":"write_file","content":"line1\n\t\"quoted\"\\slash"}`)
