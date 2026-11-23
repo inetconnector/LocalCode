@@ -401,6 +401,186 @@ func TestAndroidUpdateExternalFeedsProxyAndSHA256Verification(t *testing.T) {
 	}
 }
 
+func TestAndroidUpdateEdgeCasesAndCandidateRanking(t *testing.T) {
+	resetExternalAndroidUpdateCacheForTest()
+	t.Cleanup(resetExternalAndroidUpdateCacheForTest)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// 1. androidAutoUpdateEnabled default nil -> true
+	if !androidAutoUpdateEnabled(Config{}) {
+		t.Fatal("expected nil RemoteAndroidAutoUpdate to default to true")
+	}
+
+	// 2. compareAndroidCandidates exhaustive branches
+	t1 := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	cLow := &AndroidUpdateCandidate{VersionCode: 10000, VersionName: "1.0.0", PublishedAt: t1}
+	cHigh := &AndroidUpdateCandidate{VersionCode: 20000, VersionName: "2.0.0", PublishedAt: t1}
+	cSameCodeNewerName := &AndroidUpdateCandidate{VersionCode: 10000, VersionName: "1.0.1", PublishedAt: t1}
+	cSameVersionNewerTime := &AndroidUpdateCandidate{VersionCode: 10000, VersionName: "1.0.0", PublishedAt: t2}
+
+	if compareAndroidCandidates(nil, nil) != 0 || compareAndroidCandidates(nil, cLow) >= 0 || compareAndroidCandidates(cLow, nil) <= 0 {
+		t.Fatal("nil candidate comparisons failed")
+	}
+	if compareAndroidCandidates(cHigh, cLow) <= 0 || compareAndroidCandidates(cLow, cHigh) >= 0 {
+		t.Fatal("versionCode candidate comparisons failed")
+	}
+	if compareAndroidCandidates(cSameCodeNewerName, cLow) <= 0 || compareAndroidCandidates(cLow, cSameCodeNewerName) >= 0 {
+		t.Fatal("versionName tie-breaker failed")
+	}
+	if compareAndroidCandidates(cSameVersionNewerTime, cLow) <= 0 || compareAndroidCandidates(cLow, cSameVersionNewerTime) >= 0 {
+		t.Fatal("publishedAt tie-breaker failed")
+	}
+	if compareAndroidCandidates(cLow, cLow) != 0 {
+		t.Fatal("equal candidate comparison must return 0")
+	}
+
+	// 3. isAndroidUpdateNewer empty-client & semver-only branches
+	if isAndroidUpdateNewer(nil, 1, "1.0.0", "") {
+		t.Fatal("nil candidate must not be newer")
+	}
+	if !isAndroidUpdateNewer(&AndroidUpdateCandidate{VersionName: "1.2.0", APKSHA256: "abc"}, 0, "", "") {
+		t.Fatal("empty client metadata must accept available candidate")
+	}
+	if !isAndroidUpdateNewer(&AndroidUpdateCandidate{VersionName: "1.3.0", APKSHA256: "abc"}, 0, "1.2.0", "") {
+		t.Fatal("higher semver without versionCode must be newer")
+	}
+	if isAndroidUpdateNewer(&AndroidUpdateCandidate{VersionName: "1.1.0", APKSHA256: "abc"}, 0, "1.2.0", "") {
+		t.Fatal("lower semver without versionCode must not be newer")
+	}
+	if compareSemverStrings("alpha", "beta") >= 0 {
+		t.Fatal("non-semver fallback string comparison failed")
+	}
+
+	// 4. readVersionNearPath fallback when no VERSION.txt exists
+	isolatedDir := t.TempDir()
+	fallbackVer := readVersionNearPath(filepath.Join(isolatedDir, "app.apk"))
+	if fallbackVer == "" {
+		t.Fatal("expected non-empty fallback version")
+	}
+
+	// 5. parseExternalUpdateFeed aliases & error cases
+	directAliasJSON := []byte(`{"version_name":"v5.1.0","download_url":"https://example.com/a.apk","sha256":"deadbeef","published_at":"2026-11-23T12:00:00Z"}`)
+	aliasCand, err := parseExternalUpdateFeed(directAliasJSON, false)
+	if err != nil || aliasCand.VersionCode != 50100 || aliasCand.APKSHA256 != "deadbeef" || aliasCand.PublishedAt.IsZero() {
+		t.Fatalf("unexpected alias feed parse: cand=%+v err=%v", aliasCand, err)
+	}
+	if _, err := parseExternalUpdateFeed([]byte(`{"tag_name":"v1.0.0","assets":[{"name":"notes.txt","browser_download_url":"https://example.com/notes.txt"}]}`), false); err == nil {
+		t.Fatal("expected feed without apk asset to fail")
+	}
+	if _, err := parseExternalUpdateFeed([]byte(`not-json`), false); err == nil {
+		t.Fatal("expected malformed feed JSON to fail")
+	}
+
+	// 6. fetchExternalAndroidUpdate & cacheExternalAndroidAPK error/cache paths
+	rawAPK, wantHash := buildMinimalTestAPK(t, "cache-hit-4.0.0")
+	var baseURL string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ok-feed", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"version_name": "4.0.0",
+			"version_code": 40000,
+			"apk_url":      baseURL + "/ok.apk",
+			"apk_sha256":   wantHash,
+		})
+	})
+	mux.HandleFunc("/ok.apk", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(rawAPK)
+	})
+	mux.HandleFunc("/bad.apk", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not-a-zip"))
+	})
+	mux.HandleFunc("/err", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	baseURL = ts.URL
+
+	if _, err := fetchExternalAndroidUpdate(context.Background(), "http://example.com/insecure.json", ts.Client(), false); err == nil {
+		t.Fatal("expected insecure external feed URL error")
+	}
+	if _, err := fetchExternalAndroidUpdate(context.Background(), ts.URL+"/err", ts.Client(), true); err == nil {
+		t.Fatal("expected HTTP 500 feed error")
+	}
+	c1, err := fetchExternalAndroidUpdate(context.Background(), ts.URL+"/ok-feed", ts.Client(), true)
+	if err != nil {
+		t.Fatalf("first fetchExternalAndroidUpdate failed: %v", err)
+	}
+	// Second fetch hits in-memory cache
+	c2, err := fetchExternalAndroidUpdate(context.Background(), ts.URL+"/ok-feed", ts.Client(), true)
+	if err != nil || c2.VersionCode != c1.VersionCode {
+		t.Fatalf("cached fetchExternalAndroidUpdate failed: %+v err=%v", c2, err)
+	}
+
+	// First cacheExternalAndroidAPK downloads; second hits on-disk cache
+	p1, h1, s1, err := cacheExternalAndroidAPK(context.Background(), c1, ts.Client(), true)
+	if err != nil || p1 == "" || h1 != wantHash || s1 != int64(len(rawAPK)) {
+		t.Fatalf("cacheExternalAndroidAPK download failed: %s %s %d err=%v", p1, h1, s1, err)
+	}
+	p2, h2, _, err := cacheExternalAndroidAPK(context.Background(), c1, ts.Client(), true)
+	if err != nil || p2 != p1 || h2 != wantHash {
+		t.Fatalf("cacheExternalAndroidAPK cache hit failed: %s %s err=%v", p2, h2, err)
+	}
+	if _, _, _, err := cacheExternalAndroidAPK(context.Background(), nil, ts.Client(), true); err == nil {
+		t.Fatal("expected nil candidate error")
+	}
+	if _, _, _, err := cacheExternalAndroidAPK(context.Background(), &AndroidUpdateCandidate{VersionCode: 40001, ExternalDownloadURL: ts.URL + "/err"}, ts.Client(), true); err == nil {
+		t.Fatal("expected HTTP 500 apk download error")
+	}
+	if _, _, _, err := cacheExternalAndroidAPK(context.Background(), &AndroidUpdateCandidate{VersionCode: 40002, ExternalDownloadURL: ts.URL + "/bad.apk"}, ts.Client(), true); err == nil {
+		t.Fatal("expected invalid zip apk download error")
+	}
+	if maxInt64(5, 2) != 5 || maxInt64(1, 9) != 9 {
+		t.Fatal("maxInt64 failed")
+	}
+
+	// 7. Handler error paths: 405 & 404 on remote download + 405 on desktop info + 502 on external download failure
+	prevAllow := androidUpdateAllowLoopbackHTTP
+	prevClient := androidUpdateHTTPClient
+	androidUpdateAllowLoopbackHTTP = true
+	androidUpdateHTTPClient = ts.Client()
+	t.Cleanup(func() {
+		androidUpdateAllowLoopbackHTTP = prevAllow
+		androidUpdateHTTPClient = prevClient
+	})
+
+	cfg := defaultConfig()
+	cfg.RemoteEnabled = true
+	cfg.NetworkEnabled = false
+	cfg.RemoteAndroidAPKPath = filepath.Join(t.TempDir(), "missing.apk")
+	state := NewAppState(cfg, NewOllamaClient())
+	t.Cleanup(state.Close)
+	code, _, _, _ := state.StartRemotePairing()
+	token, _, _ := state.PairRemoteDevice(code, "Edge Phone")
+	rs := NewRemoteServer(state)
+
+	postDl := httptest.NewRequest(http.MethodPost, "/remote/api/android-update/download", nil)
+	postDl.Header.Set("X-LocalCode-Remote-Token", token)
+	postDlRec := httptest.NewRecorder()
+	rs.ServeHTTP(postDlRec, postDl)
+	if postDlRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for POST download, got %d", postDlRec.Code)
+	}
+
+	notFoundDl := httptest.NewRequest(http.MethodGet, "/remote/api/android-update/download", nil)
+	notFoundDl.Header.Set("X-LocalCode-Remote-Token", token)
+	notFoundRec := httptest.NewRecorder()
+	rs.ServeHTTP(notFoundRec, notFoundDl)
+	if notFoundRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when no APK available, got %d", notFoundRec.Code)
+	}
+
+	srv := NewServer(state)
+	deskPost := httptest.NewRequest(http.MethodPost, "/api/remote/android-update", nil)
+	deskPostRec := httptest.NewRecorder()
+	srv.handleDesktopAndroidUpdateInfo(deskPostRec, deskPost)
+	if deskPostRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for POST desktop android-update, got %d", deskPostRec.Code)
+	}
+}
+
 func TestAndroidAutoUpdateContractsAcrossAndroidAndRemoteUI(t *testing.T) {
 	manifestBytes, err := os.ReadFile(filepath.Join("..", "android", "app", "src", "main", "AndroidManifest.xml"))
 	if err != nil {
