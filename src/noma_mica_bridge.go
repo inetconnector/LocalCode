@@ -1676,6 +1676,138 @@ var nomaWebSearchQuerySchema = map[string]any{
 	"required": []string{"query"},
 }
 
+func exactScenePythonEnv(project string) []string {
+	env := append([]string(nil), os.Environ()...)
+	env = append(env, "PYTHONIOENCODING=utf-8")
+	if root := discoverNomaMicaRoot(project); root != "" {
+		srcDir := filepath.Join(root, "exactscene", "src")
+		if info, err := os.Stat(srcDir); err == nil && info.IsDir() {
+			existing := os.Getenv("PYTHONPATH")
+			if existing != "" {
+				env = append(env, "PYTHONPATH="+srcDir+string(os.PathListSeparator)+existing)
+			} else {
+				env = append(env, "PYTHONPATH="+srcDir)
+			}
+		}
+	}
+	return env
+}
+
+func resolvePythonExecutable(project string, cfg Config) string {
+	pyInfo := discoverTool(project, "python", cfg, false)
+	if pyInfo.Path != "" {
+		return pyInfo.Path
+	}
+	if found, err := exec.LookPath("python"); err == nil {
+		return found
+	}
+	return ""
+}
+
+func runExactSceneAttachmentAnalysis(ctx context.Context, project string, cfg Config, attachDir string, images []Attachment) string {
+	if len(images) == 0 || strings.TrimSpace(attachDir) == "" {
+		return ""
+	}
+	pyExe := resolvePythonExecutable(project, cfg)
+	if pyExe == "" {
+		return ""
+	}
+	var paths []string
+	entries, err := os.ReadDir(attachDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		switch ext {
+		case ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif":
+			paths = append(paths, filepath.Join(attachDir, entry.Name()))
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	sort.Strings(paths)
+	if len(paths) > 3 {
+		paths = paths[:3]
+	}
+	script := `
+import json, sys
+try:
+    from exactscene.mcp_server.server import dispatch_tool_call
+except Exception:
+    sys.exit(0)
+out = []
+for p in sys.argv[1:]:
+    try:
+        res = dispatch_tool_call("analyze_image", {"path": p, "profile": "auto", "mode": "lossless", "max_objects": 16})
+        md = res.get("description_markdown", "")
+        if md:
+            out.append(md[:2200])
+    except Exception as e:
+        out.append(f"exactscene error ({p}): {e}")
+if out:
+    print("\n\n".join(out))
+`
+	runCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	args := append([]string{"-B", "-c", script}, paths...)
+	cmd := exec.CommandContext(runCtx, pyExe, args...)
+	cmd.Env = exactScenePythonEnv(project)
+	hideCommandWindow(cmd)
+	rawOut, cmdErr := cmd.Output()
+	if cmdErr != nil {
+		return ""
+	}
+	return truncateText(strings.TrimSpace(string(rawOut)), 4800)
+}
+
+func runExactSceneWebImageReference(ctx context.Context, project string, cfg Config, query string) string {
+	if !cfg.NetworkEnabled || strings.TrimSpace(query) == "" {
+		return ""
+	}
+	pyExe := resolvePythonExecutable(project, cfg)
+	if pyExe == "" {
+		return ""
+	}
+	script := `
+import sys
+try:
+    from exactscene.mcp_server.server import dispatch_tool_call
+except Exception:
+    sys.exit(0)
+try:
+    res = dispatch_tool_call("search_and_analyze_web_images", {"query": sys.argv[1], "max_images": 1, "profile": "auto"})
+    items = res.get("results") or []
+    if items:
+        r0 = items[0]
+        src = r0.get("source") or {}
+        geom = r0.get("geometry") or {}
+        cols = [c.get("hex") for c in (r0.get("dominant_colors") or [])[:6] if c.get("hex")]
+        print(
+            f"[EXACTSCENE WEB-GRAFIK-ANALYSE] Quelle: {r0.get('source_url','')} "
+            f"({src.get('width',0)}x{src.get('height',0)} px, pixel_exact={r0.get('validation',{}).get('pixel_exact',False)}, "
+            f"Palette={cols}, Linien={geom.get('line_count',0)}, Winkel={geom.get('dominant_angles_deg',[])}, "
+            f"Kreise={geom.get('circle_count',0)}, Objekte={r0.get('object_count',0)})"
+        )
+except Exception:
+    pass
+`
+	runCtx, cancel := context.WithTimeout(ctx, 18*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, pyExe, "-B", "-c", script, query)
+	cmd.Env = exactScenePythonEnv(project)
+	hideCommandWindow(cmd)
+	rawOut, cmdErr := cmd.Output()
+	if cmdErr != nil {
+		return ""
+	}
+	return truncateText(strings.TrimSpace(string(rawOut)), 600)
+}
+
 func (s *AppState) nomaResearchReferenceSpec(ctx context.Context, model, task string, cfg Config) string {
 	if s == nil || s.Ollama == nil || !cfg.NetworkEnabled {
 		return ""
@@ -1737,6 +1869,11 @@ func (s *AppState) nomaResearchReferenceSpec(ctx context.Context, model, task st
 	brief := strings.TrimSpace(b.String())
 	if brief == "" {
 		return ""
+	}
+	if s.Project != "" && containsNormalizedAny(normalizedQuestion(task), []string{"canvas", "layout", "grafik", "bild", "ui", "diagramm", "spiel", "game", "arcade"}) {
+		if visualRef := runExactSceneWebImageReference(ctx, s.Project, cfg, query); visualRef != "" {
+			brief += "\n" + visualRef
+		}
 	}
 	s.AddEvent(UIEvent{
 		Type:    "tool_result",

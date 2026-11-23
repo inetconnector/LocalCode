@@ -667,9 +667,21 @@ func (s *AppState) prepareAttachmentContext(ctx context.Context, userMessage str
 	}
 	attachmentContext := prepared.Context
 	if len(prepared.Images) > 0 {
+		s.mu.RLock()
+		cfg := s.Config
+		project := s.Project
+		s.mu.RUnlock()
 		s.AddEvent(UIEvent{Type: "status", Message: "Analysiere Bilder", Detail: strings.Join(attachmentNames(prepared.Images), ", ")})
+		exactSummary := runExactSceneAttachmentAnalysis(ctx, project, cfg, prepared.Dir, prepared.Images)
+		if exactSummary != "" {
+			attachmentContext += "\n\nEXACTSCENE BILDANALYSE (deterministisch & pixel-exakt):\n" + exactSummary
+			s.AddEvent(UIEvent{Type: "agent_step", Action: "exactscene_vision", Message: "ExactScene · Exakte Bild- & Szenenanalyse abgeschlossen", Detail: strings.Join(attachmentNames(prepared.Images), ", ")})
+		}
 		visionModel, pulled, err := s.Ollama.EnsureVisionModel(ctx)
 		if err != nil {
+			if exactSummary != "" {
+				return attachmentContext, cleanup, nil
+			}
 			cleanup()
 			return "", func() {}, err
 		}
@@ -678,6 +690,9 @@ func (s *AppState) prepareAttachmentContext(ctx context.Context, userMessage str
 		}
 		analysis, err := s.Ollama.DescribeImages(ctx, visionModel, userMessage, prepared.Images)
 		if err != nil {
+			if exactSummary != "" {
+				return attachmentContext, cleanup, nil
+			}
 			cleanup()
 			return "", func() {}, err
 		}
