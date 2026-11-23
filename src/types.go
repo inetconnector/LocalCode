@@ -282,19 +282,19 @@ type AppState struct {
 	Config Config
 	Ollama *OllamaClient
 
-	Project        string
-	Model          string
-	Running        bool
-	Cancel         context.CancelFunc
-	RunID          string
-	RunPhase       string
+	Project          string
+	Model            string
+	Running          bool
+	Cancel           context.CancelFunc
+	RunID            string
+	RunPhase         string
 	RunStartedAt     time.Time
 	LastProgressAt   time.Time
 	LiveStreamText   string
 	LiveStreamTokens int
 	LiveStreamTPS    float64
 	Recovery         *RunRecoveryState
-	Steering       agentSteeringState
+	Steering         agentSteeringState
 
 	Events                []UIEvent
 	Pending               *PendingAction

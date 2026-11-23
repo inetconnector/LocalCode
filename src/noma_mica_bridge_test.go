@@ -252,7 +252,3 @@ func TestParseAgentActionSplitsCompoundRunToolString(t *testing.T) {
 		t.Fatalf("expected outer markdown fence stripped from non-md write_file, got %q", wAct.Content)
 	}
 }
-
-
-
-

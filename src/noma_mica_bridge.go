@@ -674,4 +674,3 @@ func extractLiveStreamPreview(raw string) string {
 	}
 	return raw
 }
-
