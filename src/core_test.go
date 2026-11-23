@@ -54,6 +54,19 @@ func TestEnsureWithinRoot(t *testing.T) {
 	if _, err := ensureWithinRoot(root, filepath.Join("..", "outside.txt")); err == nil {
 		t.Fatal("expected traversal error")
 	}
+
+	productRoot := filepath.Join(t.TempDir(), "product")
+	if err := os.MkdirAll(productRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err = ensureWithinRoot(productRoot, "product/src/engine.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(productRoot, "src", "engine.js")
+	if got != want {
+		t.Fatalf("redundant project prefix not stripped: got %q want %q", got, want)
+	}
 }
 
 func TestWriteAndReplaceFile(t *testing.T) {
@@ -348,6 +361,19 @@ func TestReadOnlySubagentSkipsDeepScanForEmptyProject(t *testing.T) {
 	}
 	if len(report) > 2000 {
 		t.Fatalf("empty-project report should be short, got %d bytes", len(report))
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# Starter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !projectIsEffectivelyEmpty(root) {
+		t.Fatal("project with only starter README.md should still be treated as effectively empty of source/build files")
+	}
+	terms := subagentSearchTerms(deterministicSubagentTaskPrefix+"Analyze the requested change before any edit. User task: implement deterministic engine parser", nil)
+	for _, term := range terms {
+		if term == "analyze" || term == "requested" {
+			t.Fatalf("subagentSearchTerms leaked preflight boilerplate word %q: %v", term, terms)
+		}
 	}
 }
 

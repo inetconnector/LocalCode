@@ -108,6 +108,12 @@ func projectIsEffectivelyEmpty(project string) bool {
 		if strings.HasPrefix(name, ".") || ignoredDirs[name] {
 			continue
 		}
+		if !entry.IsDir() {
+			switch strings.ToLower(name) {
+			case "readme.md", "agents.md", "state.md":
+				continue
+			}
+		}
 		return false
 	}
 	return true
@@ -117,6 +123,9 @@ func projectInfo(project string, cfg Config) string {
 	plan := detectProjectPlan(project)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Projektart: %s\nBeschreibung: %s\n", plan.Kind, plan.Descriptor)
+	if plan.Kind == "unknown" && projectIsEffectivelyEmpty(project) {
+		b.WriteString("Hinweis: Das Projektverzeichnis ist neu/leer (noch keine Quellcode- oder Build-Dateien vorhanden). Frage nicht nach einem fehlenden Buildsystem oder Projektlayout, sondern erstelle die benötigten Dateien direkt mit write_file.\n")
+	}
 	if plan.BuildTool != "" {
 		info := discoverTool(project, plan.BuildTool, cfg, true)
 		fmt.Fprintf(&b, "Buildwerkzeug: %s\nVerfügbar: %t\n", info.DisplayName, info.Available)

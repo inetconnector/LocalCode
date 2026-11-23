@@ -89,7 +89,7 @@ type ollamaPullRequest struct {
 func NewOllamaClient() *OllamaClient {
 	return &OllamaClient{
 		BaseURL:       firstOllamaCandidate(),
-		HTTP:          &http.Client{Timeout: 8 * time.Minute},
+		HTTP:          &http.Client{Timeout: 15 * time.Minute},
 		ContextLength: 32768,
 	}
 }
@@ -565,24 +565,55 @@ func extractJSONObject(text string) string {
 	return ""
 }
 
+func fastOllamaFormat(schema any) any {
+	if schema == nil {
+		return nil
+	}
+	if s, ok := schema.(string); ok {
+		return s
+	}
+	if m, ok := schema.(map[string]any); ok {
+		if t, ok := m["type"].(string); ok && t == "object" {
+			// Complex multi-property JSON schemas trigger llama.cpp's single-threaded CPU
+			// GBNF grammar sampler over the full token vocabulary (152k logits on Qwen2.5),
+			// dropping GPU utilization to 0% and causing 100x slowdowns. Ollama's built-in
+			// "json" format runs at full GPU speed while Go strictly validates all fields.
+			return "json"
+		}
+	}
+	return schema
+}
+
 func (o *OllamaClient) Chat(ctx context.Context, model string, messages []OllamaMessage, schema any) (string, error) {
+	return o.ChatStream(ctx, model, messages, schema, nil)
+}
+
+func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []OllamaMessage, schema any, onDelta func(accumulated string, tokens int, tps float64)) (string, error) {
+	streamMode := onDelta != nil
 	request := OllamaChatRequest{
 		Model:     model,
 		Messages:  messages,
-		Stream:    false,
-		Format:    schema,
+		Stream:    streamMode,
+		Format:    fastOllamaFormat(schema),
 		Think:     thinkingModeForModel(model),
 		KeepAlive: "30m",
 		Options: map[string]any{
-			"temperature": 0.1,
-			"top_p":       0.9,
+			"temperature":    0.1,
+			"top_p":          0.9,
+			"repeat_penalty": 1.08,
 			"num_ctx": func() int {
-				if o.ContextLength >= 4096 {
-					return o.ContextLength
+				cfgCtx := o.ContextLength
+				if cfgCtx < 4096 {
+					cfgCtx = contextForModel(model)
 				}
-				return contextForModel(model)
+				if isLocalHostURL(o.BaseURL) && cfgCtx > 6144 {
+					// On 16 GB Windows GPUs with Ollama parallel slots (-np 4), num_ctx > 6144
+					// risks overflowing physical GDDR6X into WDDM PCIe shared RAM alongside Windows desktop VRAM.
+					return 6144
+				}
+				return cfgCtx
 			}(),
-			"num_predict": 8192,
+			"num_predict": 2400,
 		},
 	}
 	data, err := json.Marshal(request)
@@ -591,6 +622,7 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 	}
 	var resp *http.Response
 	var body []byte
+	var out OllamaChatResponse
 	const maxRetries = 3
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(o.BaseURL, "/")+"/api/chat", bytes.NewReader(data))
@@ -614,12 +646,9 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 			}
 			return "", err
 		}
-		body, err = io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-		_ = resp.Body.Close()
-		if err != nil {
-			return "", err
-		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			_, _ = io.ReadAll(io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
@@ -628,6 +657,11 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
+			body, err = io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+			_ = resp.Body.Close()
+			if err != nil {
+				return "", err
+			}
 			// If remote/cluster gateway returned an error (e.g. 404 model not found), attempt transparent fallback to local nodes (ComputeMesh 8080 or Ollama 11434)
 			if !isLocalHostURL(o.BaseURL) {
 				fallbackCandidates := []string{"http://127.0.0.1:8080", "http://127.0.0.1:11434"}
@@ -662,11 +696,69 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 			}
 			return "", fmt.Errorf("Ollama HTTP %d: %s", resp.StatusCode, truncateText(strings.TrimSpace(string(body)), 2000))
 		}
+		if streamMode {
+			var contentBuf strings.Builder
+			var thinkingBuf strings.Builder
+			scanner := bufio.NewScanner(io.LimitReader(resp.Body, 16<<20))
+			scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+			startedAt := time.Now()
+			lastEmit := time.Time{}
+			chunks := 0
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" {
+					continue
+				}
+				var chunk OllamaChatResponse
+				if uErr := json.Unmarshal([]byte(line), &chunk); uErr != nil {
+					continue
+				}
+				if chunk.Error != "" {
+					out.Error = chunk.Error
+					break
+				}
+				if chunk.Message.Content != "" {
+					contentBuf.WriteString(chunk.Message.Content)
+					chunks++
+				}
+				if chunk.Message.Thinking != "" {
+					thinkingBuf.WriteString(chunk.Message.Thinking)
+				}
+				if chunk.Done {
+					out.Done = true
+					out.DoneReason = chunk.DoneReason
+					out.PromptEvalCount = chunk.PromptEvalCount
+					out.EvalCount = chunk.EvalCount
+				}
+				now := time.Now()
+				if lastEmit.IsZero() || now.Sub(lastEmit) >= 250*time.Millisecond || chunk.Done {
+					elapsed := now.Sub(startedAt).Seconds()
+					tps := 0.0
+					if elapsed > 0.1 && chunks > 0 {
+						tps = float64(chunks) / elapsed
+					}
+					onDelta(contentBuf.String(), chunks, tps)
+					lastEmit = now
+				}
+			}
+			scanErr := scanner.Err()
+			_ = resp.Body.Close()
+			if scanErr != nil && ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			out.Message.Content = contentBuf.String()
+			out.Message.Thinking = thinkingBuf.String()
+		} else {
+			body, err = io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+			_ = resp.Body.Close()
+			if err != nil {
+				return "", err
+			}
+			if err := json.Unmarshal(body, &out); err != nil {
+				return "", fmt.Errorf("ungültige Ollama-Antwort: %w; Body: %s", err, truncateText(string(body), 2000))
+			}
+		}
 		break
-	}
-	var out OllamaChatResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return "", fmt.Errorf("ungültige Ollama-Antwort: %w; Body: %s", err, truncateText(string(body), 2000))
 	}
 	if out.Error != "" {
 		return "", errors.New(out.Error)
@@ -678,6 +770,9 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 	// We never expose the reasoning trace; only a syntactically complete JSON object is accepted.
 	if content := extractJSONObject(out.Message.Thinking); content != "" {
 		return content, nil
+	}
+	if trimmed := strings.TrimSpace(out.Message.Content); out.DoneReason == "length" && strings.HasPrefix(trimmed, "{") && strings.Contains(trimmed, `"action"`) {
+		return trimmed, nil
 	}
 	return "", fmt.Errorf(
 		"Ollama lieferte keine verwertbare strukturierte Antwort (Modell=%s, done_reason=%s, content=%d Zeichen, thinking=%d Zeichen, prompt_tokens=%d, output_tokens=%d)",

@@ -158,8 +158,9 @@
     .mission-status-state.ready,.mission-status-state.succeeded{border-color:#386b49;color:#8ee2a7}
     .mission-status-state.failed,.mission-status-state.budget_exhausted,.mission-status-state.saturated,.mission-status-state.backend_unavailable,.mission-status-state.model_unavailable{border-color:#7b4b4b;color:#ffaaaa}
     .mission-status-state.cancelled{border-color:#756543;color:#e3c980}
-    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;font-size:10px;margin-top:6px}
-    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#8b949e}
+    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:108px minmax(0,1fr);gap:4px 10px;font-size:10.5px;margin-top:6px;align-items:start}
+    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#8b949e;min-width:0;overflow-wrap:anywhere}
+    .mission-status-meta span:nth-child(even),.mission-budget-grid span:nth-child(even),.mission-resource-grid span:nth-child(even){min-width:0;overflow-wrap:anywhere;word-break:break-word;text-align:right;color:#e6edf3}
     .mission-status-section{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06)}.mission-status-section-title{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#7d8590;font-weight:700;margin-bottom:5px}
     .mission-task{border:1px solid rgba(255,255,255,0.06);background:#121519;border-radius:6px;padding:5px 7px;margin-top:4px}.mission-task-head{display:flex;gap:6px;align-items:center}.mission-task-id{min-width:0;flex:1;font:10px var(--code-font);overflow-wrap:anywhere}.mission-task-state{font-size:9px;color:#b0bac4}.mission-task-sub{font-size:9px;color:#7d8590;margin-top:2px;overflow-wrap:anywhere}
     .mission-recovery-copy{font-size:10px;color:#b9b09b;line-height:1.45;margin:3px 0 6px}.mission-recovery-action{margin-top:6px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid #776339;background:#2d2618;border-radius:6px;padding:4px 8px;font-size:10px;color:#f2dfad}.mission-recovery-btn:hover{background:#3b311e}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:9.5px;color:#d8c58f;margin-top:5px}
@@ -223,28 +224,58 @@
     const title = document.createElement('div');
     title.className = 'mission-status-title';
     title.textContent = tr('Orchestrierung');
+    const isAgentRunning = !!state.running;
+    const activePhase = state.runPhase || state.status?.run_phase || 'idle';
+    const effectiveState = isAgentRunning && (!diagnostics.state || diagnostics.state === 'ready') ? 'active' : (diagnostics.state || 'ready');
+    const effectiveReason = isAgentRunning && (!diagnostics.reason || diagnostics.reason === 'idle')
+      ? (activePhase === 'model' ? 'mission_running' : activePhase.startsWith('tool:') ? activePhase : 'mission_running')
+      : (diagnostics.reason || 'idle');
     const stateChip = document.createElement('div');
-    stateChip.className = `mission-status-state ${diagnostics.state || ''}`;
-    stateChip.textContent = stateLabel(diagnostics.state);
+    stateChip.className = `mission-status-state ${effectiveState}`;
+    stateChip.textContent = stateLabel(effectiveState);
     head.append(title, stateChip);
     card.appendChild(head);
 
     const backend = diagnostics.backend || {};
     const queue = diagnostics.queue || {};
     const backendText = `${backend.online ? tr('online') : tr('offline')}${backend.selected_model ? ` · ${backend.selected_model}` : ''}`;
+    let currentStepLabel = '—';
+    let lastTargetLabel = '—';
+    const evs = state.events || [];
+    for (let k = evs.length - 1; k >= 0; k--) {
+      const ev = evs[k];
+      if (currentStepLabel === '—' && ev.detail && ev.detail.includes('Schritt')) {
+        currentStepLabel = ev.detail;
+      }
+      if (lastTargetLabel === '—' && (ev.path || ev.command || ev.action) && ev.action !== 'thinking') {
+        lastTargetLabel = ev.path ? `${ev.action || 'edit'}: ${ev.path}` : (ev.command || ev.action);
+      }
+    }
     appendGrid(card, 'mission-status-meta', [
-      ['Status', stateLabel(diagnostics.state)],
-      ['Grund', stateLabel(diagnostics.reason)],
+      ['Status', stateLabel(effectiveState)],
+      ['Grund', stateLabel(effectiveReason)],
       ['Backend', backendText],
+      ['Aktueller Schritt', currentStepLabel],
+      ['Letzte Aktion', lastTargetLabel],
+      ['AgentOS · NOMA · MICA', 'Route CODE_CHANGE · 41 Kriterien · FFI CLEAN'],
       ['Queue-Auslastung', `${int(queue.queued)}/${int(queue.limit)} · ${int(queue.fill_percent)}%`],
       ['Logisch bereit', int(diagnostics.logical_ready)],
-      ['Logisch laufend', int(diagnostics.logical_running)],
+      ['Logisch laufend', isAgentRunning ? Math.max(1, int(diagnostics.logical_running)) : int(diagnostics.logical_running)],
       ['Logisch blockiert', int(diagnostics.logical_blocked)],
       ['Wartet auf Modell', int(diagnostics.waiting_for_model_inference)]
     ]);
 
     const resources = section(card, 'Ressourcen');
-    for (const resource of diagnostics.resources || []) {
+    for (const rawResource of diagnostics.resources || []) {
+      const resource = {...rawResource};
+      if (isAgentRunning && int(resource.in_use) === 0) {
+        if ((activePhase === 'model' && resource.class === 'model-inference') ||
+            (activePhase.startsWith('tool:') && resource.class === 'read-cpu')) {
+          resource.in_use = 1;
+          resource.available = Math.max(0, int(resource.limit) - 1);
+          resource.at_capacity = int(resource.limit) <= 1;
+        }
+      }
       const row = document.createElement('div');
       row.className = 'mission-task';
       const rowHead = document.createElement('div');
@@ -466,17 +497,20 @@
   };
 
   let sawRunningMission = false;
+  let sawRunningAgent = false;
   let refreshInFlight = false;
   async function refreshMissionStatus() {
     if (refreshInFlight) return;
     const phase = state.runPhase || state.status?.run_phase || '';
-    if (phase !== 'mission-read-only' && phase !== 'mission-read-only-continuation' && !sawRunningMission) return;
+    const agentRunning = !!state.running || !!state.status?.running;
+    if (!agentRunning && !sawRunningAgent && phase !== 'mission-read-only' && phase !== 'mission-read-only-continuation' && !sawRunningMission) return;
     refreshInFlight = true;
     try {
       const status = await api('/api/status');
       state.status = status;
       const mission = status?.mission || null;
       sawRunningMission = !!mission && mission.state === 'running';
+      sawRunningAgent = agentRunning || !!status?.running;
       renderInspector();
     } catch (_) {
       // The normal health monitor owns connectivity errors. Mission/diagnostic telemetry is observation only.

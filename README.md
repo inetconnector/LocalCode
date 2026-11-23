@@ -1,8 +1,14 @@
 # LocalCode 6.9.3
 
+Canonical local checkout / Kanonischer lokaler Checkout: `<LOCAL_WINDOWS_PATH>`.
+
 On Windows, LocalCode opens maximized, including setup, normal/fast startup and reopening from the tray. The title bar and Windows taskbar remain available. Manual resizing remains possible after startup; `/tray` still starts in the background.
 
 Unter Windows öffnet LocalCode maximiert: bei Einrichtung, normalem/Schnellstart und erneutem Öffnen aus dem Tray. Titelleiste und Windows-Taskleiste bleiben verfügbar. Nach dem Start lässt sich das Fenster weiterhin manuell verkleinern; `/tray` startet weiterhin im Hintergrund.
+
+## Mission telemetry / Missionsstatus
+
+The private LocalCode source-side telemetry minimizer exposes only a fixed, bounded status schema and no transport or credentials. Its design and unreleased security gates are documented in [docs/mission_telemetry_minimal.md](docs/mission_telemetry_minimal.md). No live connection or autonomous development execution is enabled by this code.
 
 ## Windows development checks / Windows-Entwicklungsprüfungen
 
@@ -159,7 +165,7 @@ LocalCode seamlessly integrates with **ComputeMesh**:
 
 LocalCode manages projects and persistent task/thread history. Depending on configuration and approval, the Native agent can read and modify files, use Git, run builds/tests, discover local tooling, use MCP, perform public-web research, process attachments and use local image/asset tools.
 
-Key protections include canonical workspace containment including symlink/NTFS-junction checks, approval-gated file/command/network/install actions, SHA/version preconditions, atomic conflict-aware writes, controlled cancellation/timeouts, durable run recovery, and no automatic authority escalation from prompts, rules, skills, memories or Planner text.
+Key protections include canonical workspace containment including symlink/NTFS-junction checks, approval-gated file/command/network/install actions, SHA/version preconditions, atomic conflict-aware writes, controlled cancellation/timeouts, durable run recovery, and no automatic authority escalation from prompts, rules, skills, memories or Planner text. New-chat and terminal entry points additionally require an existing directory inside the canonical project root, so missing or outside paths cannot become active working directories.
 
 ### Native Agent Teams – current state
 
@@ -329,6 +335,7 @@ LocalCode verwaltet Projekte und persistente Aufgaben/Threads. Der Native-Agent 
 Wichtige Schutzmechanismen:
 
 - kanonische Projekt-/Workspace-Pfadgrenzen einschließlich Symlink-/NTFS-Junction-Prüfung,
+- neue Chats und Terminal-Einstiegspunkte akzeptieren nur vorhandene Verzeichnisse innerhalb der kanonischen Projektwurzel,
 - genehmigungsgebundene Datei-, Befehls-, Netzwerk- und Installationsaktionen,
 - SHA-/Versions-Preconditions und atomare konfliktbewusste Dateiänderungen,
 - kontrollierter Prozessabbruch und Timeouts,

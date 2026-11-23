@@ -280,7 +280,7 @@ func TestCoverageHistoryLifecycle(t *testing.T) {
 		t.Fatal("missing archive")
 	}
 	state.Running = true
-	if err := state.ArchiveChat(summary.ID, true); err == nil {
+	if err := state.ArchiveChat(dup.ID, true); err == nil {
 		t.Fatal("running archive")
 	}
 	state.Running = false

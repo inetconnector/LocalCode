@@ -32,11 +32,37 @@ func commandAvailable(command, project string) (string, bool) {
 		return path, true
 	}
 	if runtime.GOOS == "windows" {
+		localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
+		programFiles := strings.TrimSpace(os.Getenv("ProgramFiles"))
+		appData := strings.TrimSpace(os.Getenv("APPDATA"))
 		candidates := []string{
 			filepath.Join(userProfileDir(), ".local", "bin", command+".exe"),
+			filepath.Join(userProfileDir(), ".cargo", "bin", command+".exe"),
 			filepath.Join(appDataDir(), "tools", "uv", command+".exe"),
 			filepath.Join(appDataDir(), "tools", "node", command+".cmd"),
 			filepath.Join(appDataDir(), "tools", "node", command+".exe"),
+		}
+		if localAppData != "" {
+			candidates = append(candidates,
+				filepath.Join(localAppData, "LocalCode", "tools", "uv", command+".exe"),
+				filepath.Join(localAppData, "LocalCode", "tools", "node", command+".cmd"),
+				filepath.Join(localAppData, "LocalCode", "tools", "node", command+".exe"),
+				filepath.Join(localAppData, "Programs", "uv", command+".exe"),
+				filepath.Join(localAppData, "Programs", "nodejs", command+".cmd"),
+				filepath.Join(localAppData, "Programs", "nodejs", command+".exe"),
+			)
+		}
+		if programFiles != "" {
+			candidates = append(candidates,
+				filepath.Join(programFiles, "nodejs", command+".cmd"),
+				filepath.Join(programFiles, "nodejs", command+".exe"),
+			)
+		}
+		if appData != "" {
+			candidates = append(candidates,
+				filepath.Join(appData, "npm", command+".cmd"),
+				filepath.Join(appData, "npm", command+".exe"),
+			)
 		}
 		for _, candidate := range candidates {
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {

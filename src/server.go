@@ -315,9 +315,11 @@ func (s *Server) handleSelectProject(w http.ResponseWriter, r *http.Request) {
 	s.state.mu.RLock()
 	cfg := s.state.Config
 	s.state.mu.RUnlock()
-	if err := ensureProjectDocs(full, cfg); err != nil {
-		http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
-		return
+	if cfg.CreateProjectDocs {
+		if err := ensureProjectDocs(full, cfg); err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektdokumentation konnte nicht vorbereitet werden: ", "Project documentation could not be prepared: ")+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	cfg, err = s.state.mutateConfig(func(next *Config) error {
 		next.LastProject = full
@@ -486,6 +488,17 @@ func (s *Server) handleNewChat(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r.Body, &req); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
+	}
+	if strings.TrimSpace(req.Project) != "" {
+		s.state.mu.RLock()
+		cfg := s.state.Config
+		s.state.mu.RUnlock()
+		full, err := ensureExistingProjectDir(cfg.RootProjectDir, req.Project)
+		if err != nil {
+			http.Error(w, localizeConfigText(cfg, "Projektverzeichnis ist ungültig: ", "Project directory is invalid: ")+err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Project = full
 	}
 	t, err := s.state.NewChat(req.Project)
 	if err != nil {
@@ -741,9 +754,17 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		p := s.state.Pending
 		pending = UIEvent{ID: p.ID, ThreadID: s.state.CurrentThread, Type: "approval_required", Message: p.Action.Message, Action: p.Action.Action, Path: p.Action.Path, Command: p.Action.Command, Preview: p.Preview, Timestamp: time.Now()}
 	}
+	liveStreamText := ""
+	liveStreamTokens := 0
+	liveStreamTPS := 0.0
+	if running && (requestedThread == "" || s.state.CurrentThread == requestedThread) {
+		liveStreamText = s.state.LiveStreamText
+		liveStreamTokens = s.state.LiveStreamTokens
+		liveStreamTPS = s.state.LiveStreamTPS
+	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "running_projects": runningProjects, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt})
+	_ = writeJSON(w, map[string]any{"events": events, "project": project, "model": model, "running": running, "running_projects": runningProjects, "pending": pending, "current_thread": currentThread, "run_id": runID, "run_phase": runPhase, "run_started_at": runStartedAt, "last_progress_at": lastProgressAt, "live_stream_text": liveStreamText, "live_stream_tokens": liveStreamTokens, "live_stream_tps": liveStreamTPS})
 }
 
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
@@ -936,6 +957,11 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
 		return
 	}
+	project, err := ensureExistingProjectDir(cfg.RootProjectDir, project)
+	if err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektverzeichnis nicht gefunden", "Project directory not found"), http.StatusBadRequest)
+		return
+	}
 	if strings.TrimSpace(req.Command) != "" {
 		if err := commandBlocked(cfg, req.Command); err != nil {
 			http.Error(w, err.Error(), 400)
@@ -977,6 +1003,11 @@ func (s *Server) handleTerminalCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	if project == "" {
 		http.Error(w, "Kein Projekt ausgewählt", 400)
+		return
+	}
+	project, err := ensureExistingProjectDir(cfg.RootProjectDir, project)
+	if err != nil {
+		http.Error(w, localizeConfigText(cfg, "Projektverzeichnis nicht gefunden", "Project directory not found"), http.StatusBadRequest)
 		return
 	}
 	command := strings.TrimSpace(req.Command)
@@ -1238,7 +1269,15 @@ func (s *Server) handleMCPSetup(w http.ResponseWriter, r *http.Request) {
 		defaultMCPManager.ResetServer(server.Name)
 		detail = localizeConfigText(cfg, "MCP-Sitzung wurde zurückgesetzt.", "MCP session was reset.")
 	case "install":
-		cfg, detail, err = installMCPDependency(ctx, project, cfg, server)
+		installCfg := cfg
+		installCfg.SetupDownloadsEnabled = true
+		updatedCfg, installDetail, installErr := installMCPDependency(ctx, project, installCfg, server)
+		detail = installDetail
+		err = installErr
+		if err == nil {
+			updatedCfg.SetupDownloadsEnabled = cfg.SetupDownloadsEnabled
+			cfg = updatedCfg
+		}
 	case "authenticate":
 		if !strings.EqualFold(server.Preset, "github") {
 			err = errors.New("authentication is only managed for GitHub MCP")

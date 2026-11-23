@@ -256,7 +256,7 @@ func (s *AppState) recoveryContextForTask(project, currentTask string) (string, 
 	}
 	var b strings.Builder
 	b.WriteString("RECOVERY CHECKPOINT FROM AN INTERRUPTED LOCALCODE RUN\n")
-	fmt.Fprintf(&b, "Previous run: %s\nPhase: %s\nStarted: %s\nOriginal task: %s\n", recovery.RunID, recovery.Phase, recovery.StartedAt.Format(time.RFC3339), recovery.Task)
+	fmt.Fprintf(&b, "Previous run: %s\nPhase: %s\nStarted: %s\nOriginal task: %s\n", recovery.RunID, recovery.Phase, recovery.StartedAt.Format(time.RFC3339), sanitizeRunJournalText(recovery.Task, 800))
 	b.WriteString("Safety rule: the previous process ended without a terminal checkpoint. Do NOT replay a mutating action or assume it succeeded. Re-read current files/Git state, compare observable postconditions, and only then decide what work remains.\n")
 	if len(recovery.Events) > 0 {
 		b.WriteString("Last confirmed operational events:\n")

@@ -8,7 +8,18 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
+
+var activeParallelReadWorkersCount atomic.Int32
+
+func activeParallelReadWorkers() int {
+	n := int(activeParallelReadWorkersCount.Load())
+	if n < 0 {
+		return 0
+	}
+	return n
+}
 
 const (
 	subagentMaxMentionedFiles = 8
@@ -51,7 +62,11 @@ func runSubagentReadJobs(jobs []subagentReadJob, maxParallel int) []subagentRead
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
-			defer func() { <-sem }()
+			activeParallelReadWorkersCount.Add(1)
+			defer func() {
+				activeParallelReadWorkersCount.Add(-1)
+				<-sem
+			}()
 			output, err := jobs[i].run()
 			results[i] = subagentReadResult{name: jobs[i].name, output: output, err: err}
 		}()
@@ -68,7 +83,7 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 
 	if projectIsEffectivelyEmpty(project) {
 		return "READ-ONLY SUBAGENT HANDOFF\n" +
-			"Scope: " + task + "\n" +
+			"Scope: " + truncateText(task, 320) + "\n" +
 			"Project directory is new/empty: no existing source files and no detected build system.\n" +
 			"HANDOFF\n" +
 			"- There is nothing to analyze yet; do not keep asking about build systems or existing structure that does not exist.\n" +
@@ -220,7 +235,18 @@ func runReadOnlySubagent(project string, cfg Config, task string) (string, error
 	return truncateText(b.String(), subagentMaxReportBytes), nil
 }
 
+func extractSubagentUserTask(task string) string {
+	task = strings.TrimSpace(strings.TrimPrefix(task, deterministicSubagentTaskPrefix))
+	if idx := strings.Index(task, "User task:"); idx >= 0 {
+		if candidate := strings.TrimSpace(task[idx+len("User task:"):]); candidate != "" {
+			return candidate
+		}
+	}
+	return task
+}
+
 func subagentSearchTerms(task string, mentioned []string) []string {
+	task = extractSubagentUserTask(task)
 	seen := map[string]bool{}
 	var terms []string
 	add := func(term string) {

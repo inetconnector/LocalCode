@@ -236,9 +236,19 @@ func (s *AppState) NewChat(project string) (ChatThreadSummary, error) {
 	return summary, nil
 }
 
+func (s *AppState) isThreadBusyLocked(id string) bool {
+	if !s.Running && len(s.ActiveRuns) == 0 {
+		return false
+	}
+	if id != "" && s.ActiveRuns[id] != nil {
+		return true
+	}
+	return s.Running && (id == "" || s.CurrentThread == id)
+}
+
 func (s *AppState) SelectChat(id string) error {
 	s.mu.Lock()
-	if s.Running {
+	if s.isThreadBusyLocked(id) {
 		s.mu.Unlock()
 		return fmt.Errorf("Agent läuft gerade")
 	}
@@ -270,7 +280,7 @@ func (s *AppState) threadSummaries() []ChatThreadSummary {
 
 func (s *AppState) ArchiveChat(id string, archived bool) error {
 	s.mu.Lock()
-	if s.Running {
+	if s.isThreadBusyLocked(id) {
 		s.mu.Unlock()
 		return fmt.Errorf("Agent läuft gerade")
 	}
@@ -315,7 +325,7 @@ func (s *AppState) RenameChat(id, title string) error {
 		title = strings.TrimSpace(string(runes[:120]))
 	}
 	s.mu.Lock()
-	if s.Running {
+	if s.isThreadBusyLocked(id) {
 		s.mu.Unlock()
 		return fmt.Errorf("Agent läuft gerade")
 	}
@@ -333,7 +343,7 @@ func (s *AppState) RenameChat(id, title string) error {
 
 func (s *AppState) DuplicateChat(id string) (ChatThreadSummary, error) {
 	s.mu.Lock()
-	if s.Running {
+	if s.isThreadBusyLocked(id) {
 		s.mu.Unlock()
 		return ChatThreadSummary{}, fmt.Errorf("Agent läuft gerade")
 	}
@@ -368,7 +378,7 @@ func (s *AppState) DuplicateChat(id string) (ChatThreadSummary, error) {
 
 func (s *AppState) DeleteChat(id string) error {
 	s.mu.Lock()
-	if s.Running {
+	if s.isThreadBusyLocked(id) {
 		s.mu.Unlock()
 		return fmt.Errorf("Agent läuft gerade")
 	}
