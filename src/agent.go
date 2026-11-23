@@ -1303,6 +1303,8 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 			if action.Action == "run_tool" && (strings.Contains(result, "ReferenceError: document is not defined") || strings.Contains(result, "ReferenceError: window is not defined")) {
 				toolMessage += "\nDIAGNOSE-HINWEIS: Node.js hat kein Browser-DOM (`document`/`window`)! Schreibe KEINEN Test, der `document.createElement` oder `document.getElementById` in Node.js aufruft. Importiere stattdessen das DOM-freie Kernmodul direkt per `require(...)` und teste dessen reine Funktionen/Zustände mit `node:test` und `node:assert/strict`."
+			} else if action.Action == "run_tool" && (strings.Contains(result, "is not a constructor") || strings.Contains(result, "is not a function")) {
+				toolMessage += "\nDIAGNOSE-HINWEIS: Prüfe im NOMA Live-Manifest die exakte Export-Form: bei `exportDefault=Foo` importiere mit `const Foo = require(...)` (OHNE geschweifte Klammern!), bei `exports=[Foo]` mit `const { Foo } = require(...)`, und prüfe exakte Methodennamen."
 			} else if action.Action == "run_tool" && (strings.Contains(result, "AssertionError") || strings.Contains(result, "TypeError") || strings.Contains(result, "ReferenceError") || strings.Contains(result, "FAIL")) {
 				toolMessage += "\nDIAGNOSE-HINWEIS: Lies bei Test- oder Signaturfehlern zuerst die betroffene Quell- und Testdatei mit `read_file` und behebe den konkreten Fehler gezielt per `write_file`, statt die Implementierung durch einen Minimal-Stub zu ersetzen."
 			}

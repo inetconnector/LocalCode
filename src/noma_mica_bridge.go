@@ -256,6 +256,7 @@ func summarizeSourceFileContract(relPath, content string) string {
 
 	case ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
 		var globals, exports, defs []string
+		var defaultExport string
 		gSeen, eSeen, dSeen := map[string]bool{}, map[string]bool{}, map[string]bool{}
 		for _, m := range jsGlobalAssignRe.FindAllStringSubmatch(content, -1) {
 			if len(m) >= 2 {
@@ -265,7 +266,7 @@ func summarizeSourceFileContract(relPath, content string) string {
 		for _, m := range jsModuleExportsRe.FindAllStringSubmatch(content, -1) {
 			if len(m) >= 3 {
 				if strings.TrimSpace(m[2]) != "" {
-					exports = appendUniqueLimited(exports, eSeen, m[2], 10)
+					defaultExport = strings.TrimSpace(m[2])
 				} else if strings.TrimSpace(m[1]) != "" {
 					for _, rawItem := range strings.Split(m[1], ",") {
 						item := strings.TrimSpace(rawItem)
@@ -329,6 +330,9 @@ func summarizeSourceFileContract(relPath, content string) string {
 		var parts []string
 		if len(globals) > 0 {
 			parts = append(parts, "globals=["+strings.Join(globals, ", ")+"]")
+		}
+		if defaultExport != "" {
+			parts = append(parts, "exportDefault="+defaultExport)
 		}
 		if len(exports) > 0 {
 			parts = append(parts, "exports=["+strings.Join(exports, ", ")+"]")
@@ -1380,6 +1384,24 @@ func detectJestAPIInNodeTest(project, relPath, content string) string {
 	return ""
 }
 
+func detectUnguardedRequireInDualModule(project, relPath, content string) string {
+	low := strings.ToLower(filepath.ToSlash(relPath))
+	ext := strings.ToLower(filepath.Ext(low))
+	if ext != ".js" || strings.Contains(low, "test") {
+		return ""
+	}
+	if projectUsesJSBundler(project) {
+		return ""
+	}
+	if !strings.Contains(content, "window.") && !strings.Contains(content, "document.") {
+		return ""
+	}
+	if hit := hasUnguardedRequireInBrowserJS(content); hit != "" {
+		return fmt.Sprintf("Browser-/Dual-Modul `%s` verwendet ungeschütztes `%s` — das wirft im Browser sofort `ReferenceError: require is not defined`! Lade das Nachbarmodul stattdessen dual-sicher über: `const Mod = (typeof module !== 'undefined' && module.exports) ? require('./...') : window.Mod;`.", relPath, hit)
+	}
+	return ""
+}
+
 func isPathCompletedInRun(project, relPath string, changedPaths map[string]bool) bool {
 	relClean := filepath.ToSlash(filepath.Clean(normalizeProjectRelativeTarget(project, relPath)))
 	basePrefix := filepath.ToSlash(filepath.Base(project)) + "/"
@@ -1420,6 +1442,9 @@ func isPathCompletedInRun(project, relPath string, changedPaths map[string]bool)
 			return false
 		}
 		if detectUnguardedWindowInDualModule(relClean, text) != "" {
+			return false
+		}
+		if detectUnguardedRequireInDualModule(project, relClean, text) != "" {
 			return false
 		}
 		if detectJestAPIInNodeTest(project, relClean, text) != "" {
@@ -1463,7 +1488,8 @@ func genericModuleContract(relPath string) string {
 	case strings.Contains(low, "audio") || strings.Contains(low, "sound"):
 		return `GENERISCHER MODUL-VERTRAG (NOMA × MICA):
 - Erzeuge alle Soundeffekte prozedural mit Web Audio API (AudioContext, OscillatorNode, GainNode) — lade NIEMALS externe/nicht-existente .mp3- oder .wav-Dateien per fetch/XMLHttpRequest!
-- Verwende KEINE ES-import/export-Syntax; stelle das Modul über window.<Name> = ... (und optional geschütztes module.exports) bereit.`
+- Nenne die Klasse NICHT "Audio" (überschreibt Browser-Builtin window.Audio!), sondern z. B. "SoundFX" oder "AudioManager".
+- Verwende KEINE ES-import/export-Syntax; stelle das Modul über if (typeof window !== 'undefined') window.SoundFX = ... (und optional geschütztes module.exports) bereit.`
 	case strings.Contains(low, "world") || strings.Contains(low, "level") || strings.Contains(low, "data") || strings.Contains(low, "config") || strings.Contains(low, "engine") || strings.Contains(low, "core"):
 		return `GENERISCHER MODUL-VERTRAG (NOMA × MICA):
 - Halte das Kern-/Datenmodul komplett frei von Top-Level-DOM-/Browser-Abhängigkeiten (kein document, kein ungeschütztes window.*!), damit es sowohl headless in Node-Unit-Tests als auch im Browser läuft.
@@ -2139,6 +2165,12 @@ func runMicaPostActionVerify(ctx context.Context, s *AppState, project string, a
 		if winErr := detectUnguardedWindowInDualModule(relPath, string(data)); winErr != "" {
 			syntaxStatus = "UNGUARDED_WINDOW_VIOLATION"
 			syntaxErrText = winErr
+		}
+	}
+	if syntaxErrText == "" {
+		if reqErr := detectUnguardedRequireInDualModule(project, relPath, string(data)); reqErr != "" {
+			syntaxStatus = "UNGUARDED_BROWSER_REQUIRE_VIOLATION"
+			syntaxErrText = reqErr
 		}
 	}
 	if syntaxErrText == "" {

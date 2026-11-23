@@ -741,4 +741,20 @@ func TestNomaWebResearchAndWorldModuleOrderingAndRetryTemperature(t *testing.T) 
 	if !strings.Contains(dir, "NOMA WEB-RECHERCHE-REFERENZ") {
 		t.Fatalf("expected web research reference injected into module 1 directive, got %q", dir)
 	}
+
+	// Default CommonJS export must appear as exportDefault=Foo (distinct from destructured exports=[Foo]).
+	expDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(expDir, "world.js"), []byte("class World {}\nif (typeof window !== 'undefined') window.World = World;\nif (typeof module !== 'undefined' && module.exports) module.exports = World;\n"), 0o600)
+	expManifest := buildWorkspaceContractManifest(expDir)
+	if !strings.Contains(expManifest, "exportDefault=World") {
+		t.Fatalf("expected exportDefault=World in manifest, got:\n%s", expManifest)
+	}
+
+	// Unguarded require() inside a dual-export browser module must be flagged immediately.
+	if msg := detectUnguardedRequireInDualModule(expDir, "src/engine.js", "const World = require('./world');\nif (typeof window !== 'undefined') window.Engine = {};\n"); !strings.Contains(msg, "ReferenceError: require is not defined") {
+		t.Fatalf("expected unguarded dual-module require violation, got %q", msg)
+	}
+	if msg := detectUnguardedRequireInDualModule(expDir, "src/engine.js", "const World = (typeof module !== 'undefined' && module.exports) ? require('./world') : window.World;\n"); msg != "" {
+		t.Fatalf("guarded dual-module require should pass, got %q", msg)
+	}
 }
