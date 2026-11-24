@@ -1081,6 +1081,14 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		instructions += "\n\n" + recoveryContext
 		s.AddEvent(UIEvent{Type: "recovery", Message: localizeConfigText(cfg, "Unterbrochene Aufgabe wird aus dem letzten bestätigten Zustand fortgesetzt", "Interrupted task is resuming from the last confirmed state"), Detail: localizeConfigText(cfg, "Aktuelle Dateien und Git-Zustand werden vor mutierenden Aktionen neu geprüft.", "Current files and Git state are re-checked before any mutating action.")})
 	}
+	if isShortResumePrompt(effectiveTask) {
+		s.mu.RLock()
+		if realTask := findSubstantiveThreadTask(s.Events); realTask != "" {
+			effectiveTask = realTask
+		}
+		s.mu.RUnlock()
+		s.journalRunTask(runID, effectiveTask)
+	}
 	promptCfg := cfg
 	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
 		promptCfg.OllamaURL = s.Ollama.BaseURL
@@ -1288,6 +1296,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	completedActions := map[string]bool{}
 	failedActions := map[string]int{}
 	failedRunSinceEdit := map[string]int{}
+	writesByPath := map[string]int{}
 	changedPaths := map[string]bool{}
 	changedSinceVerification := false
 	lastVerificationFailed := false
@@ -1491,6 +1500,18 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 		}
 		signature := actionSignature(action)
+		if jestBlock := offlineJestWriteBlocked(project, action); jestBlock != "" {
+			supervisorBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Ungültige Jest-Datei blockiert (kein Jest installiert)", "Blocked invalid Jest file (Jest not installed)"), Detail: action.Path + ": " + jestBlock, Action: action.Action, Path: action.Path})
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + jestBlock})
+			continue
+		}
+		if churnBlock := perFileWriteChurnBlocked(action, writesByPath); churnBlock != "" {
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholtes Überschreiben derselben Datei blockiert", "Repeated rewrite of same file blocked"), Detail: action.Path, Action: action.Action, Path: action.Path})
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + churnBlock})
+			continue
+		}
 		if (action.Action == "run_tool" || action.Action == "run_command") && failedRunSinceEdit[signature] >= 2 {
 			repeatBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholter fehlgeschlagener Test-/Befehlsaufruf blockiert", "Repeated failing test/command blocked"), Detail: action.Action + ": " + action.Message, Action: action.Action})
@@ -1708,6 +1729,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			for _, path := range mutatedActionPaths(action) {
 				if strings.TrimSpace(path) != "" {
 					changedPaths[path] = true
+					writesByPath[strings.ToLower(filepath.ToSlash(filepath.Clean(path)))]++
 				}
 			}
 			changedSinceVerification = true
@@ -1772,6 +1794,84 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	}
 	s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
 	return "limit"
+}
+
+func isShortResumePrompt(text string) bool {
+	low := strings.ToLower(strings.TrimSpace(text))
+	switch low {
+	case "weiter", "continue", "fortfahren", "mach weiter", "go", "resume", "ok", "ja":
+		return true
+	default:
+		return false
+	}
+}
+
+func findSubstantiveThreadTask(events []UIEvent) string {
+	for _, ev := range events {
+		if ev.Type != "user" {
+			continue
+		}
+		msg := strings.TrimSpace(ev.Message)
+		if len(msg) >= 12 && !isShortResumePrompt(msg) {
+			return msg
+		}
+	}
+	return ""
+}
+
+func offlineJestWriteBlocked(project string, action AgentAction) string {
+	if action.Action != "write_file" && action.Action != "replace_text" {
+		return ""
+	}
+	if strings.TrimSpace(project) != "" {
+		if _, err := os.Stat(filepath.Join(project, "node_modules", "jest")); err == nil {
+			return ""
+		}
+	}
+	base := strings.ToLower(filepath.Base(strings.TrimSpace(action.Path)))
+	body := action.Content
+	if body == "" {
+		body = action.NewText
+	}
+	bodyLower := strings.ToLower(body)
+	switch base {
+	case "jest.config.js", "jest.config.cjs", "jest.config.mjs", "jest.config.json", "jest.setup.js", "setuptests.js", "setuptests.ts":
+		return fmt.Sprintf("BLOCKIERT: `%s` darf nicht erstellt werden — Jest ist in diesem Projekt nicht installiert! Schreibe KEINE Jest-Konfiguration und KEINE setupTests-Datei. Nutze für Tests ausschließlich Node.js Built-in `node:test` + `node:assert/strict`.", action.Path)
+	case "package.json":
+		if strings.Contains(bodyLower, `"jest"`) || strings.Contains(bodyLower, "jest ") {
+			return "BLOCKIERT: Trage kein `jest` in `package.json` ein — Jest ist nicht installiert und kann offline nicht geladen werden! Nutze `\"test\": \"node --test\"` mit Node.js Built-in `node:test` + `node:assert/strict`."
+		}
+	}
+	ext := strings.ToLower(filepath.Ext(base))
+	if (ext == ".js" || ext == ".mjs" || ext == ".cjs") && strings.Contains(base, "test") {
+		if strings.Contains(body, "jest.fn") || strings.Contains(body, "jest.mock") || strings.Contains(body, "jest.spyOn") {
+			return fmt.Sprintf("BLOCKIERT: `%s` verwendet `jest.*` (`jest.fn`/`jest.mock`), obwohl Jest nicht installiert ist! Verwende stattdessen `const test = require('node:test'); const assert = require('node:assert/strict');` mit einfachen JS-Stub-Funktionen (`() => {}`).", action.Path)
+		}
+	}
+	return ""
+}
+
+func perFileWriteChurnBlocked(action AgentAction, writesByPath map[string]int) string {
+	if action.Action != "write_file" && action.Action != "replace_text" {
+		return ""
+	}
+	norm := strings.ToLower(filepath.ToSlash(filepath.Clean(strings.TrimSpace(action.Path))))
+	if norm == "" || norm == "." {
+		return ""
+	}
+	count := writesByPath[norm]
+	base := strings.ToLower(filepath.Base(norm))
+	switch base {
+	case "package.json", "readme.md", "state.md", "agents.md", "jest.config.js", "setuptests.js":
+		if count >= 2 {
+			return fmt.Sprintf("BLOCKIERT: Du hast `%s` bereits %d× geschrieben! Höre auf, Konfigurations-/Dokumentationsdateien wiederholt neu zu schreiben, und implementiere/repariere jetzt den eigentlichen Anwendungscode oder die Tests.", action.Path, count)
+		}
+	default:
+		if count >= 6 {
+			return fmt.Sprintf("BLOCKIERT: Du hast `%s` bereits %d× in diesem Lauf überschrieben. Lies den aktuellen Stand per `read_file`, analysiere den echten Fehler und wechsle die Strategie statt blind neu zu schreiben.", action.Path, count)
+		}
+	}
+	return ""
 }
 
 func defaultActionDescription(a AgentAction, cfg Config) string {
