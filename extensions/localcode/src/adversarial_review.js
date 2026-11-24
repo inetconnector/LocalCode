@@ -4,7 +4,7 @@ const http = require('http');
 const { serverURL } = require('./client');
 
 const MAX_REVIEW_BYTES = 128 * 1024;
-const DEFAULT_AGENTOS_URL = 'http://127.0.0.1:8010';
+const DEFAULT_AGENTOS_URL = 'http://127.0.0.1:8000';
 
 /**
  * Send a code/diff snippet to the local loopback AgentOS Cross-Vendor Adversarial Review

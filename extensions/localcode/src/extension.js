@@ -83,7 +83,7 @@ class LocalCode {
         }
         const selected = !editor.selection.isEmpty ? editor.document.getText(editor.selection) : editor.document.getText();
         const cfg = vscode.workspace.getConfiguration('localcode');
-        const agentosUrl = cfg.get('agentosUrl', 'http://127.0.0.1:8010');
+        const agentosUrl = cfg.get('agentosUrl', 'http://127.0.0.1:8000');
         const report = await runLoopbackAdversarialReview({
           agentosUrl,
           authorProvider: 'anthropic',

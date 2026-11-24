@@ -131,7 +131,20 @@ func RunSandboxedCommand(ctx context.Context, policy OSSandboxPolicy, workDir st
 
 	var proxy *EgressProxy
 	proxyURL := ""
-	if normPolicy.AllowNetwork && (len(normPolicy.AllowedDomains) > 0 || len(normPolicy.DeniedDomains) > 0) {
+	if !normPolicy.AllowNetwork && runtime.GOOS == "windows" {
+		// On Windows where kernel network namespaces are unavailable natively,
+		// run a strict default-deny loopback proxy (empty AllowedDomains) so
+		// HTTP/HTTPS tool traffic is blocked fail-closed and recorded in EgressAudit.
+		proxy, err = StartEgressProxy(EgressProxyConfig{
+			AllowedDomains: nil,
+			DeniedDomains:  normPolicy.DeniedDomains,
+		})
+		if err != nil {
+			return OSSandboxResult{}, fmt.Errorf("start default-deny sandbox egress proxy: %w", err)
+		}
+		defer proxy.Close()
+		proxyURL = proxy.URL()
+	} else if normPolicy.AllowNetwork && (len(normPolicy.AllowedDomains) > 0 || len(normPolicy.DeniedDomains) > 0) {
 		proxy, err = StartEgressProxy(EgressProxyConfig{
 			AllowedDomains: normPolicy.AllowedDomains,
 			DeniedDomains:  normPolicy.DeniedDomains,

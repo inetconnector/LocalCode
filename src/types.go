@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"log"
 	"path/filepath"
@@ -299,14 +300,18 @@ type AppState struct {
 	RunStartedAt     time.Time
 	LastProgressAt   time.Time
 	LiveStreamText   string
+	LiveThinking     string
 	LiveStreamTokens int
 	LiveStreamTPS    float64
+	LiveUsage        UsageMetrics
+	PendingToolCalls []ToolCall
 	Recovery         *RunRecoveryState
 	Steering         agentSteeringState
 
 	Events                []UIEvent
 	Pending               *PendingAction
 	Continuation          *AgentContinuation
+	DiffHunkDecisions     map[string]DiffHunkDecision
 	Threads               map[string]*ChatThread
 	CurrentThread         string
 	RemoteListenAddr      string
@@ -711,14 +716,19 @@ func (s *AppState) threadSaveWorker() {
 }
 
 // ActiveRelayPairingState holds public-facing metadata of the active E2EE relay pairing session.
-// Private ECDH keys and raw auth secrets are deliberately excluded from this struct.
+// Ephemeral private ECDH keys, auth secrets, and the live outbound bridge stay strictly in memory
+// (unexported, never serialized to JSON or disk).
 type ActiveRelayPairingState struct {
-	SessionID   string    `json:"session_id"`
-	RelayURL    string    `json:"relay_url"`
-	PairingURI  string    `json:"pairing_uri"`
-	Fingerprint string    `json:"fingerprint"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	SessionID   string                  `json:"session_id"`
+	RelayURL    string                  `json:"relay_url"`
+	PairingURI  string                  `json:"pairing_uri"`
+	Fingerprint string                  `json:"fingerprint"`
+	CreatedAt   time.Time               `json:"created_at"`
+	ExpiresAt   time.Time               `json:"expires_at"`
+	TunnelLive  bool                    `json:"tunnel_live"`
+	privateKey  *ecdh.PrivateKey        `json:"-"`
+	authSecret  []byte                  `json:"-"`
+	bridge      *RelayWorkstationBridge `json:"-"`
 }
 
 // EnsureLockscreenTokenManager lazily initializes the cryptographic single-use token

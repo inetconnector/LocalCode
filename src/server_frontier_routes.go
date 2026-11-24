@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -40,25 +41,44 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventID int, eve
 }
 
 func resolveProjectForRun(state *AppState, requested string) string {
+	state.mu.RLock()
+	cfg := state.Config
+	currentProject := strings.TrimSpace(state.Project)
+	state.mu.RUnlock()
+
 	cand := strings.TrimSpace(requested)
 	if cand == "" {
-		state.mu.RLock()
-		cand = strings.TrimSpace(state.Project)
+		cand = currentProject
 		if cand == "" {
-			cand = strings.TrimSpace(state.Config.RootProjectDir)
+			cand = strings.TrimSpace(cfg.RootProjectDir)
 		}
-		state.mu.RUnlock()
 	}
-	if cand != "" {
-		if info, err := os.Stat(cand); err == nil && info.IsDir() {
-			return cand
+	if cand == "" {
+		return ""
+	}
+	// Enforce canonical workspace containment when RootProjectDir is configured.
+	if root := strings.TrimSpace(cfg.RootProjectDir); root != "" {
+		if validated, err := ensureExistingProjectDir(root, cand); err == nil {
+			return validated
 		}
+		for _, allowedRoot := range cfg.AllowedRoots {
+			if strings.TrimSpace(allowedRoot) == "" {
+				continue
+			}
+			if validated, err := ensureExistingProjectDir(allowedRoot, cand); err == nil {
+				return validated
+			}
+		}
+		return ""
+	}
+	if info, err := os.Stat(cand); err == nil && info.IsDir() {
+		return cand
 	}
 	return ""
 }
 
 // handleChatRunsSSE exposes POST /api/chat/runs using the unified
-// `chat.run.events.v1` SSE schema expected by NomaMica Studio.
+// `chat.run.events.v1` SSE schema expected by NomaMica Studio and `noma` CLI.
 func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -73,6 +93,7 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Schema    string `json:"schema"`
 		Prompt    string `json:"prompt"`
+		Message   string `json:"message"`
 		TurnID    string `json:"turn_id"`
 		SessionID string `json:"session_id"`
 		Project   string `json:"project"`
@@ -84,13 +105,16 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 	}
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {
-		http.Error(w, "prompt is required", http.StatusBadRequest)
+		prompt = strings.TrimSpace(req.Message)
+	}
+	if prompt == "" {
+		http.Error(w, "prompt or message is required", http.StatusBadRequest)
 		return
 	}
 
 	project := resolveProjectForRun(s.state, req.Project)
 	if project == "" {
-		http.Error(w, "no valid project directory configured", http.StatusBadRequest)
+		http.Error(w, "no valid workspace-contained project directory configured", http.StatusBadRequest)
 		return
 	}
 
@@ -103,12 +127,17 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 	defer s.state.Unsubscribe(ch)
 
 	if err := s.state.StartAgentForThread(prompt, strings.TrimSpace(req.Model), nil, project, ""); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		status := http.StatusConflict
+		if errors.Is(err, ErrBackendPreflightFailed) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	s.state.mu.RLock()
 	runID := s.state.RunID
+	threadID := s.state.CurrentThread
 	model := s.state.Model
 	s.state.mu.RUnlock()
 	if runID == "" {
@@ -121,9 +150,11 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 
 	seq := 1
 	writeSSEEvent(w, flusher, seq, "run.started", map[string]any{
-		"runId":  runID,
-		"turnId": turnID,
-		"model":  model,
+		"run_id":  runID,
+		"runId":   runID,
+		"turn_id": turnID,
+		"turnId":  turnID,
+		"model":   model,
 	})
 	seq++
 
@@ -139,15 +170,21 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-maxWait.C:
 			writeSSEEvent(w, flusher, seq, "run.failed", map[string]any{
-				"runId":  runID,
-				"turnId": turnID,
-				"error":  "run stream timed out",
+				"run_id":  runID,
+				"runId":   runID,
+				"turn_id": turnID,
+				"turnId":  turnID,
+				"error":   "run stream timed out",
 			})
 			return
 		case <-heartbeat.C:
 			fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()
 		case ev := <-ch:
+			// Strict multi-project run isolation: ignore events belonging to other concurrent threads.
+			if threadID != "" && ev.ThreadID != "" && ev.ThreadID != threadID {
+				continue
+			}
 			switch ev.Type {
 			case "action_running":
 				toolName := ev.Action
@@ -155,27 +192,38 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 					toolName = ev.Message
 				}
 				writeSSEEvent(w, flusher, seq, "tool.started", map[string]any{
-					"runId":      runID,
-					"turnId":     turnID,
-					"toolCallId": ev.ID,
-					"tool":       toolName,
-					"args":       map[string]any{"path": ev.Path, "command": ev.Command},
+					"run_id":       runID,
+					"runId":        runID,
+					"turn_id":      turnID,
+					"turnId":       turnID,
+					"tool_call_id": ev.ID,
+					"toolCallId":   ev.ID,
+					"tool":         toolName,
+					"args":         map[string]any{"path": ev.Path, "command": ev.Command},
 				})
 				seq++
 			case "action_done", "tool_result":
 				writeSSEEvent(w, flusher, seq, "tool.completed", map[string]any{
-					"runId":      runID,
-					"turnId":     turnID,
-					"toolCallId": ev.ID,
-					"output":     truncateText(ev.Detail, 4000),
+					"run_id":       runID,
+					"runId":        runID,
+					"turn_id":      turnID,
+					"turnId":       turnID,
+					"tool_call_id": ev.ID,
+					"toolCallId":   ev.ID,
+					"output":       truncateText(ev.Detail, 4000),
 				})
 				seq++
 			case "approval_required":
 				writeSSEEvent(w, flusher, seq, "approval.requested", map[string]any{
-					"approvalId": ev.ID,
-					"tool":       ev.Action,
-					"command":    ev.Command,
-					"detail":     ev.Detail,
+					"run_id":      runID,
+					"runId":       runID,
+					"turn_id":     turnID,
+					"turnId":      turnID,
+					"approval_id": ev.ID,
+					"approvalId":  ev.ID,
+					"tool":        ev.Action,
+					"command":     ev.Command,
+					"detail":      ev.Detail,
 				})
 				seq++
 			case "progress", "agent_step", "context_compacted":
@@ -185,44 +233,75 @@ func (s *Server) handleChatRunsSSE(w http.ResponseWriter, r *http.Request) {
 				}
 				if delta != "" {
 					writeSSEEvent(w, flusher, seq, "answer.delta", map[string]any{
-						"runId":  runID,
-						"turnId": turnID,
-						"delta":  delta + "\n",
+						"run_id":  runID,
+						"runId":   runID,
+						"turn_id": turnID,
+						"turnId":  turnID,
+						"delta":   delta + "\n",
 					})
 					seq++
 				}
 			case "error":
 				msg := strings.TrimSpace(ev.Message + " " + ev.Detail)
 				writeSSEEvent(w, flusher, seq, "answer.delta", map[string]any{
-					"runId":  runID,
-					"turnId": turnID,
-					"delta":  "\n**Error:** " + msg + "\n",
+					"run_id":  runID,
+					"runId":   runID,
+					"turn_id": turnID,
+					"turnId":  turnID,
+					"delta":   "\n**Error:** " + msg + "\n",
 				})
 				seq++
 				writeSSEEvent(w, flusher, seq, "run.failed", map[string]any{
-					"runId":  runID,
-					"turnId": turnID,
-					"error":  msg,
+					"run_id":  runID,
+					"runId":   runID,
+					"turn_id": turnID,
+					"turnId":  turnID,
+					"error":   msg,
 				})
 				return
 			case "final", "question":
 				if ev.Message != "" {
 					writeSSEEvent(w, flusher, seq, "answer.delta", map[string]any{
-						"runId":  runID,
-						"turnId": turnID,
-						"delta":  ev.Message,
+						"run_id":  runID,
+						"runId":   runID,
+						"turn_id": turnID,
+						"turnId":  turnID,
+						"delta":   ev.Message,
+					})
+					seq++
+				}
+				s.state.mu.RLock()
+				usageSnap := s.state.LiveUsage
+				s.state.mu.RUnlock()
+				if usageSnap.TotalTokens > 0 || usageSnap.InputTokens > 0 || usageSnap.OutputTokens > 0 {
+					writeSSEEvent(w, flusher, seq, "usage.metrics", map[string]any{
+						"run_id":                runID,
+						"runId":                 runID,
+						"turn_id":               turnID,
+						"turnId":                turnID,
+						"input_tokens":          usageSnap.InputTokens,
+						"output_tokens":         usageSnap.OutputTokens,
+						"total_tokens":          usageSnap.TotalTokens,
+						"cache_creation_tokens": usageSnap.CacheCreationTokens,
+						"cache_read_tokens":     usageSnap.CacheReadTokens,
+						"reasoning_tokens":      usageSnap.ReasoningTokens,
 					})
 					seq++
 				}
 				writeSSEEvent(w, flusher, seq, "answer.final", map[string]any{
-					"runId":  runID,
-					"turnId": turnID,
-					"text":   ev.Message,
+					"run_id":  runID,
+					"runId":   runID,
+					"turn_id": turnID,
+					"turnId":  turnID,
+					"text":    ev.Message,
 				})
 				seq++
 				writeSSEEvent(w, flusher, seq, "run.completed", map[string]any{
-					"runId":  runID,
-					"turnId": turnID,
+					"run_id":  runID,
+					"runId":   runID,
+					"turn_id": turnID,
+					"turnId":  turnID,
+					"status":  "completed",
 				})
 				sawFinal = true
 				return
@@ -350,10 +429,17 @@ func (s *Server) handleRelayPair(w http.ResponseWriter, r *http.Request) {
 		Fingerprint: fp,
 		CreatedAt:   now,
 		ExpiresAt:   exp,
+		TunnelLive:  false,
+		privateKey:  kp.Private,
+		authSecret:  append([]byte(nil), secret...),
 	}
 	s.state.mu.Lock()
+	oldPairing := s.state.RelayPairing
 	s.state.RelayPairing = stateMeta
 	s.state.mu.Unlock()
+	if oldPairing != nil && oldPairing.bridge != nil {
+		oldPairing.bridge.Stop()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{
@@ -363,6 +449,116 @@ func (s *Server) handleRelayPair(w http.ResponseWriter, r *http.Request) {
 		"pairing_uri": pairingURI,
 		"fingerprint": fp,
 		"expires_at":  exp,
+		"tunnel_live": false,
+	})
+}
+
+// handleRelayAttachPeer completes the X25519/HKDF-SHA256 handshake with a paired mobile
+// peer public key and starts the live outbound-only RelayWorkstationBridge goroutine.
+func (s *Server) handleRelayAttachPeer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		SessionID       string `json:"session_id"`
+		PeerPublicB64   string `json:"peer_public_b64"`
+		LocalTargetURL  string `json:"local_target_url"`
+		LocalAuthToken  string `json:"local_auth_token"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil {
+		http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	peerRaw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(req.PeerPublicB64))
+	if err != nil {
+		peerRaw, err = base64.StdEncoding.DecodeString(strings.TrimSpace(req.PeerPublicB64))
+		if err != nil {
+			http.Error(w, "invalid peer_public_b64: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	s.state.mu.Lock()
+	rp := s.state.RelayPairing
+	if rp == nil || time.Now().UTC().After(rp.ExpiresAt) || rp.privateKey == nil || len(rp.authSecret) == 0 {
+		s.state.mu.Unlock()
+		http.Error(w, "no active relay pairing offer", http.StatusConflict)
+		return
+	}
+	if strings.TrimSpace(req.SessionID) != "" && strings.TrimSpace(req.SessionID) != rp.SessionID {
+		s.state.mu.Unlock()
+		http.Error(w, "session_id mismatch", http.StatusBadRequest)
+		return
+	}
+	privKey := rp.privateKey
+	authSecret := append([]byte(nil), rp.authSecret...)
+	sid := rp.SessionID
+	relayURL := rp.RelayURL
+	port := s.state.Config.RemotePort
+	if port <= 0 {
+		port = 32146
+	}
+	oldBridge := rp.bridge
+	s.state.mu.Unlock()
+
+	if oldBridge != nil {
+		oldBridge.Stop()
+	}
+
+	peerPub, err := ParseRelayPublicKey(peerRaw)
+	if err != nil {
+		http.Error(w, "parse peer public key: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	sessionKeys, err := DeriveRelaySessionKeys(privKey, peerPub, sid, RelayRoleWorkstation)
+	if err != nil {
+		http.Error(w, "derive E2EE session keys: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	cipherState, err := NewRelayCipherState(sessionKeys, RelayRoleWorkstation)
+	if err != nil {
+		http.Error(w, "init E2EE cipher state: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	relayAuthToken, err := DeriveRelayAuthToken(authSecret, sid)
+	if err != nil {
+		http.Error(w, "derive relay auth token: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	localTarget := strings.TrimSpace(req.LocalTargetURL)
+	if localTarget == "" {
+		localTarget = fmt.Sprintf("http://127.0.0.1:%d", port)
+	}
+	bridge, err := NewRelayWorkstationBridge(RelayWorkstationBridgeConfig{
+		RelayURL:       relayURL,
+		LocalTargetURL: localTarget,
+		LocalAuthToken: strings.TrimSpace(req.LocalAuthToken),
+		RelayAuthToken: relayAuthToken,
+		Cipher:         cipherState,
+	})
+	if err != nil {
+		http.Error(w, "init relay bridge: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := bridge.Start(context.Background()); err != nil {
+		http.Error(w, "start relay bridge: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.state.mu.Lock()
+	if s.state.RelayPairing == rp {
+		rp.bridge = bridge
+		rp.TunnelLive = true
+	}
+	s.state.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":          true,
+		"session_id":  sid,
+		"relay_url":   relayURL,
+		"tunnel_live": true,
 	})
 }
 

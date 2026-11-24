@@ -266,7 +266,7 @@
         },
         "localcode.agentosUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8010",
+          "default": "http://127.0.0.1:8000",
           "scope": "application",
           "description": "%agentosUrl%"
         }

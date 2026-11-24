@@ -61,6 +61,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/providers/status", s.handleProvidersStatus)
 	s.mux.HandleFunc("/api/relay/status", s.handleRelayStatus)
 	s.mux.HandleFunc("/api/relay/pair", s.handleRelayPair)
+	s.mux.HandleFunc("/api/relay/attach-peer", s.handleRelayAttachPeer)
+	s.mux.HandleFunc("/api/diff/hunk", s.handleDiffHunk)
+	s.mux.HandleFunc("/api/diff/hunks", s.handleDiffHunk)
 	s.mux.HandleFunc("/api/push/lockscreen-token", s.handleIssueLockscreenToken)
 	s.mux.HandleFunc("/api/push/register-endpoint", s.handleRegisterPushEndpoint)
 	s.mux.HandleFunc("/api/push/notify-approval", s.handleNotifyApprovalPush)
@@ -502,7 +505,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.state.StartAgentForThread(req.Message, req.Model, attachments, req.Project, req.ThreadID); err != nil {
-		http.Error(w, err.Error(), 409)
+		status := http.StatusConflict
+		if errors.Is(err, ErrBackendPreflightFailed) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

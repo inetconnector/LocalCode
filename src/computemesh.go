@@ -103,8 +103,6 @@ func ProbeRunningLocalComputeMeshNodeDetailed(ctx context.Context, customCandida
 	candidates := []string{
 		"http://127.0.0.1:8080",
 		"http://localhost:8080",
-		"http://127.0.0.1:8081",
-		"http://127.0.0.1:8000",
 		"http://127.0.0.1:11435",
 	}
 	if len(customCandidates) > 0 {
@@ -576,12 +574,25 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		targetURL = meshStatus.LocalNodeURL
 	}
 
-	// Only override BaseURL if no explicit custom local URL was set by the user or if local mesh node was discovered
+	// Override BaseURL if no explicit custom URL was set, a local mesh node was discovered,
+	// OR the currently configured local Ollama URL is offline/unreachable while ComputeMesh is online.
 	s.mu.Lock()
 	if s.Ollama == nil {
 		s.Ollama = NewOllamaClient()
 	}
-	if cfg.OllamaURL == "" || cfg.OllamaURL == defaultComputeMeshGatewayURL || meshStatus.DirectLocal {
+	currentOllama := s.Ollama
+	s.mu.Unlock()
+
+	localOffline := false
+	if cfg.OllamaURL != "" && cfg.OllamaURL != defaultComputeMeshGatewayURL && !meshStatus.DirectLocal {
+		probeCtx, probeCancel := context.WithTimeout(ctx, 2*time.Second)
+		_, probeErr := currentOllama.Tags(probeCtx)
+		probeCancel()
+		localOffline = probeErr != nil
+	}
+
+	s.mu.Lock()
+	if cfg.OllamaURL == "" || cfg.OllamaURL == defaultComputeMeshGatewayURL || meshStatus.DirectLocal || localOffline {
 		s.Ollama.BaseURL = targetURL
 		s.Ollama.AuthToken = apiKey
 	}
