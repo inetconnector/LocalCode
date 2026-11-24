@@ -22,7 +22,8 @@ const STRINGS = Object.freeze({
     inlineEditTrustRequired: 'Trust this workspace before running inline edits.',
     fimEnabledNotice: 'Local FIM Tab autocomplete enabled.',
     fimDisabledNotice: 'Local FIM Tab autocomplete disabled.',
-    fimInvalidEndpoint: 'FIM autocomplete requires a local loopback HTTP endpoint (127.0.0.1, localhost, or [::1]).'
+    fimInvalidEndpoint: 'FIM autocomplete requires a local loopback HTTP endpoint (127.0.0.1, localhost, or [::1]).',
+    providerStatusTemplate: 'LocalCode Provider: {provider} | OS-Sandbox: {sandbox} | Configured keys: {count}'
   }),
   de: Object.freeze({
     inlineEditPrompt: 'Beschreibe die Inline-Änderung für die Auswahl',
@@ -45,7 +46,8 @@ const STRINGS = Object.freeze({
     inlineEditTrustRequired: 'Vertraue diesem Arbeitsordner, bevor du Inline-Edits ausführst.',
     fimEnabledNotice: 'Lokale FIM-Tab-Autovervollständigung aktiviert.',
     fimDisabledNotice: 'Lokale FIM-Tab-Autovervollständigung deaktiviert.',
-    fimInvalidEndpoint: 'FIM-Autovervollständigung erfordert einen lokalen Loopback-HTTP-Endpunkt (127.0.0.1, localhost oder [::1]).'
+    fimInvalidEndpoint: 'FIM-Autovervollständigung erfordert einen lokalen Loopback-HTTP-Endpunkt (127.0.0.1, localhost oder [::1]).',
+    providerStatusTemplate: 'LocalCode-Provider: {provider} | OS-Sandbox: {sandbox} | Konfigurierte Keys: {count}'
   })
 });
 

@@ -64,6 +64,16 @@ class LocalCode {
         this.fimProvider.reloadConfig({ ...this.fimProvider.config, enabled: next });
         vscode.window.showInformationMessage(this.t(next ? 'fimEnabledNotice' : 'fimDisabledNotice'));
       },
+      providerStatus: async () => {
+        if (!this.client) await this.connect();
+        const status = await this.client.request('/api/providers/status');
+        const configuredCount = Object.values(status?.key_configured || {}).filter(Boolean).length;
+        const msg = this.t('providerStatusTemplate')
+          .replace('{provider}', String(status?.active_provider || 'ollama'))
+          .replace('{sandbox}', status?.os_sandbox_enabled ? 'ON' : 'OFF')
+          .replace('{count}', String(configuredCount));
+        vscode.window.showInformationMessage(msg);
+      },
       start: () => this.start(),
       settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode')
     };

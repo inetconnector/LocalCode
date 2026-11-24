@@ -157,6 +157,9 @@ Reset, Clean, Commit oder Push.
   - `src/server_frontier_routes.go`, `src/remote_server.go`, `src/e2ee_relay_client.go`: Authentifizierte Endpunkte `GET /remote/api/apk-update` (SemVer `version_code` + SHA-256-Manifest) und `GET /remote/api/apk-update/download` (`X-APK-SHA256`, 32-MiB-Limit, inkl. E2EE-Relay-Allowlist) ergänzt.
   - `android/app/src/main/AndroidManifest.xml` & `MainActivity.java`: `REQUEST_INSTALL_PACKAGES`, automatische Update-Erkennung (`checkForApkUpdateAsync` über striktes `createPinnedSSLContext`-TLS-Pinning, erkennt neuere `version_code` sowie neue SHA-256-Rebuilds), Fail-Closed SHA-256-Verifikation vor Installation und natives Android `PackageInstaller.Session`-Upgrade (`ACTION_APK_INSTALL_RESULT`).
   - Release-APK (`v6.9.3 / 60903`, `DPAPI`, v2/v3 verifiziert, `SHA-256: bb111c5223544c0ae3962cfbc2dad50fc8f2dfff087c32851663a2c96d49c4c7`) und frische CGO-freie Windows-Binaries neu gebaut; `TestRemoteAPKUpdateManifestAndDownloadEndpoint` & `TestAndroidRemoteEnforcesStrictTLSPinningHTTPSKeystoreAndBlackScreenFixes` unter `-race` grün.
+- **Wave-7 Mobile Companion UX (Voice Barge-In, Frame-Check, Update-Button) & VS Code Provider-Status — 2026-11-24 Wave 7:**
+  - `src/static/remote.html` & `src/mobile_remote_ui_contract_test.go`: Hands-free Voice Barge-In (`stopSpeaking()` vor `startVoiceInput()`), automatische Bildanhang-Prüfung über `POST /remote/api/verify-frame` (`✓ Frame OK` / `⚠ BLANK_OR_BLACK_SCREEN`) und `#checkUpdateBtn` im Einstellungs-Sheet (`LocalCodeAndroid.checkForUpdate()` + `GET /remote/api/apk-update`) mit 100 % DE/EN-Parität (`14/14` Mobile-Remote-Tests unter `-race` + `node --check` bestanden).
+  - `extensions/localcode/`: Neuer Befehl `localcode.providerStatus` (geheimnisfreie Loopback-Abfrage von `/api/providers/status` & OS-Sandbox-Status in DE/EN; `scripts/check.js` PASS + `11/11` PASS).
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 

@@ -420,3 +420,26 @@ func TestMobileRemotePrioritySteeringContract(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileRemoteSelfUpdateVoiceBargeInAndFrameCheckContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`id="checkUpdateBtn"`,
+		`window.LocalCodeAndroid?.checkForUpdate`,
+		`/remote/api/apk-update`,
+		`/remote/api/verify-frame`,
+		`async function verifyAttachedImageFrame(`,
+		`function startVoiceInput(){stopSpeaking();`,
+		`check_update:'Auf App-Update prüfen'`,
+		`check_update:'Check for App Update'`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html Wave 7 contract missing %q", required)
+		}
+	}
+}

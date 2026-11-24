@@ -109,6 +109,12 @@
         "title": "%toggleFim%",
         "category": "LocalCode",
         "icon": "$(zap)"
+      },
+      {
+        "command": "localcode.providerStatus",
+        "title": "%providerStatus%",
+        "category": "LocalCode",
+        "icon": "$(shield)"
       }
     ],
     "viewsContainers": {
