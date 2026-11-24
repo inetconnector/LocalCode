@@ -675,4 +675,26 @@ func TestCrossRuntimeStudioLocalCodeAndAgentOSSmoke(t *testing.T) {
 		!strings.Contains(string(scBody), `"verification_bundle_algorithm":"Ed25519"`) {
 		t.Fatalf("AgentOS runtime scorecard mismatch status=%d body=%s", scResp.StatusCode, scBody)
 	}
+
+	// Assertion 14: POST /_proxy/localcode/mcp exposes 5 native LocalCode MCP tools cleanly
+	lcMcpReq, _ := http.NewRequest(
+		http.MethodPost,
+		studioBase+"/_proxy/localcode/mcp",
+		strings.NewReader(`{"jsonrpc":"2.0","id":99,"method":"tools/list"}`),
+	)
+	lcMcpReq.Header.Set("Content-Type", "application/json")
+	lcMcpReq.Header.Set("Origin", studioBase)
+	lcMcpReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	lcMcpResp, err := client.Do(lcMcpReq)
+	if err != nil {
+		t.Fatalf("POST /_proxy/localcode/mcp: %v", err)
+	}
+	lcMcpBody, _ := io.ReadAll(lcMcpResp.Body)
+	_ = lcMcpResp.Body.Close()
+	if lcMcpResp.StatusCode != http.StatusOK ||
+		!strings.Contains(string(lcMcpBody), `"localcode_providers_status"`) ||
+		!strings.Contains(string(lcMcpBody), `"localcode_verify_frame"`) ||
+		!strings.Contains(string(lcMcpBody), `"localcode_apk_update_info"`) {
+		t.Fatalf("LocalCode /mcp tools/list mismatch status=%d body=%s", lcMcpResp.StatusCode, lcMcpBody)
+	}
 }

@@ -642,3 +642,69 @@ func TestRemoteAPKUpdateManifestAndDownloadEndpoint(t *testing.T) {
 		t.Fatalf("downloaded APK bytes mismatch")
 	}
 }
+
+func TestLocalCodeMCPServerJSONRPC(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-must-never-leak")
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+	srv := NewServer(state)
+
+	callMCP := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/mcp", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		srv.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 1. initialize
+	initRec := callMCP(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
+	if initRec.Code != http.StatusOK || !strings.Contains(initRec.Body.String(), `"localcode-mcp-server"`) {
+		t.Fatalf("MCP initialize failed code=%d body=%s", initRec.Code, initRec.Body.String())
+	}
+
+	// 2. tools/list exposes all 5 LocalCode MCP tools
+	listRec := callMCP(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("MCP tools/list code=%d", listRec.Code)
+	}
+	for _, toolName := range []string{
+		"localcode_health",
+		"localcode_providers_status",
+		"localcode_list_pty_sessions",
+		"localcode_verify_frame",
+		"localcode_apk_update_info",
+	} {
+		if !strings.Contains(listRec.Body.String(), `"`+toolName+`"`) {
+			t.Fatalf("MCP tools/list missing %q: %s", toolName, listRec.Body.String())
+		}
+	}
+
+	// 3. tools/call localcode_providers_status reports anthropic=true without leaking secret
+	provRec := callMCP(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"localcode_providers_status","arguments":{}}}`)
+	if provRec.Code != http.StatusOK || !strings.Contains(provRec.Body.String(), `"isError":false`) {
+		t.Fatalf("MCP providers status failed: %s", provRec.Body.String())
+	}
+	if strings.Contains(provRec.Body.String(), "sk-ant-super-secret") {
+		t.Fatalf("MCP providers status leaked secret API key!")
+	}
+
+	// 4. tools/call localcode_verify_frame detects pure black PNG
+	var blackBuf bytes.Buffer
+	_ = png.Encode(&blackBuf, image.NewRGBA(image.Rect(0, 0, 16, 16)))
+	frameArgs, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "localcode_verify_frame",
+			"arguments": map[string]any{"image_base64": base64.StdEncoding.EncodeToString(blackBuf.Bytes())},
+		},
+	})
+	frameRec := callMCP(string(frameArgs))
+	if frameRec.Code != http.StatusOK || !strings.Contains(frameRec.Body.String(), "BLANK_OR_BLACK_SCREEN") {
+		t.Fatalf("MCP verify_frame mismatch: %s", frameRec.Body.String())
+	}
+}

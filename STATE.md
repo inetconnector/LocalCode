@@ -160,6 +160,9 @@ Reset, Clean, Commit oder Push.
 - **Wave-7 Mobile Companion UX (Voice Barge-In, Frame-Check, Update-Button) & VS Code Provider-Status — 2026-11-24 Wave 7:**
   - `src/static/remote.html` & `src/mobile_remote_ui_contract_test.go`: Hands-free Voice Barge-In (`stopSpeaking()` vor `startVoiceInput()`), automatische Bildanhang-Prüfung über `POST /remote/api/verify-frame` (`✓ Frame OK` / `⚠ BLANK_OR_BLACK_SCREEN`) und `#checkUpdateBtn` im Einstellungs-Sheet (`LocalCodeAndroid.checkForUpdate()` + `GET /remote/api/apk-update`) mit 100 % DE/EN-Parität (`14/14` Mobile-Remote-Tests unter `-race` + `node --check` bestanden).
   - `extensions/localcode/`: Neuer Befehl `localcode.providerStatus` (geheimnisfreie Loopback-Abfrage von `/api/providers/status` & OS-Sandbox-Status in DE/EN; `scripts/check.js` PASS + `11/11` PASS).
+- **Wave-8 First-Class Loopback MCP Server (`POST /mcp`) & 14-Assertion-Smoke — 2026-11-24 Wave 8:**
+  - `src/mcp_server.go` & `src/server.go`: Natives Loopback MCP JSON-RPC 2.0 Server-Interface (`initialize`, `ping`, `tools/list`, `tools/call`) auf `POST /mcp` mit 5 geheimnisfreien, fail-closed Tools (`localcode_health`, `localcode_providers_status`, `localcode_list_pty_sessions`, `localcode_verify_frame`, `localcode_apk_update_info`) implementiert.
+  - Verifikation Wave 8: `TestLocalCodeMCPServerJSONRPC` + **14-Assertion-Cross-Runtime-Live-Smoke** (inkl. `POST /_proxy/localcode/mcp`) unter `-race` **PASS** (`3.889s`), Cross-Platform `linux/amd64`/`darwin/arm64` `go vet` **PASS**, CGO-freie Windows-Binaries (`dist/LocalCode.exe`, `dist/LocalCode-Debug.exe`) neu gebaut.
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 
