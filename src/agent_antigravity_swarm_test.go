@@ -46,7 +46,7 @@ func TestAutomaticParallelPreflightSwarmRunsConcurrentlyAndPopulatesRoster(t *te
 	state.Project = dir
 
 	brief := state.runAutomaticParallelPreflightSwarm(context.Background(), dir, "Erstelle ein vollstaendiges spielbares Spiel", "test-model", cfg)
-	if !strings.Contains(brief, "[ANTIGRAVITY 2.0 · PARALLEL SUBAGENT SWARM WAVE 1]") {
+	if !strings.Contains(brief, "[NOMA × MICA · PARALLEL SUBAGENT SWARM WAVE 1]") {
 		t.Fatalf("expected Wave 1 swarm header in brief, got:\n%s", brief)
 	}
 

@@ -1099,7 +1099,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.AddEvent(UIEvent{
 			Type:    "status",
 			Action:  "swarm_wave",
-			Message: localizeConfigText(cfg, "Antigravity 2.0 · Paralleler Subagent-Schwarm aktiviert (/swarm)", "Antigravity 2.0 · Parallel subagent swarm activated (/swarm)"),
+			Message: localizeConfigText(cfg, "NOMA × MICA · Paralleler Subagent-Schwarm aktiviert (/swarm)", "NOMA × MICA · Parallel subagent swarm activated (/swarm)"),
 			Detail:  effectiveTask,
 		})
 	}

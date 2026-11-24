@@ -484,7 +484,7 @@
     head.className = 'mission-status-head';
     const title = document.createElement('div');
     title.className = 'mission-status-title';
-    title.textContent = `${tr('Subagent-Schwarm')} · Antigravity 2.0`;
+    title.textContent = `${tr('Subagent-Schwarm')} · NOMA × MICA`;
     const activeCount = agents.filter(a => a && a.status === 'running').length;
     const badge = document.createElement('span');
     badge.className = `mission-status-state ${activeCount > 0 ? 'running' : 'succeeded'}`;

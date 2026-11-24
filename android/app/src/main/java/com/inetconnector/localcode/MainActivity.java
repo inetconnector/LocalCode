@@ -195,6 +195,7 @@ public final class MainActivity extends Activity {
     private volatile long lastAutoUpdateCheckMs = 0L;
     private BroadcastReceiver selfUpdateReceiver;
     private boolean discovering;
+    private volatile boolean inDiscoveryMode;
     private volatile boolean scanningLan;
     private volatile boolean scanningUdp;
     private int activeWizardTab = 0;
@@ -974,9 +975,9 @@ public final class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                if (newProgress >= 85) {
+                if (newProgress >= 85 && !inDiscoveryMode) {
                     runOnUiThread(() -> {
-                        if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+                        if (!inDiscoveryMode && connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
                     });
                 }
             }
@@ -1069,7 +1070,11 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (inDiscoveryMode || url == null || url.isEmpty() || "about:blank".equals(url)) {
+                    return;
+                }
                 runOnUiThread(() -> {
+                    if (inDiscoveryMode) return;
                     if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
                     if (webView != null) webView.setVisibility(View.VISIBLE);
                 });
@@ -2384,6 +2389,7 @@ public final class MainActivity extends Activity {
                     "Unsafe Remote address rejected."));
             return;
         }
+        inDiscoveryMode = false;
         currentRemoteUrl = target;
         persistConnection(target, expectedFingerprint);
         runOnUiThread(() -> {
@@ -2411,9 +2417,14 @@ public final class MainActivity extends Activity {
     }
 
     private void cancelConnectingAndOpenDiscovery() {
+        inDiscoveryMode = true;
+        currentRemoteUrl = "";
+        expectedFingerprint = "";
+        clearSavedConnection();
         runOnUiThread(() -> {
             if (webView != null) {
                 try { webView.stopLoading(); } catch (Exception ignored) {}
+                try { webView.loadUrl("about:blank"); } catch (Exception ignored) {}
                 webView.setVisibility(View.GONE);
             }
             if (connectingOverlay != null) {
@@ -2421,24 +2432,31 @@ public final class MainActivity extends Activity {
             }
             if (discoveryPanel != null) {
                 discoveryPanel.setVisibility(View.VISIBLE);
+                discoveryPanel.bringToFront();
             }
+            selectWizardTab(0);
+            renderDiscoveredInstances();
             setStatus(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
             requestDiscoveryPermissionAndStart();
         });
     }
 
     private void handleConnectionFailure(String germanMsg, String englishMsg) {
+        inDiscoveryMode = true;
         runOnUiThread(() -> {
             if (connectingOverlay != null) {
                 connectingOverlay.setVisibility(View.GONE);
             }
             if (webView != null) {
                 try { webView.stopLoading(); } catch (Exception ignored) {}
+                try { webView.loadUrl("about:blank"); } catch (Exception ignored) {}
                 webView.setVisibility(View.GONE);
             }
             if (discoveryPanel != null) {
                 discoveryPanel.setVisibility(View.VISIBLE);
+                discoveryPanel.bringToFront();
             }
+            renderDiscoveredInstances();
             setStatus(tr(germanMsg, englishMsg));
             requestDiscoveryPermissionAndStart();
         });
@@ -2484,7 +2502,9 @@ public final class MainActivity extends Activity {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
-        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        if ("localhost".equals(lowerHost) || "127.0.0.1".equals(lowerHost)) return true;
+        if (lowerHost.endsWith(".trycloudflare.com") && lowerHost.length() > ".trycloudflare.com".length()) return true;
         if (!isLiteralIPv4(host) && !host.contains(":")) return false;
         try {
             return isPrivateAddress(InetAddress.getByName(host));
@@ -2862,7 +2882,7 @@ public final class MainActivity extends Activity {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
-            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isAllowedRemoteUrl(targetUrl)) {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
@@ -2904,7 +2924,7 @@ public final class MainActivity extends Activity {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
-            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isAllowedRemoteUrl(targetUrl)) {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());

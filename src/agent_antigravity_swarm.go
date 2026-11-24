@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// SwarmTaskSpec defines one parallel subagent worker in an Antigravity 2.0 swarm wave.
+// SwarmTaskSpec defines one parallel subagent worker in a NOMA × MICA swarm wave.
 type SwarmTaskSpec struct {
 	Name      string
 	Role      string
@@ -179,7 +179,7 @@ func (s *AppState) runParallelSwarmWave(ctx context.Context, wave int, model str
 	return results
 }
 
-// runAutomaticParallelPreflightSwarm implements Google Antigravity 2.0 Wave 1:
+// runAutomaticParallelPreflightSwarm implements Wave 1:
 // automatically fans out 3 specialized subagents in parallel (@explorer,
 // @architect, @qa-planner) with clean isolated scopes and returns a compact
 // merged handoff brief for the coordinator.
@@ -277,7 +277,7 @@ func (s *AppState) runAutomaticParallelPreflightSwarm(ctx context.Context, proje
 
 	var brief strings.Builder
 	var cardDetail strings.Builder
-	brief.WriteString("\n\n[ANTIGRAVITY 2.0 · PARALLEL SUBAGENT SWARM WAVE 1]\n")
+	brief.WriteString("\n\n[NOMA × MICA · PARALLEL SUBAGENT SWARM WAVE 1]\n")
 	for _, r := range results {
 		statusMark := "✓"
 		if r.Err != nil {
@@ -292,14 +292,14 @@ func (s *AppState) runAutomaticParallelPreflightSwarm(ctx context.Context, proje
 	s.AddEvent(UIEvent{
 		Type:    "tool_result",
 		Action:  "swarm_wave",
-		Message: localizeConfigText(cfg, fmt.Sprintf("Antigravity 2.0 · Wave 1 Parallel-Swarm (%d Subagents · %dms)", len(results), elapsedMs), fmt.Sprintf("Antigravity 2.0 · Wave 1 Parallel Swarm (%d subagents · %dms)", len(results), elapsedMs)),
+		Message: localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA · Wave 1 Parallel-Swarm (%d Subagents · %dms)", len(results), elapsedMs), fmt.Sprintf("NOMA × MICA · Wave 1 Parallel Swarm (%d subagents · %dms)", len(results), elapsedMs)),
 		Detail:  strings.TrimSpace(cardDetail.String()),
 	})
 
 	return truncateText(brief.String(), 2200)
 }
 
-// runAutomaticParallelVerifierSwarm implements Google Antigravity 2.0 Wave 3:
+// runAutomaticParallelVerifierSwarm implements Wave 3:
 // spawns 3 independent adversarial verifier subagents in parallel right before
 // finish (@verifier-syntax, @verifier-rule7, @verifier-integrity).
 func (s *AppState) runAutomaticParallelVerifierSwarm(ctx context.Context, project, model string, cfg Config, changedPaths map[string]bool) []string {
@@ -438,7 +438,7 @@ func (s *AppState) runAutomaticParallelVerifierSwarm(ctx context.Context, projec
 	s.AddEvent(UIEvent{
 		Type:    "tool_result",
 		Action:  "swarm_wave",
-		Message: localizeConfigText(cfg, fmt.Sprintf("Antigravity 2.0 · Wave 3 Adversarial Verifier-Swarm (%d Prüfer · %dms)", len(results), elapsedMs), fmt.Sprintf("Antigravity 2.0 · Wave 3 Adversarial Verifier Swarm (%d verifiers · %dms)", len(results), elapsedMs)),
+		Message: localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA · Wave 3 Adversarial Verifier-Swarm (%d Prüfer · %dms)", len(results), elapsedMs), fmt.Sprintf("NOMA × MICA · Wave 3 Adversarial Verifier Swarm (%d verifiers · %dms)", len(results), elapsedMs)),
 		Detail:  strings.TrimSpace(cardDetail.String()),
 	})
 

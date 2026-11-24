@@ -440,7 +440,7 @@ button{cursor:pointer;border:0;background:transparent}
   border:1px solid var(--border);
 }
 
-/* Antigravity Trajectory System */
+/* NOMA × MICA Trajectory System */
 .tool-step, .trajectory-card{
   background:#14171d;
   border:1px solid rgba(255,255,255,0.08);
@@ -865,7 +865,7 @@ button{cursor:pointer;border:0;background:transparent}
 }
 
 
-/* Codex-Style Floating Composer */
+/* Floating Composer */
 .composer{
   position:absolute;
   left:12px;
@@ -1442,7 +1442,6 @@ textarea::placeholder{
           <option value="native">LocalCode Native</option>
           <option value="aider">Aider</option>
           <option value="opencode">OpenCode</option>
-          <option value="claude">Claude Code</option>
           <option value="claw">Claw Code</option>
         </select>
       </div>
@@ -1547,7 +1546,7 @@ function clearAuthToken(){
 }
 const state={token:loadAuthToken(),status:null,projects:[],projectsRoot:'',quarantine:[],threads:[],events:[],pending:null,currentThread:'',project:localStorage.getItem('localcodeRemoteLastProject')||'',projectInitialized:false,syncedProject:'',runningProjects:[],files:[],view:'new',es:null,sending:false,flushingOutbox:false,preferredEngine:localStorage.getItem('localcodeRemoteEngine')||'native',engineSynced:false,showTasksTab:localStorage.getItem('localcodeRemoteShowTasksTab')==='true',ttsEnabled:localStorage.getItem('localcodeRemoteTTS')==='true'};
 const viewOrder=['new','tasks','projects','trash','review'];
-const engineOptions=[['native','LocalCode Native'],['aider','Aider'],['opencode','OpenCode'],['claude','Claude Code'],['claw','Claw Code']];
+const engineOptions=[['native','LocalCode Native'],['aider','Aider'],['opencode','OpenCode'],['claw','Claw Code']];
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 function saveActiveProject(p){
@@ -1868,7 +1867,7 @@ function eventHTML(ev,idx,visible,running){
 
   if(ev.action==='swarm_wave'){
     const rawBody=String(ev.detail||ev.message||'').trim();
-    return `<details class="trajectory-card ${isLive?'active-running':''}" open><summary class="trajectory-summary"><span class="tool-chevron">›</span><span style="color:#a5b4fc;font-weight:700">⚡ Antigravity 2.0 · Swarm</span><span class="trajectory-file-name">${esc(ev.message||'Parallel Subagents')}</span></summary><div class="trajectory-body"><pre style="margin:0;white-space:pre-wrap;font:12px/1.45 var(--code);color:#cbd5e1">${esc(rawBody)}</pre></div></details>`;
+    return `<details class="trajectory-card ${isLive?'active-running':''}" open><summary class="trajectory-summary"><span class="tool-chevron">›</span><span style="color:#a5b4fc;font-weight:700">⚡ NOMA × MICA · Swarm</span><span class="trajectory-file-name">${esc(ev.message||'Parallel Subagents')}</span></summary><div class="trajectory-body"><pre style="margin:0;white-space:pre-wrap;font:12px/1.45 var(--code);color:#cbd5e1">${esc(rawBody)}</pre></div></details>`;
   }
 
   const editActions=['replace_text','write_file','delete_file','aider_edit','engine_edit','edit','patch_file'];

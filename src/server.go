@@ -87,6 +87,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+	s.mux.HandleFunc("/api/remote/tunnel", s.handleRemoteTunnel)
 	s.mux.HandleFunc("/api/remote/pairing/decision", s.handleRemotePairingDecision)
 	s.mux.HandleFunc("/api/remote/pairing/pending", s.handleRemotePairingPending)
 	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
