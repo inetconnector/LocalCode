@@ -115,6 +115,12 @@
         "title": "%providerStatus%",
         "category": "LocalCode",
         "icon": "$(shield)"
+      },
+      {
+        "command": "localcode.adversarialReview",
+        "title": "%adversarialReview%",
+        "category": "LocalCode",
+        "icon": "$(verified)"
       }
     ],
     "viewsContainers": {
@@ -257,6 +263,12 @@
           "default": "",
           "scope": "application",
           "description": "%inlineEditModel%"
+        },
+        "localcode.agentosUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8010",
+          "scope": "application",
+          "description": "%agentosUrl%"
         }
       }
     }

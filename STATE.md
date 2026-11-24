@@ -175,6 +175,9 @@ Reset, Clean, Commit oder Push.
   - `src/static/remote.html` & `src/mobile_remote_ui_contract_test.go`: Zweisprachiges (`DE/EN`) UnifiedPush-Endpunkt-Eingabefeld (`#pushEndpointInput`, `#savePushEndpointBtn` → `POST /remote/api/push/register-endpoint`) im Mobile-Einstellungs-Sheet ergänzt (`node --check` Exit 0).
   - `src/server_pty_health_integration_test.go`: Cross-Runtime-Live-Smoke auf **15 Assertions** erweitert (10-Tool-AgentOS-Scorecard + Live-`POST /_proxy/agentos/v1/routing/adversarial-review` Fail-Closed Secret-Block).
   - **Verifikation Wave 11:** `go test -race` **8/8 PASS** (`4.274s`, inkl. `TestRequestApprovalAutoDispatchesZeroSecretUnifiedPush`, `TestMobileRemoteUnifiedPushRegistrationContract` & 15-Assertion-Live-Smoke in `2.68s`), `linux/amd64` & `darwin/arm64` `go vet` **PASS**, CGO-freie Binaries `dist/LocalCode.exe` (`16.249.344` B) & `dist/LocalCode-Debug.exe` (`22.551.040` B) neu gebaut.
+- **Wave-12 VS Code Extension Cross-Vendor Adversarial Review & VSIX — 2026-11-24 Wave 12:**
+  - `extensions/localcode/`: Neues Loopback-Modul `src/adversarial_review.js`, Befehl `localcode.adversarialReview` und Setting `localcode.agentosUrl` (`http://127.0.0.1:8010`, strikte Loopback-SSRF-Sperre via `serverURL`) in `package.json`, `package.nls.json`, `package.nls.de.json`, `src/i18n.js` & `src/extension.js` verdrahtet (`DE/EN` 100 % Parität).
+  - Verifikation Wave 12: `node scripts/check.js` PASS, `node --test test/*.test.js` **12/12 PASS**, `localcode-0.1.0.vsix` frisch paketiert.
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 

@@ -10,6 +10,8 @@
   "inlineEditReject": "Reject Inline Edit",
   "toggleFim": "Toggle Local FIM Autocomplete",
   "providerStatus": "Check Provider & OS-Sandbox Status",
+  "adversarialReview": "Run Cross-Vendor Adversarial Review",
+  "agentosUrl": "Loopback HTTP URL of AgentOS for Cross-Vendor Adversarial Review (e.g. http://127.0.0.1:8010). Non-loopback URLs are blocked.",
   "fimEnabled": "Enable local Fill-in-the-Middle (FIM) inline autocomplete using a loopback model endpoint.",
   "fimModel": "Local model used for low-latency FIM inline autocomplete (for example qwen2.5-coder:1.5b).",
   "fimEndpoint": "Loopback HTTP endpoint for FIM autocomplete (Ollama or llama.cpp, e.g. http://127.0.0.1:11434). Non-loopback URLs are blocked.",

@@ -363,3 +363,42 @@ test('InlineEditController generates virtual diff, applies accept(), handles rej
     /inlineEditOutsideWorkspace/
   );
 });
+
+test('runLoopbackAdversarialReview enforces loopback SSRF guard and parses live AgentOS verdicts (DE/EN)', async t => {
+  const { runLoopbackAdversarialReview, formatAdversarialSummary } = require('../src/adversarial_review');
+
+  // 1. Fail-closed SSRF guard blocks non-loopback AgentOS URL
+  await assert.rejects(
+    () => runLoopbackAdversarialReview({ agentosUrl: 'http://169.254.169.254:8010', codeOrDiff: 'x = 1\n' }),
+    /invalidEndpoint/
+  );
+
+  // 2. Real loopback HTTP roundtrip
+  const baseUrl = await startTestHttpServer(t, async (req, res) => {
+    assert.equal(req.url, '/v1/routing/adversarial-review');
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    assert.equal(body.author_provider, 'anthropic');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        verdict: 'APPROVED',
+        reviewer_provider: 'openai',
+        reviewer_model: 'openai-o3-pro',
+        finding_counts: { critical: 0, high: 0, medium: 0, total: 0 },
+        findings: []
+      })
+    );
+  });
+
+  const report = await runLoopbackAdversarialReview({
+    agentosUrl: baseUrl,
+    authorProvider: 'anthropic',
+    codeOrDiff: 'export const ok = true;\n',
+    lang: 'de'
+  });
+  assert.equal(report.verdict, 'APPROVED');
+  assert.match(formatAdversarialSummary(report, 'de'), /Prüfer: openai\/openai-o3-pro/);
+  assert.match(formatAdversarialSummary(report, 'en'), /Reviewer: openai\/openai-o3-pro/);
+});

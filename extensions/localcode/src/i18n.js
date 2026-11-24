@@ -23,7 +23,11 @@ const STRINGS = Object.freeze({
     fimEnabledNotice: 'Local FIM Tab autocomplete enabled.',
     fimDisabledNotice: 'Local FIM Tab autocomplete disabled.',
     fimInvalidEndpoint: 'FIM autocomplete requires a local loopback HTTP endpoint (127.0.0.1, localhost, or [::1]).',
-    providerStatusTemplate: 'LocalCode Provider: {provider} | OS-Sandbox: {sandbox} | Configured keys: {count}'
+    providerStatusTemplate: 'LocalCode Provider: {provider} | OS-Sandbox: {sandbox} | Configured keys: {count}',
+    adversarialReviewNoEditor: 'Open a file in the editor before running Cross-Vendor Adversarial Review.',
+    adversarialReviewEmpty: 'No code selected or present in the active editor.',
+    adversarialReviewLimit: 'Code snippet exceeds the 128 KiB limit for Adversarial Review. Select a smaller range.',
+    adversarialReviewTimeout: 'AgentOS Adversarial Review timed out.'
   }),
   de: Object.freeze({
     inlineEditPrompt: 'Beschreibe die Inline-Änderung für die Auswahl',
@@ -47,7 +51,11 @@ const STRINGS = Object.freeze({
     fimEnabledNotice: 'Lokale FIM-Tab-Autovervollständigung aktiviert.',
     fimDisabledNotice: 'Lokale FIM-Tab-Autovervollständigung deaktiviert.',
     fimInvalidEndpoint: 'FIM-Autovervollständigung erfordert einen lokalen Loopback-HTTP-Endpunkt (127.0.0.1, localhost oder [::1]).',
-    providerStatusTemplate: 'LocalCode-Provider: {provider} | OS-Sandbox: {sandbox} | Konfigurierte Keys: {count}'
+    providerStatusTemplate: 'LocalCode-Provider: {provider} | OS-Sandbox: {sandbox} | Konfigurierte Keys: {count}',
+    adversarialReviewNoEditor: 'Öffne zuerst eine Datei im Editor für das Cross-Vendor Adversarial Review.',
+    adversarialReviewEmpty: 'Kein Code im aktiven Editor oder in der Auswahl vorhanden.',
+    adversarialReviewLimit: 'Code-Ausschnitt überschreitet das 128-KiB-Limit für das Adversarial Review. Wähle einen kleineren Bereich.',
+    adversarialReviewTimeout: 'Zeitlimit für AgentOS Adversarial Review überschritten.'
   })
 });
 

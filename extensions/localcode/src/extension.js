@@ -9,6 +9,7 @@ const { samePath, contained, validMessage } = require('./safety');
 const { t: translateExtra } = require('./i18n');
 const { InlineEditController, INLINE_EDIT_SCHEME } = require('./inline_edit');
 const { FimAutocompleteProvider } = require('./fim_autocomplete');
+const { runLoopbackAdversarialReview, formatAdversarialSummary } = require('./adversarial_review');
 const catalogs = { en: require('../media/en.json'), de: require('../media/de.json') };
 
 class LocalCode {
@@ -73,6 +74,34 @@ class LocalCode {
           .replace('{sandbox}', status?.os_sandbox_enabled ? 'ON' : 'OFF')
           .replace('{count}', String(configuredCount));
         vscode.window.showInformationMessage(msg);
+      },
+      adversarialReview: async () => {
+        const editor = vscode.window.activeTextEditor || this.lastEditor;
+        if (!editor || !editor.document) {
+          vscode.window.showWarningMessage(this.t('adversarialReviewNoEditor'));
+          return;
+        }
+        const selected = !editor.selection.isEmpty ? editor.document.getText(editor.selection) : editor.document.getText();
+        const cfg = vscode.workspace.getConfiguration('localcode');
+        const agentosUrl = cfg.get('agentosUrl', 'http://127.0.0.1:8010');
+        const report = await runLoopbackAdversarialReview({
+          agentosUrl,
+          authorProvider: 'anthropic',
+          codeOrDiff: selected,
+          filePath: editor.document.fileName || '',
+          lang: this.language
+        });
+        const line = formatAdversarialSummary(report, this.language);
+        this.output.appendLine(`[Adversarial Review] ${report.summary || line}`);
+        for (const f of report.findings || []) {
+          this.output.appendLine(`  [${f.severity}] L${f.line} ${f.code}: ${f.message}`);
+        }
+        if (report.verdict === 'APPROVED') {
+          vscode.window.showInformationMessage(line);
+        } else {
+          this.output.show(true);
+          vscode.window.showWarningMessage(line);
+        }
       },
       start: () => this.start(),
       settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode')
