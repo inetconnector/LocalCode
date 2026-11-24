@@ -578,3 +578,67 @@ func TestVerifyFrameEndpointsDetectBlackScreenAndPassRichUI(t *testing.T) {
 		t.Fatalf("remote verify-frame mismatch code=%d body=%s", recRemote.Code, recRemote.Body.String())
 	}
 }
+
+func TestRemoteAPKUpdateManifestAndDownloadEndpoint(t *testing.T) {
+	tmpDir := t.TempDir()
+	fakeAPK := filepath.Join(tmpDir, "LocalCode-Remote.apk")
+	apkBytes := []byte("PK\x03\x04localcode-signed-release-apk-bytes-test")
+	if err := os.WriteFile(fakeAPK, apkBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALCODE_APK_PATH", fakeAPK)
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, _, err := state.DirectPairRemoteDevice("Galaxy S25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSrv := NewRemoteServer(state)
+
+	// 1. Unauthenticated request is rejected fail-closed (401)
+	unauthRec := httptest.NewRecorder()
+	unauthReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update", nil)
+	remoteSrv.ServeHTTP(unauthRec, unauthReq)
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without bearer token, got %d", unauthRec.Code)
+	}
+
+	// 2. Authenticated manifest request returns available=true, sha256, version_code
+	metaRec := httptest.NewRecorder()
+	metaReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update", nil)
+	metaReq.Header.Set("Authorization", "Bearer "+token)
+	remoteSrv.ServeHTTP(metaRec, metaReq)
+	if metaRec.Code != http.StatusOK {
+		t.Fatalf("apk-update manifest status=%d body=%s", metaRec.Code, metaRec.Body.String())
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(metaRec.Body.Bytes(), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["available"] != true || meta["download_path"] != "/remote/api/apk-update/download" {
+		t.Fatalf("unexpected apk-update manifest: %+v", meta)
+	}
+	expectedSHA, _ := meta["sha256"].(string)
+	if len(expectedSHA) != 64 {
+		t.Fatalf("expected 64-hex sha256 in manifest, got %q", expectedSHA)
+	}
+
+	// 3. Authenticated download returns exact APK bytes and matching X-APK-SHA256 header
+	dlRec := httptest.NewRecorder()
+	dlReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update/download", nil)
+	dlReq.Header.Set("Authorization", "Bearer "+token)
+	remoteSrv.ServeHTTP(dlRec, dlReq)
+	if dlRec.Code != http.StatusOK {
+		t.Fatalf("apk-update download status=%d body=%s", dlRec.Code, dlRec.Body.String())
+	}
+	if dlRec.Header().Get("X-APK-SHA256") != expectedSHA {
+		t.Fatalf("X-APK-SHA256=%q want %q", dlRec.Header().Get("X-APK-SHA256"), expectedSHA)
+	}
+	if !bytes.Equal(dlRec.Body.Bytes(), apkBytes) {
+		t.Fatalf("downloaded APK bytes mismatch")
+	}
+}

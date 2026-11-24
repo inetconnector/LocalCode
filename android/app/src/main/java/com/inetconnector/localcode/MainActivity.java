@@ -4,10 +4,13 @@ package com.inetconnector.localcode;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.net.http.SslCertificate;
@@ -20,6 +23,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.speech.RecognizerIntent;
@@ -51,7 +55,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
@@ -64,6 +71,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -118,6 +126,9 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
     private static final int REQUEST_QR_SCAN = 704;
+    private static final int REQUEST_INSTALL_UNKNOWN_APPS = 705;
+    private static final String ACTION_APK_INSTALL_RESULT = "com.inetconnector.localcode.APK_INSTALL_RESULT";
+    private static final int MAX_APK_UPDATE_BYTES = 32 * 1024 * 1024;
 
     public static final class DiscoveredInstance {
         final String hostname;
@@ -147,6 +158,12 @@ public final class MainActivity extends Activity {
     private ScrollView discoveryPanel;
     private LinearLayout connectingOverlay;
     private AlertDialog tlsWarningDialog;
+    private AlertDialog updateDialog;
+    private final AtomicBoolean updateCheckInFlight = new AtomicBoolean(false);
+    private volatile String lastPromptedUpdateSha = "";
+    private volatile String pendingUpdateOrigin = "";
+    private volatile String pendingUpdateSha256 = "";
+    private volatile String pendingUpdateVersion = "";
     private TextView connectingStatus;
     private TextView connectingTarget;
     private LinearLayout instancesContainer;
@@ -1186,6 +1203,20 @@ public final class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_INSTALL_UNKNOWN_APPS) {
+            if (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls()) {
+                String origin = pendingUpdateOrigin;
+                String sha = pendingUpdateSha256;
+                String ver = pendingUpdateVersion;
+                pendingUpdateOrigin = "";
+                pendingUpdateSha256 = "";
+                pendingUpdateVersion = "";
+                if (!origin.isEmpty() && validFingerprint(sha)) {
+                    downloadAndInstallApkUpdate(origin, loadEncryptedAuthToken(), sha, ver);
+                }
+            }
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -1220,6 +1251,7 @@ public final class MainActivity extends Activity {
                 if (webView != null) {
                     webView.setVisibility(View.VISIBLE);
                 }
+                checkForApkUpdateAsync(false);
             });
         }
 
@@ -1305,6 +1337,14 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void setAuthToken(String token) {
             storeEncryptedAuthToken(token);
+            if (token != null && !token.trim().isEmpty()) {
+                checkForApkUpdateAsync(false);
+            }
+        }
+
+        @JavascriptInterface
+        public void checkForUpdate() {
+            checkForApkUpdateAsync(true);
         }
 
         @JavascriptInterface
@@ -1896,6 +1936,10 @@ public final class MainActivity extends Activity {
 
     private boolean handleIntent(Intent intent) {
         if (intent == null) return false;
+        if (ACTION_APK_INSTALL_RESULT.equals(intent.getAction())) {
+            handleApkInstallResultIntent(intent);
+            return true;
+        }
         String directUrl = intent.getStringExtra("connect_url");
         if (directUrl != null && !directUrl.trim().isEmpty() && isAllowedRemoteUrl(directUrl.trim())) {
             openRemote(directUrl.trim());
@@ -1990,6 +2034,282 @@ public final class MainActivity extends Activity {
                 && uri.getHost() != null
                 && !uri.getHost().trim().isEmpty()
                 && uri.getUserInfo() == null;
+    }
+
+    private SSLContext createPinnedSSLContext(final String pinnedFp) throws Exception {
+        if (!validFingerprint(pinnedFp)) {
+            throw new CertificateException("Missing or invalid pinned TLS fingerprint");
+        }
+        TrustManager[] trustManagers = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        throw new CertificateException("Client auth unsupported");
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        if (chain == null || chain.length == 0 || chain[0] == null) {
+                            throw new CertificateException("Empty server certificate chain");
+                        }
+                        try {
+                            byte[] der = chain[0].getEncoded();
+                            byte[] digest = MessageDigest.getInstance("SHA-256").digest(der);
+                            StringBuilder sb = new StringBuilder(digest.length * 2);
+                            for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+                            String observed = sb.toString();
+                            if (!pinnedFp.equalsIgnoreCase(observed)) {
+                                throw new CertificateException("TLS fingerprint mismatch: " + observed);
+                            }
+                        } catch (CertificateException ce) {
+                            throw ce;
+                        } catch (Exception ex) {
+                            throw new CertificateException("Certificate verification failed", ex);
+                        }
+                    }
+
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                }
+        };
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(null, trustManagers, new SecureRandom());
+        return ctx;
+    }
+
+    private static String extractRemoteOrigin(String rawUrl) {
+        String clean = cleanRemoteBaseUrl(rawUrl);
+        if (!isAllowedRemoteUrl(clean)) return "";
+        Uri uri = Uri.parse(clean);
+        int port = uri.getPort();
+        return "https://" + uri.getHost() + (port > 0 ? ":" + port : "");
+    }
+
+    private long currentInstalledVersionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) {
+                return pi.getLongVersionCode();
+            }
+            return pi.versionCode;
+        } catch (Exception ex) {
+            return 0L;
+        }
+    }
+
+    private String computeInstalledApkSha256() {
+        try {
+            ApplicationInfo appInfo = getApplicationInfo();
+            if (appInfo == null || appInfo.sourceDir == null) return "";
+            File apkFile = new File(appInfo.sourceDir);
+            if (!apkFile.isFile()) return "";
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[16384];
+            try (FileInputStream in = new FileInputStream(apkFile)) {
+                int read;
+                while ((read = in.read(buf)) > 0) {
+                    md.update(buf, 0, read);
+                }
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+            return sb.toString();
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
+    private void checkForApkUpdateAsync(final boolean manual) {
+        final String origin = extractRemoteOrigin(currentRemoteUrl);
+        final String pinnedFp = normalizeFingerprint(expectedFingerprint);
+        final String token = loadEncryptedAuthToken();
+        if (origin.isEmpty() || !validFingerprint(pinnedFp) || token == null || token.trim().isEmpty()) {
+            return;
+        }
+        if (!updateCheckInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        new Thread(() -> {
+            HttpsURLConnection conn = null;
+            try {
+                URL url = new URL(origin + "/remote/api/apk-update");
+                conn = (HttpsURLConnection) url.openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(5000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+                conn.setSSLSocketFactory(createPinnedSSLContext(pinnedFp).getSocketFactory());
+                conn.setHostnameVerifier((hostname, session) -> hostname != null && hostname.equalsIgnoreCase(Uri.parse(origin).getHost()));
+                if (conn.getResponseCode() != 200) return;
+                String body = readSmallResponse(conn.getInputStream());
+                JSONObject json = new JSONObject(body);
+                if (!json.optBoolean("available", false)) return;
+
+                final String remoteVersion = json.optString("version", "").trim();
+                final long remoteCode = json.optLong("version_code", 0L);
+                final String remoteSha = normalizeFingerprint(json.optString("sha256", ""));
+                if (!validFingerprint(remoteSha)) return;
+
+                long installedCode = currentInstalledVersionCode();
+                String installedSha = computeInstalledApkSha256();
+                boolean newerVersion = remoteCode > installedCode;
+                boolean sameVersionNewHash = (remoteCode > 0 && remoteCode == installedCode && !installedSha.isEmpty() && !remoteSha.equalsIgnoreCase(installedSha));
+                if (!newerVersion && !sameVersionNewHash) return;
+                if (!manual && remoteSha.equalsIgnoreCase(lastPromptedUpdateSha)) return;
+                lastPromptedUpdateSha = remoteSha;
+
+                runOnUiThread(() -> showApkUpdateDialog(origin, token.trim(), remoteVersion, remoteSha));
+            } catch (Exception ignored) {
+                // Silent fail-closed: network or TLS mismatch never prompts an unverified install.
+            } finally {
+                if (conn != null) conn.disconnect();
+                updateCheckInFlight.set(false);
+            }
+        }, "LocalCodeApkUpdateCheck").start();
+    }
+
+    private void showApkUpdateDialog(final String origin, final String token, final String remoteVersion, final String remoteSha) {
+        if (isFinishing() || isDestroyed()) return;
+        if (updateDialog != null && updateDialog.isShowing()) {
+            try { updateDialog.dismiss(); } catch (Exception ignored) {}
+        }
+        String shortHash = remoteSha.length() >= 12 ? remoteSha.substring(0, 12) : remoteSha;
+        String versionLabel = remoteVersion.isEmpty() ? "Release" : "v" + remoteVersion;
+        updateDialog = new AlertDialog.Builder(MainActivity.this)
+                .setTitle(tr("LocalCode Update verfügbar", "LocalCode Update Available"))
+                .setMessage(tr(
+                        "Eine neue signierte Release-APK (" + versionLabel + ", SHA-256: " + shortHash + "…) wurde auf deinem PC erkannt. Jetzt herunterladen und installieren?",
+                        "A new signed release APK (" + versionLabel + ", SHA-256: " + shortHash + "…) was detected on your PC. Download and install now?"))
+                .setPositiveButton(tr("Jetzt updaten", "Update now"), (dialog, which) -> {
+                    downloadAndInstallApkUpdate(origin, token, remoteSha, remoteVersion);
+                })
+                .setNegativeButton(tr("Später", "Later"), null)
+                .setCancelable(true)
+                .show();
+    }
+
+    private void downloadAndInstallApkUpdate(final String origin, final String token, final String expectedSha256, final String remoteVersion) {
+        final String pinnedFp = normalizeFingerprint(expectedFingerprint);
+        if (origin.isEmpty() || !validFingerprint(pinnedFp) || !validFingerprint(expectedSha256) || token == null || token.trim().isEmpty()) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            pendingUpdateOrigin = origin;
+            pendingUpdateSha256 = expectedSha256;
+            pendingUpdateVersion = remoteVersion;
+            setStatus(tr(
+                    "Bitte „Aus dieser Quelle zulassen“ für LocalCode aktivieren …",
+                    "Please enable 'Allow from this source' for LocalCode …"));
+            Intent permIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            try {
+                startActivityForResult(permIntent, REQUEST_INSTALL_UNKNOWN_APPS);
+            } catch (RuntimeException ex) {
+                showRemoteError("App-Installationsberechtigung konnte nicht geöffnet werden.", "Could not open install-packages permission.", ex);
+            }
+            return;
+        }
+
+        setStatus(tr("Lade signiertes Update herunter …", "Downloading signed update …"));
+        new Thread(() -> {
+            HttpsURLConnection conn = null;
+            PackageInstaller.Session session = null;
+            try {
+                URL url = new URL(origin + "/remote/api/apk-update/download");
+                conn = (HttpsURLConnection) url.openConnection();
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(20000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+                conn.setSSLSocketFactory(createPinnedSSLContext(pinnedFp).getSocketFactory());
+                conn.setHostnameVerifier((hostname, sessionTls) -> hostname != null && hostname.equalsIgnoreCase(Uri.parse(origin).getHost()));
+                if (conn.getResponseCode() != 200) {
+                    throw new IllegalStateException("HTTP " + conn.getResponseCode());
+                }
+
+                ByteArrayOutputStream apkBuffer = new ByteArrayOutputStream();
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                byte[] chunk = new byte[16384];
+                int total = 0;
+                try (InputStream in = conn.getInputStream()) {
+                    int read;
+                    while ((read = in.read(chunk)) > 0) {
+                        total += read;
+                        if (total > MAX_APK_UPDATE_BYTES) {
+                            throw new IllegalStateException("APK exceeds 32 MiB safety limit");
+                        }
+                        md.update(chunk, 0, read);
+                        apkBuffer.write(chunk, 0, read);
+                    }
+                }
+
+                byte[] digest = md.digest();
+                StringBuilder sb = new StringBuilder(digest.length * 2);
+                for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+                String observedSha = sb.toString();
+                if (!expectedSha256.equalsIgnoreCase(observedSha)) {
+                    throw new SecurityException("APK SHA-256 mismatch (fail-closed)");
+                }
+
+                byte[] verifiedApkBytes = apkBuffer.toByteArray();
+                PackageInstaller installer = getPackageManager().getPackageInstaller();
+                PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
+                        PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                params.setAppPackageName(getPackageName());
+                params.setSize(verifiedApkBytes.length);
+                int sessionId = installer.createSession(params);
+                session = installer.openSession(sessionId);
+                try (OutputStream out = session.openWrite("localcode-update.apk", 0, verifiedApkBytes.length)) {
+                    out.write(verifiedApkBytes);
+                    session.fsync(out);
+                }
+
+                Intent callbackIntent = new Intent(MainActivity.this, MainActivity.class);
+                callbackIntent.setAction(ACTION_APK_INSTALL_RESULT);
+                int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+                PendingIntent pendingIntent = PendingIntent.getActivity(MainActivity.this, sessionId, callbackIntent, piFlags);
+                session.commit(pendingIntent.getIntentSender());
+                session.close();
+                session = null;
+            } catch (Exception ex) {
+                if (session != null) {
+                    try { session.abandon(); } catch (Exception ignored) {}
+                }
+                showRemoteError(
+                        "APK-Update abgebrochen (Integritäts- oder Netzwerkfehler).",
+                        "APK update aborted (integrity or network error).",
+                        ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex.getMessage()));
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }, "LocalCodeApkUpdateInstall").start();
+    }
+
+    private void handleApkInstallResultIntent(Intent intent) {
+        int statusCode = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (statusCode == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirmIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirmIntent != null) {
+                confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    startActivity(confirmIntent);
+                } catch (RuntimeException ex) {
+                    showRemoteError("Update-Bestätigung konnte nicht gestartet werden.", "Could not launch update confirmation.", ex);
+                }
+            }
+            return;
+        }
+        if (statusCode == PackageInstaller.STATUS_SUCCESS) {
+            setStatus(tr("Update erfolgreich installiert.", "Update installed successfully."));
+        } else {
+            String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            setStatus(tr(
+                    "Update nicht installiert: " + (msg == null ? statusCode : msg),
+                    "Update not installed: " + (msg == null ? statusCode : msg)));
+        }
     }
 
     private void openRemote(String target) {
@@ -2209,6 +2529,10 @@ public final class MainActivity extends Activity {
         if (tlsWarningDialog != null && tlsWarningDialog.isShowing()) {
             try { tlsWarningDialog.dismiss(); } catch (Exception ignored) {}
             tlsWarningDialog = null;
+        }
+        if (updateDialog != null && updateDialog.isShowing()) {
+            try { updateDialog.dismiss(); } catch (Exception ignored) {}
+            updateDialog = null;
         }
         if (tts != null) {
             try {

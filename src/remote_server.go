@@ -57,6 +57,8 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/steer", s.withAuth(s.handleSteer))
 	s.mux.HandleFunc("/remote/api/providers-status", s.withAuth(s.handleProvidersStatus))
 	s.mux.HandleFunc("/remote/api/verify-frame", s.withAuth(s.handleVerifyFrame))
+	s.mux.HandleFunc("/remote/api/apk-update", s.withAuth(s.handleAPKUpdate))
+	s.mux.HandleFunc("/remote/api/apk-update/download", s.withAuth(s.handleAPKUpdateDownload))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
 	s.mux.HandleFunc("/remote/api/lockscreen-approve", s.withAuth(s.handleLockscreenApprove))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
@@ -692,6 +694,45 @@ func (s *RemoteServer) handleProvidersStatus(w http.ResponseWriter, r *http.Requ
 
 func (s *RemoteServer) handleVerifyFrame(w http.ResponseWriter, r *http.Request) {
 	handleVerifyFrameHTTP(w, r)
+}
+
+func (s *RemoteServer) handleAPKUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = writeJSON(w, buildAPKUpdateMetadata())
+}
+
+func (s *RemoteServer) handleAPKUpdateDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	apkPath, _, err := resolveReleaseAPKPath()
+	if err != nil {
+		http.Error(w, "release APK not available", http.StatusNotFound)
+		return
+	}
+	digest, sizeBytes, err := computeFileSHA256Hex(apkPath)
+	if err != nil {
+		http.Error(w, "failed to read release APK", http.StatusInternalServerError)
+		return
+	}
+	f, err := os.Open(apkPath)
+	if err != nil {
+		http.Error(w, "failed to open release APK", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+	w.Header().Set("Content-Disposition", `attachment; filename="LocalCode-Remote.apk"`)
+	w.Header().Set("X-APK-SHA256", digest)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.FormatInt(sizeBytes, 10))
+	_, _ = io.Copy(w, io.LimitReader(f, sizeBytes))
 }
 
 func (s *RemoteServer) handleApprove(w http.ResponseWriter, r *http.Request) {

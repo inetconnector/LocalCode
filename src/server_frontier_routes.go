@@ -4,7 +4,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -14,6 +16,8 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -528,4 +532,125 @@ func handleVerifyFrameHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVerifyFrame(w http.ResponseWriter, r *http.Request) {
 	handleVerifyFrameHTTP(w, r)
+}
+
+const maxReleaseAPKBytes = 32 * 1024 * 1024
+
+func parseAndroidVersionCode(rawVersion string) (string, int) {
+	v := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rawVersion), "-debug"))
+	if v == "" || v == "dev" {
+		// Fall back to VERSION.txt if available near executable or workspace
+		for _, candidate := range []string{
+			"VERSION.txt",
+			filepath.Join("..", "VERSION.txt"),
+		} {
+			if data, err := os.ReadFile(candidate); err == nil {
+				if trimmed := strings.TrimSpace(string(data)); trimmed != "" {
+					v = trimmed
+					break
+				}
+			}
+		}
+	}
+	base := v
+	if idx := strings.IndexAny(base, "-+"); idx > 0 {
+		base = base[:idx]
+	}
+	parts := strings.Split(base, ".")
+	if len(parts) < 3 {
+		return v, 0
+	}
+	major, err1 := strconv.Atoi(parts[0])
+	minor, err2 := strconv.Atoi(parts[1])
+	patch, err3 := strconv.Atoi(parts[2])
+	if err1 != nil || err2 != nil || err3 != nil || major < 0 || minor < 0 || patch < 0 {
+		return v, 0
+	}
+	return v, major*10000 + minor*100 + patch
+}
+
+func resolveReleaseAPKPath() (string, os.FileInfo, error) {
+	candidates := []string{}
+	if override := strings.TrimSpace(os.Getenv("LOCALCODE_APK_PATH")); override != "" {
+		candidates = append(candidates, override)
+	}
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "LocalCode-Remote.apk"),
+			filepath.Join(exeDir, "LocalCode-Remote-debug.apk"),
+			filepath.Join(exeDir, "dist", "LocalCode-Remote.apk"),
+			filepath.Join(exeDir, "dist", "LocalCode-Remote-debug.apk"),
+			filepath.Join(exeDir, "..", "dist", "LocalCode-Remote.apk"),
+			filepath.Join(exeDir, "..", "dist", "LocalCode-Remote-debug.apk"),
+		)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(cwd, "dist", "LocalCode-Remote.apk"),
+			filepath.Join(cwd, "dist", "LocalCode-Remote-debug.apk"),
+			filepath.Join(cwd, "..", "dist", "LocalCode-Remote.apk"),
+			filepath.Join(cwd, "..", "dist", "LocalCode-Remote-debug.apk"),
+		)
+	}
+	for _, cand := range candidates {
+		cleaned := filepath.Clean(cand)
+		if !strings.HasSuffix(strings.ToLower(cleaned), ".apk") {
+			continue
+		}
+		info, err := os.Stat(cleaned)
+		if err != nil || info.IsDir() || info.Size() <= 0 || info.Size() > maxReleaseAPKBytes {
+			continue
+		}
+		return cleaned, info, nil
+	}
+	return "", nil, os.ErrNotExist
+}
+
+func computeFileSHA256Hex(path string) (string, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(f, maxReleaseAPKBytes+1))
+	if err != nil {
+		return "", 0, err
+	}
+	if n > maxReleaseAPKBytes {
+		return "", 0, fmt.Errorf("APK exceeds %d byte limit", maxReleaseAPKBytes)
+	}
+	return hex.EncodeToString(h.Sum(nil)), n, nil
+}
+
+func buildAPKUpdateMetadata() map[string]any {
+	verStr, verCode := parseAndroidVersionCode(version)
+	apkPath, _, err := resolveReleaseAPKPath()
+	if err != nil {
+		return map[string]any{
+			"schema":       "localcode.android_update.v1",
+			"available":    false,
+			"version":      verStr,
+			"version_code": verCode,
+		}
+	}
+	digest, sizeBytes, err := computeFileSHA256Hex(apkPath)
+	if err != nil {
+		return map[string]any{
+			"schema":       "localcode.android_update.v1",
+			"available":    false,
+			"version":      verStr,
+			"version_code": verCode,
+		}
+	}
+	return map[string]any{
+		"schema":        "localcode.android_update.v1",
+		"available":     true,
+		"version":       verStr,
+		"version_code":  verCode,
+		"sha256":        digest,
+		"size_bytes":    sizeBytes,
+		"download_path": "/remote/api/apk-update/download",
+	}
 }

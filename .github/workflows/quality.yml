@@ -133,6 +133,34 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: git diff --check
 
+  cross-platform:
+    name: Cross-Platform Vet & Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: src/go.mod
+      - name: Go vet
+        run: go vet ./...
+      - name: Compile tests
+        run: go test -c -o /tmp/localcode.test . && rm -f /tmp/localcode.test
+      - name: Build native binary & E2EE relay
+        run: |
+          VERSION="$(tr -d '\r\n' < ../VERSION.txt)"
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /tmp/localcode .
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/localcode-relay ./cmd/localcode-relay
+          rm -f /tmp/localcode /tmp/localcode-relay
+
   ide-extension:
     runs-on: windows-latest
     timeout-minutes: 20

@@ -138,6 +138,12 @@ func TestAndroidRemoteEnforcesStrictTLSPinningHTTPSKeystoreAndBlackScreenFixes(t
 		`handleRelayPairUri(data)`,
 		`PREF_RELAY_AUTH_ENC`,
 		`getRelayPairingSummary()`,
+		`checkForApkUpdateAsync`,
+		`createPinnedSSLContext`,
+		`APK SHA-256 mismatch (fail-closed)`,
+		`PackageInstaller`,
+		`ACTION_APK_INSTALL_RESULT`,
+		`canRequestPackageInstalls()`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Android Remote hardening/fix missing: %s", required)
@@ -162,6 +168,9 @@ func TestAndroidRemoteEnforcesStrictTLSPinningHTTPSKeystoreAndBlackScreenFixes(t
 	}
 	if !strings.Contains(manifest, `android:host="relay-pair"`) {
 		t.Fatal("AndroidManifest.xml must declare localcode://relay-pair deep link host")
+	}
+	if !strings.Contains(manifest, `android.permission.REQUEST_INSTALL_PACKAGES`) {
+		t.Fatal("AndroidManifest.xml must declare REQUEST_INSTALL_PACKAGES for verified self-update")
 	}
 
 	// Build script assertions: no hardcoded UNC path or password, env-driven signing + VERSION.txt versioning
