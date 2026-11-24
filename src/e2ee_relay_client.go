@@ -62,6 +62,7 @@ var allowedMobileRelayRoutes = map[string]string{
 	"/remote/api/apk-update/download":       http.MethodGet,
 	"/remote/api/approve":                   http.MethodPost,
 	"/remote/api/lockscreen-approve":        http.MethodPost,
+	"/remote/api/push/register-endpoint":    http.MethodPost,
 	"/remote/api/stop":                      http.MethodPost,
 	"/remote/api/unpair":                    http.MethodPost,
 	"/remote/api/project-action":            http.MethodPost,

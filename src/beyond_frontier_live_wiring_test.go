@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -706,5 +707,120 @@ func TestLocalCodeMCPServerJSONRPC(t *testing.T) {
 	frameRec := callMCP(string(frameArgs))
 	if frameRec.Code != http.StatusOK || !strings.Contains(frameRec.Body.String(), "BLANK_OR_BLACK_SCREEN") {
 		t.Fatalf("MCP verify_frame mismatch: %s", frameRec.Body.String())
+	}
+}
+
+func TestUnifiedPushRegisterAndApprovalNotifyEndToEnd(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, device, err := state.DirectPairRemoteDevice("Galaxy-S25-Push")
+	if err != nil {
+		t.Fatalf("DirectPairRemoteDevice failed: %v", err)
+	}
+
+	localSrv := NewServer(state)
+	remoteSrv := NewRemoteServer(state)
+
+	// 1. Fail-closed: plaintext non-loopback HTTP UnifiedPush URL MUST be rejected (400).
+	badRec := httptest.NewRecorder()
+	badBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":"http://push.example.com/hook"}`, device.ID)
+	badReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(badBody))
+	badReq.Header.Set("Authorization", "Bearer "+token)
+	badReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-loopback plaintext push endpoint, got %d body=%s", badRec.Code, badRec.Body.String())
+	}
+
+	// 2. Start a real local UnifiedPush HTTP receiver and register it via /remote/api/push/register-endpoint.
+	var receivedBody []byte
+	var receivedUrgency string
+	var receivedTopic string
+	var receivedPayload ZeroSecretPushPayload
+	pushReceiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedUrgency = r.Header.Get("Urgency")
+		receivedTopic = r.Header.Get("Topic")
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = body
+		_ = json.Unmarshal(body, &receivedPayload)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer pushReceiver.Close()
+
+	regRec := httptest.NewRecorder()
+	regBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":%q}`, device.ID, pushReceiver.URL)
+	regReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(regBody))
+	regReq.Header.Set("Authorization", "Bearer "+token)
+	regReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusOK || !strings.Contains(regRec.Body.String(), `"registered_count":1`) {
+		t.Fatalf("push register failed code=%d body=%s", regRec.Code, regRec.Body.String())
+	}
+
+	// 3. Attach pending approval and trigger /api/push/notify-approval with a dirty secret-like project string.
+	resultCh := make(chan ApprovalDecision, 1)
+	state.mu.Lock()
+	state.Pending = &PendingAction{
+		ID:     "appr-push-live-01",
+		Result: resultCh,
+	}
+	state.mu.Unlock()
+
+	notifyRec := httptest.NewRecorder()
+	notifyBody := `{"approval_id":"appr-push-live-01","project_name":"C:\\repo\\secret sk-ant-1234567890abcdef"}`
+	notifyReq := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/push/notify-approval", strings.NewReader(notifyBody))
+	notifyReq.Header.Set("Content-Type", "application/json")
+	localSrv.ServeHTTP(notifyRec, notifyReq)
+	if notifyRec.Code != http.StatusOK || !strings.Contains(notifyRec.Body.String(), `"delivered":1`) {
+		t.Fatalf("push notify failed code=%d body=%s", notifyRec.Code, notifyRec.Body.String())
+	}
+
+	// 4. Verify Zero-Secret-Push-Policy and RFC 8030 headers on received payload.
+	if receivedUrgency != "high" || !strings.HasPrefix(receivedTopic, "lc-") {
+		t.Fatalf("unexpected UnifiedPush headers urgency=%q topic=%q", receivedUrgency, receivedTopic)
+	}
+	if strings.Contains(string(receivedBody), "sk-ant-") {
+		t.Fatalf("Zero-Secret push policy violated! body=%s", string(receivedBody))
+	}
+	if receivedPayload.Project != "LocalCode Project" || receivedPayload.ApprovalID != "appr-push-live-01" {
+		t.Fatalf("unexpected sanitized push payload: %+v", receivedPayload)
+	}
+	if receivedPayload.ApproveOnceToken == "" || receivedPayload.RejectToken == "" {
+		t.Fatalf("missing lockscreen action tokens in push payload: %+v", receivedPayload)
+	}
+
+	// 5. Redeem single-use approve_once_token on /remote/api/lockscreen-approve, then verify replay is blocked (403).
+	approveBody, _ := json.Marshal(map[string]any{
+		"token":       receivedPayload.ApproveOnceToken,
+		"approval_id": "appr-push-live-01",
+		"device_id":   device.ID,
+	})
+	apprRec := httptest.NewRecorder()
+	apprReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	apprReq.Header.Set("Authorization", "Bearer "+token)
+	apprReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(apprRec, apprReq)
+	if apprRec.Code != http.StatusOK {
+		t.Fatalf("lockscreen approve failed code=%d body=%s", apprRec.Code, apprRec.Body.String())
+	}
+	select {
+	case dec := <-resultCh:
+		if !dec.Approved || dec.Persist {
+			t.Fatalf("expected non-persistent single approval, got %+v", dec)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for lockscreen approval decision")
+	}
+
+	replayRec := httptest.NewRecorder()
+	replayReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	replayReq.Header.Set("Authorization", "Bearer "+token)
+	replayReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on replayed lockscreen token, got %d body=%s", replayRec.Code, replayRec.Body.String())
 	}
 }

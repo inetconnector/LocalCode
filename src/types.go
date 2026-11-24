@@ -319,6 +319,7 @@ type AppState struct {
 	PTY                   *PTYManager
 	LockscreenTokens      *LockscreenActionTokenManager
 	RelayPairing          *ActiveRelayPairingState
+	PushTargets           map[string]PushTarget
 
 	LastTask         string
 	LastSummary      string
@@ -376,6 +377,7 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 		PendingRemotePairings: make(map[string]*PendingRemotePairing),
 		ActiveRuns:            make(map[string]*ActiveAgentRun),
 		RunningProjects:       make(map[string]int),
+		PushTargets:           make(map[string]PushTarget),
 		threadSaveCh:          make(chan map[string]*ChatThread, 1),
 		threadSaveStop:        make(chan struct{}),
 		threadSaveDone:        make(chan struct{}),

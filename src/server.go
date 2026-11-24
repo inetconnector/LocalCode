@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/relay/status", s.handleRelayStatus)
 	s.mux.HandleFunc("/api/relay/pair", s.handleRelayPair)
 	s.mux.HandleFunc("/api/push/lockscreen-token", s.handleIssueLockscreenToken)
+	s.mux.HandleFunc("/api/push/register-endpoint", s.handleRegisterPushEndpoint)
+	s.mux.HandleFunc("/api/push/notify-approval", s.handleNotifyApprovalPush)
 	s.mux.HandleFunc("/api/vision/verify-frame", s.handleVerifyFrame)
 	s.mux.HandleFunc("/mcp", s.handleMCPServer)
 	s.mux.HandleFunc("/api/threads", s.handleThreads)

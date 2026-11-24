@@ -408,6 +408,196 @@ func (s *Server) handleIssueLockscreenToken(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+type pushRegisterRequest struct {
+	DeviceID    string `json:"device_id"`
+	Provider    string `json:"provider"`
+	Endpoint    string `json:"endpoint"`
+	DeviceToken string `json:"device_token"`
+	ProjectID   string `json:"project_id"`
+	BearerToken string `json:"bearer_token"`
+	APNsTopic   string `json:"apns_topic"`
+	APNsSandbox bool   `json:"apns_sandbox"`
+}
+
+func handlePushRegisterHTTP(state *AppState, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req pushRegisterRequest
+	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil {
+		http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	deviceID := strings.TrimSpace(req.DeviceID)
+	if !safePushIdentifierRe.MatchString(deviceID) {
+		http.Error(w, "invalid device_id", http.StatusBadRequest)
+		return
+	}
+	providerRaw := strings.ToLower(strings.TrimSpace(req.Provider))
+	if providerRaw == "" {
+		providerRaw = string(PushProviderUnifiedPush)
+	}
+	provider := PushProvider(providerRaw)
+
+	target := PushTarget{
+		Provider:    provider,
+		DeviceID:    deviceID,
+		Endpoint:    strings.TrimSpace(req.Endpoint),
+		DeviceToken: strings.TrimSpace(req.DeviceToken),
+		ProjectID:   strings.TrimSpace(req.ProjectID),
+		BearerToken: strings.TrimSpace(req.BearerToken),
+		APNsTopic:   strings.TrimSpace(req.APNsTopic),
+		APNsSandbox: req.APNsSandbox,
+	}
+
+	switch provider {
+	case PushProviderUnifiedPush:
+		validated, err := validatePushEndpointURL(target.Endpoint)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		target.Endpoint = validated
+	case PushProviderFCMv1:
+		if target.BearerToken == "" || target.DeviceToken == "" {
+			http.Error(w, "fcm_v1 requires bearer_token and device_token", http.StatusBadRequest)
+			return
+		}
+		if target.Endpoint != "" {
+			validated, err := validatePushEndpointURL(target.Endpoint)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			target.Endpoint = validated
+		} else if target.ProjectID == "" {
+			http.Error(w, "fcm_v1 requires project_id or endpoint", http.StatusBadRequest)
+			return
+		}
+	case PushProviderAPNs:
+		if target.BearerToken == "" || target.DeviceToken == "" || target.APNsTopic == "" {
+			http.Error(w, "apns requires bearer_token, device_token, and apns_topic", http.StatusBadRequest)
+			return
+		}
+		if target.Endpoint != "" {
+			validated, err := validatePushEndpointURL(target.Endpoint)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			target.Endpoint = validated
+		}
+	default:
+		http.Error(w, fmt.Sprintf("unsupported push provider %q", providerRaw), http.StatusBadRequest)
+		return
+	}
+
+	state.mu.Lock()
+	if state.PushTargets == nil {
+		state.PushTargets = make(map[string]PushTarget)
+	}
+	state.PushTargets[deviceID] = target
+	count := len(state.PushTargets)
+	state.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":               true,
+		"device_id":        deviceID,
+		"provider":         string(provider),
+		"registered_count": count,
+	})
+}
+
+func (s *Server) handleRegisterPushEndpoint(w http.ResponseWriter, r *http.Request) {
+	handlePushRegisterHTTP(s.state, w, r)
+}
+
+func (s *Server) handleNotifyApprovalPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ApprovalID  string `json:"approval_id"`
+		ProjectName string `json:"project_name"`
+		DeviceID    string `json:"device_id"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil && err != io.EOF {
+		http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.state.mu.RLock()
+	approvalID := strings.TrimSpace(req.ApprovalID)
+	if approvalID == "" && s.state.Pending != nil {
+		approvalID = s.state.Pending.ID
+	}
+	projectName := strings.TrimSpace(req.ProjectName)
+	if projectName == "" {
+		projectName = s.state.Project
+	}
+	deviceFilter := strings.TrimSpace(req.DeviceID)
+	targets := make([]PushTarget, 0, len(s.state.PushTargets))
+	if deviceFilter != "" {
+		if t, ok := s.state.PushTargets[deviceFilter]; ok {
+			targets = append(targets, t)
+		}
+	} else {
+		for _, t := range s.state.PushTargets {
+			targets = append(targets, t)
+		}
+	}
+	s.state.mu.RUnlock()
+
+	if !safePushIdentifierRe.MatchString(approvalID) {
+		http.Error(w, "valid approval_id is required (or an active pending approval)", http.StatusBadRequest)
+		return
+	}
+	if deviceFilter != "" && len(targets) == 0 {
+		http.Error(w, "push device_id not registered", http.StatusNotFound)
+		return
+	}
+
+	mgr, err := s.state.EnsureLockscreenTokenManager()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dispatcher, err := NewPushNotificationDispatcher(mgr, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	delivered := 0
+	failed := 0
+	errMsgs := []string{}
+	ev := ApprovalPushEvent{
+		ApprovalID:  approvalID,
+		ProjectName: projectName,
+		Timestamp:   time.Now().UTC(),
+	}
+	for _, target := range targets {
+		if _, err := dispatcher.SendApprovalNotification(r.Context(), target, ev); err != nil {
+			failed++
+			errMsgs = append(errMsgs, fmt.Sprintf("%s: %v", target.DeviceID, err))
+			continue
+		}
+		delivered++
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":          failed == 0,
+		"approval_id": approvalID,
+		"delivered":   delivered,
+		"failed":      failed,
+		"errors":      errMsgs,
+	})
+}
+
 const maxVerifyFrameBytes = 8 * 1024 * 1024
 
 // inspectUploadedImageFrame runs deterministic pure-Go screen-health checks

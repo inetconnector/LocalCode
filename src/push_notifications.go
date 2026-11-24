@@ -63,7 +63,7 @@ var (
 var (
 	safePushIdentifierRe = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 	safeProjectCharRe    = regexp.MustCompile(`[^A-Za-z0-9 ._+-]+`)
-	secretLikePatternRe  = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}|akia[0-9a-z]{12,}|bearer\s+\S+|-----begin\s+|password\s*=|secret\s*=|token\s*=|@@\s*-\d+)`)
+	secretLikePatternRe  = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|aiza[0-9a-z_-]{16,}|akia[0-9a-z]{12,}|bearer\s+\S+|-----begin\s+|password\s*=|secret\s*=|token\s*=|@@\s*-\d+)`)
 )
 
 // LockscreenActionClaims holds the verified claims of a consumed single-use lockscreen action token.

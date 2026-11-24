@@ -61,6 +61,7 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/apk-update/download", s.withAuth(s.handleAPKUpdateDownload))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
 	s.mux.HandleFunc("/remote/api/lockscreen-approve", s.withAuth(s.handleLockscreenApprove))
+	s.mux.HandleFunc("/remote/api/push/register-endpoint", s.withAuth(s.handleRegisterPushEndpoint))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
 	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
 	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
@@ -840,6 +841,10 @@ func (s *RemoteServer) handleLockscreenApprove(w http.ResponseWriter, r *http.Re
 		"decision":    string(claims.Decision),
 		"persist":     false,
 	})
+}
+
+func (s *RemoteServer) handleRegisterPushEndpoint(w http.ResponseWriter, r *http.Request) {
+	handlePushRegisterHTTP(s.state, w, r)
 }
 
 func (s *RemoteServer) handleStop(w http.ResponseWriter, r *http.Request) {

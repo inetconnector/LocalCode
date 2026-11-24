@@ -1,0 +1,21 @@
+[Unit]
+Description=LocalCode Zero-Knowledge E2EE Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=localcode
+Group=localcode
+ExecStart=/usr/local/bin/localcode-relay -listen 127.0.0.1:8443
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+MemoryMax=128M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
