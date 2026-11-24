@@ -170,6 +170,11 @@ Reset, Clean, Commit oder Push.
     - Sicherheitsfund durch neuen E2E-Test behoben: `secretLikePatternRe` in `src/push_notifications.go` auf `sk-[A-Za-z0-9_-]{8,}` und `aiza[0-9a-z_-]{16,}` gehärtet, sodass auch `sk-ant-...`-, `sk-proj-...`- und Gemini-Keys im Push-Projektlabel garantiert fail-closed neutralisiert werden.
   - **VS Code Extension VSIX (`extensions/localcode/localcode-0.1.0.vsix`):** Frisch paketiert (`19` Dateien, `46.360` Bytes, `scripts/check.js` PASS, `11/11` Tests PASS).
   - **Verifikation Wave 10:** `go test -race` **12/12 PASS** (`4.442s`, inkl. `TestUnifiedPushRegisterAndApprovalNotifyEndToEnd` & 14-Assertion-Cross-Runtime-Live-Smoke in `2.40s`), `linux/amd64` & `darwin/arm64` `go vet` **PASS** (`linux=0 darwin=0`), CGO-freie Binaries `dist/LocalCode.exe` (`16.242.688` B), `dist/LocalCode-Debug.exe` (`22.542.848` B) & `dist/localcode-relay.exe` (`7.630.336` B) neu gebaut. Geschützte Benutzerdateien (`src/static/index.html`, `src/turn_checkpoints_test.go`) unangetastet.
+- **Wave-11 Auto-Push bei Live-Approvals, Mobile UnifiedPush UI & 15-Assertion-Smoke — 2026-11-24 Wave 11:**
+  - `src/agent.go` & `src/server_frontier_routes.go`: `requestApprovalWithPreview` ruft automatisch `dispatchApprovalPushAsync(pending.ID, project)` auf (gebundener 5s-Timeout, 0 Goroutinen ohne registrierte Ziele, strikt Zero-Secret mit Einmal-`once`/`reject`-Tokens).
+  - `src/static/remote.html` & `src/mobile_remote_ui_contract_test.go`: Zweisprachiges (`DE/EN`) UnifiedPush-Endpunkt-Eingabefeld (`#pushEndpointInput`, `#savePushEndpointBtn` → `POST /remote/api/push/register-endpoint`) im Mobile-Einstellungs-Sheet ergänzt (`node --check` Exit 0).
+  - `src/server_pty_health_integration_test.go`: Cross-Runtime-Live-Smoke auf **15 Assertions** erweitert (10-Tool-AgentOS-Scorecard + Live-`POST /_proxy/agentos/v1/routing/adversarial-review` Fail-Closed Secret-Block).
+  - **Verifikation Wave 11:** `go test -race` **8/8 PASS** (`4.274s`, inkl. `TestRequestApprovalAutoDispatchesZeroSecretUnifiedPush`, `TestMobileRemoteUnifiedPushRegistrationContract` & 15-Assertion-Live-Smoke in `2.68s`), `linux/amd64` & `darwin/arm64` `go vet` **PASS**, CGO-freie Binaries `dist/LocalCode.exe` (`16.249.344` B) & `dist/LocalCode-Debug.exe` (`22.551.040` B) neu gebaut.
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 

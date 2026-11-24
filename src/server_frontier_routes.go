@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -596,6 +597,49 @@ func (s *Server) handleNotifyApprovalPush(w http.ResponseWriter, r *http.Request
 		"failed":      failed,
 		"errors":      errMsgs,
 	})
+}
+
+// dispatchApprovalPushAsync sends Zero-Secret approval push notifications to all
+// currently registered in-memory PushTargets whenever an approval becomes pending.
+// Runs non-blocking with a strict 5s timeout and spawns zero goroutines if no targets exist.
+func (s *AppState) dispatchApprovalPushAsync(approvalID, projectName string) {
+	if s == nil || !safePushIdentifierRe.MatchString(strings.TrimSpace(approvalID)) {
+		return
+	}
+	s.mu.RLock()
+	if len(s.PushTargets) == 0 {
+		s.mu.RUnlock()
+		return
+	}
+	targets := make([]PushTarget, 0, len(s.PushTargets))
+	for _, t := range s.PushTargets {
+		targets = append(targets, t)
+	}
+	if strings.TrimSpace(projectName) == "" {
+		projectName = s.Project
+	}
+	s.mu.RUnlock()
+
+	mgr, err := s.EnsureLockscreenTokenManager()
+	if err != nil {
+		return
+	}
+	dispatcher, err := NewPushNotificationDispatcher(mgr, nil)
+	if err != nil {
+		return
+	}
+	ev := ApprovalPushEvent{
+		ApprovalID:  strings.TrimSpace(approvalID),
+		ProjectName: projectName,
+		Timestamp:   time.Now().UTC(),
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, target := range targets {
+			_, _ = dispatcher.SendApprovalNotification(ctx, target, ev)
+		}
+	}()
 }
 
 const maxVerifyFrameBytes = 8 * 1024 * 1024

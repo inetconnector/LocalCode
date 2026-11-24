@@ -3599,6 +3599,7 @@ func (s *AppState) requestApprovalWithPreview(ctx context.Context, project strin
 		s.mu.Unlock()
 	}()
 	s.AddEvent(UIEvent{ID: pending.ID, Type: "approval_required", Message: a.Message, Action: a.Action, Path: a.Path, Command: a.Command, Preview: preview})
+	s.dispatchApprovalPushAsync(pending.ID, project)
 	select {
 	case response := <-pending.Result:
 		if response.Approved && response.Persist {

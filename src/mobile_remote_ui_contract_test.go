@@ -443,3 +443,24 @@ func TestMobileRemoteSelfUpdateVoiceBargeInAndFrameCheckContract(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileRemoteUnifiedPushRegistrationContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`id="pushEndpointInput"`,
+		`id="savePushEndpointBtn"`,
+		`/remote/api/push/register-endpoint`,
+		`push_endpoint_label:'UnifiedPush-Endpunkt (Zero-Secret)'`,
+		`push_endpoint_label:'UnifiedPush endpoint (Zero-Secret)'`,
+		`provider:'unifiedpush'`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html Wave 11 UnifiedPush contract missing %q", required)
+		}
+	}
+}

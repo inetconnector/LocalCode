@@ -824,3 +824,93 @@ func TestUnifiedPushRegisterAndApprovalNotifyEndToEnd(t *testing.T) {
 		t.Fatalf("expected 403 on replayed lockscreen token, got %d body=%s", replayRec.Code, replayRec.Body.String())
 	}
 }
+
+func TestRequestApprovalAutoDispatchesZeroSecretUnifiedPush(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, device, err := state.DirectPairRemoteDevice("Galaxy-S25-AutoPush")
+	if err != nil {
+		t.Fatalf("DirectPairRemoteDevice failed: %v", err)
+	}
+	remoteSrv := NewRemoteServer(state)
+
+	pushCh := make(chan ZeroSecretPushPayload, 1)
+	pushReceiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var p ZeroSecretPushPayload
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &p); err == nil {
+			select {
+			case pushCh <- p:
+			default:
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer pushReceiver.Close()
+
+	// Register UnifiedPush target via authenticated remote endpoint
+	regRec := httptest.NewRecorder()
+	regBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":%q}`, device.ID, pushReceiver.URL)
+	regReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(regBody))
+	regReq.Header.Set("Authorization", "Bearer "+token)
+	regReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusOK {
+		t.Fatalf("push register failed code=%d body=%s", regRec.Code, regRec.Body.String())
+	}
+
+	// Start requestApprovalWithPreview in a goroutine — it MUST auto-dispatch a Zero-Secret push!
+	type approvalRes struct {
+		ok  bool
+		err error
+	}
+	doneCh := make(chan approvalRes, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() {
+		ok, err := state.requestApprovalWithPreview(ctx, cfg.RootProjectDir, AgentAction{
+			Action:  "run_command",
+			Command: "echo hello",
+			Message: "Run verification echo",
+		}, "echo hello")
+		doneCh <- approvalRes{ok: ok, err: err}
+	}()
+
+	var payload ZeroSecretPushPayload
+	select {
+	case payload = <-pushCh:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for automatic UnifiedPush notification from requestApprovalWithPreview")
+	}
+
+	if payload.ApproveOnceToken == "" || payload.ApprovalID == "" {
+		t.Fatalf("expected valid approval_id & approve_once_token in auto push, got %+v", payload)
+	}
+
+	// Redeem the received lockscreen token over /remote/api/lockscreen-approve to unblock requestApprovalWithPreview
+	approveBody, _ := json.Marshal(map[string]any{
+		"token":       payload.ApproveOnceToken,
+		"approval_id": payload.ApprovalID,
+		"device_id":   device.ID,
+	})
+	apprRec := httptest.NewRecorder()
+	apprReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	apprReq.Header.Set("Authorization", "Bearer "+token)
+	apprReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(apprRec, apprReq)
+	if apprRec.Code != http.StatusOK {
+		t.Fatalf("lockscreen approve failed code=%d body=%s", apprRec.Code, apprRec.Body.String())
+	}
+
+	select {
+	case res := <-doneCh:
+		if res.err != nil || !res.ok {
+			t.Fatalf("expected requestApprovalWithPreview to return (true, nil), got (%v, %v)", res.ok, res.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for requestApprovalWithPreview to unblock")
+	}
+}

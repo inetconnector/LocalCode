@@ -662,7 +662,7 @@ func TestCrossRuntimeStudioLocalCodeAndAgentOSSmoke(t *testing.T) {
 		t.Fatalf("AgentOS head-to-head benchmark mismatch status=%d body=%s", benchResp.StatusCode, benchBody)
 	}
 
-	// Assertion 13: GET /_proxy/agentos/v1/evals/scorecard?lang=de reports 9 MCP tools & Ed25519
+	// Assertion 13: GET /_proxy/agentos/v1/evals/scorecard?lang=de reports 10 MCP tools & Ed25519
 	scResp, err := client.Get(studioBase + "/_proxy/agentos/v1/evals/scorecard?lang=de")
 	if err != nil {
 		t.Fatalf("GET /_proxy/agentos/v1/evals/scorecard: %v", err)
@@ -671,7 +671,7 @@ func TestCrossRuntimeStudioLocalCodeAndAgentOSSmoke(t *testing.T) {
 	_ = scResp.Body.Close()
 	if scResp.StatusCode != http.StatusOK ||
 		!strings.Contains(string(scBody), "agentos.runtime_scorecard.v1") ||
-		!strings.Contains(string(scBody), `"mcp_tools_count":9`) ||
+		!strings.Contains(string(scBody), `"mcp_tools_count":10`) ||
 		!strings.Contains(string(scBody), `"verification_bundle_algorithm":"Ed25519"`) {
 		t.Fatalf("AgentOS runtime scorecard mismatch status=%d body=%s", scResp.StatusCode, scBody)
 	}
@@ -696,5 +696,28 @@ func TestCrossRuntimeStudioLocalCodeAndAgentOSSmoke(t *testing.T) {
 		!strings.Contains(string(lcMcpBody), `"localcode_verify_frame"`) ||
 		!strings.Contains(string(lcMcpBody), `"localcode_apk_update_info"`) {
 		t.Fatalf("LocalCode /mcp tools/list mismatch status=%d body=%s", lcMcpResp.StatusCode, lcMcpBody)
+	}
+
+	// Assertion 15: POST /_proxy/agentos/v1/routing/adversarial-review blocks secret leak fail-closed & enforces Tier 0
+	advPayload := `{"task_id":"smoke-adv-1","author_provider":"anthropic","code_or_diff":"KEY = \"sk-ant-api03-1234567890abcdef\"\n","lang":"de"}`
+	advReq, _ := http.NewRequest(
+		http.MethodPost,
+		studioBase+"/_proxy/agentos/v1/routing/adversarial-review",
+		strings.NewReader(advPayload),
+	)
+	advReq.Header.Set("Content-Type", "application/json")
+	advReq.Header.Set("Origin", studioBase)
+	advReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	advResp, err := client.Do(advReq)
+	if err != nil {
+		t.Fatalf("POST /_proxy/agentos/v1/routing/adversarial-review: %v", err)
+	}
+	advBody, _ := io.ReadAll(advResp.Body)
+	_ = advResp.Body.Close()
+	if advResp.StatusCode != http.StatusOK ||
+		!strings.Contains(string(advBody), `"verdict":"BLOCKED_POLICY"`) ||
+		!strings.Contains(string(advBody), `"cloud_blocked":true`) ||
+		!strings.Contains(string(advBody), `SECRET_LEAK:`) {
+		t.Fatalf("AgentOS adversarial-review mismatch status=%d body=%s", advResp.StatusCode, advBody)
 	}
 }
