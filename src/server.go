@@ -1167,12 +1167,34 @@ func errorText(err error) string {
 }
 
 func chooseDefaultModel(models []ModelInfo, previous string) string {
-	// qwen2.5-coder:14b is the most reliable installed model for LocalCode's
-	// strict structured-action loop. Older versions preferred gpt-oss:20b,
-	// which can return a thinking trace without a final structured action.
-	for _, m := range models {
-		if m.Name == "qwen2.5-coder:14b" && strings.HasPrefix(strings.ToLower(previous), "gpt-oss") {
-			return m.Name
+	isAuxiliary := func(name string) bool {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		return strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "embed")
+	}
+	bestCoder := func() string {
+		bestName := ""
+		var bestSize int64 = -1
+		for _, m := range models {
+			lower := strings.ToLower(m.Name)
+			if isAuxiliary(lower) {
+				continue
+			}
+			if strings.Contains(lower, "coder") || strings.Contains(lower, "code") {
+				if bestName == "" || m.Size > bestSize {
+					bestName = m.Name
+					bestSize = m.Size
+				}
+			}
+		}
+		return bestName
+	}
+
+	// If a previous model was a reasoning-only model that emits thinking traces
+	// without structured actions and a dedicated coding model is installed,
+	// prefer the installed coding model automatically without hardcoding names.
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(previous)), "gpt-oss") {
+		if coder := bestCoder(); coder != "" {
+			return coder
 		}
 	}
 	if previous != "" {
@@ -1182,16 +1204,18 @@ func chooseDefaultModel(models []ModelInfo, previous string) string {
 			}
 		}
 	}
-	preferred := []string{"qwen2.5-coder:14b", "qwen2.5-coder:7b", "gpt-oss:20b"}
-	for _, p := range preferred {
+	if envDefault := configuredDefaultCodingModel(Config{}); envDefault != "" {
 		for _, m := range models {
-			if m.Name == p {
-				return p
+			if comparableModelName(m.Name) == comparableModelName(envDefault) {
+				return m.Name
 			}
 		}
 	}
+	if coder := bestCoder(); coder != "" {
+		return coder
+	}
 	for _, m := range models {
-		if strings.Contains(strings.ToLower(m.Name), "coder") {
+		if !isAuxiliary(m.Name) {
 			return m.Name
 		}
 	}
@@ -1575,16 +1599,6 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 		gatewayURL = defaultComputeMeshGatewayURL
 	}
 
-	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		model = "qwen/qwen2.5-7b-instruct"
-	}
-
-	prompt := strings.TrimSpace(req.Prompt)
-	if prompt == "" {
-		prompt = "Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft."
-	}
-
 	client := &OllamaClient{
 		BaseURL:   gatewayURL,
 		AuthToken: apiKey,
@@ -1593,6 +1607,41 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+
+	s.state.mu.RLock()
+	activeModel := strings.TrimSpace(s.state.Model)
+	s.state.mu.RUnlock()
+
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		if tags, tagErr := client.Tags(ctx); tagErr == nil && len(tags) > 0 {
+			model = chooseDefaultModel(tags, activeModel)
+		}
+	}
+	if model == "" {
+		model = activeModel
+	}
+	if model == "" {
+		model = configuredDefaultCodingModel(cfg)
+	}
+	if model == "" {
+		model = strings.TrimSpace(cfg.LastModel)
+	}
+	if model == "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{
+			"ok":    false,
+			"error": "kein Modell ausgewählt oder auf dem ComputeMesh-Gateway verfügbar",
+			"model": "",
+			"url":   gatewayURL,
+		})
+		return
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		prompt = "Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft."
+	}
 
 	reply, err := client.ChatRaw(ctx, model, []OllamaMessage{{Role: "user", Content: prompt}}, nil)
 	if err != nil {

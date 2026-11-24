@@ -521,11 +521,16 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	if model == "" {
 		model = s.Config.LastModel
 	}
-	if model == "" && s.Config.OllamaDefaultModel != "" {
-		model = s.Config.OllamaDefaultModel
-	}
 	if model == "" {
-		model = "qwen2.5-coder:14b"
+		model = configuredDefaultCodingModel(s.Config)
+	}
+	if model == "" && s.Ollama != nil {
+		probeCtx, probeCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		tags, tagErr := s.Ollama.Tags(probeCtx)
+		probeCancel()
+		if tagErr == nil && len(tags) > 0 {
+			model = chooseDefaultModel(tags, "")
+		}
 	}
 
 	// Determine effective continuation & preflight settings BEFORE mutating any thread/run state.
@@ -1861,7 +1866,10 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 		if requested != "" {
 			return []string{requested}
 		}
-		return []string{"qwen2.5-coder:14b"}
+		if fallback := configuredDefaultCodingModel(cfg); fallback != "" {
+			return []string{fallback}
+		}
+		return nil
 	}
 	installed := map[string]bool{}
 	for _, m := range models {
@@ -1879,17 +1887,25 @@ func (s *AppState) modelCandidates(ctx context.Context, requested string) []stri
 	if requested != "" {
 		add(requested, false)
 	}
-	add("qwen2.5-coder:14b", true)
-	add("qwen2.5-coder:7b", true)
-	add("gpt-oss:20b", true)
-	for _, m := range models {
-		if strings.Contains(strings.ToLower(m.Name), "coder") {
+	if cfgDefault := configuredDefaultCodingModel(cfg); cfgDefault != "" {
+		add(cfgDefault, true)
+	}
+	sortedModels := append([]ModelInfo(nil), models...)
+	sort.SliceStable(sortedModels, func(i, j int) bool {
+		return sortedModels[i].Size > sortedModels[j].Size
+	})
+	for _, m := range sortedModels {
+		lower := strings.ToLower(m.Name)
+		if strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "embed") {
+			continue
+		}
+		if strings.Contains(lower, "coder") || strings.Contains(lower, "code") {
 			add(m.Name, true)
 		}
 	}
-	for _, m := range models {
+	for _, m := range sortedModels {
 		lower := strings.ToLower(m.Name)
-		if strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "0.8b") {
+		if strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "embed") || strings.Contains(lower, "0.8b") {
 			continue
 		}
 		add(m.Name, true)

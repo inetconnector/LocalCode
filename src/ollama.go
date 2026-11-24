@@ -287,20 +287,14 @@ func hasCapability(capabilities []string, wanted string) bool {
 }
 
 func visionPreference(name string) int {
-	name = strings.ToLower(name)
+	name = strings.ToLower(strings.TrimSpace(name))
 	switch {
-	case strings.Contains(name, "qwen3-vl"):
+	case strings.Contains(name, "-vl") || strings.Contains(name, "vision"):
 		return 100
-	case strings.Contains(name, "gemma3") || strings.Contains(name, "gemma4"):
-		return 90
-	case strings.Contains(name, "minicpm-v"):
-		return 80
-	case strings.Contains(name, "llava"):
-		return 70
-	case strings.Contains(name, "moondream"):
-		return 60
+	case strings.Contains(name, "multimodal") || strings.Contains(name, "vlm") || strings.Contains(name, "ocr"):
+		return 85
 	default:
-		return 10
+		return 50
 	}
 }
 
@@ -408,7 +402,13 @@ func (o *OllamaClient) EnsureVisionModel(ctx context.Context) (string, bool, err
 	if model, err := o.FindVisionModel(ctx); err == nil {
 		return model, false, nil
 	}
-	const fallback = "gemma3:4b"
+	fallback := strings.TrimSpace(os.Getenv("LOCALCODE_VISION_MODEL"))
+	if fallback == "" {
+		fallback = strings.TrimSpace(os.Getenv("OLLAMA_VISION_MODEL"))
+	}
+	if fallback == "" {
+		return "", false, errors.New("kein Vision-Modell in Ollama installiert; installiere ein Vision-fähiges Modell über 'ollama pull <vision-modell>' oder setze LOCALCODE_VISION_MODEL")
+	}
 	if err := o.Pull(ctx, fallback); err != nil {
 		return "", false, fmt.Errorf("kein Vision-Modell installiert und %s konnte nicht geladen werden: %w", fallback, err)
 	}
@@ -600,7 +600,7 @@ func fastOllamaFormat(schema any) any {
 	if m, ok := schema.(map[string]any); ok {
 		if t, ok := m["type"].(string); ok && t == "object" {
 			// Complex multi-property JSON schemas trigger llama.cpp's single-threaded CPU
-			// GBNF grammar sampler over the full token vocabulary (152k logits on Qwen2.5),
+			// GBNF grammar sampler over the full token vocabulary (150k+ logits),
 			// dropping GPU utilization to 0% and causing 100x slowdowns. Ollama's built-in
 			// "json" format runs at full GPU speed while Go strictly validates all fields.
 			return "json"

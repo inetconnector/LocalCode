@@ -139,7 +139,7 @@ func RunDoctorDiagnostics(ctx context.Context, cfg Config) DoctorReport {
 			if err != nil || len(models) == 0 {
 				item.Status = HealthStatusWarning
 				item.Summary = fmt.Sprintf("Ollama online at %s, but no local models found", client.BaseURL)
-				item.Remediation = "Run 'ollama pull qwen2.5-coder:14b' or use ComputeMesh cluster models."
+				item.Remediation = "Run 'ollama pull <model>' or use ComputeMesh cluster models."
 			} else {
 				item.Status = HealthStatusOK
 				item.Summary = fmt.Sprintf("Ollama online at %s (%d local models installed)", client.BaseURL, len(models))

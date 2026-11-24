@@ -1361,7 +1361,7 @@ textarea::placeholder{
     </button>
     <button id="modelProjectPill" class="model-pill-btn" type="button">
       <div id="dot" class="status-dot"></div>
-      <span id="modelPillText" class="model-pill-name">qwen2.5-coder:14b</span>
+      <span id="modelPillText" class="model-pill-name">Auto</span>
       <span style="font-size:10px;opacity:0.6">▾</span>
     </button>
     <button id="newChatTopBtn" class="header-btn" type="button" aria-label="Neuer Chat">
@@ -1460,7 +1460,7 @@ textarea::placeholder{
       <div class="settings-group">
         <label data-i18n="active_model">Aktives Modell</label>
 
-        <div id="settingsModel" class="settings-val muted">qwen2.5-coder:14b</div>
+        <div id="settingsModel" class="settings-val muted">—</div>
       </div>
       <div class="settings-group">
         <label data-i18n="server_url">Host-Adresse</label>
@@ -1729,13 +1729,13 @@ async function pair(ev){ev?.preventDefault();const btn=$('#pairBtn');const code=
 async function pairWithCode(rawCode){const clean=String(rawCode||'').trim();if(!clean)return false;if($('#pairCode'))$('#pairCode').value=clean;return pair()}
 async function refresh(){try{state.status=await api('/remote/api/status');syncAndroidUpdateToken();await ensurePreferredEngine();const p=await api('/remote/api/projects');state.projects=p.projects||[];state.projectsRoot=p.root||state.status.root_dir||'';if(!state.projectInitialized){state.projectInitialized=true;const savedProj=localStorage.getItem('localcodeRemoteLastProject')||(window.LocalCodeAndroid?.getLastProject?window.LocalCodeAndroid.getLastProject():'')||'';if(savedProj&&state.projects.some(pr=>pr.path===savedProj||pr.name===savedProj)){const match=state.projects.find(pr=>pr.path===savedProj||pr.name===savedProj);if(match){state.project=match.path}}else if(!state.project&&state.projects.length){state.project=state.projects[0].path}if(state.project){localStorage.setItem('localcodeRemoteLastProject',state.project);if(window.LocalCodeAndroid?.setLastProject){try{window.LocalCodeAndroid.setLastProject(state.project)}catch(e){}}if(state.syncedProject!==state.project){state.syncedProject=state.project;api('/remote/api/select-project',{method:'POST',body:JSON.stringify({path:state.project})}).catch(()=>{})}}}else if(!state.project&&state.projects.length){state.project=state.projects[0].path}const q=await api('/remote/api/project-quarantine');state.quarantine=q.quarantine||[];const th=await api('/remote/api/threads');state.threads=th.threads||[];state.currentThread=th.current||state.status.current_thread||'';const snap=await api('/remote/api/snapshot'+(state.currentThread?`?thread_id=${encodeURIComponent(state.currentThread)}`:''));state.events=snap.events||[];state.pending=snap.pending||null;if(!state.project){state.project=snap.project||state.status.project||''}state.runningProjects=snap.running_projects||state.status?.running_projects||(state.status?.running&&state.status?.project?[state.status.project]:[]);render();$('#dot').className='status-dot on';if(!state.status?.running&&loadOfflineOutbox().length){flushOfflineOutbox().catch(()=>{})}if(window.LocalCodeAndroid?.onAppReady){try{window.LocalCodeAndroid.onAppReady()}catch(e){}}}catch(e){$('#dot').className='status-dot warn';const msg=String(e.message||'').toLowerCase();if(msg.includes('remote token required')||msg.includes('401')||msg.includes('unauthorized')){clearAuthToken();showPair()}else console.warn(e)}}
 function renderNavTabs(){const btn=$('#tasksTabBtn')||document.querySelector('.tab[data-view="tasks"]');if(btn)btn.classList.toggle('hidden',!state.showTasksTab);const toggle=$('#showTasksTabToggle');if(toggle)toggle.checked=!!state.showTasksTab}
-function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#modelPillText').textContent=(state.status?.model||'qwen2.5-coder:14b').split(':')[0];$('#stopBtn').classList.toggle('hidden',!running);renderNavTabs();renderEngineSelect();renderProjectSelect();renderDrawer();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
+function render(){const running=!!state.status?.running,mission=running&&state.status?.run_phase==='mission-read-only';$('#subtitle').textContent=[mission?t('mission'):state.status?.editing_engine,state.status?.model,running?t('running'):t('ready')].filter(Boolean).join(' · ');$('#modelPillText').textContent=(state.status?.model||'Auto').split(':')[0];$('#stopBtn').classList.toggle('hidden',!running);renderNavTabs();renderEngineSelect();renderProjectSelect();renderDrawer();renderTasks();renderProjectTools();renderTrash();renderEvents();renderApproval();renderNew();renderFiles();updateSettingsView()}
 function updateSendState(){const running=!!state.status?.running,hasMsg=!!$('#prompt').value.trim(),canSteer=running&&hasMsg&&!state.files.length;$('#sendBtn').disabled=state.sending||((!hasMsg&&!state.files.length)||(running&&!canSteer))}
 function renderEngineSelect(){const sel=$('#engineSelect');if(!sel)return;const selected=state.status?.editing_engine||state.preferredEngine||'native';sel.innerHTML=engineOptions.map(([value,label])=>`<option value="${value}"${value===selected?' selected':''}>${label}</option>`).join('');sel.disabled=!!state.status?.running}
 function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=(state.projects.length?'':`<option value="">${t('select_project')}</option>`)+state.projects.map(p=>`<option value="${esc(p.path)}"${p.path===state.project?' selected':''}>${esc(p.name)}</option>`).join('')}
 
 function updateSettingsView(){
-  $('#settingsModel').textContent=state.status?.model||'qwen2.5-coder:14b';
+  $('#settingsModel').textContent=state.status?.model||'—';
   $('#settingsHost').textContent=window.location.host||'LocalCode LAN';
   const verEl=$('#settingsAppVersion');
   if(verEl){
@@ -1851,7 +1851,7 @@ function eventHTML(ev,idx,visible,running){
   const user=ev.type==='user',isFinal=ev.type==='final',isErr=ev.type==='error'||ev.type==='tool_error',isWarn=ev.type==='warning';
 
   if(ev.action==='thinking'||(ev.type==='progress'&&ev.action!=='tool_step')||ev.action==='infer'){
-    const model=ev.detail||(state.status?.model||'qwen2.5-coder:14b');
+    const model=ev.detail||(state.status?.model||'Ollama');
     if(isLive){
       return `<div class="trajectory-thinking-card"><div class="thinking-header"><div class="thinking-pulse-dot"></div><span class="thinking-title">${esc(t('thinking'))}</span><span class="thinking-model-tag">${esc(model)}</span></div><div class="thinking-body">${esc(ev.message||t('thinking_desc'))}</div></div>`;
     }

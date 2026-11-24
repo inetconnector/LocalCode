@@ -152,7 +152,7 @@
         method: 'POST',
         body: JSON.stringify({
           prompt: 'Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft.',
-          model: 'qwen/qwen2.5-7b-instruct'
+          model: (window.state && window.state.model) || ''
         })
       });
 

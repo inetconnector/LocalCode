@@ -6,13 +6,25 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
 	"time"
 )
 
-const defaultCodingModel = "qwen2.5-coder:14b"
+func configuredDefaultCodingModel(cfg Config) string {
+	for _, candidate := range []string{
+		cfg.OllamaDefaultModel,
+		os.Getenv("LOCALCODE_DEFAULT_MODEL"),
+		os.Getenv("OLLAMA_MODEL"),
+	} {
+		if normalized := normalizeConfiguredOllamaModel(candidate); normalized != "" {
+			return normalized
+		}
+	}
+	return ""
+}
 
 type RuntimeBootstrapResult struct {
 	Config  Config
@@ -160,17 +172,8 @@ func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
 			candidates = append(candidates, strings.TrimSpace(model[len("ollama/"):]))
 		}
 	}
-	if len(models) == 0 {
-		// A stale LastModel from a previous installation must not trigger a
-		// second multi-gigabyte download on a fresh machine. Bootstrap with the
-		// configured coding default, then let the user select additional models.
-		candidates = append(candidates, cfg.OllamaDefaultModel)
-	} else {
-		// Existing installations can carry stale last_model values from tests,
-		// removed local models, or older configs. Startup should ensure the
-		// configured default exists, but must not pull an arbitrary stale
-		// last-used model before the UI is reachable.
-		candidates = append(candidates, cfg.OllamaDefaultModel)
+	if defaultModel := configuredDefaultCodingModel(cfg); defaultModel != "" {
+		candidates = append(candidates, defaultModel)
 	}
 	seen := map[string]bool{}
 	out := []string{}
@@ -187,9 +190,6 @@ func requiredOllamaModels(cfg Config, models []ModelInfo) []string {
 		if !modelInstalled(models, candidate) {
 			out = append(out, candidate)
 		}
-	}
-	if len(models) == 0 && len(out) == 0 {
-		out = append(out, defaultCodingModel)
 	}
 	sort.Strings(out)
 	return out

@@ -121,7 +121,7 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 func defaultConfig() Config {
 	return Config{
 		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: false, RemoteBindHost: "127.0.0.1", RemotePort: 32146, ProjectAliases: map[string]string{},
-		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
+		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: configuredDefaultCodingModel(Config{}),
 		ComputeMeshEnabled: true, ComputeMeshURL: "https://computemesh.inetconnector.com", ComputeMeshLocalNodeURL: "http://localhost:8080", ComputeMeshAutoDetect: true,
 		EditingEngine: "native", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
