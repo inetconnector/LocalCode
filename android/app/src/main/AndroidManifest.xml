@@ -17,10 +17,11 @@
         android:roundIcon="@drawable/ic_launcher"
         android:label="LocalCode"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
         <activity
             android:name="com.inetconnector.localcode.MainActivity"
             android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -31,6 +32,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="localcode" android:host="pair" />
+                <data android:scheme="localcode" android:host="relay-pair" />
             </intent-filter>
         </activity>
     </application>

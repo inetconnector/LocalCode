@@ -14,7 +14,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,21 +46,35 @@ func (o *OllamaClient) applyAuth(req *http.Request) {
 	}
 }
 
+type OllamaToolCall struct {
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Index     int            `json:"index,omitempty"`
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"function"`
+}
+
 type OllamaMessage struct {
-	Role     string   `json:"role"`
-	Content  string   `json:"content"`
-	Thinking string   `json:"thinking,omitempty"`
-	Images   []string `json:"images,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content"`
+	Thinking   string           `json:"thinking,omitempty"`
+	Images     []string         `json:"images,omitempty"`
+	ToolCalls  []OllamaToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	ToolName   string           `json:"tool_name,omitempty"`
 }
 
 type OllamaChatRequest struct {
-	Model     string          `json:"model"`
-	Messages  []OllamaMessage `json:"messages"`
-	Stream    bool            `json:"stream"`
-	Format    any             `json:"format,omitempty"`
-	Think     any             `json:"think,omitempty"`
-	KeepAlive string          `json:"keep_alive,omitempty"`
-	Options   map[string]any  `json:"options,omitempty"`
+	Model     string           `json:"model"`
+	Messages  []OllamaMessage  `json:"messages"`
+	Stream    bool             `json:"stream"`
+	Format    any              `json:"format,omitempty"`
+	Tools     []map[string]any `json:"tools,omitempty"`
+	Think     any              `json:"think,omitempty"`
+	KeepAlive string           `json:"keep_alive,omitempty"`
+	Options   map[string]any   `json:"options,omitempty"`
 }
 
 type OllamaChatResponse struct {
@@ -606,8 +623,112 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 	return o.ChatStream(ctx, model, messages, schema, nil)
 }
 
+const minLocalContextTokens = 8192
+
+var (
+	localVRAMOnce   sync.Once
+	localVRAMCached int
+	gpuVRAMPattern  = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*(mib|mb|gib|gb)\b`)
+)
+
+func parseGPUVRAMMB(gpuDesc string) int {
+	m := gpuVRAMPattern.FindStringSubmatch(strings.TrimSpace(gpuDesc))
+	if len(m) < 3 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || val <= 0 {
+		return 0
+	}
+	switch strings.ToLower(m[2]) {
+	case "gib", "gb":
+		return int(val * 1024)
+	default:
+		return int(val)
+	}
+}
+
+func detectLocalVRAMMB() int {
+	if raw := strings.TrimSpace(os.Getenv("LOCALCODE_DETECTED_VRAM_MB")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			return v
+		}
+	}
+	localVRAMOnce.Do(func() {
+		localVRAMCached = parseGPUVRAMMB(detectGPU())
+	})
+	return localVRAMCached
+}
+
+func hardwareLocalContextLimit(vramMB int) int {
+	switch {
+	case vramMB <= 0:
+		return 12288
+	case vramMB < 8192:
+		return 12288
+	case vramMB < 12288:
+		return 16384
+	case vramMB < 20480:
+		return 32768
+	default:
+		return 65536
+	}
+}
+
+// computeDynamicLocalContext replaces the legacy 6144 token cap with a
+// hardware/VRAM-aware dynamic context ceiling configurable via cfg.ContextLength
+// and LOCALCODE_MAX_LOCAL_CTX.
+func computeDynamicLocalContext(cfg Config, vramMB int) int {
+	hwCap := hardwareLocalContextLimit(vramMB)
+	rawEnv := strings.TrimSpace(os.Getenv("LOCALCODE_MAX_LOCAL_CTX"))
+	if rawEnv == "" && cfg.EnvironmentVars != nil {
+		rawEnv = strings.TrimSpace(cfg.EnvironmentVars["LOCALCODE_MAX_LOCAL_CTX"])
+	}
+	if rawEnv != "" {
+		if envMax, err := strconv.Atoi(rawEnv); err == nil && envMax > 0 {
+			hwCap = envMax
+		}
+	}
+	base := cfg.ContextLength
+	if base <= 0 {
+		base = hwCap
+	}
+	effective := base
+	if effective > hwCap {
+		effective = hwCap
+	}
+	if effective < minLocalContextTokens {
+		effective = minLocalContextTokens
+	}
+	return effective
+}
+
+// computeDynamicNumPredict scales local output generation capacity dynamically
+// as min(max(4096, effectiveCtx/4), 16384).
+func computeDynamicNumPredict(effectiveCtx int) int {
+	n := effectiveCtx / 4
+	if n < 4096 {
+		n = 4096
+	}
+	if n > 16384 {
+		n = 16384
+	}
+	return n
+}
+
 func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []OllamaMessage, schema any, onDelta func(accumulated string, tokens int, tps float64)) (string, error) {
 	streamMode := onDelta != nil
+	effectiveCtx := o.ContextLength
+	if effectiveCtx < 4096 {
+		effectiveCtx = contextForModel(model)
+	}
+	if isLocalHostURL(o.BaseURL) {
+		effectiveCtx = computeDynamicLocalContext(Config{
+			ContextLength: effectiveCtx,
+			OllamaURL:     o.BaseURL,
+		}, detectLocalVRAMMB())
+	}
+	numPredict := computeDynamicNumPredict(effectiveCtx)
 	request := OllamaChatRequest{
 		Model:     model,
 		Messages:  messages,
@@ -619,19 +740,8 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 			"temperature":    temperatureForContext(ctx, 0.1),
 			"top_p":          0.9,
 			"repeat_penalty": 1.08,
-			"num_ctx": func() int {
-				cfgCtx := o.ContextLength
-				if cfgCtx < 4096 {
-					cfgCtx = contextForModel(model)
-				}
-				if isLocalHostURL(o.BaseURL) && cfgCtx > 6144 {
-					// On 16 GB Windows GPUs with Ollama parallel slots (-np 4), num_ctx > 6144
-					// risks overflowing physical GDDR6X into WDDM PCIe shared RAM alongside Windows desktop VRAM.
-					return 6144
-				}
-				return cfgCtx
-			}(),
-			"num_predict": 2400,
+			"num_ctx":        effectiveCtx,
+			"num_predict":    numPredict,
 		},
 	}
 	data, err := json.Marshal(request)

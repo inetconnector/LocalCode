@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -117,6 +118,65 @@ var nativeChildActionSchema = map[string]any{
 	},
 }
 
+type nativeBuilderAction struct {
+	Action    string       `json:"action"`
+	Message   string       `json:"message"`
+	Path      string       `json:"path,omitempty"`
+	Query     string       `json:"query,omitempty"`
+	Name      string       `json:"name,omitempty"`
+	Line      int          `json:"line,omitempty"`
+	Character int          `json:"character,omitempty"`
+	MaxDepth  int          `json:"max_depth,omitempty"`
+	OldText   string       `json:"old_text,omitempty"`
+	NewText   string       `json:"new_text,omitempty"`
+	Content   string       `json:"content,omitempty"`
+	Result    *AgentResult `json:"result,omitempty"`
+}
+
+var nativeBuilderResultSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"summary": map[string]any{"type": "string", "minLength": 1},
+		"changed_files": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "string"},
+		},
+		"findings": nativeChildResultSchema["properties"].(map[string]any)["findings"],
+		"tests":    nativeChildResultSchema["properties"].(map[string]any)["tests"],
+		"risks":    nativeChildResultSchema["properties"].(map[string]any)["risks"],
+	},
+	"required":             []string{"summary"},
+	"additionalProperties": false,
+}
+
+var nativeBuilderActionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"action":    map[string]any{"type": "string", "enum": []string{"list_files", "read_file", "search_text", "lsp", "replace_text", "write_file", "finish"}},
+		"message":   map[string]any{"type": "string"},
+		"path":      map[string]any{"type": "string"},
+		"query":     map[string]any{"type": "string"},
+		"name":      map[string]any{"type": "string"},
+		"line":      map[string]any{"type": "integer", "minimum": 1},
+		"character": map[string]any{"type": "integer", "minimum": 1},
+		"max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 6},
+		"old_text":  map[string]any{"type": "string"},
+		"new_text":  map[string]any{"type": "string"},
+		"content":   map[string]any{"type": "string"},
+		"result":    nativeBuilderResultSchema,
+	},
+	"required":             []string{"action", "message"},
+	"additionalProperties": false,
+	"allOf": []map[string]any{
+		conditionalRequired("read_file", "path"),
+		conditionalRequired("search_text", "query"),
+		conditionalRequired("lsp", "path", "name"),
+		conditionalRequired("replace_text", "path", "old_text", "new_text"),
+		conditionalRequired("write_file", "path", "content"),
+		conditionalRequired("finish", "result"),
+	},
+}
+
 func nativeChildSystemPrompt(role AgentRole) string {
 	base := `You are an isolated LocalCode child agent. You operate strictly read-only inside one project.
 Return exactly one JSON action per step matching the provided schema. Allowed actions: list_files, read_file, search_text, lsp, finish.
@@ -131,9 +191,9 @@ ROLE: PLANNER. Convert evidence into a small dependency-aware implementation pla
 		return base + `
 ROLE: REVIEWER. Review the stated task/current evidence independently. Focus on requirement gaps, unsafe assumptions, interface regressions, missing verification, and integration risks. Do not inherit or defend the builder's reasoning.`
 	case AgentRoleBuilder:
-		return `You are an isolated LocalCode Builder child agent. You operate inside a dedicated Git worktree branch.
-Return exactly one JSON action per step matching the provided schema. Allowed actions: list_files, read_file, search_text, lsp, finish.
-Never run shell or arbitrary Git commands, access outside directories, use network/web/MCP/install tools, request interactive approvals, change configuration, access memory, or spawn another child agent.
+		return `You are an isolated LocalCode Builder child agent. You operate strictly inside a dedicated Git worktree directory.
+Return exactly one JSON action per step matching the provided schema. Allowed actions: list_files, read_file, search_text, lsp, replace_text, write_file, finish.
+Never run shell or arbitrary Git commands, access files outside your assigned worktree root, modify .git metadata, use network/web/MCP/install tools, request interactive approvals, change configuration, access memory, or spawn another child agent.
 Modify only files needed for the task objective within your worktree. Finish with a structured result detailing changed files and verification.`
 	default:
 		return base + `
@@ -453,12 +513,261 @@ func estimateChildTokens(text string) int64 {
 	return int64((len([]rune(text)) + 3) / 4)
 }
 
+func validateNativeBuilderAction(action nativeBuilderAction) error {
+	switch action.Action {
+	case "list_files":
+		return nil
+	case "read_file":
+		if strings.TrimSpace(action.Path) == "" {
+			return errors.New("read_file requires path")
+		}
+		return nil
+	case "search_text":
+		if strings.TrimSpace(action.Query) == "" {
+			return errors.New("search_text requires query")
+		}
+		return nil
+	case "lsp":
+		candidate := AgentAction{Action: "lsp", Path: action.Path, Name: action.Name, Query: action.Query, Line: action.Line, Character: action.Character, Message: action.Message}
+		return validateAgentAction(candidate)
+	case "replace_text":
+		if strings.TrimSpace(action.Path) == "" {
+			return errors.New("replace_text requires path")
+		}
+		if action.OldText == "" {
+			return errors.New("replace_text requires non-empty old_text")
+		}
+		return nil
+	case "write_file":
+		if strings.TrimSpace(action.Path) == "" {
+			return errors.New("write_file requires path")
+		}
+		return nil
+	case "finish":
+		if action.Result == nil || strings.TrimSpace(action.Result.Summary) == "" {
+			return errors.New("finish requires structured result.summary")
+		}
+		return nil
+	default:
+		return fmt.Errorf("builder action %q is outside the governed worktree capability set", action.Action)
+	}
+}
+
+func validateBuilderWorktreeTargetPath(worktreeRoot, targetPath string) error {
+	if err := validateWorktreePathContainment(worktreeRoot); err != nil {
+		return fmt.Errorf("%w: %v", errWorkspaceEscapeAttempted, err)
+	}
+	if strings.TrimSpace(targetPath) == "" {
+		return nil
+	}
+	full, err := ensureWithinRoot(worktreeRoot, targetPath)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errWorkspaceEscapeAttempted, err)
+	}
+	rel, err := filepath.Rel(worktreeRoot, full)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errWorkspaceEscapeAttempted, err)
+	}
+	slashRel := filepath.ToSlash(rel)
+	if slashRel == ".git" || strings.HasPrefix(slashRel, ".git/") {
+		return fmt.Errorf("%w: builder cannot modify git metadata path %q", errWorkspaceEscapeAttempted, targetPath)
+	}
+	return nil
+}
+
+func (s *AppState) executeNativeBuilderAction(ctx context.Context, worktreeRoot string, cfg Config, action nativeBuilderAction) (string, error) {
+	if err := validateWorktreePathContainment(worktreeRoot); err != nil {
+		return "", fmt.Errorf("%w: %v", errWorkspaceEscapeAttempted, err)
+	}
+	switch action.Action {
+	case "list_files", "read_file", "search_text", "lsp":
+		if err := validateBuilderWorktreeTargetPath(worktreeRoot, action.Path); err != nil {
+			return "", err
+		}
+		return s.executeNativeChildAction(ctx, worktreeRoot, cfg, nativeChildAction{
+			Action:    action.Action,
+			Message:   action.Message,
+			Path:      action.Path,
+			Query:     action.Query,
+			Name:      action.Name,
+			Line:      action.Line,
+			Character: action.Character,
+			MaxDepth:  action.MaxDepth,
+		})
+	case "replace_text":
+		if err := validateBuilderWorktreeTargetPath(worktreeRoot, action.Path); err != nil {
+			return "", err
+		}
+		return replaceText(worktreeRoot, action.Path, action.OldText, action.NewText)
+	case "write_file":
+		if err := validateBuilderWorktreeTargetPath(worktreeRoot, action.Path); err != nil {
+			return "", err
+		}
+		return writeProjectFile(worktreeRoot, action.Path, action.Content)
+	default:
+		return "", fmt.Errorf("unsupported builder action %q", action.Action)
+	}
+}
+
+func nativeBuilderActionSignature(action nativeBuilderAction) string {
+	copyAction := action
+	copyAction.Message = ""
+	copyAction.Result = nil
+	data, _ := json.Marshal(copyAction)
+	return string(data)
+}
+
+func taskHasCapability(task AgentTask, want AgentCapability) bool {
+	for _, cap := range task.Capabilities {
+		if cap == want {
+			return true
+		}
+	}
+	return false
+}
+
+// runNativeBuilderAgentTask executes a governed builder child agent strictly
+// inside an isolated managed Git worktree root using nativeBuilderActionSchema.
+// It never writes directly to the main repository and never runs shell or git
+// commands on behalf of the model.
+func (s *AppState) runNativeBuilderAgentTask(ctx context.Context, worktreeRoot string, cfg Config, task AgentTask) (AgentResult, error) {
+	task.Budget = normalizeAgentBudget(task.Budget, AgentRoleBuilder, cfg)
+	started := time.Now()
+	usage := AgentUsage{}
+	finishUsage := func() AgentUsage {
+		usage.ElapsedMillis = time.Since(started).Milliseconds()
+		return usage
+	}
+
+	if task.Role != AgentRoleBuilder || !taskHasCapability(task, AgentCapabilityBuilderWorktree) {
+		return AgentResult{
+			Status:  AgentResultBlocked,
+			Summary: "builder runtime requires builder role and granted builder-worktree capability",
+			Usage:   finishUsage(),
+		}, errEscalationBlocked
+	}
+	if err := validateWorktreePathContainment(worktreeRoot); err != nil {
+		return AgentResult{
+			Status:  AgentResultBlocked,
+			Summary: "builder runtime refused to execute outside managed worktree root",
+			Usage:   finishUsage(),
+		}, fmt.Errorf("%w: %v", errWorkspaceEscapeAttempted, err)
+	}
+	if strings.TrimSpace(task.Model) == "" || s == nil || s.Ollama == nil {
+		return AgentResult{
+			Status:  AgentResultBlocked,
+			Summary: "local model is unavailable for builder worktree task",
+			Usage:   finishUsage(),
+		}, nil
+	}
+
+	totalCtx, cancelTotal := context.WithTimeout(ctx, time.Duration(task.Budget.TimeSeconds)*time.Second)
+	defer cancelTotal()
+	bootstrap := modelSubagentBootstrap(worktreeRoot, cfg, task.Objective)
+	messages := []OllamaMessage{
+		{Role: "system", Content: nativeChildSystemPrompt(AgentRoleBuilder)},
+		{Role: "user", Content: nativeChildTaskPrompt(task, truncateText(bootstrap, modelSubagentBootstrapBytes))},
+	}
+	lastSignature := ""
+	var modifiedFiles []string
+
+	for {
+		if err := totalCtx.Err(); err != nil {
+			usage = finishUsage()
+			return AgentResult{Status: AgentResultBudgetExhausted, Summary: "builder time budget exhausted", ChangedFiles: modifiedFiles, Usage: usage}, nil
+		}
+		if usage.ModelCalls >= task.Budget.ModelCalls {
+			usage = finishUsage()
+			return AgentResult{Status: AgentResultBudgetExhausted, Summary: "builder model-call budget exhausted", ChangedFiles: modifiedFiles, Usage: usage}, nil
+		}
+		estimatedRequestTokens := estimateChildMessagesTokens(messages)
+		if usage.EstimatedTokens+estimatedRequestTokens > task.Budget.EstimatedTokenBudget {
+			usage = finishUsage()
+			return AgentResult{Status: AgentResultBudgetExhausted, Summary: "builder estimated token budget exhausted", ChangedFiles: modifiedFiles, Usage: usage}, nil
+		}
+
+		stepTimeout := time.Duration(cfg.ModelTimeout) * time.Second
+		if stepTimeout <= 0 || stepTimeout > 90*time.Second {
+			stepTimeout = 90 * time.Second
+		}
+		if deadline, ok := totalCtx.Deadline(); ok {
+			remaining := time.Until(deadline)
+			if remaining < stepTimeout {
+				stepTimeout = remaining
+			}
+		}
+		stepCtx, cancelStep := context.WithTimeout(totalCtx, stepTimeout)
+		raw, chatErr := s.Ollama.Chat(stepCtx, task.Model, messages, nativeBuilderActionSchema)
+		cancelStep()
+		usage.ModelCalls++
+		usage.EstimatedTokens += estimatedRequestTokens + estimateChildTokens(raw)
+		if chatErr != nil {
+			usage = finishUsage()
+			return AgentResult{Status: AgentResultBlocked, Summary: "builder model call failed: " + chatErr.Error(), ChangedFiles: modifiedFiles, Usage: usage}, chatErr
+		}
+
+		var action nativeBuilderAction
+		if err := json.Unmarshal([]byte(raw), &action); err != nil {
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEM: Invalid builder JSON. Return exactly one valid builder worktree action."})
+			continue
+		}
+		if err := validateNativeBuilderAction(action); err != nil {
+			messages = append(messages,
+				OllamaMessage{Role: "assistant", Content: raw},
+				OllamaMessage{Role: "user", Content: "SYSTEM: Builder action blocked: " + err.Error() + ". Use only list_files/read_file/search_text/lsp/replace_text/write_file/finish."},
+			)
+			continue
+		}
+		signature := nativeBuilderActionSignature(action)
+		if signature == lastSignature && action.Action != "finish" {
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEM: Identical builder action blocked. Perform a different step or finish."})
+			continue
+		}
+		lastSignature = signature
+		messages = append(messages, OllamaMessage{Role: "assistant", Content: raw})
+
+		if action.Action == "finish" {
+			result := normalizeNativeChildResult(action.Result, AgentRoleBuilder)
+			result.Status = AgentResultCompleted
+			result.ChangedFiles = appendUniqueFilePaths(result.ChangedFiles, modifiedFiles...)
+			result.Usage = finishUsage()
+			return result, nil
+		}
+		if usage.ToolCalls >= task.Budget.ToolCalls {
+			usage = finishUsage()
+			return AgentResult{Status: AgentResultBudgetExhausted, Summary: "builder tool-call budget exhausted", ChangedFiles: modifiedFiles, Usage: usage}, nil
+		}
+
+		s.AddEvent(UIEvent{
+			Type:    "agent_step",
+			Message: childRoleDisplayName(cfg, task.Role) + ": " + strings.TrimSpace(action.Message),
+			Detail:  childBudgetDetail(cfg, task.Budget, usage),
+			Action:  "subagent:" + string(task.Role) + ":" + action.Action,
+			Path:    action.Path,
+		})
+		toolResult, toolErr := s.executeNativeBuilderAction(totalCtx, worktreeRoot, cfg, action)
+		usage.ToolCalls++
+		if toolErr != nil {
+			toolResult = "ERROR: " + toolErr.Error()
+		} else if action.Action == "write_file" || action.Action == "replace_text" {
+			modifiedFiles = appendUniqueFilePaths(modifiedFiles, filepath.ToSlash(strings.TrimSpace(action.Path)))
+		}
+		messages = append(messages, OllamaMessage{Role: "user", Content: "BUILDER WORKTREE TOOL RESULT for " + action.Action + ":\n" + truncateText(toolResult, modelSubagentToolBytes)})
+	}
+}
+
 func childRoleDisplayName(cfg Config, role AgentRole) string {
 	switch role {
 	case AgentRolePlanner:
 		return localizeConfigText(cfg, "Planer-Subagent", "Planner subagent")
 	case AgentRoleReviewer:
 		return localizeConfigText(cfg, "Review-Subagent", "Reviewer subagent")
+	case AgentRoleBuilder:
+		return localizeConfigText(cfg, "Builder-Subagent", "Builder subagent")
+	case AgentRoleIntegrator:
+		return localizeConfigText(cfg, "Integrator-Subagent", "Integrator subagent")
+	case AgentRoleTestAgent:
+		return localizeConfigText(cfg, "Test-Subagent", "Test subagent")
 	default:
 		return localizeConfigText(cfg, "Explorer-Subagent", "Explorer subagent")
 	}

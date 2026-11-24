@@ -18,5 +18,25 @@ test('canonical workspace boundary rejects traversal and junction escapes', asyn
 test('bridge accepts narrow actions and forbids arbitrary endpoint, command and persistent approvals', () => {
   assert.ok(validMessage({ type: 'send', message: 'hello', model: '' }));
   assert.ok(validMessage({ type: 'approve', id: 'a', decision: 'once' }));
-  for (const input of [null, [], { type: 'executeCommand', command: 'workbench.action.terminal.new' }, { type: 'refresh', url: 'http://evil' }, { type: 'send', message: '', model: '' }, { type: 'send', message: 'x'.repeat(100001), model: '' }, { type: 'approve', id: 'a', decision: 'global' }]) assert.equal(validMessage(input), false);
+  assert.ok(validMessage({ type: 'pasteClipboard' }));
+  assert.ok(validMessage({ type: 'openRight' }));
+  assert.ok(validMessage({ type: 'addContext' }));
+  for (const kind of ['active', 'choose', 'clipboard', 'diagnostics']) {
+    assert.ok(validMessage({ type: 'addContext', kind }), `addContext kind=${kind}`);
+  }
+  for (const input of [
+    null,
+    [],
+    { type: 'executeCommand', command: 'workbench.action.terminal.new' },
+    { type: 'refresh', url: 'http://evil' },
+    { type: 'pasteClipboard', extra: true },
+    { type: 'openRight', extra: true },
+    { type: 'addContext', kind: 'shell' },
+    { type: 'addContext', kind: '' },
+    { type: 'addContext', kind: 123 },
+    { type: 'addContext', kind: 'active', extra: 1 },
+    { type: 'send', message: '', model: '' },
+    { type: 'send', message: 'x'.repeat(100001), model: '' },
+    { type: 'approve', id: 'a', decision: 'global' }
+  ]) assert.equal(validMessage(input), false);
 });

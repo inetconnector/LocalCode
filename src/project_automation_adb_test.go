@@ -121,6 +121,34 @@ if "%1"=="install" (
   echo Success
   exit /b 0
 )
+if "%1"=="uninstall" (
+  echo Success
+  exit /b 0
+)
+if "%1"=="shell" (
+  echo SHELL_OUT: %*
+  exit /b 0
+)
+if "%1"=="pair" (
+  echo Successfully paired to %2
+  exit /b 0
+)
+if "%1"=="kill-server" (
+  echo killed
+  exit /b 0
+)
+if "%1"=="start-server" (
+  echo started
+  exit /b 0
+)
+if "%1"=="push" (
+  echo 1 file pushed
+  exit /b 0
+)
+if "%1"=="pull" (
+  echo 1 file pulled
+  exit /b 0
+)
 if "%1"=="logcat" (
   echo --------- beginning of main
   exit /b 0
@@ -247,6 +275,97 @@ exit /b 0`)
 	_, err = runADBAction(ctx, project, adbActionRequest{Action: "stop"}, cfg)
 	if err == nil {
 		t.Error("expected error for stop without target")
+	}
+
+	// 15. Action: uninstall
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "uninstall",
+		Target: "com.pacman.nativeapp",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "Success") {
+		t.Fatalf("uninstall action failed: %v, out: %s", err, out)
+	}
+
+	// 16. Action: uninstall with -k
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "uninstall",
+		Target: "-k com.pacman.nativeapp",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "Success") {
+		t.Fatalf("uninstall -k failed: %v, out: %s", err, out)
+	}
+
+	// 17. Action: packages
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "packages",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "SHELL_OUT") {
+		t.Fatalf("packages action failed: %v, out: %s", err, out)
+	}
+
+	// 18. Action: is_installed
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "is_installed",
+		Target: "com.pacman.nativeapp",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "SHELL_OUT") {
+		t.Fatalf("is_installed action failed: %v, out: %s", err, out)
+	}
+
+	// 19. Action: shell
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "shell",
+		Target: "getprop ro.build.version.release",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "SHELL_OUT") {
+		t.Fatalf("shell action failed: %v, out: %s", err, out)
+	}
+
+	// 20. Action: pair
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "pair",
+		Target: "192.168.1.50:37123 123456",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "Successfully paired") {
+		t.Fatalf("pair action failed: %v, out: %s", err, out)
+	}
+
+	// 21. Action: push
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "push",
+		Target: "local.txt /sdcard/remote.txt",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "1 file pushed") {
+		t.Fatalf("push action failed: %v, out: %s", err, out)
+	}
+
+	// 22. Action: pull
+	out, err = runADBAction(ctx, project, adbActionRequest{
+		Action: "pull",
+		Target: "/sdcard/remote.txt local.txt",
+	}, cfg)
+	if err != nil || !strings.Contains(out, "1 file pulled") {
+		t.Fatalf("pull action failed: %v, out: %s", err, out)
+	}
+
+	// 23. Action: kill-server & start-server
+	out, err = runADBAction(ctx, project, adbActionRequest{Action: "kill-server"}, cfg)
+	if err != nil || !strings.Contains(out, "killed") {
+		t.Fatalf("kill-server action failed: %v, out: %s", err, out)
+	}
+	out, err = runADBAction(ctx, project, adbActionRequest{Action: "start-server"}, cfg)
+	if err != nil || !strings.Contains(out, "started") {
+		t.Fatalf("start-server action failed: %v, out: %s", err, out)
+	}
+
+	// 24. Action: executeAction via agent adb_action
+	agentOut, err := executeAction(ctx, project, cfg, AgentAction{
+		Action:    "adb_action",
+		Subaction: "uninstall",
+		Target:    "com.pacman.nativeapp",
+	})
+	if err != nil || !strings.Contains(agentOut, "Success") {
+		t.Fatalf("agent adb_action failed: %v, out: %s", err, agentOut)
 	}
 }
 

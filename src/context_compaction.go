@@ -16,6 +16,7 @@ import (
 type compactedContext struct {
 	Summary         string   `json:"summary"`
 	OriginalTask    string   `json:"original_task"`
+	Focus           string   `json:"focus,omitempty"`
 	Decisions       []string `json:"decisions"`
 	ProjectFacts    []string `json:"project_facts"`
 	FilesRead       []string `json:"files_read"`
@@ -75,14 +76,12 @@ func isLocalOllamaURL(u string) bool {
 }
 
 func effectiveCompactionContextLength(cfg Config) int {
+	if isLocalOllamaURL(cfg.OllamaURL) {
+		return computeDynamicLocalContext(cfg, detectLocalVRAMMB())
+	}
 	contextLength := cfg.ContextLength
 	if contextLength < 4096 {
 		contextLength = 32768
-	}
-	// Match OllamaClient's local num_ctx cap (6144) so LocalCode compacts
-	// proactively before Ollama silently drops the system prompt or user task.
-	if isLocalOllamaURL(cfg.OllamaURL) && contextLength > 6144 {
-		return 6144
 	}
 	return contextLength
 }
@@ -148,6 +147,7 @@ func renderCompactedState(state compactedContext) string {
 		b.WriteByte('\n')
 	}
 	writeField("Ursprüngliche Aufgabe", state.OriginalTask)
+	writeField("Fokus der Komprimierung", state.Focus)
 	writeField("Zusammenfassung", state.Summary)
 	writeList("Entscheidungen und Nutzerfreigaben", state.Decisions)
 	writeList("Projektfakten", state.ProjectFacts)
@@ -161,14 +161,47 @@ func renderCompactedState(state compactedContext) string {
 }
 
 func deterministicContextSummary(messages []OllamaMessage, originalTask string) compactedContext {
-	state := compactedContext{OriginalTask: truncateText(strings.TrimSpace(originalTask), 2400)}
-	var facts, commands, failures, decisions, open []string
+	return deterministicContextSummaryWithFocus(messages, originalTask, "")
+}
+
+func deterministicContextSummaryWithFocus(messages []OllamaMessage, originalTask, focusInstruction string) compactedContext {
+	focus := strings.TrimSpace(focusInstruction)
+	state := compactedContext{
+		OriginalTask: truncateText(strings.TrimSpace(originalTask), 2400),
+		Focus:        truncateText(focus, 600),
+	}
+	var focusKeywords []string
+	if focus != "" {
+		for _, tok := range strings.Fields(strings.ToLower(focus)) {
+			tok = strings.Trim(tok, ".,;:!?\"'()[]{}`")
+			if len(tok) >= 3 {
+				focusKeywords = append(focusKeywords, tok)
+			}
+		}
+	}
+	matchesFocus := func(text string) bool {
+		if len(focusKeywords) == 0 {
+			return false
+		}
+		lower := strings.ToLower(text)
+		for _, kw := range focusKeywords {
+			if strings.Contains(lower, kw) {
+				return true
+			}
+		}
+		return false
+	}
+
+	var facts, focusedFacts, commands, failures, decisions, open []string
 	for _, message := range messages {
 		content := strings.TrimSpace(message.Content)
 		if content == "" {
 			continue
 		}
 		lower := strings.ToLower(content)
+		if focus != "" && message.Role != "system" && matchesFocus(content) {
+			focusedFacts = append(focusedFacts, fmt.Sprintf("[%s] %s", message.Role, truncateText(content, 500)))
+		}
 		switch {
 		case message.Role == "user" && strings.Contains(lower, "antwort des nutzers"):
 			decisions = append(decisions, truncateText(content, 800))
@@ -188,9 +221,15 @@ func deterministicContextSummary(messages []OllamaMessage, originalTask string) 
 			}
 		}
 	}
-	state.Summary = "Ältere Nachrichten wurden lokal verdichtet. Die zuletzt erhaltenen Nachrichten bleiben zusätzlich unverändert im Kontext."
+	if focus != "" {
+		state.Summary = fmt.Sprintf("Ältere Nachrichten wurden gezielt mit Fokus %q lokal verdichtet. Die zuletzt erhaltenen Nachrichten bleiben zusätzlich unverändert im Kontext.", truncateText(focus, 200))
+		combinedFacts := append(tailStrings(focusedFacts, 8), tailStrings(facts, 4)...)
+		state.ProjectFacts = tailStrings(combinedFacts, 10)
+	} else {
+		state.Summary = "Ältere Nachrichten wurden lokal verdichtet. Die zuletzt erhaltenen Nachrichten bleiben zusätzlich unverändert im Kontext."
+		state.ProjectFacts = tailStrings(facts, 8)
+	}
 	state.Decisions = tailStrings(decisions, 4)
-	state.ProjectFacts = tailStrings(facts, 8)
 	state.Commands = tailStrings(commands, 6)
 	state.Failures = tailStrings(failures, 4)
 	state.OpenItems = tailStrings(open, 4)
@@ -205,32 +244,90 @@ func tailStrings(values []string, n int) []string {
 	return append([]string(nil), values[len(values)-n:]...)
 }
 
+// CompactMessagesWithFocus compacts a message history with an optional focus
+// instruction (used by `/compact <focus>` as well as automated compaction).
+// Unlike automatic threshold compaction, calling CompactMessagesWithFocus
+// directly always compacts whenever len(messages) >= 3.
+func CompactMessagesWithFocus(ctx context.Context, messages []OllamaMessage, focusInstruction string, cfg Config, client *OllamaClient, model string, originalTask string) ([]OllamaMessage, bool) {
+	result, compacted, _, _, _, _ := compactMessagesCore(ctx, client, model, messages, cfg, originalTask, focusInstruction, true)
+	return result, compacted
+}
+
+func (s *AppState) CompactMessagesWithFocus(ctx context.Context, model string, messages []OllamaMessage, cfg Config, originalTask string, focusInstruction string) ([]OllamaMessage, bool) {
+	return s.compactAgentMessagesInternal(ctx, model, messages, cfg, originalTask, focusInstruction, true)
+}
+
 func (s *AppState) compactAgentMessages(ctx context.Context, model string, messages []OllamaMessage, cfg Config, originalTask string) ([]OllamaMessage, bool) {
+	return s.compactAgentMessagesInternal(ctx, model, messages, cfg, originalTask, "", false)
+}
+
+func (s *AppState) compactAgentMessagesInternal(ctx context.Context, model string, messages []OllamaMessage, cfg Config, originalTask, focusInstruction string, force bool) ([]OllamaMessage, bool) {
 	effCfg := cfg
-	if strings.TrimSpace(effCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
-		effCfg.OllamaURL = s.Ollama.BaseURL
+	var client *OllamaClient
+	if s != nil && s.Ollama != nil {
+		client = s.Ollama
+		if strings.TrimSpace(effCfg.OllamaURL) == "" && strings.TrimSpace(s.Ollama.BaseURL) != "" {
+			effCfg.OllamaURL = s.Ollama.BaseURL
+		}
 	}
-	if !shouldCompactMessages(messages, effCfg) || len(messages) < 4 {
-		return messages, false
+	result, compacted, mode, before, after, keep := compactMessagesCore(ctx, client, model, messages, effCfg, originalTask, focusInstruction, force)
+	if !compacted {
+		return result, false
+	}
+	if s != nil {
+		detail := fmt.Sprintf("Modus: %s\nGeschätzte Tokens: %d → %d\nBeibehaltene aktuelle Nachrichten: %d", mode, before, after, keep)
+		if f := strings.TrimSpace(focusInstruction); f != "" {
+			detail += "\nFokus: " + truncateText(f, 300)
+		}
+		s.AddEvent(UIEvent{
+			Type:    "context_compacted",
+			Message: "Kontext komprimiert",
+			Detail:  detail,
+		})
+	}
+	return result, true
+}
+
+func compactMessagesCore(ctx context.Context, client *OllamaClient, model string, messages []OllamaMessage, cfg Config, originalTask, focusInstruction string, force bool) ([]OllamaMessage, bool, string, int, int, int) {
+	if len(messages) < 3 {
+		return messages, false, "", 0, 0, 0
+	}
+	if !force && (!shouldCompactMessages(messages, cfg) || len(messages) < 4) {
+		return messages, false, "", 0, 0, 0
 	}
 	before := estimateMessageTokens(messages)
-	keep := effCfg.ContextCompactionKeepRecent
-	if keep < 6 {
-		keep = 12
+	keep := cfg.ContextCompactionKeepRecent
+	if keep < 4 {
+		if force {
+			keep = 4
+		} else {
+			keep = 12
+		}
 	}
 	if keep > len(messages)-2 {
 		keep = len(messages) - 2
 	}
+	if keep < 1 {
+		keep = 1
+	}
 
-	state := deterministicContextSummary(messages, originalTask)
+	focus := strings.TrimSpace(focusInstruction)
+	state := deterministicContextSummaryWithFocus(messages, originalTask, focus)
 	mode := "deterministisch"
-	effectiveCtx := effectiveCompactionContextLength(effCfg)
-	if before <= effectiveCtx && effectiveCtx > 8192 {
+	effectiveCtx := effectiveCompactionContextLength(cfg)
+	if client != nil && strings.TrimSpace(model) != "" && before <= effectiveCtx && effectiveCtx >= minLocalContextTokens {
+		focusBlock := ""
+		if focus != "" {
+			focusBlock = "\nFOKUS-ANWEISUNG (HÖCHSTE PRIORITÄT):\n" +
+				"Priorisiere bei der Verdichtung sämtliche Details, Dateipfade, Entscheidungen, Fehler und offenen Punkte rund um: " +
+				truncateText(focus, 800) +
+				"\nKürze themenfremde Historie deutlich stärker.\n"
+		}
 		prompt := `Verdichte den folgenden Verlauf eines Software-Agenten in einen belastbaren Arbeitszustand.
 Bewahre ausschließlich überprüfbare Fakten und ausdrücklich getroffene Entscheidungen. Erfinde nichts.
 Unbedingt erhalten: ursprüngliche Nutzeraufgabe, Nutzerfreigaben/Absagen, Projektstruktur und Buildsystem, gelesene/geänderte Dateien, ausgeführte Befehle mit Ergebnis, genaue Fehlerdiagnosen, Git-Zustand, offene Blocker und die nächste sinnvolle Aktion.
 Nicht aufnehmen: Gedankenkette, Smalltalk, redundante Statusmeldungen oder wiederholte Anweisungen.
-Der Zustand muss reichen, damit ein neuer Agentenlauf ohne ältere Nachrichten korrekt fortsetzen kann.
+Der Zustand muss reichen, damit ein neuer Agentenlauf ohne ältere Nachrichten korrekt fortsetzen kann.` + focusBlock + `
 
 ORIGINAL TASK:
 ` + truncateText(originalTask, 2400) + "\n\nTRANSCRIPT:\n" + truncateText(renderMessagesForCompaction(messages), effectiveCtx*2)
@@ -239,14 +336,20 @@ ORIGINAL TASK:
 			{Role: "system", Content: "Du erstellst eine faktische, strukturierte Arbeitszusammenfassung für einen Coding-Agenten. Keine Gedankenkette."},
 			{Role: "user", Content: prompt},
 		}
-		compactionCtx, cancel := context.WithTimeout(ctx, minDuration(45*time.Second, timeDurationSeconds(effCfg.ModelTimeout)))
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		compactionCtx, cancel := context.WithTimeout(ctx, minDuration(45*time.Second, timeDurationSeconds(cfg.ModelTimeout)))
 		defer cancel()
-		content, err := s.Ollama.Chat(compactionCtx, model, compactionMessages, compactionSchema)
+		content, err := client.Chat(compactionCtx, model, compactionMessages, compactionSchema)
 		if err == nil {
 			var parsed compactedContext
 			if json.Unmarshal([]byte(content), &parsed) == nil && strings.TrimSpace(parsed.Summary) != "" {
 				if strings.TrimSpace(parsed.OriginalTask) == "" {
 					parsed.OriginalTask = truncateText(originalTask, 2400)
+				}
+				if focus != "" && strings.TrimSpace(parsed.Focus) == "" {
+					parsed.Focus = truncateText(focus, 600)
 				}
 				state = parsed
 				mode = "modellgestützt"
@@ -254,7 +357,7 @@ ORIGINAL TASK:
 		}
 	}
 
-	target := postCompactionTokenTarget(effCfg)
+	target := postCompactionTokenTarget(cfg)
 	result := buildCompactedMessages(messages, state, keep)
 	after := estimateMessageTokens(result)
 	for after > target && keep > 4 {
@@ -266,12 +369,7 @@ ORIGINAL TASK:
 		result = truncateCompactedRecentMessages(result, target)
 		after = estimateMessageTokens(result)
 	}
-	s.AddEvent(UIEvent{
-		Type:    "context_compacted",
-		Message: "Kontext komprimiert",
-		Detail:  fmt.Sprintf("Modus: %s\nGeschätzte Tokens: %d → %d\nBeibehaltene aktuelle Nachrichten: %d", mode, before, after, keep),
-	})
-	return result, true
+	return result, true, mode, before, after, keep
 }
 
 func buildCompactedMessages(messages []OllamaMessage, state compactedContext, keep int) []OllamaMessage {

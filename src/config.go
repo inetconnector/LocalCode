@@ -130,6 +130,7 @@ func defaultConfig() Config {
 		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "1.18.16", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
 		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
+		InferenceProvider: "auto", PromptCachingEnabled: true, ReasoningEffort: "medium",
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
 		WebFetchMaxBytes: 2 << 20, ImageGeneratorProvider: "automatic1111", ImageGeneratorURL: "http://127.0.0.1:7860", ImageGeneratorSteps: 20, ImageGeneratorCFGScale: 7.0,
 		GitEnabled: true, AutoStateUpdate: true,
@@ -523,9 +524,21 @@ func normalizeConfig(cfg Config) Config {
 		cfg.SandboxMode = d.SandboxMode
 	}
 	switch cfg.SandboxMode {
-	case "project", "workspace", "unrestricted":
+	case "project", "workspace", "unrestricted", "os":
 	default:
 		cfg.SandboxMode = d.SandboxMode
+	}
+	cfg.InferenceProvider = strings.ToLower(strings.TrimSpace(cfg.InferenceProvider))
+	switch cfg.InferenceProvider {
+	case "auto", "ollama", "llamacpp", "anthropic", "openai", "gemini":
+	default:
+		cfg.InferenceProvider = d.InferenceProvider
+	}
+	cfg.ReasoningEffort = strings.ToLower(strings.TrimSpace(cfg.ReasoningEffort))
+	switch cfg.ReasoningEffort {
+	case "low", "medium", "high":
+	default:
+		cfg.ReasoningEffort = d.ReasoningEffort
 	}
 	if cfg.WebSearchProvider == "" {
 		cfg.WebSearchProvider = d.WebSearchProvider

@@ -287,17 +287,15 @@ func TestCoverageBoostBrowserAutomation(t *testing.T) {
 	if _, err := BrowserClick(ctx, cfg, project, ""); err == nil {
 		t.Fatal("expected error on empty selector for browser_click")
 	}
-	resClick, err := BrowserClick(ctx, cfg, project, "#submit-btn")
-	if err != nil || !strings.Contains(resClick, "BROWSER CLICKED") {
-		t.Fatalf("unexpected browser_click result: %s, err: %v", resClick, err)
+	if resClick, err := BrowserClick(ctx, cfg, project, "#submit-btn"); err == nil || !strings.Contains(err.Error(), "Playwright MCP") {
+		t.Fatalf("expected Playwright MCP error for browser_click without MCP, got result: %s, err: %v", resClick, err)
 	}
 
 	if _, err := BrowserType(ctx, cfg, project, "", "hello"); err == nil {
 		t.Fatal("expected error on empty selector for browser_type")
 	}
-	resType, err := BrowserType(ctx, cfg, project, "#input-box", "hello text")
-	if err != nil || !strings.Contains(resType, "BROWSER TYPED") {
-		t.Fatalf("unexpected browser_type result: %s, err: %v", resType, err)
+	if resType, err := BrowserType(ctx, cfg, project, "#input-box", "hello text"); err == nil || !strings.Contains(err.Error(), "Playwright MCP") {
+		t.Fatalf("expected Playwright MCP error for browser_type without MCP, got result: %s, err: %v", resType, err)
 	}
 
 	resInspect, err := BrowserInspect(ctx, cfg, project, "div.main")

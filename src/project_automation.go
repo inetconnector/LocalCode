@@ -610,7 +610,7 @@ func extractManifestPackageAndLauncher(manifestPath string) (pkg string, launche
 }
 
 type adbActionRequest struct {
-	Action string `json:"action"` // "devices", "install", "launch", "stop", "logcat", "screenshot", "reverse", "tcpip", "connect"
+	Action string `json:"action"` // "devices", "install", "uninstall", "launch", "stop", "logcat", "clear_logcat", "packages", "is_installed", "shell", "screenshot", "push", "pull", "input", "reverse", "tcpip", "connect", "pair", "kill_server", "start_server", "dump_package"
 	Serial string `json:"serial,omitempty"`
 	Target string `json:"target,omitempty"` // component, package, IP, or apk path
 }
@@ -650,6 +650,23 @@ func runADBAction(ctx context.Context, project string, req adbActionRequest, cfg
 			apk = apks[0]
 		}
 		args = append(args, "install", "-r", "-d", "-g", apk)
+	case "uninstall":
+		pkg := strings.TrimSpace(req.Target)
+		if pkg == "" {
+			manifestPath := findProjectManifest(project)
+			if manifestPath != "" {
+				p, _, _ := extractManifestPackageAndLauncher(manifestPath)
+				pkg = p
+			}
+		}
+		if pkg == "" {
+			return "", errors.New("target package name is required to uninstall app")
+		}
+		if strings.HasPrefix(pkg, "-k ") {
+			args = append(args, "uninstall", "-k", strings.TrimSpace(pkg[3:]))
+		} else {
+			args = append(args, "uninstall", pkg)
+		}
 	case "launch":
 		target := strings.TrimSpace(req.Target)
 		if target == "" {
@@ -686,6 +703,99 @@ func runADBAction(ctx context.Context, project string, req adbActionRequest, cfg
 		if strings.TrimSpace(req.Target) != "" {
 			args = append(args, "-s", strings.TrimSpace(req.Target))
 		}
+	case "clear_logcat", "clear-logcat":
+		args = append(args, "logcat", "-c")
+	case "packages", "list_packages", "list-packages":
+		args = append(args, "shell", "pm", "list", "packages", "-3")
+		if strings.TrimSpace(req.Target) != "" {
+			args = append(args, strings.TrimSpace(req.Target))
+		}
+	case "is_installed", "check_installed":
+		pkg := strings.TrimSpace(req.Target)
+		if pkg == "" {
+			manifestPath := findProjectManifest(project)
+			if manifestPath != "" {
+				p, _, _ := extractManifestPackageAndLauncher(manifestPath)
+				pkg = p
+			}
+		}
+		if pkg == "" {
+			return "", errors.New("target package name is required to check installation")
+		}
+		args = append(args, "shell", "pm", "path", pkg)
+	case "dump_package", "dumpsys":
+		pkg := strings.TrimSpace(req.Target)
+		if pkg == "" {
+			manifestPath := findProjectManifest(project)
+			if manifestPath != "" {
+				p, _, _ := extractManifestPackageAndLauncher(manifestPath)
+				pkg = p
+			}
+		}
+		if pkg == "" {
+			args = append(args, "shell", "dumpsys", "package")
+		} else {
+			args = append(args, "shell", "dumpsys", "package", pkg)
+		}
+	case "shell":
+		cmd := strings.TrimSpace(req.Target)
+		if cmd == "" {
+			return "", errors.New("target command is required for adb shell")
+		}
+		args = append(args, "shell")
+		args = append(args, strings.Fields(cmd)...)
+	case "screenshot", "screencap":
+		dest := strings.TrimSpace(req.Target)
+		if dest == "" {
+			dest = filepath.Join(project, "phone_screenshot.png")
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(project, dest)
+		}
+		tmpRemote := "/data/local/tmp/lc_screenshot.png"
+		var capArgs []string
+		if strings.TrimSpace(req.Serial) != "" {
+			capArgs = append(capArgs, "-s", strings.TrimSpace(req.Serial))
+		}
+		_, err := runResolvedTool(ctx, project, "adb", append(capArgs, "shell", "screencap", "-p", tmpRemote), cfg)
+		if err != nil {
+			return "", fmt.Errorf("screencap failed: %w", err)
+		}
+		pullRes, err := runResolvedTool(ctx, project, "adb", append(capArgs, "pull", tmpRemote, dest), cfg)
+		_, _ = runResolvedTool(ctx, project, "adb", append(capArgs, "shell", "rm", "-f", tmpRemote), cfg)
+		if err != nil {
+			return pullRes, fmt.Errorf("pulling screenshot failed: %w", err)
+		}
+		return fmt.Sprintf("Screenshot saved to %s\n%s", dest, pullRes), nil
+	case "push":
+		parts := strings.SplitN(strings.TrimSpace(req.Target), " ", 2)
+		if len(parts) < 2 {
+			return "", errors.New("target must be '<local_path> <remote_path>' for push")
+		}
+		args = append(args, "push", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+	case "pull":
+		parts := strings.SplitN(strings.TrimSpace(req.Target), " ", 2)
+		if len(parts) < 2 {
+			return "", errors.New("target must be '<remote_path> <local_path>' for pull")
+		}
+		args = append(args, "pull", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+	case "input":
+		cmd := strings.TrimSpace(req.Target)
+		if cmd == "" {
+			return "", errors.New("target input command is required (e.g. 'tap 100 200' or 'keyevent 3')")
+		}
+		args = append(args, "shell", "input")
+		args = append(args, strings.Fields(cmd)...)
+	case "pair":
+		pairParts := strings.Fields(strings.TrimSpace(req.Target))
+		if len(pairParts) < 2 {
+			return "", errors.New("target must be '<host:port> <pairing_code>' for pair")
+		}
+		args = []string{"pair", pairParts[0], pairParts[1]}
+	case "kill-server", "kill_server":
+		args = []string{"kill-server"}
+	case "start-server", "start_server":
+		args = []string{"start-server"}
 	case "reverse":
 		port := "32145"
 		if strings.TrimSpace(req.Target) != "" {

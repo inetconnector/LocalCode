@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -53,7 +54,11 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/select-chat", s.withAuth(s.handleSelectChat))
 	s.mux.HandleFunc("/remote/api/snapshot", s.withAuth(s.handleSnapshot))
 	s.mux.HandleFunc("/remote/api/chat", s.withAuth(s.handleChat))
+	s.mux.HandleFunc("/remote/api/steer", s.withAuth(s.handleSteer))
+	s.mux.HandleFunc("/remote/api/providers-status", s.withAuth(s.handleProvidersStatus))
+	s.mux.HandleFunc("/remote/api/verify-frame", s.withAuth(s.handleVerifyFrame))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
+	s.mux.HandleFunc("/remote/api/lockscreen-approve", s.withAuth(s.handleLockscreenApprove))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
 	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
 	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
@@ -632,6 +637,63 @@ func (s *RemoteServer) handleChat(w http.ResponseWriter, r *http.Request) {
 	_ = writeJSON(w, map[string]any{"ok": true})
 }
 
+// handleSteer queues a mid-run priority steering instruction from authenticated mobile clients.
+func (s *RemoteServer) handleSteer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ThreadID string `json:"thread_id"`
+		RunID    string `json:"run_id"`
+		ID       string `json:"id"`
+		Message  string `json:"message"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 40000), &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	activeThread := s.state.CurrentThread
+	activeRun := s.state.RunID
+	s.state.mu.RUnlock()
+
+	threadID := strings.TrimSpace(req.ThreadID)
+	if threadID == "" {
+		threadID = activeThread
+	}
+	runID := strings.TrimSpace(req.RunID)
+	if runID == "" {
+		runID = activeRun
+	}
+	steerID := strings.TrimSpace(req.ID)
+	if steerID == "" {
+		steerID = "remote-steer-" + newID()
+	}
+
+	if err := s.state.queueAgentSteering(threadID, runID, steerID, req.Message); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = writeJSON(w, map[string]any{"ok": true, "id": steerID, "state": "queued"})
+}
+
+// handleProvidersStatus exposes secret-free provider capability metadata to mobile clients.
+func (s *RemoteServer) handleProvidersStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, buildProvidersStatusPayload(s.state))
+}
+
+func (s *RemoteServer) handleVerifyFrame(w http.ResponseWriter, r *http.Request) {
+	handleVerifyFrameHTTP(w, r)
+}
+
 func (s *RemoteServer) handleApprove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -679,6 +741,64 @@ func (s *RemoteServer) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *RemoteServer) handleLockscreenApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token      string `json:"token"`
+		ApprovalID string `json:"approval_id"`
+		DeviceID   string `json:"device_id"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	mgr, err := s.state.EnsureLockscreenTokenManager()
+	if err != nil {
+		http.Error(w, "lockscreen token manager unavailable", http.StatusInternalServerError)
+		return
+	}
+	claims, err := mgr.VerifyAndConsumeActionToken(req.Token, req.ApprovalID, req.DeviceID, time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	// Strictly enforce non-persistent single-use decisions ("once" or "reject").
+	if claims.Decision != LockscreenDecisionOnce && claims.Decision != LockscreenDecisionReject {
+		http.Error(w, ErrActionDecisionForbidden.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.state.mu.RLock()
+	pending := s.state.Pending
+	s.state.mu.RUnlock()
+	if pending == nil || pending.ID != claims.ApprovalID {
+		http.Error(w, "pending action not found", http.StatusNotFound)
+		return
+	}
+
+	decision := ApprovalDecision{
+		Approved: claims.Decision == LockscreenDecisionOnce,
+		Persist:  false,
+	}
+	select {
+	case pending.Result <- decision:
+	default:
+		http.Error(w, "approval already handled", http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":          true,
+		"approval_id": claims.ApprovalID,
+		"decision":    string(claims.Decision),
+		"persist":     false,
+	})
 }
 
 func (s *RemoteServer) handleStop(w http.ResponseWriter, r *http.Request) {

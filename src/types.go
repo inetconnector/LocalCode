@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"log"
 	"path/filepath"
 	"strings"
@@ -111,9 +112,15 @@ type Config struct {
 	MaxAgentSteps                     int     `json:"max_agent_steps"`
 	CommandTimeout                    int     `json:"command_timeout_seconds"`
 	ModelTimeout                      int     `json:"model_timeout_seconds"`
-	ApprovalMode                      string  `json:"approval_mode"` // strict | balanced | auto | dangerous
-	SandboxMode                       string  `json:"sandbox_mode"`  // project | workspace | unrestricted
-	NetworkEnabled                    bool    `json:"network_enabled"`
+	ApprovalMode                      string   `json:"approval_mode"` // strict | balanced | auto | dangerous
+	SandboxMode                       string   `json:"sandbox_mode"`  // project | workspace | unrestricted
+	OSSandboxEnabled                  bool     `json:"os_sandbox_enabled"`
+	SandboxAllowedDomains             []string `json:"sandbox_allowed_domains,omitempty"`
+	SandboxDeniedDomains              []string `json:"sandbox_denied_domains,omitempty"`
+	NetworkEnabled                    bool     `json:"network_enabled"`
+	InferenceProvider                 string   `json:"inference_provider,omitempty"` // auto | ollama | llamacpp | anthropic | openai | gemini
+	PromptCachingEnabled              bool     `json:"prompt_caching_enabled"`
+	ReasoningEffort                   string   `json:"reasoning_effort,omitempty"` // low | medium | high
 	WebSearchProvider                 string  `json:"web_search_provider"` // disabled | duckduckgo | ollama
 	WebSearchAPIKeyEnv                string  `json:"web_search_api_key_env"`
 	WebSearchMaxResults               int     `json:"web_search_max_results"`
@@ -309,6 +316,9 @@ type AppState struct {
 	ActiveRuns            map[string]*ActiveAgentRun
 	RunningProjects       map[string]int
 	PendingRemotePairings map[string]*PendingRemotePairing
+	PTY                   *PTYManager
+	LockscreenTokens      *LockscreenActionTokenManager
+	RelayPairing          *ActiveRelayPairingState
 
 	LastTask         string
 	LastSummary      string
@@ -698,11 +708,67 @@ func (s *AppState) threadSaveWorker() {
 	}
 }
 
+// ActiveRelayPairingState holds public-facing metadata of the active E2EE relay pairing session.
+// Private ECDH keys and raw auth secrets are deliberately excluded from this struct.
+type ActiveRelayPairingState struct {
+	SessionID   string    `json:"session_id"`
+	RelayURL    string    `json:"relay_url"`
+	PairingURI  string    `json:"pairing_uri"`
+	Fingerprint string    `json:"fingerprint"`
+	CreatedAt   time.Time `json:"created_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// EnsureLockscreenTokenManager lazily initializes the cryptographic single-use token
+// manager used for out-of-band lockscreen approval actions.
+func (s *AppState) EnsureLockscreenTokenManager() (*LockscreenActionTokenManager, error) {
+	if s == nil {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.LockscreenTokens == nil {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return nil, err
+		}
+		mgr, err := NewLockscreenActionTokenManager(key, LockscreenActionTokenDefaultTTL)
+		if err != nil {
+			return nil, err
+		}
+		s.LockscreenTokens = mgr
+	}
+	return s.LockscreenTokens, nil
+}
+
+// EnsurePTYManager lazily initializes the workspace-bounded PTYManager for AppState.
+func (s *AppState) EnsurePTYManager() *PTYManager {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PTY == nil {
+		s.PTY = NewPTYManager(s.Config.RootProjectDir)
+	}
+	return s.PTY
+}
+
 // Close flushes the newest queued chat snapshot and stops the persistence
-// worker. It is safe to call more than once.
+// worker and active PTY sessions. It is safe to call more than once.
 func (s *AppState) Close() {
 	defaultMCPManager.Close()
-	if s == nil || s.threadSaveStop == nil || s.threadSaveDone == nil {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	pty := s.PTY
+	s.PTY = nil
+	s.mu.Unlock()
+	if pty != nil {
+		pty.CloseAll()
+	}
+	if s.threadSaveStop == nil || s.threadSaveDone == nil {
 		return
 	}
 	s.threadSaveCloseOnce.Do(func() {

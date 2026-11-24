@@ -30,8 +30,7 @@
     "Copilot",
     "Claude",
     "coding agent",
-    "Gemini",
-    "localcode"
+    "Gemini"
   ],
   "main": "./src/extension.js",
   "extensionKind": [
@@ -86,6 +85,30 @@
         "title": "%settings%",
         "category": "LocalCode",
         "icon": "$(gear)"
+      },
+      {
+        "command": "localcode.inlineEdit",
+        "title": "%inlineEdit%",
+        "category": "LocalCode",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "localcode.inlineEditAccept",
+        "title": "%inlineEditAccept%",
+        "category": "LocalCode",
+        "icon": "$(check)"
+      },
+      {
+        "command": "localcode.inlineEditReject",
+        "title": "%inlineEditReject%",
+        "category": "LocalCode",
+        "icon": "$(close)"
+      },
+      {
+        "command": "localcode.toggleFim",
+        "title": "%toggleFim%",
+        "category": "LocalCode",
+        "icon": "$(zap)"
       }
     ],
     "viewsContainers": {
@@ -112,6 +135,11 @@
           "command": "localcode.addSelection",
           "when": "editorHasSelection && resourceScheme == file && isWorkspaceTrusted",
           "group": "localcode"
+        },
+        {
+          "command": "localcode.inlineEdit",
+          "when": "editorTextFocus && resourceScheme == file && isWorkspaceTrusted",
+          "group": "localcode"
         }
       ],
       "view/title": [
@@ -132,6 +160,12 @@
         "command": "localcode.open",
         "key": "ctrl+alt+l",
         "mac": "cmd+alt+l"
+      },
+      {
+        "command": "localcode.inlineEdit",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus && resourceScheme == file && isWorkspaceTrusted"
       }
     ],
     "configuration": {
@@ -159,6 +193,64 @@
           "default": "auto",
           "scope": "application",
           "description": "%language%"
+        },
+        "localcode.fimEnabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "%fimEnabled%"
+        },
+        "localcode.fimModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:1.5b",
+          "scope": "application",
+          "description": "%fimModel%"
+        },
+        "localcode.fimEndpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "scope": "application",
+          "description": "%fimEndpoint%"
+        },
+        "localcode.fimDebounceMs": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 0,
+          "maximum": 2000,
+          "scope": "application",
+          "description": "%fimDebounceMs%"
+        },
+        "localcode.fimLatencyBudgetMs": {
+          "type": "integer",
+          "default": 150,
+          "minimum": 50,
+          "maximum": 5000,
+          "scope": "application",
+          "description": "%fimLatencyBudgetMs%"
+        },
+        "localcode.fimTemplate": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "qwen",
+            "starcoder",
+            "codellama"
+          ],
+          "default": "auto",
+          "scope": "application",
+          "description": "%fimTemplate%"
+        },
+        "localcode.inlineEditEndpoint": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%inlineEditEndpoint%"
+        },
+        "localcode.inlineEditModel": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%inlineEditModel%"
         }
       }
     }

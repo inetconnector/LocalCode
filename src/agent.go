@@ -25,6 +25,7 @@ type AgentAction struct {
 	Content             string         `json:"content,omitempty"`
 	OldText             string         `json:"old_text,omitempty"`
 	NewText             string         `json:"new_text,omitempty"`
+	Patch               string         `json:"patch,omitempty"`
 	Command             string         `json:"command,omitempty"`
 	MaxDepth            int            `json:"max_depth,omitempty"`
 	Width               int            `json:"width,omitempty"`
@@ -54,6 +55,9 @@ type AgentAction struct {
 	WindowTitle         string         `json:"window_title,omitempty"`
 	ControlName         string         `json:"control_name,omitempty"`
 	Text                string         `json:"text,omitempty"`
+	Target              string         `json:"target,omitempty"`
+	Serial              string         `json:"serial,omitempty"`
+	Subaction           string         `json:"subaction,omitempty"`
 	expectedFileVersion *fileVersion
 }
 
@@ -93,15 +97,19 @@ type orderedActionSchemaProperties struct {
 	Scope         map[string]any `json:"scope"`
 	OldText       map[string]any `json:"old_text"`
 	NewText       map[string]any `json:"new_text"`
+	Patch         map[string]any `json:"patch"`
 	Content       map[string]any `json:"content"`
+	Target        map[string]any `json:"target"`
+	Serial        map[string]any `json:"serial"`
+	Subaction     map[string]any `json:"subaction"`
 }
 
 var actionSchema = map[string]any{
 	"type": "object",
 	"properties": orderedActionSchemaProperties{
 		Action: map[string]any{"type": "string", "enum": []string{
-			"list_files", "read_file", "search_text", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
-			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
+			"list_files", "read_file", "search_text", "lsp", "replace_text", "apply_patch", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset",
+			"project_info", "subagent_analyze", "command_list", "command_read", "build_project", "deploy_android", "adb_action", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "discover_tool", "tool_inventory", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git", "git_commit", "web_search", "web_fetch",
 			"browser_navigate", "browser_inspect", "browser_click", "browser_type", "browser_screenshot", "browser_extract",
 			"desktop_list_windows", "desktop_inspect", "desktop_click", "desktop_type", "desktop_screenshot",
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
@@ -143,7 +151,11 @@ var actionSchema = map[string]any{
 		Scope:         map[string]any{"type": "string", "enum": []string{"project", "global"}},
 		OldText:       map[string]any{"type": "string", "minLength": 1},
 		NewText:       map[string]any{"type": "string"},
+		Patch:         map[string]any{"type": "string", "minLength": 1, "description": "Multi-hunk unified diff or *** Begin Patch / *** End Patch payload for apply_patch."},
 		Content:       map[string]any{"type": "string", "minLength": 1, "description": "Complete non-empty file content for write_file, image prompt for generate_image_asset, or memory text for memory_remember."},
+		Target:        map[string]any{"type": "string", "description": "Target component, package, IP, command or APK path for adb_action."},
+		Serial:        map[string]any{"type": "string", "description": "Target device serial for adb_action."},
+		Subaction:     map[string]any{"type": "string", "description": "ADB subaction (devices, install, uninstall, launch, stop, logcat, packages, shell, screenshot, reverse, connect, tcpip, input, pair)."},
 	},
 	"required": []string{"action", "message"}, "additionalProperties": false,
 }
@@ -181,8 +193,8 @@ Arbeitsweise:
 - Werkzeug-Klassifikation & Least Privilege: Wähle für jeden Teilschritt das minimal-invasive Werkzeug:
   - ReadOnly (list_files, read_file, search_text, lsp, skill_list, skill_read, browser_inspect, desktop_inspect, project_info)
   - SafeWrite (create_svg_asset, create_image_asset, convert_image_asset, render_asset)
-  - Mutating (replace_text, write_file, delete_file, skill_copy_resource, engine_edit, copy_path, move_path)
-  - SystemExecution (run_command, open_terminal, git_commit, deploy_android, build_project, skill_run_script)
+  - Mutating (replace_text, apply_patch, write_file, delete_file, skill_copy_resource, engine_edit, copy_path, move_path)
+  - SystemExecution (run_command, open_terminal, git_commit, deploy_android, build_project, adb_action, skill_run_script)
   Mutierende oder ausführende Werkzeuge werden nur eingesetzt, wenn der jeweilige Schritt zwingend eine Zustandsänderung verlangt.
 - Für echte Quellcodeänderungen ist engine_edit nur dann die bevorzugte Editing Engine, wenn in der Konfiguration eine externe Engine (Aider, Claude Code, OpenCode oder Claw Code) ausgewählt ist. Wenn die Konfiguration "LocalCode nativ" meldet, ist engine_edit nicht verfügbar; nutze dann list_files/read_file/search_text/replace_text/write_file direkt.
 - write_file benötigt immer path und vollständigen nicht-leeren content. Melde niemals Erfolg, wenn kein Dateiinhalt geschrieben wurde.
@@ -206,7 +218,7 @@ Arbeitsweise:
 - Bevor du wegen eines Werkzeugfehlers den Nutzer fragst: Werkzeug entdecken, genaue Ausgabe auswerten, eine andere sichere Diagnose versuchen und bei unbekannter Bedienung offizielle Dokumentation mit web_search/web_fetch recherchieren. Wiederhole niemals denselben fehlgeschlagenen Befehl oder dieselbe Frage ohne neue Information.
 - Nutze project_info für eine deterministische Erkennung des Buildsystems. Wenn der Nutzer kompilieren oder bauen verlangt, bevorzuge build_project statt einen geratenen Shell-Befehl. Für Android-Deployment auf ein verbundenes Gerät bevorzuge deploy_android; es baut zuerst, findet die APK, diagnostiziert ADB und installiert mit adb install -r.
 - Meldet project_info "unknown"/kein erkanntes Buildsystem in einem neuen oder leeren Projektordner, ist das normal und kein Blocker: Es gibt noch keins, weil das Projekt neu erstellt werden soll. Frage den Nutzer nicht, wie kompiliert werden soll oder welches Buildsystem er möchte. Wähle selbst ein Standard-Projektlayout passend zur in der Aufgabe genannten Sprache/Plattform (z.B. .NET: ein lauffähiges SDK-Style .csproj; Node: package.json; Python: pyproject.toml), lege es mit write_file an und implementiere den vollständigen angeforderten Umfang direkt, bevor du build_project ausführst.
-- Für einzelne Android-Diagnosen bevorzugst du run_tool mit tool=adb und args=["devices","-l"]. Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
+- Für einzelne Android- und ADB-Aktionen (Geräte auflisten, APK installieren, deinstallieren, App starten, stoppen, Logcat, Shell, Screenshot, Packages auflisten) bevorzugst du adb_action mit subaction, serial und target (z.B. subaction="uninstall", target="com.example.app"). Ein leeres Geräteverzeichnis bedeutet nicht, dass ADB fehlt; beachte device, unauthorized und offline getrennt.
 - Externe Logins sind interaktiv: öffne mit open_terminal ein sichtbares Terminal (z. B. gh auth login, npm login, docker login) und bitte den Nutzer, den Login dort abzuschließen. Erfinde keine Zugangsdaten und lies keine Geheimnisse aus.
 - Kopieren und Verschieben erfolgt mit copy_path/move_path innerhalb der konfigurierten Sandbox. Für komplexe Shell-Pipelines darfst du run_command verwenden; für einzelne Programme ist run_tool vorzuziehen.
 - Wenn der Nutzer zeitgesteuerte oder wiederkehrende Aufgaben (Scheduler/Cron) verlangt:
@@ -231,7 +243,7 @@ Arbeitsweise:
 Werkzeuge:
 - list_files, read_file, search_text
 - lsp(name,path,line,character,query) für read-only Definitionen/Referenzen/Symbole/Hover/Implementierungen/Call-Hierarchy
-- replace_text, write_file, delete_file
+- replace_text, apply_patch(patch), write_file, delete_file
 - create_svg_asset(path,content) für validierte lokale SVG-/Icon-Ressourcen
 - create_image_asset(path,content) für validierte lokale PNG/JPG/GIF/WebP/ICO/BMP-Ressourcen aus Data-URL/Base64
 - generate_image_asset(path,content,width,height) für lokale AUTOMATIC1111-/Forge-Bildgenerierung zu PNG/JPG/JPEG/WebP/ICO
@@ -404,6 +416,108 @@ func (s *AppState) StartAgentForThread(userMessage, model string, attachments []
 	s.mu.Unlock()
 
 	agentMessage := userMessage
+	compactFocus, isCompactCmd := parseCompactSlashCommand(userMessage)
+	if !isContinuation && isCompactCmd && len(attachments) == 0 {
+		s.beginRunJournal(runID, project, model, userMessage, threadID, now)
+		if checkpointID, cpErr := s.CreateTurnCheckpoint(threadID, project, userMessage); cpErr == nil && checkpointID != nil {
+			if titleBeforeTurn != "" && checkpointID.ThreadTitleBefore != titleBeforeTurn {
+				checkpointID.ThreadTitleBefore = titleBeforeTurn
+				_ = saveTurnCheckpointManifest(checkpointID)
+			}
+			s.AddEvent(UIEvent{Type: "user", Message: userMessage, CheckpointID: checkpointID.ID})
+		} else {
+			s.AddEvent(UIEvent{Type: "user", Message: userMessage})
+		}
+		summary := s.executeManualCompactCommand(ctx, model, cfg, userMessage, compactFocus)
+		s.AddEvent(UIEvent{Type: "final", Message: summary, Action: "compact"})
+		s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+		s.mu.Lock()
+		if run, exists := s.ActiveRuns[runID]; exists {
+			delete(s.ActiveRuns, runID)
+			if run != nil && run.Project != "" && s.RunningProjects != nil {
+				s.RunningProjects[run.Project]--
+				if s.RunningProjects[run.Project] <= 0 {
+					delete(s.RunningProjects, run.Project)
+				}
+			}
+		}
+		if s.RunID == runID {
+			s.Cancel = nil
+			s.Pending = nil
+			s.RunPhase = "idle"
+			s.LastProgressAt = time.Now()
+		}
+		s.Running = len(s.ActiveRuns) > 0
+		s.LastSummary = summary
+		s.mu.Unlock()
+		cancel()
+		s.finishRunJournal(runID, "compact_completed")
+		return nil
+	}
+	rewindTarget, isRewindCmd := parseRewindSlashCommand(userMessage)
+	if !isContinuation && isRewindCmd && len(attachments) == 0 {
+		s.mu.Lock()
+		cpID := rewindTarget
+		if cpID == "" {
+			if th := s.Threads[threadID]; th != nil {
+				for i := len(th.Events) - 1; i >= 0; i-- {
+					if id := strings.TrimSpace(th.Events[i].CheckpointID); id != "" {
+						cpID = id
+						break
+					}
+				}
+			}
+		}
+		if run, exists := s.ActiveRuns[runID]; exists {
+			delete(s.ActiveRuns, runID)
+			if run != nil && run.Project != "" && s.RunningProjects != nil {
+				s.RunningProjects[run.Project]--
+				if s.RunningProjects[run.Project] <= 0 {
+					delete(s.RunningProjects, run.Project)
+				}
+			}
+		}
+		if s.RunID == runID {
+			s.Cancel = nil
+			s.Pending = nil
+			s.RunPhase = "idle"
+			s.LastProgressAt = time.Now()
+		}
+		s.Running = len(s.ActiveRuns) > 0
+		s.mu.Unlock()
+		cancel()
+
+		if cpID == "" {
+			msg := localizeConfigText(cfg,
+				"Kein wiederherstellbarer Turn-Checkpoint in diesem Verlauf gefunden.",
+				"No restorable turn checkpoint found in this thread.")
+			s.AddEvent(UIEvent{Type: "final", Message: msg, Action: "rewind"})
+			s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+			return nil
+		}
+
+		rbRes, rbErr := s.RollbackToCheckpoint(threadID, cpID)
+		if rbErr != nil {
+			s.AddEvent(UIEvent{
+				Type:    "error",
+				Action:  "rewind",
+				Message: localizeConfigText(cfg, "Checkpoint-Wiederherstellung fehlgeschlagen", "Checkpoint rollback failed"),
+				Detail:  rbErr.Error(),
+			})
+			s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+			return nil
+		}
+		summary := fmt.Sprintf(localizeConfigText(cfg,
+			"Checkpoint **%s** wiederhergestellt (wiederhergestellt: %d, zurückgesetzt: %d, entfernt: %d Dateien, %d Turns zurückgerollt).",
+			"Restored checkpoint **%s** (restored: %d, reverted: %d, deleted: %d files, %d turns rolled back)."),
+			rbRes.CheckpointID, rbRes.RestoredFiles, rbRes.RevertedFiles, rbRes.DeletedFiles, rbRes.TurnsRemoved)
+		s.AddEvent(UIEvent{Type: "final", Message: summary, Action: "rewind"})
+		s.AddEvent(UIEvent{Type: "status", Message: localizeConfigText(cfg, "Bereit", "Ready")})
+		s.mu.Lock()
+		s.LastSummary = summary
+		s.mu.Unlock()
+		return nil
+	}
 	directMemory, isDirectMemory := directMemoryRequest{}, false
 	if !isContinuation {
 		if req, ok := detectDirectMemoryRequest(userMessage); ok && len(attachments) == 0 {
@@ -1244,6 +1358,34 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			s.AddEvent(UIEvent{Type: "agent_step", Message: stepMsg, Action: action.Action, Path: action.Path, Command: action.Command})
 		}
 		s.setRunPhase(runID, "tool:"+action.Action)
+		var projectHooks []HookDefinition
+		if agentToolHookEligible(action) {
+			loadedHooks, hooksErr := LoadProjectHooksV2(project)
+			if hooksErr != nil {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Hooks v2 Konfiguration ungültig", "Invalid Hooks v2 configuration"), Detail: hooksErr.Error(), Action: "hook_v2_config"})
+			} else {
+				projectHooks = loadedHooks
+			}
+			if len(projectHooks) > 0 {
+				if v2Res, v2Err := RunHooksV2(ctx, project, cfg, projectHooks, HookPayload{Event: HookEventPreToolUse, Project: project, Action: action}); v2Err != nil {
+					detail := v2Err.Error()
+					for _, r := range v2Res {
+						if strings.TrimSpace(r.Output) != "" {
+							detail = strings.TrimSpace(r.Output) + "\n" + detail
+							break
+						}
+					}
+					s.AddEvent(UIEvent{Type: "error", Message: localizeConfigText(cfg, "Hooks v2 blockierte Werkzeug", "Hooks v2 blocked tool"), Detail: truncateText(detail, 12000), Action: "hook_v2_pre_tool_use"})
+					return "error"
+				} else if len(v2Res) > 0 {
+					for _, r := range v2Res {
+						if strings.TrimSpace(r.Output) != "" {
+							s.AddEvent(UIEvent{Type: "tool_result", Message: localizeConfigText(cfg, "Hooks v2 PreToolUse ausgeführt", "Hooks v2 PreToolUse executed"), Detail: truncateText(r.Output, 12000), Action: "hook_v2_pre_tool_use"})
+						}
+					}
+				}
+			}
+		}
 		if agentToolHookEligible(action) && strings.TrimSpace(cfg.HookBeforeTool) != "" {
 			hookOut, hookErr := runAgentToolHook(ctx, project, cfg, "before", action)
 			if hookErr != nil {
@@ -1279,6 +1421,42 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		completedActions[action.Action] = true
 		repeatBlocks = 0
 		toolFailed := agentToolResultFailed(result)
+		if len(projectHooks) > 0 && agentToolHookEligible(action) {
+			postExit := 0
+			if toolFailed {
+				postExit = 1
+			}
+			if _, postErr := RunHooksV2(ctx, project, cfg, projectHooks, HookPayload{
+				Event:      HookEventPostToolUse,
+				Project:    project,
+				Action:     action,
+				ToolOutput: truncateText(result, 8000),
+				ExitCode:   postExit,
+			}); postErr != nil {
+				s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Hooks v2 PostToolUse fehlgeschlagen", "Hooks v2 PostToolUse failed"), Detail: truncateText(postErr.Error(), 12000), Action: "hook_v2_post_tool_use"})
+			}
+			if actionMutatesProject(action) && !toolFailed {
+				if _, editErr := RunHooksV2(ctx, project, cfg, projectHooks, HookPayload{
+					Event:      HookEventOnEdit,
+					Project:    project,
+					Action:     action,
+					ToolOutput: truncateText(result, 8000),
+				}); editErr != nil {
+					s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Hooks v2 OnEdit fehlgeschlagen", "Hooks v2 OnEdit failed"), Detail: truncateText(editErr.Error(), 12000), Action: "hook_v2_on_edit"})
+				}
+			}
+			if toolFailed && (action.Action == "run_command" || action.Action == "run_tool") {
+				if _, failErr := RunHooksV2(ctx, project, cfg, projectHooks, HookPayload{
+					Event:     HookEventOnTestFail,
+					Project:   project,
+					Action:    action,
+					ToolError: truncateText(result, 8000),
+					ExitCode:  1,
+				}); failErr != nil {
+					s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Hooks v2 OnTestFail fehlgeschlagen", "Hooks v2 OnTestFail failed"), Detail: truncateText(failErr.Error(), 12000), Action: "hook_v2_on_test_fail"})
+				}
+			}
+		}
 		var micaPostNote string
 		if actionMutatesProject(action) && !toolFailed {
 			for _, path := range mutatedActionPaths(action) {
@@ -1405,6 +1583,15 @@ func defaultActionDescription(a AgentAction, cfg Config) string {
 		return localizeConfigText(cfg, "Projekt bauen", "Build project")
 	case "deploy_android":
 		return localizeConfigText(cfg, "Android App bereitstellen", "Deploy Android app")
+	case "adb_action":
+		sub := a.Subaction
+		if sub == "" {
+			sub = a.Command
+		}
+		if sub == "" {
+			sub = a.Tool
+		}
+		return localizeConfigText(cfg, "ADB-Aktion: "+sub, "ADB action: "+sub)
 	case "subagent_analyze":
 		if a.Task != "" {
 			return localizeConfigText(cfg, "Subagent Analyse: "+a.Task, "Subagent analysis: "+a.Task)
@@ -1424,6 +1611,18 @@ func defaultActionDescription(a AgentAction, cfg Config) string {
 }
 
 func (s *AppState) modelCandidates(ctx context.Context, requested string) []string {
+	s.mu.RLock()
+	cfg := s.Config
+	s.mu.RUnlock()
+	if provider := defaultProviderRouter.Resolve(cfg, requested); provider != nil && provider.Name() != "ollama" {
+		cand := strings.TrimSpace(requested)
+		if cand == "" {
+			cand = strings.TrimSpace(cfg.LastModel)
+		}
+		if cand != "" {
+			return []string{cand}
+		}
+	}
 	models, err := s.Ollama.Tags(ctx)
 	if err != nil {
 		if requested != "" {
@@ -1478,6 +1677,133 @@ func (s *AppState) perModelCallTimeout() time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
+func nativeAgentToolDefinitions() []ToolDefinition {
+	return []ToolDefinition{
+		{
+			Name:        "list_files",
+			Description: "List files and directories inside the project workspace.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path":      map[string]any{"type": "string", "description": "Optional relative directory path."},
+					"max_depth": map[string]any{"type": "integer", "minimum": 1, "maximum": 8},
+					"message":   map[string]any{"type": "string"},
+				},
+			},
+		},
+		{
+			Name:        "read_file",
+			Description: "Read a file inside the project workspace.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path":    map[string]any{"type": "string", "description": "Relative file path."},
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"path"},
+			},
+		},
+		{
+			Name:        "search_text",
+			Description: "Search text across files inside the project workspace.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query":       map[string]any{"type": "string"},
+					"path":        map[string]any{"type": "string"},
+					"max_results": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+					"message":     map[string]any{"type": "string"},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "apply_patch",
+			Description: "Apply a multi-hunk unified diff or *** Begin Patch / *** End Patch payload atomically.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"patch":   map[string]any{"type": "string", "minLength": 1},
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"patch"},
+			},
+		},
+		{
+			Name:        "replace_text",
+			Description: "Replace an exact text block inside an existing workspace file.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path":     map[string]any{"type": "string"},
+					"old_text": map[string]any{"type": "string", "minLength": 1},
+					"new_text": map[string]any{"type": "string"},
+					"message":  map[string]any{"type": "string"},
+				},
+				"required": []string{"path", "old_text"},
+			},
+		},
+		{
+			Name:        "write_file",
+			Description: "Create or overwrite a workspace file with complete non-empty content.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path":    map[string]any{"type": "string"},
+					"content": map[string]any{"type": "string", "minLength": 1},
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"path", "content"},
+			},
+		},
+		{
+			Name:        "run_command",
+			Description: "Execute a workspace command inside the configured sandbox and approval policy.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"command": map[string]any{"type": "string"},
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+		{
+			Name:        "git",
+			Description: "Run a read-only or controlled git operation inside the workspace.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"message": map[string]any{"type": "string"},
+				},
+			},
+		},
+		{
+			Name:        "finish",
+			Description: "Conclude the current task with a verified summary.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"message"},
+			},
+		},
+		{
+			Name:        "ask_user",
+			Description: "Ask the user for clarification or approval when blocked.",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"message": map[string]any{"type": "string"},
+				},
+				"required": []string{"message"},
+			},
+		},
+	}
+}
+
 func (s *AppState) chatWithPerCallTimeout(ctx context.Context, model string, messages []OllamaMessage, schema any) (string, error) {
 	idleTimeout := s.perModelCallTimeout()
 	maxTotal := idleTimeout * 3
@@ -1504,6 +1830,65 @@ func (s *AppState) chatWithPerCallTimeout(ctx context.Context, model string, mes
 		s.LiveStreamTPS = 0
 		s.mu.Unlock()
 	}()
+	s.mu.RLock()
+	cfg := s.Config
+	s.mu.RUnlock()
+	if provider := defaultProviderRouter.Resolve(cfg, model); provider != nil && provider.Name() != "ollama" {
+		systemPrompt, provMsgs := providerMessagesFromOllama(messages)
+		enableCache := cfg.PromptCachingEnabled
+		req := InferenceRequest{
+			Model:             model,
+			SystemPrompt:      systemPrompt,
+			Messages:          provMsgs,
+			JSONSchema:        schema,
+			ReasoningEffort:   cfg.ReasoningEffort,
+			EnablePromptCache: &enableCache,
+		}
+		if provider.SupportsNativeTools() && schema != nil {
+			req.Tools = nativeAgentToolDefinitions()
+		}
+		var sb strings.Builder
+		started := time.Now()
+		tokCount := 0
+		resp, err := provider.Stream(callCtx, req, func(delta StreamDelta) {
+			idleTimer.Reset(idleTimeout)
+			if delta.Text != "" {
+				sb.WriteString(delta.Text)
+				tokCount++
+				elapsed := time.Since(started).Seconds()
+				tps := 0.0
+				if elapsed > 0 {
+					tps = float64(tokCount) / elapsed
+				}
+				preview := extractLiveStreamPreview(sb.String())
+				s.mu.Lock()
+				s.LiveStreamText = preview
+				s.LiveStreamTokens = tokCount
+				s.LiveStreamTPS = tps
+				s.LastProgressAt = time.Now()
+				s.mu.Unlock()
+			}
+		})
+		if err != nil && errors.Is(context.Cause(callCtx), context.DeadlineExceeded) {
+			return sb.String(), context.DeadlineExceeded
+		}
+		if err != nil {
+			return sb.String(), err
+		}
+		out := ""
+		if resp != nil {
+			out = strings.TrimSpace(resp.Content)
+			if out == "" && len(resp.ToolCalls) > 0 {
+				if translated, convErr := agentActionJSONFromToolCall(resp.ToolCalls[0]); convErr == nil {
+					out = translated
+				}
+			}
+		}
+		if out == "" {
+			out = strings.TrimSpace(sb.String())
+		}
+		return out, nil
+	}
 	out, err := s.Ollama.ChatStream(callCtx, model, messages, schema, func(accumulated string, tokens int, tps float64) {
 		// Active token streaming extends the idle deadline so slower laptop GPUs
 		// are never killed mid-file while actively generating valid code.
@@ -1715,6 +2100,12 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 		if a.NewText == "" {
 			a.NewText = stringMapArg(a.Arguments, "new_text")
 		}
+		if a.Patch == "" {
+			a.Patch = stringMapArg(a.Arguments, "patch")
+			if a.Patch == "" {
+				a.Patch = stringMapArg(a.Arguments, "diff")
+			}
+		}
 		if a.Command == "" {
 			a.Command = stringMapArg(a.Arguments, "command")
 		}
@@ -1778,6 +2169,14 @@ func fillAgentActionFromArguments(a AgentAction) AgentAction {
 			if a.NewText != "" {
 				a.NewText = stripOuterMarkdownFence(a.NewText)
 			}
+		}
+	}
+	if a.Action == "apply_patch" {
+		if strings.TrimSpace(a.Patch) == "" && strings.TrimSpace(a.Content) != "" {
+			a.Patch = a.Content
+		}
+		if a.Patch != "" {
+			a.Patch = stripOuterMarkdownFence(a.Patch)
 		}
 	}
 	return a
@@ -1882,6 +2281,12 @@ func validateAgentAction(a AgentAction) error {
 			return errors.New("replace_text must contain real code, never the '[omitted from model history:...]' history placeholder")
 		}
 		return require("old_text", a.OldText)
+	case "apply_patch":
+		patch := patchTextForAction(a)
+		if strings.Contains(patch, "[omitted from model history:") {
+			return errors.New("apply_patch must contain real patch hunks, never the '[omitted from model history:...]' history placeholder")
+		}
+		return require("patch", patch)
 	case "write_file":
 		if err := require("path", a.Path); err != nil {
 			return err
@@ -2066,7 +2471,7 @@ func completionRepairDirective(task string, issues []string) string {
 
 func actionMutatesProject(a AgentAction) bool {
 	switch a.Action {
-	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "replace_text", "apply_patch", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "copy_path", "move_path", "git_commit", "engine_edit", "aider_edit", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	default:
 		return false
@@ -2077,6 +2482,11 @@ func mutatedActionPaths(a AgentAction) []string {
 	switch a.Action {
 	case "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset":
 		return []string{a.Path}
+	case "apply_patch":
+		if paths := extractApplyPatchPaths(patchTextForAction(a)); len(paths) > 0 {
+			return paths
+		}
+		return []string{"."}
 	case "convert_image_asset", "render_asset":
 		return []string{a.Destination}
 	case "skill_copy_resource":
@@ -2096,7 +2506,7 @@ func mutatedActionPaths(a AgentAction) []string {
 
 func actionVerifiesProject(a AgentAction, task string) bool {
 	switch a.Action {
-	case "build_project", "deploy_android", "engine_lint", "aider_lint", "engine_test", "aider_test":
+	case "build_project", "deploy_android", "adb_action", "engine_lint", "aider_lint", "engine_test", "aider_test":
 		return true
 	case "run_tool":
 		return commandLooksLikeVerification(strings.Join(append([]string{a.Tool}, a.Args...), " "))
@@ -2910,7 +3320,7 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = mcpCall(ctx, cfg, project, a.Server, method, params)
 	case "memory_remember", "memory_list", "memory_forget":
 		result, err = s.executeMemoryAction(project, a)
-	case "mcp_call_tool", "lsp", "replace_text", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
+	case "adb_action", "mcp_call_tool", "lsp", "replace_text", "apply_patch", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":
 		s.AddEvent(UIEvent{Type: "question", Message: a.Message})
@@ -2996,6 +3406,20 @@ func (s *AppState) performApproved(ctx context.Context, project string, a AgentA
 			return "ERROR: " + err.Error(), false
 		}
 	}
+	if !strings.EqualFold(strings.TrimSpace(cfg.ApprovalMode), "dangerous") {
+		risk := ClassifyActionRisk(project, a, RiskPolicyFromConfig(cfg))
+		if risk.Level == RiskCriticalBlock && risk.Decision == DecisionDeny {
+			s.AddEvent(UIEvent{
+				Type:    "tool_error",
+				Message: a.Message,
+				Detail:  "BLOCKED (" + string(risk.Level) + "): " + risk.Reason,
+				Action:  a.Action,
+				Path:    a.Path,
+				Command: a.Command,
+			})
+			return "ERROR: blocked by risk classifier: " + risk.Reason, false
+		}
+	}
 	approved := true
 	if actionNeedsApproval(cfg, project, a) {
 		approved, err = s.requestApprovalWithPreview(ctx, project, a, preview)
@@ -3053,6 +3477,11 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		// A language server is an external project-aware process. The protocol
 		// path is read-only, but strict mode still surfaces the process start.
 		return cfg.ApprovalMode == "strict"
+	case "apply_patch":
+		if applyPatchHasDeletions(patchTextForAction(a)) {
+			return true
+		}
+		return cfg.ApprovalMode != "auto"
 	case "replace_text", "write_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "engine_edit", "aider_edit":
 
 		return cfg.ApprovalMode != "auto"
@@ -3067,6 +3496,15 @@ func actionNeedsApproval(cfg Config, project string, a AgentAction) bool {
 		return true
 	case "git_commit":
 		return true
+	case "adb_action":
+		sub := strings.ToLower(strings.TrimSpace(a.Subaction))
+		if sub == "" {
+			sub = strings.ToLower(strings.TrimSpace(a.Command))
+		}
+		if sub == "devices" || sub == "packages" || sub == "list_packages" || sub == "list-packages" || sub == "logcat" || sub == "screenshot" || sub == "screencap" || sub == "is_installed" {
+			return false
+		}
+		return cfg.ApprovalMode != "auto"
 	case "run_tool":
 		if cfg.ApprovalMode == "auto" && toolActionLooksReadOnly(a.Tool, a.Args) {
 			return false
@@ -3207,6 +3645,8 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 			return "", err
 		}
 		return simpleDiff(original, updated), nil
+	case "apply_patch":
+		return previewApplyPatch(project, cfg, patchTextForAction(a))
 	case "write_file":
 		full, err := ensureWithinRoot(project, a.Path)
 		if err != nil {
@@ -3428,6 +3868,19 @@ func previewAction(project string, cfg Config, a AgentAction) (string, error) {
 		return "Projekt mit dem automatisch erkannten Buildsystem bauen. Fehlende bekannte Werkzeuge werden nach separater Genehmigung installiert.", nil
 	case "deploy_android":
 		return "Android-Projekt bauen, ein autorisiertes verbundenes Gerät erkennen und die neueste Debug-APK mit adb install -r übertragen.", nil
+	case "adb_action":
+		sub := strings.ToLower(strings.TrimSpace(a.Subaction))
+		if sub == "" {
+			sub = strings.ToLower(strings.TrimSpace(a.Command))
+		}
+		if sub == "devices" || sub == "packages" || sub == "list_packages" || sub == "list-packages" || sub == "logcat" || sub == "screenshot" || sub == "screencap" || sub == "is_installed" {
+			return "", errors.New("action does not require approval")
+		}
+		target := a.Target
+		if target == "" {
+			target = a.Path
+		}
+		return fmt.Sprintf("ADB-Aktion %s (Ziel: %s, Gerät: %s) ausführen.", sub, target, a.Serial), nil
 	case "mcp_call_tool":
 		return fmt.Sprintf("MCP %s tool %s\nArguments: %s", a.Server, a.Tool, mustJSON(a.Arguments)), nil
 
@@ -3559,6 +4012,8 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 			return replaceTextAtVersion(project, a.Path, a.OldText, a.NewText, *a.expectedFileVersion)
 		}
 		return replaceText(project, a.Path, a.OldText, a.NewText)
+	case "apply_patch":
+		return applyPatchToProject(project, cfg, patchTextForAction(a))
 	case "write_file":
 		if err := validateManagedStateWrite(project, cfg, a.Path, a.Content); err != nil {
 			return "", err
@@ -3610,6 +4065,33 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 		dctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		return deployAndroid(dctx, project, cfg)
+	case "adb_action":
+		subaction := a.Subaction
+		if subaction == "" {
+			subaction = a.Command
+		}
+		if subaction == "" {
+			subaction = a.Tool
+		}
+		target := a.Target
+		if target == "" {
+			target = a.Path
+		}
+		if target == "" {
+			target = a.Name
+		}
+		req := adbActionRequest{
+			Action: subaction,
+			Serial: a.Serial,
+			Target: target,
+		}
+		timeout := time.Duration(cfg.CommandTimeout) * time.Second
+		if timeout < 60*time.Second {
+			timeout = 60 * time.Second
+		}
+		actx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return runADBAction(actx, project, req, cfg)
 	case "run_tool":
 		timeout := time.Duration(cfg.CommandTimeout) * time.Second
 		if timeout <= 0 {
@@ -3680,4 +4162,108 @@ func executeAction(ctx context.Context, project string, cfg Config, a AgentActio
 	default:
 		return "", errors.New("unsupported approved action")
 	}
+}
+
+func parseCompactSlashCommand(message string) (string, bool) {
+	trimmed := strings.TrimSpace(message)
+	lower := strings.ToLower(trimmed)
+	if lower == "/compact" {
+		return "", true
+	}
+	if strings.HasPrefix(lower, "/compact ") || strings.HasPrefix(lower, "/compact\t") {
+		return strings.TrimSpace(trimmed[len("/compact"):]), true
+	}
+	return "", false
+}
+
+func parseRewindSlashCommand(message string) (string, bool) {
+	trimmed := strings.TrimSpace(message)
+	lower := strings.ToLower(trimmed)
+	if lower == "/rewind" {
+		return "", true
+	}
+	if strings.HasPrefix(lower, "/rewind ") || strings.HasPrefix(lower, "/rewind\t") {
+		return strings.TrimSpace(trimmed[len("/rewind"):]), true
+	}
+	return "", false
+}
+
+// agentActionJSONFromToolCall translates a native structured provider ToolCall
+// into canonical AgentAction JSON understood by parseAgentAction.
+func agentActionJSONFromToolCall(tc ToolCall) (string, error) {
+	args, err := tc.ArgumentsMap()
+	if err != nil {
+		return "", err
+	}
+	payload := make(map[string]any, len(args)+2)
+	for k, v := range args {
+		payload[k] = v
+	}
+	if _, hasAction := payload["action"]; !hasAction {
+		payload["action"] = strings.TrimSpace(tc.Name)
+	}
+	if msg, ok := payload["message"].(string); !ok || strings.TrimSpace(msg) == "" {
+		payload["message"] = "Tool call: " + strings.TrimSpace(tc.Name)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func (s *AppState) executeManualCompactCommand(ctx context.Context, model string, cfg Config, originalTask, focus string) string {
+	s.mu.RLock()
+	eventsCopy := append([]UIEvent(nil), s.Events...)
+	s.mu.RUnlock()
+
+	history := []OllamaMessage{{Role: "system", Content: "LocalCode conversation context"}}
+	for _, ev := range eventsCopy {
+		switch ev.Type {
+		case "user":
+			if msg := strings.TrimSpace(ev.Message); msg != "" {
+				if _, isCompact := parseCompactSlashCommand(msg); isCompact {
+					continue
+				}
+				history = append(history, OllamaMessage{Role: "user", Content: msg})
+			}
+		case "final", "question", "assistant", "action_done", "tool_result", "tool_error":
+			body := strings.TrimSpace(ev.Message)
+			if detail := strings.TrimSpace(ev.Detail); detail != "" {
+				if body != "" {
+					body += "\n" + detail
+				} else {
+					body = detail
+				}
+			}
+			if body != "" {
+				history = append(history, OllamaMessage{Role: "assistant", Content: body})
+			}
+		}
+	}
+
+	if len(history) < 3 {
+		return localizeConfigText(cfg,
+			"Kontext-Komprimierung nicht erforderlich (weniger als 3 Gesprächsnachrichten vorhanden).",
+			"Context compaction skipped (fewer than 3 conversation messages available).")
+	}
+
+	compacted, ok := s.CompactMessagesWithFocus(ctx, model, history, cfg, originalTask, focus)
+	if !ok || len(compacted) < 2 {
+		return localizeConfigText(cfg,
+			"Kontext konnte nicht weiter verdichtet werden.",
+			"Context could not be compacted further.")
+	}
+
+	summaryText := compacted[1].Content
+	if focus != "" {
+		return fmt.Sprintf(localizeConfigText(cfg,
+			"Kontext mit Fokus **%s** komprimiert (%d → %d Nachrichten).\n\n%s",
+			"Context compacted with focus **%s** (%d → %d messages).\n\n%s"),
+			focus, len(history), len(compacted), truncateText(summaryText, 4000))
+	}
+	return fmt.Sprintf(localizeConfigText(cfg,
+		"Kontext erfolgreich komprimiert (%d → %d Nachrichten).\n\n%s",
+		"Context compacted successfully (%d → %d messages).\n\n%s"),
+		len(history), len(compacted), truncateText(summaryText, 4000))
 }

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -163,8 +164,34 @@ func agentTaskByID(graph *AgentTaskGraph, id string) *AgentTask {
 	return nil
 }
 
+func isDeterministicReadOnlyScanTask(task AgentTask) bool {
+	if strings.HasPrefix(strings.TrimSpace(task.Objective), deterministicSubagentTaskPrefix) {
+		return true
+	}
+	model := strings.TrimSpace(task.Model)
+	return strings.EqualFold(model, "deterministic") || strings.EqualFold(model, "none")
+}
+
 func resourceClassForAgentTask(task AgentTask) AgentResourceClass {
-	return AgentResourceModelInference
+	role, err := normalizeAgentRole(string(task.Role))
+	if err != nil {
+		return AgentResourceModelInference
+	}
+	switch role {
+	case AgentRoleIntegrator:
+		return AgentResourceIntegration
+	case AgentRoleTestAgent:
+		return AgentResourceBuild
+	case AgentRoleExplorer, AgentRolePlanner, AgentRoleReviewer:
+		if isDeterministicReadOnlyScanTask(task) {
+			return AgentResourceReadCPU
+		}
+		return AgentResourceModelInference
+	case AgentRoleBuilder:
+		return AgentResourceModelInference
+	default:
+		return AgentResourceModelInference
+	}
 }
 
 func agentTaskAdmissionReason(task AgentTask) string {
@@ -172,7 +199,7 @@ func agentTaskAdmissionReason(task AgentTask) string {
 	if err != nil {
 		return "task role is planning data and has no executable Native runtime yet"
 	}
-	for _, required := range capabilitiesForAgentRole(role) {
+	for _, required := range requiredCapabilitiesForAgentRole(role) {
 		granted := false
 		for _, capability := range task.Capabilities {
 			if capability == required {
@@ -191,15 +218,18 @@ func (s *AgentScheduler) QueueReady(graph *AgentTaskGraph, resourceOverrides map
 	if s == nil {
 		return fmt.Errorf("agent scheduler is nil")
 	}
-	readyIDs, err := readyAgentTaskIDs(graph)
-	if err != nil {
-		return err
+	if graph == nil {
+		return fmt.Errorf("task graph is nil")
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cancelled || s.missionCtx.Err() != nil {
 		return context.Canceled
+	}
+	readyIDs, err := readyAgentTaskIDs(graph)
+	if err != nil {
+		return err
 	}
 	s.pruneQueueLocked(graph)
 

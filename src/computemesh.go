@@ -137,11 +137,8 @@ func ProbeRunningLocalComputeMeshNodeDetailed(ctx context.Context, customCandida
 			defer cancel()
 
 			res := probeResult{
-				url:      url,
-				status:   "🟢 Lokaler Mesh-Knoten aktiv (0% Fee, 0ms)",
-				id:       "test-node-custom",
-				gpu:      "NVIDIA GPU (CUDA)",
-				vramPool: "16.0 GB VRAM (Local Mesh)",
+				url:    url,
+				status: "🟢 Lokaler Mesh-Knoten aktiv (0% Fee, 0ms)",
 			}
 
 			// 1. Try /api/status for rich hardware and config details
@@ -402,10 +399,7 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 		Online:       false,
 		URL:          defaultComputeMeshGatewayURL,
 		LocalNodeURL: defaultComputeMeshLocalNodeURL,
-		NodeID:       "test-node-custom",
 		NodeStatus:   "Offline",
-		GPU:          "NVIDIA GeForce RTX 3080 Laptop GPU (16.0 GB VRAM, CUDA)",
-		VRAMPool:     "24.0 GB VRAM & 48.6 TFLOPS",
 	}
 
 	if cfg.ComputeMeshURL != "" {
@@ -471,13 +465,6 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 		if len(localModels) > 0 {
 			status.Models = append(status.Models, localModels...)
 		}
-	}
-
-	if status.Account == "" {
-		status.Account = "frede@inetconnector.com"
-	}
-	if status.NodeID == "" {
-		status.NodeID = "test-node-custom"
 	}
 
 	status.KeySource = keySource

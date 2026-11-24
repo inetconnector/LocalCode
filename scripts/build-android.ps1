@@ -1,9 +1,46 @@
 param(
-    [string]$OutputDirectory = ""
+    [string]$OutputDirectory = "",
+    [switch]$ConfigureReleaseSigning
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$localAppDataRoot = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { $env:LOCALAPPDATA } else { Join-Path $HOME '.localcode' }
+$localCodeDataDir = Join-Path $localAppDataRoot 'LocalCode'
+$signingConfigPath = Join-Path $localCodeDataDir 'android-signing.clixml'
+
+function ConvertFrom-SecureStringToPlainText {
+    param([Parameter(Mandatory)][Security.SecureString]$SecureValue)
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
+
+if ($ConfigureReleaseSigning) {
+    if (-not (Test-Path -LiteralPath $localCodeDataDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $localCodeDataDir -Force | Out-Null
+    }
+    $ksPath = (Read-Host 'Release keystore path').Trim()
+    if ([string]::IsNullOrWhiteSpace($ksPath)) { throw 'Keystore path must not be empty.' }
+    $ksAlias = (Read-Host 'Key alias [key0]').Trim()
+    if ([string]::IsNullOrWhiteSpace($ksAlias)) { $ksAlias = 'key0' }
+    $storePass = Read-Host 'Keystore password' -AsSecureString
+    $keyPass = Read-Host 'Key password (leave empty to reuse keystore password)' -AsSecureString
+    if ($keyPass.Length -eq 0) { $keyPass = $storePass }
+    $signingConfig = [pscustomobject]@{
+        KeystorePath  = $ksPath
+        KeyAlias      = $ksAlias
+        StorePassword = $storePass
+        KeyPassword   = $keyPass
+    }
+    $signingConfig | Export-Clixml -LiteralPath $signingConfigPath
+    Write-Host "Saved DPAPI-encrypted Android release signing config to: $signingConfigPath"
+    exit 0
+}
 
 $repo = Split-Path -Parent $PSScriptRoot
 $androidRoot = Join-Path $repo 'android\app\src\main'
@@ -59,10 +96,19 @@ $dex = Join-Path $stagingDir 'dex'
 $compiledRes = Join-Path $stagingDir 'compiled-res'
 New-Item -ItemType Directory -Path $classes,$dex,$compiledRes -Force | Out-Null
 
+$versionFile = Join-Path $repo 'VERSION.txt'
+if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+    throw "VERSION.txt missing: $versionFile"
+}
+$versionName = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+if ($versionName -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].*)?$') {
+    throw "VERSION.txt must start with semantic version major.minor.patch, got: '$versionName'"
+}
+$versionCode = ([int]$Matches['major'] * 10000) + ([int]$Matches['minor'] * 100) + [int]$Matches['patch']
+
 $unsigned = Join-Path $stagingDir 'LocalCode-Remote-unsigned.apk'
 $aligned = Join-Path $stagingDir 'LocalCode-Remote-aligned.apk'
 $signed = Join-Path $stagingDir 'LocalCode-Remote-debug.apk'
-$keystore = Join-Path $stagingDir 'debug.keystore'
 
 $resourceArgs = @()
 if (Test-Path -LiteralPath $resDir -PathType Container) {
@@ -70,7 +116,7 @@ if (Test-Path -LiteralPath $resDir -PathType Container) {
     if ($LASTEXITCODE -ne 0) { throw "aapt2 compile resources failed with exit code $LASTEXITCODE" }
     $resourceArgs = @(Get-ChildItem -LiteralPath $compiledRes -Recurse -File -Filter *.flat | ForEach-Object FullName)
 }
-& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code 1 --version-name '1.0' -o $unsigned @resourceArgs
+& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code $versionCode --version-name $versionName -o $unsigned @resourceArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed with exit code $LASTEXITCODE" }
 
 & $javac -encoding UTF-8 -source 17 -target 17 -classpath $androidJar -d $classes $javaSource
@@ -93,15 +139,73 @@ try {
 & $zipalign -f 4 $unsigned $aligned
 if ($LASTEXITCODE -ne 0) { throw "zipalign failed with exit code $LASTEXITCODE" }
 
-$releaseKeystore = '\\diskstation\dani\apk-sign\4711Google!'
-if (Test-Path -LiteralPath $releaseKeystore -PathType Leaf) {
-    & $apksigner sign --ks $releaseKeystore --ks-pass "pass:4711Google!" --ks-key-alias "key0" --key-pass "pass:4711Google!" --out $signed $aligned
+$signedBy = ''
+$releaseKeystore = if ($null -ne $env:LOCALCODE_ANDROID_KEYSTORE) { $env:LOCALCODE_ANDROID_KEYSTORE.Trim() } else { '' }
+if (-not [string]::IsNullOrWhiteSpace($releaseKeystore)) {
+    # (a) Explicit environment variables
+    if (-not (Test-Path -LiteralPath $releaseKeystore -PathType Leaf)) {
+        throw "LOCALCODE_ANDROID_KEYSTORE file does not exist: $releaseKeystore"
+    }
+    $ksPass = $env:LOCALCODE_ANDROID_KEYSTORE_PASS
+    $keyAlias = if ($null -ne $env:LOCALCODE_ANDROID_KEY_ALIAS) { $env:LOCALCODE_ANDROID_KEY_ALIAS.Trim() } else { '' }
+    if ([string]::IsNullOrWhiteSpace($ksPass)) {
+        throw 'LOCALCODE_ANDROID_KEYSTORE_PASS must be set when LOCALCODE_ANDROID_KEYSTORE is configured.'
+    }
+    if ([string]::IsNullOrWhiteSpace($keyAlias)) {
+        throw 'LOCALCODE_ANDROID_KEY_ALIAS must be set when LOCALCODE_ANDROID_KEYSTORE is configured.'
+    }
+    $keyPassArg = if (-not [string]::IsNullOrWhiteSpace($env:LOCALCODE_ANDROID_KEY_PASS)) {
+        'env:LOCALCODE_ANDROID_KEY_PASS'
+    } else {
+        'env:LOCALCODE_ANDROID_KEYSTORE_PASS'
+    }
+    & $apksigner sign --ks $releaseKeystore --ks-pass 'env:LOCALCODE_ANDROID_KEYSTORE_PASS' --ks-key-alias $keyAlias --key-pass $keyPassArg --out $signed $aligned
     if ($LASTEXITCODE -ne 0) { throw "apksigner release sign failed with exit code $LASTEXITCODE" }
-} else {
-    & $keytool -genkeypair -keystore $keystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
-    if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
-    & $apksigner sign --ks $keystore --ks-pass pass:android --key-pass pass:android --out $signed $aligned
+    $signedBy = 'release (env)'
+} elseif (Test-Path -LiteralPath $signingConfigPath -PathType Leaf) {
+    # (b) Local Windows DPAPI-encrypted signing config outside the repo
+    $signingConfig = Import-Clixml -LiteralPath $signingConfigPath
+    $cfgKeystore = if ($null -ne $signingConfig.KeystorePath) { [string]$signingConfig.KeystorePath } else { '' }
+    $cfgAlias = if ($null -ne $signingConfig.KeyAlias) { [string]$signingConfig.KeyAlias } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($cfgKeystore) -and (Test-Path -LiteralPath $cfgKeystore -PathType Leaf)) {
+        if ([string]::IsNullOrWhiteSpace($cfgAlias)) {
+            throw "KeyAlias missing in DPAPI signing config: $signingConfigPath"
+        }
+        if ($null -eq $signingConfig.StorePassword -or -not ($signingConfig.StorePassword -is [Security.SecureString])) {
+            throw "StorePassword missing or invalid in DPAPI signing config: $signingConfigPath"
+        }
+        $keySec = if ($null -ne $signingConfig.KeyPassword -and ($signingConfig.KeyPassword -is [Security.SecureString]) -and $signingConfig.KeyPassword.Length -gt 0) {
+            $signingConfig.KeyPassword
+        } else {
+            $signingConfig.StorePassword
+        }
+        $env:_LC_ANDROID_KS_PASS = ConvertFrom-SecureStringToPlainText -SecureValue $signingConfig.StorePassword
+        $env:_LC_ANDROID_KEY_PASS = ConvertFrom-SecureStringToPlainText -SecureValue $keySec
+        try {
+            & $apksigner sign --ks $cfgKeystore --ks-pass 'env:_LC_ANDROID_KS_PASS' --ks-key-alias $cfgAlias --key-pass 'env:_LC_ANDROID_KEY_PASS' --out $signed $aligned
+            if ($LASTEXITCODE -ne 0) { throw "apksigner release sign (DPAPI config) failed with exit code $LASTEXITCODE" }
+            $signedBy = 'release (DPAPI config)'
+        } finally {
+            Remove-Item -Path 'Env:_LC_ANDROID_KS_PASS', 'Env:_LC_ANDROID_KEY_PASS' -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Warning "Configured DPAPI release keystore is not reachable; falling back to persistent local debug keystore."
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($signedBy)) {
+    # (c) Persistent local debug keystore fallback
+    if (-not (Test-Path -LiteralPath $localCodeDataDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $localCodeDataDir -Force | Out-Null
+    }
+    $debugKeystore = Join-Path $localCodeDataDir 'android-debug.keystore'
+    if (-not (Test-Path -LiteralPath $debugKeystore -PathType Leaf)) {
+        & $keytool -genkeypair -keystore $debugKeystore -storepass android -keypass android -alias androiddebugkey -dname 'CN=LocalCode Debug,O=inetconnector,C=DE' -keyalg RSA -keysize 2048 -validity 3650 -noprompt
+        if ($LASTEXITCODE -ne 0) { throw "keytool failed with exit code $LASTEXITCODE" }
+    }
+    & $apksigner sign --ks $debugKeystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out $signed $aligned
     if ($LASTEXITCODE -ne 0) { throw "apksigner debug sign failed with exit code $LASTEXITCODE" }
+    $signedBy = 'debug (persistent local keystore)'
 }
 & $apksigner verify --verbose $signed
 if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed with exit code $LASTEXITCODE" }
@@ -126,4 +230,6 @@ Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContin
 
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
 Write-Host "Android APK: $targetApk"
+Write-Host "Android APK Version: $versionName ($versionCode)"
+Write-Host "Android APK Signing: $signedBy"
 Write-Host "Android APK SHA-256: $hash"

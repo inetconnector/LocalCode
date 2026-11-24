@@ -39,6 +39,7 @@ func NewServer(state *AppState) *Server {
 func (s *Server) routes() {
 	sub, _ := fs.Sub(staticFS, "static")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
+	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/api/ping", s.handlePing)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/mission-recovery", s.handleMissionRecovery)
@@ -56,6 +57,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/browse-root", s.handleBrowseRoot)
 	s.mux.HandleFunc("/api/reset-root", s.handleResetRoot)
 	s.mux.HandleFunc("/api/chat", s.handleChat)
+	s.mux.HandleFunc("/api/chat/runs", s.handleChatRunsSSE)
+	s.mux.HandleFunc("/api/providers/status", s.handleProvidersStatus)
+	s.mux.HandleFunc("/api/relay/status", s.handleRelayStatus)
+	s.mux.HandleFunc("/api/relay/pair", s.handleRelayPair)
+	s.mux.HandleFunc("/api/push/lockscreen-token", s.handleIssueLockscreenToken)
+	s.mux.HandleFunc("/api/vision/verify-frame", s.handleVerifyFrame)
 	s.mux.HandleFunc("/api/threads", s.handleThreads)
 	s.mux.HandleFunc("/api/new-chat", s.handleNewChat)
 	s.mux.HandleFunc("/api/select-chat", s.handleSelectChat)
@@ -103,6 +110,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/adb/devices", s.handleADBDevices)
 	s.mux.HandleFunc("/api/adb/deploy", s.handleADBDeploy)
 	s.mux.HandleFunc("/api/adb/action", s.handleADBAction)
+	RegisterPTYRoutes(s.mux, s.state.EnsurePTYManager())
 }
 
 func loopbackRequestHost(value string) bool {
@@ -163,13 +171,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+var localCodeCapabilities = []string{
+	"stop-task-v1",
+	"steering-v1",
+	"pty-v1",
+	"apply-patch-v1",
+	"os-sandbox-v1",
+	"chat-runs-sse-v1",
+	"native-providers-v1",
+	"e2ee-relay-v1",
+	"push-lockscreen-v1",
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"status":       "ok",
+		"app":          "LocalCode",
+		"version":      version,
+		"license":      "Apache-2.0",
+		"capabilities": localCodeCapabilities,
+	})
+}
+
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0", "capabilities": []string{"stop-task-v1", "steering-v1"}})
+	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0", "capabilities": localCodeCapabilities})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -367,6 +402,9 @@ func (s *Server) applyRoot(root string) (string, error) {
 	s.state.Continuation = nil
 	if err := saveConfig(cfg); err != nil {
 		return "", err
+	}
+	if s.state.PTY != nil {
+		s.state.PTY.SetAllowedRoot(cfg.RootProjectDir)
 	}
 	return cfg.RootProjectDir, nil
 }
