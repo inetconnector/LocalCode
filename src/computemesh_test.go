@@ -398,3 +398,42 @@ func TestCheckComputeMeshStatusHasNoHardcodedDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigureComputeMeshDoesNotOverwriteWorkingOllamaWith404Node(t *testing.T) {
+	workingOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer workingOllama.Close()
+
+	healthOnlyNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"live":true,"ready":true,"runtime":{"instance_id":"node-8080"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer healthOnlyNode.Close()
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	cfg.OllamaURL = workingOllama.URL
+	cfg.ComputeMeshEnabled = true
+	cfg.ComputeMeshAutoDetect = false
+	cfg.ComputeMeshLocalNodeURL = healthOnlyNode.URL
+	cfg.ComputeMeshURL = healthOnlyNode.URL
+
+	ollamaClient := NewOllamaClient()
+	ollamaClient.BaseURL = workingOllama.URL
+	state := NewAppState(cfg, ollamaClient)
+
+	ConfigureComputeMeshForAppState(state)
+	if state.Ollama.BaseURL != workingOllama.URL {
+		t.Fatalf("expected working Ollama URL %q to be preserved, got %q", workingOllama.URL, state.Ollama.BaseURL)
+	}
+}

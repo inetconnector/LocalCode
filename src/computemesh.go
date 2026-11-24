@@ -569,13 +569,6 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		apiKey = detectedKey
 	}
 
-	targetURL := meshStatus.URL
-	if meshStatus.DirectLocal && meshStatus.LocalNodeURL != "" {
-		targetURL = meshStatus.LocalNodeURL
-	}
-
-	// Override BaseURL if no explicit custom URL was set, a local mesh node was discovered,
-	// OR the currently configured local Ollama URL is offline/unreachable while ComputeMesh is online.
 	s.mu.Lock()
 	if s.Ollama == nil {
 		s.Ollama = NewOllamaClient()
@@ -583,17 +576,47 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 	currentOllama := s.Ollama
 	s.mu.Unlock()
 
-	localOffline := false
-	if cfg.OllamaURL != "" && cfg.OllamaURL != defaultComputeMeshGatewayURL && !meshStatus.DirectLocal {
-		probeCtx, probeCancel := context.WithTimeout(ctx, 2*time.Second)
-		_, probeErr := currentOllama.Tags(probeCtx)
-		probeCancel()
-		localOffline = probeErr != nil
+	probeOllamaTags := func(baseURL, token string) bool {
+		if strings.TrimSpace(baseURL) == "" {
+			return false
+		}
+		probe := NewOllamaClient()
+		probe.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		probe.AuthToken = token
+		pCtx, pCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer pCancel()
+		_, err := probe.Tags(pCtx)
+		return err == nil
 	}
 
+	localOnline := probeOllamaTags(currentOllama.BaseURL, currentOllama.AuthToken)
+
+	// Candidate order: only switch s.Ollama.BaseURL to a ComputeMesh endpoint that actually
+	// implements Ollama-compatible `/api/tags` (never overwrite working local Ollama with a
+	// ComputeMesh control/health-only node like http://localhost:8080 that returns HTTP 404).
+	candidates := []string{}
+	if meshStatus.DirectLocal && meshStatus.LocalNodeURL != "" {
+		candidates = append(candidates, meshStatus.LocalNodeURL)
+	}
+	if meshStatus.URL != "" && (len(candidates) == 0 || !strings.EqualFold(candidates[0], meshStatus.URL)) {
+		candidates = append(candidates, meshStatus.URL)
+	}
+
+	chosenURL := ""
+	for _, cand := range candidates {
+		if probeOllamaTags(cand, apiKey) {
+			chosenURL = cand
+			break
+		}
+	}
+	if chosenURL == "" {
+		return
+	}
+
+	localOffline := !localOnline
 	s.mu.Lock()
-	if cfg.OllamaURL == "" || cfg.OllamaURL == defaultComputeMeshGatewayURL || meshStatus.DirectLocal || localOffline {
-		s.Ollama.BaseURL = targetURL
+	if localOffline || cfg.OllamaURL == defaultComputeMeshGatewayURL || (cfg.OllamaURL == "" && strings.EqualFold(chosenURL, meshStatus.LocalNodeURL)) {
+		s.Ollama.BaseURL = chosenURL
 		s.Ollama.AuthToken = apiKey
 	}
 	s.mu.Unlock()
