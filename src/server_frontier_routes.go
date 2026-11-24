@@ -966,7 +966,7 @@ func (s *Server) handleVerifyFrame(w http.ResponseWriter, r *http.Request) {
 
 const maxReleaseAPKBytes = 32 * 1024 * 1024
 
-func parseAndroidVersionCode(rawVersion string) (string, int) {
+func parseFrontierAPKVersionCode(rawVersion string) (string, int) {
 	v := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rawVersion), "-debug"))
 	if v == "" || v == "dev" {
 		// Fall back to VERSION.txt if available near executable or workspace
@@ -1055,7 +1055,7 @@ func computeFileSHA256Hex(path string) (string, int64, error) {
 }
 
 func buildAPKUpdateMetadata() map[string]any {
-	verStr, verCode := parseAndroidVersionCode(version)
+	verStr, verCode := parseFrontierAPKVersionCode(version)
 	apkPath, _, err := resolveReleaseAPKPath()
 	if err != nil {
 		return map[string]any{

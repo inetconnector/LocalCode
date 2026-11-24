@@ -91,6 +91,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/remote/pairing/pending", s.handleRemotePairingPending)
 	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
 	s.mux.HandleFunc("/api/remote/revoke", s.handleRemoteRevoke)
+	s.mux.HandleFunc("/api/remote/android-update", s.handleDesktopAndroidUpdateInfo)
 	s.mux.HandleFunc("/api/mcp/test", s.handleMCPTest)
 	s.mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
 	s.mux.HandleFunc("/api/mcp/setup", s.handleMCPSetup)

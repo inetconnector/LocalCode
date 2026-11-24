@@ -401,6 +401,12 @@ func normalizeConfig(cfg Config) Config {
 		cfg.RemoteBindHost = d.RemoteBindHost
 	}
 	cfg.RemoteBindHost = strings.TrimSpace(cfg.RemoteBindHost)
+	cfg.RemoteAndroidAPKPath = strings.TrimSpace(cfg.RemoteAndroidAPKPath)
+	cfg.RemoteAndroidUpdateFeedURL = strings.TrimSpace(cfg.RemoteAndroidUpdateFeedURL)
+	if cfg.RemoteAndroidAutoUpdate == nil {
+		enabled := true
+		cfg.RemoteAndroidAutoUpdate = &enabled
+	}
 	if oldSchema < 11 {
 		cfg.RemoteEnabled = d.RemoteEnabled
 	}

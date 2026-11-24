@@ -48,20 +48,23 @@ type MCPServerStatus struct {
 }
 
 type Config struct {
-	SchemaVersion  int               `json:"schema_version"`
-	RootProjectDir string            `json:"root_project_dir"`
-	LastProject    string            `json:"last_project"`
-	LastModel      string            `json:"last_model"`
-	ProjectAliases map[string]string `json:"project_aliases,omitempty"`
-	PinnedProjects []string          `json:"pinned_projects,omitempty"`
-	HiddenProjects []string          `json:"hidden_projects,omitempty"`
-	Memories       []MemoryEntry     `json:"memories,omitempty"`
-	Port           int               `json:"port"`
-	RemoteEnabled  bool              `json:"remote_enabled"`
-	RemoteBindHost string            `json:"remote_bind_host"`
-	RemotePort     int               `json:"remote_port"`
-	RemoteAutoPair bool              `json:"remote_auto_pair"`
-	RemoteDevices  []RemoteDevice    `json:"remote_devices,omitempty"`
+	SchemaVersion              int               `json:"schema_version"`
+	RootProjectDir             string            `json:"root_project_dir"`
+	LastProject                string            `json:"last_project"`
+	LastModel                  string            `json:"last_model"`
+	ProjectAliases             map[string]string `json:"project_aliases,omitempty"`
+	PinnedProjects             []string          `json:"pinned_projects,omitempty"`
+	HiddenProjects             []string          `json:"hidden_projects,omitempty"`
+	Memories                   []MemoryEntry     `json:"memories,omitempty"`
+	Port                       int               `json:"port"`
+	RemoteEnabled              bool              `json:"remote_enabled"`
+	RemoteBindHost             string            `json:"remote_bind_host"`
+	RemotePort                 int               `json:"remote_port"`
+	RemoteAutoPair             bool              `json:"remote_auto_pair"`
+	RemoteAndroidAutoUpdate    *bool             `json:"remote_android_auto_update,omitempty"`
+	RemoteAndroidAPKPath       string            `json:"remote_android_apk_path,omitempty"`
+	RemoteAndroidUpdateFeedURL string            `json:"remote_android_update_feed_url,omitempty"`
+	RemoteDevices              []RemoteDevice    `json:"remote_devices,omitempty"`
 
 	OllamaURL                         string  `json:"ollama_url"`
 	SetupDownloadsEnabled             bool    `json:"setup_downloads_enabled"`

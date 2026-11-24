@@ -5,8 +5,10 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
@@ -57,6 +59,7 @@ import android.widget.TextView;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
@@ -120,6 +123,9 @@ public final class MainActivity extends Activity {
     private static final String STATE_EXPECTED_FP = "state_expected_fp";
     private static final String STATE_WIZARD_TAB = "state_wizard_tab";
     private static final String STATE_WEBVIEW = "state_webview";
+    private static final String PREF_LAST_AUTO_UPDATE_SHA = "last_auto_update_sha";
+    private static final String ACTION_SELF_UPDATE_STATUS = "com.inetconnector.localcode.SELF_UPDATE_STATUS";
+    private static final String DEFAULT_EXTERNAL_UPDATE_FEED = "https://api.github.com/repos/inetconnector/LocalCode/releases/latest";
     private static final int DEFAULT_REMOTE_PORT = 32146;
     private static final int DEFAULT_UDP_PORT = 32147;
     private static final int REQUEST_NEARBY = 701;
@@ -182,6 +188,12 @@ public final class MainActivity extends Activity {
     private TextToSpeech tts;
     private String expectedFingerprint = "";
     private String currentRemoteUrl = "";
+    private volatile String remoteAuthToken = "";
+    private final AtomicBoolean updateInProgress = new AtomicBoolean(false);
+    private volatile File pendingInstallApk = null;
+    private volatile String pendingInstallVersion = "";
+    private volatile long lastAutoUpdateCheckMs = 0L;
+    private BroadcastReceiver selfUpdateReceiver;
     private boolean discovering;
     private volatile boolean scanningLan;
     private volatile boolean scanningUdp;
@@ -225,6 +237,7 @@ public final class MainActivity extends Activity {
             }
         });
         buildUi();
+        registerSelfUpdateReceiver();
 
         if (savedInstanceState != null) {
             restoreActivityState(savedInstanceState);
@@ -240,6 +253,21 @@ public final class MainActivity extends Activity {
             openRemote(currentRemoteUrl);
         } else {
             requestDiscoveryPermissionAndStart();
+            checkForAppUpdateAsync("", false);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        File pending = pendingInstallApk;
+        if (pending != null && pending.exists()) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls()) {
+                String ver = pendingInstallVersion;
+                pendingInstallApk = null;
+                pendingInstallVersion = "";
+                new Thread(() -> installVerifiedApkWithPackageInstaller(pending, ver), "LocalCodeApkInstallResume").start();
+            }
         }
     }
 
@@ -1284,7 +1312,44 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getBridgeVersion() {
-            return "2.2";
+            return "2.3";
+        }
+
+        @JavascriptInterface
+        public String getInstalledAppVersion() {
+            JSONObject info = new JSONObject();
+            try {
+                info.put("version_name", installedVersionName());
+                info.put("version_code", installedVersionCode());
+                info.put("installed_sha256", installedApkSha256());
+                info.put("can_install_packages", Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls());
+            } catch (Exception ignored) {}
+            return info.toString();
+        }
+
+        @JavascriptInterface
+        public void syncRemoteToken(String token) {
+            if (token != null && !token.trim().isEmpty()) {
+                remoteAuthToken = token.trim();
+                long now = System.currentTimeMillis();
+                if (now - lastAutoUpdateCheckMs > 120_000L) {
+                    lastAutoUpdateCheckMs = now;
+                    checkForAppUpdateAsync(remoteAuthToken, false);
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void checkForAppUpdate(String token, boolean force) {
+            String tok = (token != null && !token.trim().isEmpty()) ? token.trim() : remoteAuthToken;
+            if (!tok.isEmpty()) remoteAuthToken = tok;
+            checkForAppUpdateAsync(tok, force);
+        }
+
+        @JavascriptInterface
+        public void triggerAppUpdate(String downloadUrl, String expectedSha256, String versionName, long versionCode, String authToken) {
+            String tok = (authToken != null && !authToken.trim().isEmpty()) ? authToken.trim() : remoteAuthToken;
+            startApkDownloadAndInstall(downloadUrl, expectedSha256, versionName, versionCode, tok);
         }
 
         @JavascriptInterface
@@ -2522,8 +2587,459 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
+    private void registerSelfUpdateReceiver() {
+        if (selfUpdateReceiver != null) return;
+        selfUpdateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null || !ACTION_SELF_UPDATE_STATUS.equals(intent.getAction())) return;
+                int statusCode = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+                String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                if (statusCode == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                    Intent confirmIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+                    if (confirmIntent != null) {
+                        confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        try {
+                            startActivity(confirmIntent);
+                        } catch (Exception ex) {
+                            notifyWebUpdateStatus("error", "", "Update-Bestätigung konnte nicht geöffnet werden: " + safeMessage(ex instanceof RuntimeException ? (RuntimeException) ex : null));
+                        }
+                    }
+                } else if (statusCode == PackageInstaller.STATUS_SUCCESS) {
+                    updateInProgress.set(false);
+                    notifyWebUpdateStatus("installed", "", tr("LocalCode-App erfolgreich aktualisiert.", "LocalCode app updated successfully."));
+                } else {
+                    updateInProgress.set(false);
+                    String detail = (msg == null || msg.trim().isEmpty()) ? ("Status " + statusCode) : msg.trim();
+                    notifyWebUpdateStatus("error", "", tr("App-Update fehlgeschlagen: ", "App update failed: ") + detail);
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(ACTION_SELF_UPDATE_STATUS);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(selfUpdateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(selfUpdateReceiver, filter);
+        }
+    }
+
+    private String installedVersionName() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return pi.versionName == null ? "1.0.0" : pi.versionName.trim();
+        } catch (Exception ex) {
+            return "1.0.0";
+        }
+    }
+
+    private long installedVersionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return pi.getLongVersionCode();
+            }
+            return pi.versionCode;
+        } catch (Exception ex) {
+            return 1L;
+        }
+    }
+
+    private String installedApkSha256() {
+        try {
+            String src = getApplicationInfo().sourceDir;
+            if (src != null && !src.isEmpty()) {
+                return sha256HexOfFile(new File(src));
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    private static String sha256HexOfFile(File file) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        try (InputStream in = new FileInputStream(file)) {
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+        }
+        byte[] digest = md.digest();
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02x", b));
+        return sb.toString();
+    }
+
+    private SSLContext pinnedLanSSLContext(String requiredFingerprint) throws Exception {
+        final String expected = normalizeFingerprint(requiredFingerprint);
+        TrustManager[] trustManagers = new TrustManager[]{new X509TrustManager() {
+            @Override public void checkClientTrusted(X509Certificate[] chain, String authType) { }
+            @Override public void checkServerTrusted(X509Certificate[] chain, String authType) throws java.security.cert.CertificateException {
+                if (chain == null || chain.length == 0) {
+                    throw new java.security.cert.CertificateException("empty server certificate chain");
+                }
+                try {
+                    byte[] digest = MessageDigest.getInstance("SHA-256").digest(chain[0].getEncoded());
+                    StringBuilder hex = new StringBuilder(digest.length * 2);
+                    for (byte b : digest) hex.append(String.format(Locale.ROOT, "%02X", b));
+                    String observed = hex.toString();
+                    if (!validFingerprint(expected) || !expected.equalsIgnoreCase(observed)) {
+                        throw new java.security.cert.CertificateException("TLS fingerprint mismatch");
+                    }
+                } catch (java.security.cert.CertificateException ce) {
+                    throw ce;
+                } catch (Exception ex) {
+                    throw new java.security.cert.CertificateException("certificate fingerprint verification failed", ex);
+                }
+            }
+            @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+        }};
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(null, trustManagers, new SecureRandom());
+        return context;
+    }
+
+    private String remoteOriginPrefix() {
+        if (currentRemoteUrl == null || currentRemoteUrl.trim().isEmpty()) return "";
+        try {
+            Uri uri = Uri.parse(currentRemoteUrl.trim());
+            if (uri.getScheme() == null || uri.getHost() == null) return "";
+            String host = uri.getHost();
+            if (host.contains(":") && !host.startsWith("[")) host = "[" + host + "]";
+            int port = uri.getPort();
+            return uri.getScheme() + "://" + host + (port > 0 ? ":" + port : "");
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
+    private void notifyWebUpdateStatus(String state, String versionName, String message) {
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("state", state == null ? "" : state);
+            payload.put("version", versionName == null ? "" : versionName);
+            payload.put("message", message == null ? "" : message);
+        } catch (Exception ignored) {}
+        final String js = "window.localCodeUpdateStatus&&window.localCodeUpdateStatus(" + payload.toString() + ")";
+        runOnUiThread(() -> {
+            if (webView != null && webView.getVisibility() == View.VISIBLE) {
+                webView.evaluateJavascript(js, null);
+            } else if (status != null && message != null && !message.isEmpty()) {
+                status.setText(message);
+            }
+        });
+    }
+
+    private void checkForAppUpdateAsync(String authToken, boolean force) {
+        if (!updateInProgress.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            boolean startedInstall = false;
+            try {
+                long curCode = installedVersionCode();
+                String curName = installedVersionName();
+                String curSha = installedApkSha256();
+                String origin = remoteOriginPrefix();
+
+                // 1. Primary source: Windows LAN LocalCode server (also checks configured external feed server-side)
+                if (!origin.isEmpty() && authToken != null && !authToken.isEmpty() && isAllowedRemoteUrl(origin + "/remote")) {
+                    String checkUrl = origin + "/remote/api/android-update?current_version_code=" + curCode
+                            + "&current_version=" + Uri.encode(curName)
+                            + "&current_sha256=" + Uri.encode(curSha)
+                            + "&check_external=1";
+                    JSONObject meta = fetchUpdateJson(checkUrl, authToken, true);
+                    if (meta != null && meta.optBoolean("ok", false)) {
+                        boolean autoEnabled = meta.optBoolean("auto_update_enabled", true);
+                        boolean available = meta.optBoolean("update_available", false);
+                        String sha = meta.optString("apk_sha256", "").trim();
+                        String ver = meta.optString("version_name", "").trim();
+                        long verCode = meta.optLong("version_code", 0L);
+                        String dlRel = meta.optString("download_url", "/remote/api/android-update/download").trim();
+                        String dlUrl = dlRel.startsWith("http") ? dlRel : (origin + dlRel);
+                        if (available && (force || autoEnabled)) {
+                            String lastAutoSha = preferences != null ? preferences.getString(PREF_LAST_AUTO_UPDATE_SHA, "") : "";
+                            if (force || sha.isEmpty() || !sha.equalsIgnoreCase(lastAutoSha)) {
+                                if (preferences != null && !sha.isEmpty()) {
+                                    preferences.edit().putString(PREF_LAST_AUTO_UPDATE_SHA, sha).apply();
+                                }
+                                startedInstall = downloadAndInstallApkLocked(dlUrl, sha, ver, verCode, authToken, true);
+                                return;
+                            }
+                        } else if (force) {
+                            notifyWebUpdateStatus("up_to_date", curName, tr("LocalCode-App ist aktuell (v" + curName + ").", "LocalCode app is up to date (v" + curName + ")."));
+                            return;
+                        }
+                    }
+                }
+
+                // 2. Fallback source: External HTTPS release feed (e.g., GitHub Releases when away from Windows PC)
+                JSONObject ext = fetchUpdateJson(DEFAULT_EXTERNAL_UPDATE_FEED, "", false);
+                if (ext != null) {
+                    String tag = ext.optString("tag_name", "").trim();
+                    if (tag.startsWith("v") || tag.startsWith("V")) tag = tag.substring(1);
+                    long extCode = parseSemverCode(tag);
+                    JSONArray assets = ext.optJSONArray("assets");
+                    String apkUrl = "";
+                    String apkSha = "";
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject asset = assets.optJSONObject(i);
+                            if (asset == null) continue;
+                            String name = asset.optString("name", "").toLowerCase(Locale.ROOT);
+                            String browserUrl = asset.optString("browser_download_url", "").trim();
+                            if (name.endsWith(".apk") && browserUrl.startsWith("https://")) {
+                                apkUrl = browserUrl;
+                                String digest = asset.optString("digest", "").trim().toLowerCase(Locale.ROOT);
+                                if (digest.startsWith("sha256:")) apkSha = digest.substring(7);
+                                break;
+                            }
+                        }
+                    }
+                    if (!apkUrl.isEmpty() && extCode > curCode) {
+                        String lastAutoSha = preferences != null ? preferences.getString(PREF_LAST_AUTO_UPDATE_SHA, "") : "";
+                        if (force || apkSha.isEmpty() || !apkSha.equalsIgnoreCase(lastAutoSha)) {
+                            if (preferences != null && !apkSha.isEmpty()) {
+                                preferences.edit().putString(PREF_LAST_AUTO_UPDATE_SHA, apkSha).apply();
+                            }
+                            startedInstall = downloadAndInstallApkLocked(apkUrl, apkSha, tag, extCode, "", false);
+                            return;
+                        }
+                    } else if (force) {
+                        notifyWebUpdateStatus("up_to_date", curName, tr("LocalCode-App ist aktuell (v" + curName + ").", "LocalCode app is up to date (v" + curName + ")."));
+                    }
+                }
+            } catch (Exception ex) {
+                if (force) {
+                    notifyWebUpdateStatus("error", "", tr("Update-Prüfung fehlgeschlagen: ", "Update check failed: ") + ex.getMessage());
+                }
+            } finally {
+                if (!startedInstall) {
+                    updateInProgress.set(false);
+                }
+            }
+        }, "LocalCodeAppUpdateCheck").start();
+    }
+
+    private void startApkDownloadAndInstall(String downloadUrl, String expectedSha256, String versionName, long versionCode, String authToken) {
+        if (!updateInProgress.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            boolean started = false;
+            try {
+                String resolvedUrl = downloadUrl == null ? "" : downloadUrl.trim();
+                boolean isLan = resolvedUrl.startsWith("/") || isAllowedRemoteUrl(resolvedUrl);
+                if (resolvedUrl.startsWith("/")) {
+                    resolvedUrl = remoteOriginPrefix() + resolvedUrl;
+                }
+                started = downloadAndInstallApkLocked(resolvedUrl, expectedSha256, versionName, versionCode, authToken, isLan);
+            } catch (Exception ex) {
+                notifyWebUpdateStatus("error", versionName, tr("App-Update fehlgeschlagen: ", "App update failed: ") + ex.getMessage());
+            } finally {
+                if (!started) updateInProgress.set(false);
+            }
+        }, "LocalCodeAppUpdateInstall").start();
+    }
+
+    private JSONObject fetchUpdateJson(String targetUrl, String authToken, boolean pinnedLan) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(targetUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(7000);
+            conn.setRequestProperty("Accept", "application/json");
+            if (authToken != null && !authToken.isEmpty()) {
+                conn.setRequestProperty("X-LocalCode-Remote-Token", authToken);
+            }
+            if (conn instanceof HttpsURLConnection && pinnedLan && validFingerprint(expectedFingerprint)) {
+                HttpsURLConnection https = (HttpsURLConnection) conn;
+                https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
+                https.setHostnameVerifier(discoveryHostnameVerifier());
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+                HttpsURLConnection https = (HttpsURLConnection) conn;
+                https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
+                https.setHostnameVerifier(discoveryHostnameVerifier());
+            }
+            if (conn.getResponseCode() != 200) return null;
+            String body = readResponseLimited(conn.getInputStream(), 262144);
+            return new JSONObject(body);
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private boolean downloadAndInstallApkLocked(String targetUrl, String expectedSha256, String versionName, long versionCode, String authToken, boolean pinnedLan) throws Exception {
+        if (targetUrl == null || targetUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("missing update url");
+        }
+        if (!pinnedLan && !targetUrl.startsWith("https://")) {
+            throw new SecurityException("external updates require HTTPS");
+        }
+        if (pinnedLan && !isAllowedRemoteUrl(targetUrl)) {
+            throw new SecurityException("LAN update URL rejected");
+        }
+        String label = (versionName == null || versionName.isEmpty()) ? ("#" + versionCode) : ("v" + versionName);
+        notifyWebUpdateStatus("downloading", versionName, tr("Lade LocalCode-Update " + label + " …", "Downloading LocalCode update " + label + " …"));
+
+        File outFile = new File(getCacheDir(), "localcode-pending-update.apk");
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(targetUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(30000);
+            if (authToken != null && !authToken.isEmpty() && pinnedLan) {
+                conn.setRequestProperty("X-LocalCode-Remote-Token", authToken);
+            }
+            if (conn instanceof HttpsURLConnection && pinnedLan && validFingerprint(expectedFingerprint)) {
+                HttpsURLConnection https = (HttpsURLConnection) conn;
+                https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
+                https.setHostnameVerifier(discoveryHostnameVerifier());
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+                HttpsURLConnection https = (HttpsURLConnection) conn;
+                https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
+                https.setHostnameVerifier(discoveryHostnameVerifier());
+            }
+            int statusCode = conn.getResponseCode();
+            if (statusCode != 200) {
+                throw new IllegalStateException("HTTP " + statusCode);
+            }
+            String headerSha = conn.getHeaderField("X-LocalCode-APK-SHA256");
+            String requiredSha = (expectedSha256 != null && !expectedSha256.trim().isEmpty())
+                    ? expectedSha256.trim()
+                    : (headerSha == null ? "" : headerSha.trim());
+
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            long totalBytes = 0L;
+            try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(outFile)) {
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    totalBytes += n;
+                    if (totalBytes > 64L * 1024L * 1024L) {
+                        throw new SecurityException("APK exceeds 64 MiB safety limit");
+                    }
+                    md.update(buf, 0, n);
+                    out.write(buf, 0, n);
+                }
+            }
+            byte[] digest = md.digest();
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) hex.append(String.format(Locale.ROOT, "%02x", b));
+            String actualSha = hex.toString();
+            if (!requiredSha.isEmpty() && !requiredSha.equalsIgnoreCase(actualSha)) {
+                //noinspection ResultOfMethodCallIgnored
+                outFile.delete();
+                throw new SecurityException("APK SHA-256 checksum mismatch");
+            }
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
+            pendingInstallApk = outFile;
+            pendingInstallVersion = versionName;
+            updateInProgress.set(false);
+            notifyWebUpdateStatus("permission_required", versionName,
+                    tr("Bitte einmalig App-Updates für LocalCode erlauben …", "Please allow LocalCode app updates once …"));
+            runOnUiThread(() -> {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle(tr("Automatisches App-Update", "Automatic App Update"))
+                        .setMessage(tr(
+                                "Eine neue LocalCode-App-Version (" + label + ") wurde heruntergeladen. Erlaube einmalig die Installation aus dieser Quelle, damit Updates künftig automatisch installiert werden.",
+                                "A new LocalCode app version (" + label + ") was downloaded. Allow installs from this source once so updates install automatically."))
+                        .setPositiveButton(tr("Einstellungen öffnen", "Open settings"), (d, w) -> {
+                            Intent permIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                            startActivity(permIntent);
+                        })
+                        .setNegativeButton(android.R.string.cancel, (d, w) -> {
+                            pendingInstallApk = null;
+                            pendingInstallVersion = "";
+                        })
+                        .show();
+            });
+            return false;
+        }
+
+        installVerifiedApkWithPackageInstaller(outFile, versionName);
+        return true;
+    }
+
+    private void installVerifiedApkWithPackageInstaller(File apkFile, String versionName) {
+        PackageInstaller.Session session = null;
+        try {
+            String label = (versionName == null || versionName.isEmpty()) ? "" : (" v" + versionName);
+            notifyWebUpdateStatus("installing", versionName, tr("Installiere LocalCode-Update" + label + " …", "Installing LocalCode update" + label + " …"));
+            PackageInstaller installer = getPackageManager().getPackageInstaller();
+            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setAppPackageName(getPackageName());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+            }
+            int sessionId = installer.createSession(params);
+            session = installer.openSession(sessionId);
+            try (InputStream in = new FileInputStream(apkFile);
+                 OutputStream out = session.openWrite("localcode-update.apk", 0, apkFile.length())) {
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                }
+                session.fsync(out);
+            }
+            Intent statusIntent = new Intent(ACTION_SELF_UPDATE_STATUS).setPackage(getPackageName());
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
+            }
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, sessionId, statusIntent, flags);
+            session.commit(pendingIntent.getIntentSender());
+            session.close();
+            session = null;
+        } catch (Exception ex) {
+            if (session != null) {
+                try { session.abandon(); } catch (Exception ignored) {}
+            }
+            updateInProgress.set(false);
+            notifyWebUpdateStatus("error", versionName, tr("Update-Installation fehlgeschlagen: ", "Update installation failed: ") + ex.getMessage());
+        }
+    }
+
+    private static String readResponseLimited(InputStream input, int maxBytes) throws Exception {
+        try (InputStream in = input; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[4096];
+            int total = 0;
+            int n;
+            while ((n = in.read(buf)) >= 0 && total < maxBytes) {
+                int take = Math.min(n, maxBytes - total);
+                out.write(buf, 0, take);
+                total += take;
+            }
+            return out.toString("UTF-8");
+        }
+    }
+
+    private static long parseSemverCode(String semver) {
+        if (semver == null) return 0L;
+        String clean = semver.trim();
+        if (clean.startsWith("v") || clean.startsWith("V")) clean = clean.substring(1);
+        String[] parts = clean.split("[^0-9]+");
+        if (parts.length < 3) return 0L;
+        try {
+            long maj = Long.parseLong(parts[0]);
+            long min = Long.parseLong(parts[1]);
+            long pat = Long.parseLong(parts[2]);
+            return maj * 10000L + min * 100L + pat;
+        } catch (Exception ex) {
+            return 0L;
+        }
+    }
+
     @Override
     protected void onDestroy() {
+        if (selfUpdateReceiver != null) {
+            try { unregisterReceiver(selfUpdateReceiver); } catch (Exception ignored) {}
+            selfUpdateReceiver = null;
+        }
         stopDiscovery();
         cancelPendingFileChooser();
         if (tlsWarningDialog != null && tlsWarningDialog.isShowing()) {

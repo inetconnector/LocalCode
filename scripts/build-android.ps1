@@ -1,6 +1,8 @@
 param(
     [string]$OutputDirectory = "",
-    [switch]$ConfigureReleaseSigning
+    [switch]$ConfigureReleaseSigning,
+    [string]$VersionName = "",
+    [int]$VersionCode = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -97,14 +99,19 @@ $compiledRes = Join-Path $stagingDir 'compiled-res'
 New-Item -ItemType Directory -Path $classes,$dex,$compiledRes -Force | Out-Null
 
 $versionFile = Join-Path $repo 'VERSION.txt'
-if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
-    throw "VERSION.txt missing: $versionFile"
+if ([string]::IsNullOrWhiteSpace($VersionName)) {
+    if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+        throw "VERSION.txt missing: $versionFile"
+    }
+    $VersionName = (Get-Content -LiteralPath $versionFile -Raw).Trim()
 }
-$versionName = (Get-Content -LiteralPath $versionFile -Raw).Trim()
-if ($versionName -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].*)?$') {
-    throw "VERSION.txt must start with semantic version major.minor.patch, got: '$versionName'"
+if ($VersionCode -le 0) {
+    if ($VersionName -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].*)?$') {
+        $VersionCode = ([int]$Matches['major'] * 10000) + ([int]$Matches['minor'] * 100) + [int]$Matches['patch']
+    } else {
+        throw "VersionName must start with semantic version major.minor.patch, got: '$VersionName'"
+    }
 }
-$versionCode = ([int]$Matches['major'] * 10000) + ([int]$Matches['minor'] * 100) + [int]$Matches['patch']
 
 $unsigned = Join-Path $stagingDir 'LocalCode-Remote-unsigned.apk'
 $aligned = Join-Path $stagingDir 'LocalCode-Remote-aligned.apk'
@@ -116,7 +123,7 @@ if (Test-Path -LiteralPath $resDir -PathType Container) {
     if ($LASTEXITCODE -ne 0) { throw "aapt2 compile resources failed with exit code $LASTEXITCODE" }
     $resourceArgs = @(Get-ChildItem -LiteralPath $compiledRes -Recurse -File -Filter *.flat | ForEach-Object FullName)
 }
-& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code $versionCode --version-name $versionName -o $unsigned @resourceArgs
+& $aapt2 link --manifest $manifest -I $androidJar --min-sdk-version 26 --target-sdk-version 36 --version-code $VersionCode --version-name $VersionName -o $unsigned @resourceArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed with exit code $LASTEXITCODE" }
 
 & $javac -encoding UTF-8 -source 17 -target 17 -classpath $androidJar -d $classes $javaSource
@@ -221,15 +228,29 @@ if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
 $targetApk = Join-Path $OutputDirectory 'LocalCode-Remote-debug.apk'
 Copy-Item -LiteralPath $signed -Destination $targetApk -Force
 
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
+$sizeBytes = (Get-Item -LiteralPath $targetApk).Length
+$metaObj = [ordered]@{
+    version_name = $VersionName
+    version_code = $VersionCode
+    sha256       = $hash
+    size_bytes   = $sizeBytes
+    built_at     = (Get-Date).ToUniversalTime().ToString('o')
+}
+$metaJson = $metaObj | ConvertTo-Json -Depth 3
+$targetMeta = $targetApk + '.json'
+Set-Content -LiteralPath $targetMeta -Value $metaJson -Encoding UTF8
+
 $distDir = Join-Path $repo 'dist'
 if ((Test-Path -LiteralPath $distDir -PathType Container) -and ([IO.Path]::GetFullPath($OutputDirectory) -ne [IO.Path]::GetFullPath($distDir))) {
-    Copy-Item -LiteralPath $signed -Destination (Join-Path $distDir 'LocalCode-Remote-debug.apk') -Force
+    $distApk = Join-Path $distDir 'LocalCode-Remote-debug.apk'
+    Copy-Item -LiteralPath $signed -Destination $distApk -Force
+    Set-Content -LiteralPath ($distApk + '.json') -Value $metaJson -Encoding UTF8
 }
 
 Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
 
-$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLowerInvariant()
 Write-Host "Android APK: $targetApk"
-Write-Host "Android APK Version: $versionName ($versionCode)"
+Write-Host "Android APK Version: $VersionName ($VersionCode)"
 Write-Host "Android APK Signing: $signedBy"
 Write-Host "Android APK SHA-256: $hash"
