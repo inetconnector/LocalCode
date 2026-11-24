@@ -1272,15 +1272,18 @@ func (s *AppState) runAgentContinuation(ctx context.Context, runID, project, mod
 
 func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model string, messages []OllamaMessage, cfg Config, previousQuestion, originalTask string) string {
 	maxSteps := cfg.MaxAgentSteps
-	if cfg.ResponseSpeed == "fast" && maxSteps > 35 {
-		maxSteps = 35
+	unlimitedSteps := maxSteps <= 0
+	if !unlimitedSteps {
+		if cfg.ResponseSpeed == "fast" && maxSteps > 35 {
+			maxSteps = 35
+		}
+		if cfg.ResponseSpeed == "thorough" && maxSteps < 90 {
+			maxSteps = 90
+		}
 	}
-	if cfg.ResponseSpeed == "thorough" && maxSteps < 90 {
-		maxSteps = 90
-	}
-	if maxSteps <= 0 {
-		maxSteps = 60
-	}
+	const maxStagnationSteps = 12
+	const hardSafetyStepCeiling = 500
+	stagnationSteps := 0
 	intent := classifyTaskIntent(originalTask)
 	if intent.Kind == "image_query" {
 		if analysis := extractImageAnalysisFromMessages(messages); analysis != "" {
@@ -1341,7 +1344,11 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		})
 		nomaBlueprint = s.nomaPlanProjectArchitecture(ctx, model, project, originalTask, cfg)
 	}
-	for step := 1; step <= maxSteps; step++ {
+	for step := 1; (unlimitedSteps && step <= hardSafetyStepCeiling) || (!unlimitedSteps && step <= maxSteps); step++ {
+		if unlimitedSteps && stagnationSteps >= maxStagnationSteps {
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Agent gestoppt (Stillstand erkannt)", "Agent stopped (stagnation detected)"), Detail: localizeConfigText(cfg, fmt.Sprintf("Kein weiterer Fortschritt nach %d aufeinanderfolgenden blockierten oder fehlgeschlagenen Schritten.", stagnationSteps), fmt.Sprintf("No progress after %d consecutive blocked or failed steps.", stagnationSteps))})
+			return "limit"
+		}
 		if err := ctx.Err(); err != nil {
 			s.AddEvent(UIEvent{Type: "warning", Message: "Vorgang abgebrochen"})
 			return "cancelled"
@@ -1356,7 +1363,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		if lastCompletionGuardBlocked && len(lastGuardIssues) > 0 {
 			nomaDirective += "\n[OFFENE ABSCHLUSS-MÄNGEL — BEHEBE DIESE KONKRETEN PUNKTE JETZT MIT write_file, RUFE NICHT ERNEUT finish AUF!]:\n- " + strings.Join(lastGuardIssues, "\n- ") + "\n"
 		}
-		stepInfo := localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps), fmt.Sprintf("NOMA × MICA × AgentOS · Step %d/%d", step, maxSteps))
+		stepInfo := formatAgentStepLabel(cfg, step, maxSteps)
 		thinkingMsg := localizeConfigText(cfg, "Analysiere Aufgabe & plane nächsten Schritt...", "Analyzing task & planning next step...")
 		if step == 1 {
 			thinkingMsg = localizeConfigText(cfg, "AgentOS & NOMA · Erfasse Projektstruktur, Buildsystem und Systemkontext...", "AgentOS & NOMA · Inspecting project structure, build system, and context...")
@@ -1502,24 +1509,28 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		signature := actionSignature(action)
 		if jestBlock := offlineJestWriteBlocked(project, action); jestBlock != "" {
 			supervisorBlocks++
+			stagnationSteps++
 			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Ungültige Jest-Datei blockiert (kein Jest installiert)", "Blocked invalid Jest file (Jest not installed)"), Detail: action.Path + ": " + jestBlock, Action: action.Action, Path: action.Path})
 			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + jestBlock})
 			continue
 		}
 		if churnBlock := perFileWriteChurnBlocked(action, writesByPath); churnBlock != "" {
 			repeatBlocks++
+			stagnationSteps++
 			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholtes Überschreiben derselben Datei blockiert", "Repeated rewrite of same file blocked"), Detail: action.Path, Action: action.Action, Path: action.Path})
 			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: " + churnBlock})
 			continue
 		}
 		if (action.Action == "run_tool" || action.Action == "run_command") && failedRunSinceEdit[signature] >= 2 {
 			repeatBlocks++
+			stagnationSteps++
 			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholter fehlgeschlagener Test-/Befehlsaufruf blockiert", "Repeated failing test/command blocked"), Detail: action.Action + ": " + action.Message, Action: action.Action})
 			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Derselbe Befehl (`" + action.Action + "`) ist bereits mehrfach identisch fehlgeschlagen, ohne dass du die Ursache im Code behoben hast. Wiederhole diesen Aufruf NICHT! Lies jetzt die fehlerhafte Datei per `read_file` und behebe den konkreten Fehler per `write_file` (oder lösche ungültige Jest-/Setup-Dateien per `delete_file`), bevor du Tests erneut ausführst."})
 			continue
 		}
 		if signature == lastSignature && action.Action != "finish" {
 			repeatBlocks++
+			stagnationSteps++
 			s.AddEvent(UIEvent{Type: "warning", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})
 			hint := agentImmediateRepeatHint(cfg, repeatBlocks)
 			if (action.Action == "write_file" || action.Action == "replace_text") && lastMicaError != "" {
@@ -1769,6 +1780,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(resultForModel, contextToolResultLimit(cfg)) + micaPostNote
 		if toolFailed {
+			stagnationSteps++
 			failedActions[actionSignature(action)]++
 			if action.Action == "run_tool" || action.Action == "run_command" {
 				failedRunSinceEdit[actionSignature(action)]++
@@ -1790,16 +1802,30 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 				toolMessage += "\nDie gleiche Aktion ist bereits mehrfach fehlgeschlagen. Verwende jetzt eine andere Diagnose oder beende mit einer präzisen Fehlerursache; keine identische Wiederholung."
 			}
 		}
+		if !toolFailed {
+			stagnationSteps = 0
+		}
 		messages = append(messages, OllamaMessage{Role: "user", Content: toolMessage})
 	}
-	s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
+	if unlimitedSteps {
+		s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Agent nach Sicherheitsgrenze beendet", "Agent reached safety ceiling"), Detail: fmt.Sprintf("Nach %d Schritten kontrolliert beendet.", hardSafetyStepCeiling)})
+	} else {
+		s.AddEvent(UIEvent{Type: "error", Message: "Agent hat das Schrittlimit erreicht", Detail: fmt.Sprintf("Nach %d Schritten beendet.", maxSteps)})
+	}
 	return "limit"
+}
+
+func formatAgentStepLabel(cfg Config, step, maxSteps int) string {
+	if maxSteps <= 0 {
+		return localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d", step), fmt.Sprintf("NOMA × MICA × AgentOS · Step %d", step))
+	}
+	return localizeConfigText(cfg, fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps), fmt.Sprintf("NOMA × MICA × AgentOS · Step %d/%d", step, maxSteps))
 }
 
 func isShortResumePrompt(text string) bool {
 	low := strings.ToLower(strings.TrimSpace(text))
 	switch low {
-	case "weiter", "continue", "fortfahren", "mach weiter", "go", "resume", "ok", "ja":
+	case "weiter", "continue", "fortfahren", "mach weiter", "mach da weiter", "bitte weiter", "go", "resume", "ok", "ja":
 		return true
 	default:
 		return false

@@ -41,14 +41,31 @@ func TestPerFileWriteChurnBlockedStopsPackageJSONLoops(t *testing.T) {
 }
 
 func TestResumePromptRecoversOriginalSubstantiveTask(t *testing.T) {
-	if !isShortResumePrompt("weiter") || !isShortResumePrompt("Continue") {
+	if !isShortResumePrompt("weiter") || !isShortResumePrompt("Continue") || !isShortResumePrompt("mach da weiter") {
 		t.Fatal("expected short resume prompts to be detected")
 	}
 	events := []UIEvent{
 		{Type: "user", Message: "erstelle ein komplettes spielbares flappy birds"},
-		{Type: "user", Message: "weiter"},
+		{Type: "user", Message: "mach da weiter"},
 	}
 	if got := findSubstantiveThreadTask(events); got != "erstelle ein komplettes spielbares flappy birds" {
 		t.Fatalf("recovered task = %q", got)
+	}
+}
+
+func TestUnlimitedStepsDefaultAndStepLabelFormatting(t *testing.T) {
+	cfg := defaultConfig()
+	if cfg.MaxAgentSteps != 0 {
+		t.Fatalf("expected default MaxAgentSteps=0 (unlimited with stagnation guard), got %d", cfg.MaxAgentSteps)
+	}
+	norm := normalizeConfig(cfg)
+	if norm.MaxAgentSteps != 0 {
+		t.Fatalf("normalizeConfig must preserve MaxAgentSteps=0, got %d", norm.MaxAgentSteps)
+	}
+	if got := formatAgentStepLabel(cfg, 25, 0); strings.Contains(got, "/0") || strings.Contains(got, "/60") || !strings.Contains(got, "25") {
+		t.Fatalf("unexpected unlimited step label: %q", got)
+	}
+	if got := formatNomaStepBadge(25, 0, "Reparatur"); got != "NOMA × MICA × AgentOS · Schritt 25 · Reparatur" {
+		t.Fatalf("unexpected unlimited noma badge: %q", got)
 	}
 }

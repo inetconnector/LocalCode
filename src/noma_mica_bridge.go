@@ -2024,6 +2024,17 @@ func nomaNextStepPlan(project, originalTask string, changedPaths map[string]bool
 	return nomaNextStepPlanWithBlueprint(project, originalTask, nil, changedPaths, changedSinceVerification, lastVerificationFailed, step, maxSteps)
 }
 
+func formatNomaStepBadge(step, maxSteps int, suffix string) string {
+	base := fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d", step)
+	if maxSteps > 0 {
+		base = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps)
+	}
+	if strings.TrimSpace(suffix) != "" {
+		return base + " · " + suffix
+	}
+	return base
+}
+
 func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *nomaArchitecturePlan, changedPaths map[string]bool, changedSinceVerification, lastVerificationFailed bool, step, maxSteps int) (stepBadge, stepTitle, stepDetail, modelDirective string) {
 	targetFiles := orderedTaskTargetFiles(project, originalTask)
 	moduleSpecs := map[string]nomaPlannedModule{}
@@ -2033,11 +2044,11 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 			moduleSpecs[strings.ToLower(m.Path)] = m
 		}
 	}
-	stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d", step, maxSteps)
+	stepBadge = formatNomaStepBadge(step, maxSteps, "")
 	manifest := buildWorkspaceContractManifest(project)
 
 	if stubPath, stubHit := detectPendingStubFile(project, changedPaths); stubPath != "" {
-		stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Rule-7 Vervollständigung", step, maxSteps)
+		stepBadge = formatNomaStepBadge(step, maxSteps, "Rule-7 Vervollständigung")
 		stepTitle = fmt.Sprintf("NOMA × MICA · Rule-7 Stub in %s vervollständigen", stubPath)
 		stepDetail = fmt.Sprintf("Erkannte Platzhalter/leere Rümpfe (%s) werden gezielt vervollständigt...", stubHit)
 		var d strings.Builder
@@ -2059,7 +2070,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 			if intent.Kind != "edit" {
 				return stepBadge, "", "", ""
 			}
-			stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Architektur", step, maxSteps)
+			stepBadge = formatNomaStepBadge(step, maxSteps, "Architektur")
 			stepTitle = "NOMA × MICA · Leite modulare Projektarchitektur ab und starte Synthese"
 			stepDetail = "Freie Nutzeraufgabe ohne explizite Dateiliste — beginne direkt mit dem Kernmodul..."
 			var d strings.Builder
@@ -2072,7 +2083,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 			return stepBadge, stepTitle, stepDetail, d.String()
 		}
 		if lastVerificationFailed {
-			stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Reparatur", step, maxSteps)
+			stepBadge = formatNomaStepBadge(step, maxSteps, "Reparatur")
 			stepTitle = "NOMA × MICA · Verifikations-/Integritätsfehler diagnostiziert – repariere Ursache"
 			stepDetail = "Nutze das Live-Manifest für exakte Symbol- & DOM-ID-Namen..."
 			var d strings.Builder
@@ -2084,7 +2095,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 		}
 		if changedSinceVerification {
 			testFile := findProjectTestFile(project)
-			stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Umsetzung & Prüfung", step, maxSteps)
+			stepBadge = formatNomaStepBadge(step, maxSteps, "Umsetzung & Prüfung")
 			stepTitle = fmt.Sprintf("NOMA × MICA · Projektfortschritt (%d Datei(en)) – vervollständige & verifiziere", len(changedPaths))
 			stepDetail = "Prüfe bestehende Module im Live-Manifest und führe Tests vor finish aus..."
 			var d strings.Builder
@@ -2126,7 +2137,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 		if hasSpec && spec.Role != "" {
 			roleDesc = spec.Role
 		}
-		stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Modul %d/%d", step, maxSteps, doneCount+1, total)
+		stepBadge = formatNomaStepBadge(step, maxSteps, fmt.Sprintf("Modul %d/%d", doneCount+1, total))
 		stepTitle = fmt.Sprintf("NOMA × LocalCode · Synthetisiere Modul (%d/%d): %s", doneCount+1, total, nextFile)
 		stepDetail = roleDesc
 
@@ -2162,7 +2173,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 	}
 
 	if lastVerificationFailed {
-		stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Reparatur", step, maxSteps)
+		stepBadge = formatNomaStepBadge(step, maxSteps, "Reparatur")
 		stepTitle = "NOMA × MICA · Testfehler diagnostiziert – repariere betroffene Implementierung"
 		stepDetail = "Wende gezielte Korrektur per write_file an, bevor Tests erneut laufen..."
 		var d strings.Builder
@@ -2175,7 +2186,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 	}
 
 	if changedSinceVerification {
-		stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Verifikation", step, maxSteps)
+		stepBadge = formatNomaStepBadge(step, maxSteps, "Verifikation")
 		stepTitle = "NOMA × MICA · Führe Offline-Unit-Tests & Invarianten-Prüfung aus"
 		stepDetail = fmt.Sprintf("Alle %d Zielmodule erstellt (%s) – starte Test-Verifikation...", total, strings.Join(completedFiles, ", "))
 		var testFile string
@@ -2197,7 +2208,7 @@ func nomaNextStepPlanWithBlueprint(project, originalTask string, blueprint *noma
 		return stepBadge, stepTitle, stepDetail, d.String()
 	}
 
-	stepBadge = fmt.Sprintf("NOMA × MICA × AgentOS · Schritt %d/%d · Abschluss-Gate", step, maxSteps)
+	stepBadge = formatNomaStepBadge(step, maxSteps, "Abschluss-Gate")
 	stepTitle = "NOMA × MICA · Abschluss-Verifikation bestanden – erstelle Zusammenfassung"
 	stepDetail = fmt.Sprintf("Alle %d Module (%s) und Tests wurden verifiziert.", total, strings.Join(completedFiles, ", "))
 	var d strings.Builder

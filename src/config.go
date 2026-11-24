@@ -128,7 +128,7 @@ func defaultConfig() Config {
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
 		ClaudeCodeEnabled: true, ClaudeCodeAutoInstall: true, ClaudeCodeChannel: "stable", ClaudeCodeModel: "sonnet", ClaudeCodePermissionMode: "acceptEdits", ClaudeCodeMaxTurns: 24,
 		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "1.18.16", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
-		ContextLength: 12288, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
+		ContextLength: 12288, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 0, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
 		InferenceProvider: "auto", PromptCachingEnabled: true, ReasoningEffort: "medium",
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
@@ -509,7 +509,7 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.ContextCompactionKeepRecent < 6 || cfg.ContextCompactionKeepRecent > 40 {
 		cfg.ContextCompactionKeepRecent = d.ContextCompactionKeepRecent
 	}
-	if cfg.MaxAgentSteps < 10 || cfg.MaxAgentSteps > 200 {
+	if cfg.MaxAgentSteps < 0 || (cfg.MaxAgentSteps > 0 && cfg.MaxAgentSteps < 10) || cfg.MaxAgentSteps > 1000 {
 		cfg.MaxAgentSteps = d.MaxAgentSteps
 	}
 	if cfg.CommandTimeout < 10 || cfg.CommandTimeout > 3600 {
