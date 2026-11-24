@@ -1080,7 +1080,7 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
 		promptCfg.OllamaURL = s.Ollama.BaseURL
 	}
-	compactLocal := effectiveCompactionContextLength(promptCfg) <= 8192
+	compactLocal := isLocalOllamaURL(promptCfg.OllamaURL) || effectiveCompactionContextLength(promptCfg) <= 12288
 	if compactLocal {
 		instructions = truncateText(instructions, 2200)
 		tree = truncateText(tree, 1200)
@@ -1367,6 +1367,10 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		var action AgentAction
 		usedModel := model
 		var err error
+		if completedActions["project_info"] && !completedActions["subagent_analyze"] && len(collectWorkspaceSourceFiles(project, 2)) <= 3 {
+			// Skip redundant child-LLM repository analysis on fresh/micro projects (0–3 source files).
+			completedActions["subagent_analyze"] = true
+		}
 		if forced := forcedActionForIntent(intent, completedActions, cfg); forced != nil {
 			action = *forced
 			s.AddEvent(UIEvent{Type: "agent_step", Message: "Deterministische Aufgabensteuerung: " + action.Message, Action: action.Action})

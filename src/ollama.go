@@ -84,6 +84,7 @@ type OllamaChatResponse struct {
 	Error           string        `json:"error,omitempty"`
 	PromptEvalCount int           `json:"prompt_eval_count,omitempty"`
 	EvalCount       int           `json:"eval_count,omitempty"`
+	EvalDuration    int64         `json:"eval_duration,omitempty"`
 }
 
 type ollamaTagsResponse struct {
@@ -432,6 +433,13 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		"Beschreibe sichtbare Benutzeroberflächen, Fehlermeldungen, Quellcode, Diagramme, Dateinamen, Zustände und relevante Details. " +
 		"Lies sichtbaren Text möglichst vollständig. Erfinde nichts. Formuliere eine sachliche deutschsprachige Bildanalyse.\n\n" +
 		"Dateien: " + strings.Join(names, ", ") + "\nAufgabe des Nutzers: " + strings.TrimSpace(userTask)
+	describeCtx := 12288
+	if isLocalHostURL(o.BaseURL) {
+		describeCtx = computeDynamicLocalContext(Config{
+			ContextLength: o.ContextLength,
+			OllamaURL:     o.BaseURL,
+		}, detectLocalVRAMMB())
+	}
 	request := OllamaChatRequest{
 		Model:  model,
 		Stream: false,
@@ -443,7 +451,7 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		KeepAlive: "30m",
 		Options: map[string]any{
 			"temperature": 0.1,
-			"num_ctx":     12288,
+			"num_ctx":     describeCtx,
 			"num_predict": 3072,
 		},
 	}
@@ -665,13 +673,13 @@ func hardwareLocalContextLimit(vramMB int) int {
 	case vramMB <= 0:
 		return 12288
 	case vramMB < 8192:
-		return 12288
-	case vramMB < 12288:
-		return 16384
+		return 8192
 	case vramMB < 20480:
-		return 32768
+		// 8–16 GB GPUs: cap at 12288 so 14B Q4 + Flash Attention + Q8_0 KV cache
+		// fits 100% in dedicated VRAM without WDDM shared-memory PCIe paging.
+		return 12288
 	default:
-		return 65536
+		return 32768
 	}
 }
 
@@ -829,7 +837,7 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 			var thinkingBuf strings.Builder
 			scanner := bufio.NewScanner(io.LimitReader(resp.Body, 16<<20))
 			scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-			startedAt := time.Now()
+			firstTokenAt := time.Time{}
 			lastEmit := time.Time{}
 			chunks := 0
 			for scanner.Scan() {
@@ -846,10 +854,16 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 					break
 				}
 				if chunk.Message.Content != "" {
+					if firstTokenAt.IsZero() {
+						firstTokenAt = time.Now()
+					}
 					contentBuf.WriteString(chunk.Message.Content)
 					chunks++
 				}
 				if chunk.Message.Thinking != "" {
+					if firstTokenAt.IsZero() {
+						firstTokenAt = time.Now()
+					}
 					thinkingBuf.WriteString(chunk.Message.Thinking)
 				}
 				if chunk.Done {
@@ -857,13 +871,18 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 					out.DoneReason = chunk.DoneReason
 					out.PromptEvalCount = chunk.PromptEvalCount
 					out.EvalCount = chunk.EvalCount
+					out.EvalDuration = chunk.EvalDuration
 				}
 				now := time.Now()
 				if lastEmit.IsZero() || now.Sub(lastEmit) >= 250*time.Millisecond || chunk.Done {
-					elapsed := now.Sub(startedAt).Seconds()
 					tps := 0.0
-					if elapsed > 0.1 && chunks > 0 {
-						tps = float64(chunks) / elapsed
+					if chunk.Done && chunk.EvalDuration > 0 && chunk.EvalCount > 0 {
+						tps = float64(chunk.EvalCount) / (float64(chunk.EvalDuration) / 1e9)
+					} else if !firstTokenAt.IsZero() && chunks > 1 {
+						elapsed := now.Sub(firstTokenAt).Seconds()
+						if elapsed > 0.05 {
+							tps = float64(chunks) / elapsed
+						}
 					}
 					onDelta(contentBuf.String(), chunks, tps)
 					lastEmit = now

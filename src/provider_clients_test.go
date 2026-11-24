@@ -448,11 +448,11 @@ func TestDynamicLocalContextAndNumPredict(t *testing.T) {
 		wantPredict int
 	}{
 		{"unknown_vram", 0, 65536, 12288, 4096},
-		{"under_8gb", 6144, 65536, 12288, 4096},
-		{"8gb_tier", 8192, 65536, 16384, 4096},
-		{"12gb_to_20gb_tier", 16384, 65536, 32768, 8192},
-		{"20gb_plus_tier", 24576, 65536, 65536, 16384},
-		{"configured_base_respected", 24576, 32768, 32768, 8192},
+		{"under_8gb", 6144, 65536, 8192, 4096},
+		{"8gb_tier", 8192, 65536, 12288, 4096},
+		{"12gb_to_20gb_tier", 16384, 65536, 12288, 4096},
+		{"20gb_plus_tier", 24576, 65536, 32768, 8192},
+		{"configured_base_respected", 24576, 16384, 16384, 4096},
 		{"min_floor_8192", 16384, 4096, 8192, 4096},
 	}
 	for _, tc := range cases {
@@ -508,11 +508,11 @@ func TestDynamicLocalContextAndNumPredict(t *testing.T) {
 	if _, err := oc.Chat(context.Background(), "qwen2.5-coder:14b", []OllamaMessage{{Role: "user", Content: "hi"}}, actionSchema); err != nil {
 		t.Fatalf("Ollama Chat failed: %v", err)
 	}
-	if numCtx := int(capturedOpts["num_ctx"].(float64)); numCtx != 32768 {
-		t.Fatalf("expected dynamic local num_ctx=32768 (no 6144 cap), got %d", numCtx)
+	if numCtx := int(capturedOpts["num_ctx"].(float64)); numCtx != 12288 {
+		t.Fatalf("expected dynamic local num_ctx=12288 (VRAM-safe 16GB tier), got %d", numCtx)
 	}
-	if numPredict := int(capturedOpts["num_predict"].(float64)); numPredict != 8192 {
-		t.Fatalf("expected dynamic local num_predict=8192 (no 2400 cap), got %d", numPredict)
+	if numPredict := int(capturedOpts["num_predict"].(float64)); numPredict != 4096 {
+		t.Fatalf("expected dynamic local num_predict=4096 (no 2400 cap), got %d", numPredict)
 	}
 }
 
@@ -553,8 +553,8 @@ func TestCompactMessagesWithFocusAndModelAssistedCompaction(t *testing.T) {
 	cfg.ContextCompactionKeepRecent = 2
 	cfg.ModelTimeout = 10
 
-	if eff := effectiveCompactionContextLength(cfg); eff != 32768 {
-		t.Fatalf("expected dynamic effectiveCompactionContextLength=32768, got %d", eff)
+	if eff := effectiveCompactionContextLength(cfg); eff != 12288 {
+		t.Fatalf("expected dynamic effectiveCompactionContextLength=12288, got %d", eff)
 	}
 
 	oc := NewOllamaClient()

@@ -79,7 +79,7 @@ Verbindliche Regeln:
 5. Browser-JS-Kompatibilität: In klassischen <script src="...">-Dateien NIEMALS ungeschütztes require() oder ES-import/export nutzen! Teile Browser-Module über window.<Name> und optional if (typeof module !== 'undefined' && module.exports) module.exports = ... . Nutze stets exakt die Symbolnamen und DOM-IDs aus dem NOMA Live-Manifest.`
 
 func systemPromptForConfig(cfg Config) string {
-	if effectiveCompactionContextLength(cfg) > 8192 {
+	if !isLocalOllamaURL(cfg.OllamaURL) && effectiveCompactionContextLength(cfg) > 12288 {
 		return agentSystemPrompt
 	}
 	var b strings.Builder
