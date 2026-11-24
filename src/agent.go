@@ -1287,6 +1287,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 	}
 	completedActions := map[string]bool{}
 	failedActions := map[string]int{}
+	failedRunSinceEdit := map[string]int{}
 	changedPaths := map[string]bool{}
 	changedSinceVerification := false
 	lastVerificationFailed := false
@@ -1490,6 +1491,12 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 			}
 		}
 		signature := actionSignature(action)
+		if (action.Action == "run_tool" || action.Action == "run_command") && failedRunSinceEdit[signature] >= 2 {
+			repeatBlocks++
+			s.AddEvent(UIEvent{Type: "warning", Message: localizeConfigText(cfg, "Wiederholter fehlgeschlagener Test-/Befehlsaufruf blockiert", "Repeated failing test/command blocked"), Detail: action.Action + ": " + action.Message, Action: action.Action})
+			messages = append(messages, OllamaMessage{Role: "user", Content: "SYSTEMHINWEIS: Derselbe Befehl (`" + action.Action + "`) ist bereits mehrfach identisch fehlgeschlagen, ohne dass du die Ursache im Code behoben hast. Wiederhole diesen Aufruf NICHT! Lies jetzt die fehlerhafte Datei per `read_file` und behebe den konkreten Fehler per `write_file` (oder lösche ungültige Jest-/Setup-Dateien per `delete_file`), bevor du Tests erneut ausführst."})
+			continue
+		}
 		if signature == lastSignature && action.Action != "finish" {
 			repeatBlocks++
 			s.AddEvent(UIEvent{Type: "warning", Message: agentImmediateRepeatMessage(cfg), Detail: agentImmediateRepeatDetail(cfg, action), Action: action.Action})
@@ -1697,6 +1704,7 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		}
 		var micaPostNote string
 		if actionMutatesProject(action) && !toolFailed {
+			failedRunSinceEdit = map[string]int{}
 			for _, path := range mutatedActionPaths(action) {
 				if strings.TrimSpace(path) != "" {
 					changedPaths[path] = true
@@ -1740,11 +1748,16 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 		toolMessage := "TOOL RESULT for " + action.Action + ":\n" + truncateText(resultForModel, contextToolResultLimit(cfg)) + micaPostNote
 		if toolFailed {
 			failedActions[actionSignature(action)]++
+			if action.Action == "run_tool" || action.Action == "run_command" {
+				failedRunSinceEdit[actionSignature(action)]++
+			}
 			toolMessage += "\n\n" + toolFailureRecoveryDirective(action, result, errors.New("Werkzeugaktion fehlgeschlagen"), originalTask)
 			if action.Action == "replace_text" && strings.Contains(result, "old_text") {
 				toolMessage += "\nDIAGNOSE-HINWEIS: `replace_text` konnte `old_text` nicht eindeutig finden. Schreibe die korrigierte Datei jetzt direkt vollständig mit `\"action\": \"write_file\"`."
 			}
-			if action.Action == "run_tool" && (strings.Contains(result, "ReferenceError: document is not defined") || strings.Contains(result, "ReferenceError: window is not defined")) {
+			if (action.Action == "run_tool" || action.Action == "run_command") && (strings.Contains(result, "ReferenceError: jest is not defined") || strings.Contains(result, "ReferenceError: expect is not defined") || strings.Contains(result, "ReferenceError: describe is not defined")) {
+				toolMessage += "\nDIAGNOSE-HINWEIS: Jest ist NICHT installiert und `node --test` kennt weder `jest`, `jest.fn()`, `jest.mock()` noch `expect`! Entferne SOFORT alle `jest.*`-Aufrufe aus deinen Tests (oder lösche `setupTests.js`/`jest.config.js` mit `delete_file`) und schreibe reine Node.js-Tests mit `const test = require('node:test'); const assert = require('node:assert/strict');` und einfachen JS-Stub-Funktionen (`() => {}`). Führe `node --test` ERST wieder aus, nachdem die Datei mit `write_file` repariert wurde!"
+			} else if action.Action == "run_tool" && (strings.Contains(result, "ReferenceError: document is not defined") || strings.Contains(result, "ReferenceError: window is not defined")) {
 				toolMessage += "\nDIAGNOSE-HINWEIS: Node.js hat kein Browser-DOM (`document`/`window`)! Schreibe KEINEN Test, der `document.createElement` oder `document.getElementById` in Node.js aufruft. Importiere stattdessen das DOM-freie Kernmodul direkt per `require(...)` und teste dessen reine Funktionen/Zustände mit `node:test` und `node:assert/strict`."
 			} else if action.Action == "run_tool" && (strings.Contains(result, "is not a constructor") || strings.Contains(result, "is not a function")) {
 				toolMessage += "\nDIAGNOSE-HINWEIS: Prüfe im NOMA Live-Manifest die exakte Export-Form: bei `exportDefault=Foo` importiere mit `const Foo = require(...)` (OHNE geschweifte Klammern!), bei `exports=[Foo]` mit `const { Foo } = require(...)`, und prüfe exakte Methodennamen."

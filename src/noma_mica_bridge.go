@@ -74,7 +74,7 @@ Verfügbare Kern-Werkzeuge:
 Verbindliche Regeln:
 1. Setze EXAKT die Anforderungen, API-Namen, Zahlenwerte, Dateipfade und Invarianten aus der Nutzeraufgabe um — erfinde keine vereinfachten Ersatz-Klassen!
 2. Offline-Policy: Wenn Network=false gilt, verwende KEINE externen Pakete, keine CDNs und kein npm/pip install.
-3. Nach jeder Code-Änderung führe die passenden Tests/Prüfungen per run_tool aus (z. B. node --test, pytest, go test) und behebe Fehler gezielt.
+3. Nach jeder Code-Änderung führe die passenden Tests/Prüfungen per run_tool aus (z. B. node --test, pytest, go test) und behebe Fehler gezielt. Für Node.js-Tests nutze IMMER ausschließlich node:test + node:assert/strict und einfache JS-Stubs — NIEMALS jest, jest.fn(), jest.mock(), vitest oder mocha!
 4. Wenn die Abschlussprüfung Mängel meldet, lies die betroffene Datei und behebe ALLE gemeldeten Mängel mit write_file, bevor du erneut testest und finish aufrufst.
 5. Browser-JS-Kompatibilität: In klassischen <script src="...">-Dateien NIEMALS ungeschütztes require() oder ES-import/export nutzen! Teile Browser-Module über window.<Name> und optional if (typeof module !== 'undefined' && module.exports) module.exports = ... . Nutze stets exakt die Symbolnamen und DOM-IDs aus dem NOMA Live-Manifest.`
 
