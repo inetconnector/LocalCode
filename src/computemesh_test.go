@@ -436,4 +436,27 @@ func TestConfigureComputeMeshDoesNotOverwriteWorkingOllamaWith404Node(t *testing
 	if state.Ollama.BaseURL != workingOllama.URL {
 		t.Fatalf("expected working Ollama URL %q to be preserved, got %q", workingOllama.URL, state.Ollama.BaseURL)
 	}
+
+	// Edge case: ComputeMesh returns HTTP 200 on /api/tags, but empty unusable model list -> preserve working Ollama!
+	emptyModelsNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/health" {
+			_, _ = w.Write([]byte(`{"live":true,"ready":true}`))
+			return
+		}
+		if r.URL.Path == "/api/tags" {
+			_, _ = w.Write([]byte(`{"models":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer emptyModelsNode.Close()
+
+	cfg.ComputeMeshLocalNodeURL = emptyModelsNode.URL
+	cfg.ComputeMeshURL = emptyModelsNode.URL
+	state2 := NewAppState(cfg, ollamaClient)
+	ConfigureComputeMeshForAppState(state2)
+	if state2.Ollama.BaseURL != workingOllama.URL {
+		t.Fatalf("expected working Ollama URL %q to be preserved when ComputeMesh returns empty models, got %q", workingOllama.URL, state2.Ollama.BaseURL)
+	}
 }

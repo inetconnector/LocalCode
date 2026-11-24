@@ -576,7 +576,7 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 	currentOllama := s.Ollama
 	s.mu.Unlock()
 
-	probeOllamaTags := func(baseURL, token string) bool {
+	probeOllamaTags := func(baseURL, token string, requireModels bool) bool {
 		if strings.TrimSpace(baseURL) == "" {
 			return false
 		}
@@ -585,15 +585,20 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		probe.AuthToken = token
 		pCtx, pCancel := context.WithTimeout(ctx, 2*time.Second)
 		defer pCancel()
-		_, err := probe.Tags(pCtx)
-		return err == nil
+		models, err := probe.Tags(pCtx)
+		if err != nil {
+			return false
+		}
+		if requireModels && len(models) == 0 {
+			return false
+		}
+		return true
 	}
 
-	localOnline := probeOllamaTags(currentOllama.BaseURL, currentOllama.AuthToken)
+	localOnline := probeOllamaTags(currentOllama.BaseURL, currentOllama.AuthToken, true)
 
 	// Candidate order: only switch s.Ollama.BaseURL to a ComputeMesh endpoint that actually
-	// implements Ollama-compatible `/api/tags` (never overwrite working local Ollama with a
-	// ComputeMesh control/health-only node like http://localhost:8080 that returns HTTP 404).
+	// implements Ollama-compatible `/api/tags` AND advertises at least one usable model.
 	candidates := []string{}
 	if meshStatus.DirectLocal && meshStatus.LocalNodeURL != "" {
 		candidates = append(candidates, meshStatus.LocalNodeURL)
@@ -604,7 +609,7 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 
 	chosenURL := ""
 	for _, cand := range candidates {
-		if probeOllamaTags(cand, apiKey) {
+		if probeOllamaTags(cand, apiKey, true) {
 			chosenURL = cand
 			break
 		}
