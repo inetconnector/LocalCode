@@ -178,6 +178,9 @@ Reset, Clean, Commit oder Push.
 - **Wave-12 VS Code Extension Cross-Vendor Adversarial Review & VSIX — 2026-11-24 Wave 12:**
   - `extensions/localcode/`: Neues Loopback-Modul `src/adversarial_review.js`, Befehl `localcode.adversarialReview` und Setting `localcode.agentosUrl` (`http://127.0.0.1:8010`, strikte Loopback-SSRF-Sperre via `serverURL`) in `package.json`, `package.nls.json`, `package.nls.de.json`, `src/i18n.js` & `src/extension.js` verdrahtet (`DE/EN` 100 % Parität).
   - Verifikation Wave 12: `node scripts/check.js` PASS, `node --test test/*.test.js` **12/12 PASS**, `localcode-0.1.0.vsix` frisch paketiert.
+- **Wave-13 Cross-Platform Desktop-Automation (`macOS` & `Linux`) — 2026-11-24 Wave 13:**
+  - `src/desktop_automation_other.go` & `src/desktop_automation_other_test.go`: Native `DesktopListWindows` (`osascript`/`wmctrl`) & `DesktopScreenshot` (`screencapture`/`grim`/`gnome-screenshot`/`scrot`/`import`) mit striktem `ensureWithinRoot`-Path-Containment, erweiterter Sperrliste (`Keychain Access`, `1Password`, `Bitwarden`, `KeePass`, `polkit`, `gnome-keyring`) und 0 Shell-Injection implementiert.
+  - Verifikation Wave 13: Cross-OS `go vet ./...` & `go test -c .` für `linux/amd64` und `darwin/arm64` **100 % PASS** (`linux_vet=0 linux_testc=0 darwin_vet=0 darwin_testc=0`).
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 
