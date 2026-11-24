@@ -2396,6 +2396,16 @@ public final class MainActivity extends Activity {
             if (webView != null) {
                 webView.setVisibility(View.VISIBLE);
                 webView.loadUrl(target);
+                final String watchedTarget = target;
+                webView.postDelayed(() -> {
+                    if (connectingOverlay != null
+                            && connectingOverlay.getVisibility() == View.VISIBLE
+                            && watchedTarget.equals(currentRemoteUrl)) {
+                        handleConnectionFailure(
+                                "Zeitüberschreitung bei " + watchedTarget + " – suche aktive PC-IP im WLAN …",
+                                "Connection timed out for " + watchedTarget + " – searching for active PC IP on Wi-Fi …");
+                    }
+                }, 8000L);
             }
         });
     }

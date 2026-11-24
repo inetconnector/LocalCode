@@ -23,6 +23,29 @@ type fixedAddr string
 func (a fixedAddr) Network() string { return "tcp" }
 func (a fixedAddr) String() string  { return string(a) }
 
+func TestVirtualLANInterfacesExcludedFromRemoteAddresses(t *testing.T) {
+	ignored := []string{
+		"vEthernet (Default Switch)",
+		"vEthernet (WSL (Hyper-V firewall))",
+		"DockerNAT",
+		"VMware Network Adapter VMnet1",
+		"VirtualBox Host-Only Network",
+		"Bluetooth-Netzwerkverbindung",
+		"Loopback Pseudo-Interface 1",
+	}
+	for _, name := range ignored {
+		if !isVirtualOrIgnoredLANInterface(name) {
+			t.Fatalf("expected virtual/ignored interface %q to be excluded", name)
+		}
+	}
+	allowed := []string{"WLAN", "Wi-Fi", "Ethernet", "en0", "eth0", "wlan0"}
+	for _, name := range allowed {
+		if isVirtualOrIgnoredLANInterface(name) {
+			t.Fatalf("expected physical LAN interface %q to be allowed", name)
+		}
+	}
+}
+
 func TestRemoteRequiresTLS(t *testing.T) {
 	cases := []struct {
 		host string

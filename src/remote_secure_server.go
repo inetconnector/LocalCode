@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -23,7 +22,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -436,12 +434,16 @@ func buildRemoteMDNSResponse(port int, ips []net.IP, fingerprint string, urls []
 		return nil
 	}
 	validIPs := []net.IP{}
+	seenIP := map[string]bool{}
 	for _, ip := range ips {
 		if v4 := ip.To4(); v4 != nil {
-			validIPs = append(validIPs, append(net.IP(nil), v4...))
+			key := v4.String()
+			if !seenIP[key] {
+				seenIP[key] = true
+				validIPs = append(validIPs, append(net.IP(nil), v4...))
+			}
 		}
 	}
-	sort.Slice(validIPs, func(i, j int) bool { return bytes.Compare(validIPs[i], validIPs[j]) < 0 })
 	answerCount := 3 + len(validIPs)
 	packet := make([]byte, 12)
 	binary.BigEndian.PutUint16(packet[2:4], 0x8400)

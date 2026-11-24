@@ -48,6 +48,7 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/pair-status", s.handlePairStatus)
 	s.mux.HandleFunc("/remote/api/unpair", s.withAuth(s.handleUnpair))
 	s.mux.HandleFunc("/remote/api/status", s.withAuth(s.handleStatus))
+	s.mux.HandleFunc("/remote/api/supermodel", s.withAuth(s.handleToggleSupermodel))
 	s.mux.HandleFunc("/remote/api/projects", s.withAuth(s.handleProjects))
 	s.mux.HandleFunc("/remote/api/select-project", s.withAuth(s.handleSelectProject))
 	s.mux.HandleFunc("/remote/api/threads", s.withAuth(s.handleThreads))
@@ -404,28 +405,57 @@ func (s *RemoteServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RLock()
 	cfg := s.state.Config
+	swarmWave, swarmActive, swarmAgents := s.state.snapshotSwarmRosterLocked()
 	status := map[string]any{
-		"app":                 "LocalCode Remote",
-		"version":             version,
-		"project":             s.state.Project,
-		"root_dir":            cfg.RootProjectDir,
-		"model":               s.state.Model,
-		"running":             s.state.Running,
-		"running_projects":    s.state.GetRunningProjectsLocked(),
-		"active_runs_count":   len(s.state.ActiveRuns),
-		"pending":             s.state.Pending != nil,
-		"current_thread":      s.state.CurrentThread,
-		"run_id":              s.state.RunID,
-		"run_phase":           s.state.RunPhase,
-		"remote_urls":         append([]string(nil), s.state.RemoteURLs...),
-		"editing_engine":      cfg.EditingEngine,
-		"approval_mode":       cfg.ApprovalMode,
-		"resolved_language":   resolvedLanguage(cfg),
-		"paired_device_count": len(cfg.RemoteDevices),
+		"app":                     "LocalCode Remote",
+		"version":                 version,
+		"project":                 s.state.Project,
+		"root_dir":                cfg.RootProjectDir,
+		"model":                   s.state.Model,
+		"running":                 s.state.Running,
+		"running_projects":        s.state.GetRunningProjectsLocked(),
+		"active_runs_count":       len(s.state.ActiveRuns),
+		"pending":                 s.state.Pending != nil,
+		"current_thread":          s.state.CurrentThread,
+		"run_id":                  s.state.RunID,
+		"run_phase":               s.state.RunPhase,
+		"remote_urls":             append([]string(nil), s.state.RemoteURLs...),
+		"editing_engine":          cfg.EditingEngine,
+		"approval_mode":           cfg.ApprovalMode,
+		"resolved_language":       resolvedLanguage(cfg),
+		"paired_device_count":     len(cfg.RemoteDevices),
+		"noma_supermodel_enabled": cfg.NomaSupermodelEnabled,
+		"swarm_wave":              swarmWave,
+		"swarm_active_count":      swarmActive,
+		"swarm_agents":            swarmAgents,
 	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, status)
+}
+
+func (s *RemoteServer) handleToggleSupermodel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	s.state.mu.Lock()
+	s.state.Config.NomaSupermodelEnabled = req.Enabled
+	if s.state.Ollama != nil {
+		s.state.Ollama.NomaSupermodelEnabled = req.Enabled
+	}
+	cfg := s.state.Config
+	s.state.mu.Unlock()
+	_ = saveConfig(cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "noma_supermodel_enabled": req.Enabled})
 }
 
 func (s *RemoteServer) handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -1263,18 +1293,54 @@ func (s *Server) handleRemotePairingPending(w http.ResponseWriter, r *http.Reque
 	_ = writeJSON(w, map[string]any{"ok": true, "pending": pendingList, "auto_pair": s.state.Config.RemoteAutoPair})
 }
 
+func isVirtualOrIgnoredLANInterface(ifaceName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(ifaceName))
+	if lower == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"virtual", "vethernet", "default switch", "hyper-v", "wsl",
+		"docker", "vmware", "vbox", "virtualbox", "loopback",
+		"bluetooth", "npcap", "teredo", "isatap",
+		"tailscale", "zerotier", "wireguard", "wintun",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func primaryOutboundIPv4() string {
+	conn, err := net.DialTimeout("udp4", "1.1.1.1:80", 150*time.Millisecond)
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || udpAddr.IP == nil {
+		return ""
+	}
+	ip := udpAddr.IP.To4()
+	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return ""
+	}
+	return ip.String()
+}
+
 func activeLANIPv4Addresses() []string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil
 	}
+	preferred := primaryOutboundIPv4()
 	out := []string{}
+	physicalMatch := false
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		name := strings.ToLower(iface.Name + " " + iface.HardwareAddr.String())
-		if strings.Contains(name, "virtual") || strings.Contains(name, "wsl") || strings.Contains(name, "loopback") {
+		if isVirtualOrIgnoredLANInterface(iface.Name) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -1294,10 +1360,23 @@ func activeLANIPv4Addresses() []string {
 				continue
 			}
 			value := ip.String()
+			if value == preferred {
+				physicalMatch = true
+			}
 			if !containsString(out, value) {
 				out = append(out, value)
 			}
 		}
+	}
+	if preferred != "" && physicalMatch {
+		reordered := make([]string, 0, len(out))
+		reordered = append(reordered, preferred)
+		for _, v := range out {
+			if v != preferred {
+				reordered = append(reordered, v)
+			}
+		}
+		return reordered
 	}
 	return out
 }
