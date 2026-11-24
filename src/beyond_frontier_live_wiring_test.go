@@ -916,3 +916,113 @@ func TestRequestApprovalAutoDispatchesZeroSecretUnifiedPush(t *testing.T) {
 		t.Fatalf("timed out waiting for requestApprovalWithPreview to unblock")
 	}
 }
+
+func TestStartAgentForThreadFailsClosedWhenBackendOfflineOr404AndRendersNothing(t *testing.T) {
+	project := t.TempDir()
+
+	// Case 1: Backend returns HTTP 404 (exact screenshot scenario: localhost:8080 -> 404 page not found)
+	badBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer badBackend.Close()
+
+	client := NewOllamaClient()
+	client.BaseURL = badBackend.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "qwen2.5:3b"
+	cfg.Language = "de"
+
+	state := NewAppState(cfg, client)
+	defer state.Close()
+	srv := NewServer(state)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"erstelle einen original flappy birds klon","model":"qwen2.5:3b","project":`+mustJSON(project)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 Service Unavailable for 404/offline backend, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "404") || !strings.Contains(rec.Body.String(), "nicht gestartet") {
+		t.Fatalf("expected clear German preflight error message, got: %s", rec.Body.String())
+	}
+
+	state.mu.RLock()
+	running := state.Running
+	activeCount := len(state.ActiveRuns)
+	eventCount := len(state.Events)
+	state.mu.RUnlock()
+	if running || activeCount != 0 || eventCount != 0 {
+		t.Fatalf("backend-offline preflight must NOT start run or render any events: running=%v active=%d events=%d", running, activeCount, eventCount)
+	}
+
+	// Case 2: Backend is online, but requested model is NOT installed -> immediate 503 & 0 events
+	wrongModelBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{{"name": "qwen2.5-coder:14b"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer wrongModelBackend.Close()
+
+	client2 := NewOllamaClient()
+	client2.BaseURL = wrongModelBackend.URL
+	state2 := NewAppState(cfg, client2)
+	defer state2.Close()
+	srv2 := NewServer(state2)
+
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"erstelle flappy bird","model":"missing-model:99b","project":`+mustJSON(project)+`}`))
+	req2.Header.Set("Content-Type", "application/json")
+	srv2.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for missing model, got %d body=%s", rec2.Code, rec2.Body.String())
+	}
+	state2.mu.RLock()
+	events2 := len(state2.Events)
+	state2.mu.RUnlock()
+	if events2 != 0 {
+		t.Fatalf("missing model preflight must render 0 events, got %d", events2)
+	}
+
+	// Case 3: Cloud provider (Anthropic) without API key -> immediate 503 & 0 events
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	cfgCloud := defaultConfig()
+	cfgCloud.RootProjectDir = project
+	cfgCloud.LastProject = project
+	cfgCloud.InferenceProvider = "anthropic"
+	state3 := NewAppState(cfgCloud, client2)
+	defer state3.Close()
+	srv3 := NewServer(state3)
+
+	rec3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"hello","model":"claude-opus-4-6","project":`+mustJSON(project)+`}`))
+	req3.Header.Set("Content-Type", "application/json")
+	srv3.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for missing Anthropic key, got %d body=%s", rec3.Code, rec3.Body.String())
+	}
+	state3.mu.RLock()
+	events3 := len(state3.Events)
+	state3.mu.RUnlock()
+	if events3 != 0 {
+		t.Fatalf("missing cloud API key preflight must render 0 events, got %d", events3)
+	}
+
+	// Case 4: isFatalBackendError immediately detects HTTP 404 / connection errors so retry loop never spams
+	if !isFatalBackendError(fmt.Errorf("kein Modell lieferte eine gültige Agentenaktion: qwen2.5:3b: Ollama HTTP 404: 404 page not found")) {
+		t.Fatalf("expected Ollama HTTP 404 to be classified as fatal backend error")
+	}
+	if isFatalBackendError(fmt.Errorf("invalid json syntax in agent action")) {
+		t.Fatalf("normal JSON parse error should not be classified as fatal backend error")
+	}
+}

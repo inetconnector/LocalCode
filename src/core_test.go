@@ -869,6 +869,12 @@ func TestNormalizeOllamaBaseURL(t *testing.T) {
 func TestAgentLoopExecutesStructuredActions(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{{"name": "test-model"}},
+			})
+			return
+		}
 		if r.URL.Path != "/api/chat" {
 			http.NotFound(w, r)
 			return
@@ -1227,6 +1233,12 @@ func TestAgentEscalatesRepeatedSingleFileCompletionBlock(t *testing.T) {
 func TestChatAcceptsStructuredActionFromThinking(t *testing.T) {
 	var thinkValue any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{{"name": "test-model"}},
+			})
+			return
+		}
 		if r.URL.Path != "/api/chat" {
 			http.NotFound(w, r)
 			return
@@ -1470,6 +1482,12 @@ func TestFindVisionModelUsesCapabilities(t *testing.T) {
 func TestDescribeImagesSendsBase64Images(t *testing.T) {
 	var received []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{{"name": "test-model"}},
+			})
+			return
+		}
 		if r.URL.Path != "/api/chat" {
 			http.NotFound(w, r)
 			return
