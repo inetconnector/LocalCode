@@ -116,7 +116,7 @@ var actionSchema = map[string]any{
 			"mcp_list_tools", "mcp_call_tool", "mcp_list_resources", "mcp_read_resource", "mcp_list_prompts", "mcp_get_prompt",
 			"skill_list", "skill_read", "skill_list_resources", "skill_read_resource", "skill_copy_resource", "skill_run_script",
 			"memory_remember", "memory_list", "memory_forget",
-			"pty_start", "pty_send", "pty_read", "pty_list", "pty_kill", "spawn_subagent",
+			"pty_start", "pty_send", "pty_read", "pty_list", "pty_kill", "spawn_subagent", "spawn_subagents",
 			"finish", "ask_user",
 		}},
 		Message:       map[string]any{"type": "string"},
@@ -1089,6 +1089,20 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 		s.mu.RUnlock()
 		s.journalRunTask(runID, effectiveTask)
 	}
+	swarmForced := false
+	if trimmed := strings.TrimSpace(effectiveTask); strings.HasPrefix(strings.ToLower(trimmed), "/swarm") {
+		rest := strings.TrimSpace(trimmed[len("/swarm"):])
+		if rest != "" {
+			effectiveTask = rest
+		}
+		swarmForced = true
+		s.AddEvent(UIEvent{
+			Type:    "status",
+			Action:  "swarm_wave",
+			Message: localizeConfigText(cfg, "Antigravity 2.0 · Paralleler Subagent-Schwarm aktiviert (/swarm)", "Antigravity 2.0 · Parallel subagent swarm activated (/swarm)"),
+			Detail:  effectiveTask,
+		})
+	}
 	promptCfg := cfg
 	if strings.TrimSpace(promptCfg.OllamaURL) == "" && s != nil && s.Ollama != nil && strings.TrimSpace(s.Ollama.BaseURL) != "" {
 		promptCfg.OllamaURL = s.Ollama.BaseURL
@@ -1100,6 +1114,11 @@ func (s *AppState) runAgent(ctx context.Context, runID, project, model, userMess
 	}
 	if nomaPlan := runNomaMicaSuitePreflight(ctx, s, project, effectiveTask, cfg); nomaPlan != "" {
 		instructions += nomaPlan
+	}
+	if intent := classifyTaskIntent(effectiveTask); swarmForced || intent.Kind == "edit" || intent.Kind == "build" || intent.Kind == "analyze" {
+		if swarmBrief := s.runAutomaticParallelPreflightSwarm(ctx, project, effectiveTask, model, cfg); swarmBrief != "" {
+			instructions += swarmBrief
+		}
 	}
 	engine := normalizeEditingEngine(cfg.EditingEngine)
 	engineHint := "ENGINE-HINWEIS: Für mehrdateilige Codeänderungen ist engine_edit verfügbar."
@@ -1588,10 +1607,8 @@ func (s *AppState) executeAgentLoop(ctx context.Context, runID, project, model s
 						}
 					}
 				}
-				if stubPath, stubHit := detectPendingStubFile(project, changedPaths); stubPath != "" {
-					issues = append(issues, fmt.Sprintf("Rule-7 Zero-Stub Verstoß in `%s`: %s.", stubPath, stubHit))
-				}
-				issues = append(issues, verifyWebAppIntegrity(ctx, project, cfg, true)...)
+				verifierIssues := s.runAutomaticParallelVerifierSwarm(ctx, project, model, cfg, changedPaths)
+				issues = append(issues, verifierIssues...)
 			}
 			if len(issues) > 0 {
 				supervisorBlocks++
@@ -3920,6 +3937,11 @@ func (s *AppState) handleAgentAction(ctx context.Context, project string, a Agen
 		result, err = s.executeAgentPTYAction(ctx, project, a)
 	case "spawn_subagent":
 		result, err = s.executeAgentSpawnSubagent(ctx, project, a)
+	case "spawn_subagents":
+		s.mu.RLock()
+		activeModel := s.Model
+		s.mu.RUnlock()
+		result, err = s.executeSpawnSubagentsAction(ctx, project, activeModel, cfg, a)
 	case "adb_action", "mcp_call_tool", "lsp", "replace_text", "apply_patch", "write_file", "delete_file", "create_svg_asset", "create_image_asset", "generate_image_asset", "convert_image_asset", "render_asset", "skill_copy_resource", "skill_run_script", "build_project", "deploy_android", "engine_edit", "engine_repo_map", "engine_lint", "engine_test", "aider_edit", "aider_repo_map", "aider_lint", "aider_test", "run_tool", "run_command", "open_terminal", "copy_path", "move_path", "git_commit":
 		return s.performApproved(ctx, project, a)
 	case "ask_user":

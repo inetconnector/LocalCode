@@ -66,7 +66,7 @@ Verfügbare Kern-Werkzeuge:
 - write_file(path, content): schreibt die KOMPLETTE, direkt lauffähige Datei (Rule 7: NIEMALS Stubs, leere Funktionsrümpfe, TODO/FIXME oder "can be added"!)
 - replace_text(path, old_text, new_text): gezielte Änderung (bei Fehlschlag direkt write_file nutzen)
 - delete_file(path), copy_path(source, destination), move_path(source, destination)
-- project_info, subagent_analyze(task), build_project
+- project_info, subagent_analyze(task), spawn_subagents(args), build_project
 - discover_tool(tool), run_tool(tool, args), run_command(command)
 - finish: erst wenn ALLE Anforderungen der Nutzeraufgabe vollständig implementiert UND durch echte Tests/Prüfungen bestanden sind.
 - ask_user: nur bei echten unauflösbaren Blockern (NIEMALS für Architektur-Rückfragen bei neuen Projekten).

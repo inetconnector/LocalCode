@@ -67,6 +67,7 @@ type Config struct {
 	RemoteDevices              []RemoteDevice    `json:"remote_devices,omitempty"`
 
 	OllamaURL                         string  `json:"ollama_url"`
+	NomaSupermodelEnabled             bool    `json:"noma_supermodel_enabled"`
 	SetupDownloadsEnabled             bool    `json:"setup_downloads_enabled"`
 	OllamaAutoInstall                 bool    `json:"ollama_auto_install"`
 	OllamaAutoPull                    bool    `json:"ollama_auto_pull"`
@@ -216,11 +217,30 @@ type ModelInfo struct {
 	ModifiedAt string `json:"modified_at,omitempty"`
 }
 
+type SwarmSubagentEntry struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Status      string `json:"status"` // running | completed | failed
+	Wave        int    `json:"wave"`
+	Task        string `json:"task,omitempty"`
+	Workspace   string `json:"workspace,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Summary     string `json:"summary,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	DurationMs  int64  `json:"duration_ms,omitempty"`
+}
+
 type Status struct {
-	Version              string      `json:"version"`
-	OllamaOnline         bool        `json:"ollama_online"`
-	OllamaURL            string      `json:"ollama_url,omitempty"`
-	OllamaError          string      `json:"ollama_error,omitempty"`
+	Version               string               `json:"version"`
+	OllamaOnline          bool                 `json:"ollama_online"`
+	OllamaURL             string               `json:"ollama_url,omitempty"`
+	OllamaError           string               `json:"ollama_error,omitempty"`
+	NomaSupermodelEnabled bool                 `json:"noma_supermodel_enabled"`
+	SwarmWave             int                  `json:"swarm_wave,omitempty"`
+	SwarmActiveCount      int                  `json:"swarm_active_count,omitempty"`
+	SwarmAgents           []SwarmSubagentEntry `json:"swarm_agents,omitempty"`
 	ComputeMeshOnline    bool        `json:"computemesh_online"`
 	ComputeMeshURL       string      `json:"computemesh_url,omitempty"`
 	ComputeMeshNode      string      `json:"computemesh_node,omitempty"`
@@ -324,6 +344,8 @@ type AppState struct {
 	ActiveRuns            map[string]*ActiveAgentRun
 	RunningProjects       map[string]int
 	PendingRemotePairings map[string]*PendingRemotePairing
+	SwarmWave             int
+	SwarmAgents           []SwarmSubagentEntry
 	PTY                   *PTYManager
 	LockscreenTokens      *LockscreenActionTokenManager
 	RelayPairing          *ActiveRelayPairingState
@@ -372,6 +394,9 @@ type PendingRemotePairing struct {
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
+	if ollama != nil {
+		ollama.NomaSupermodelEnabled = cfg.NomaSupermodelEnabled
+	}
 	threads := loadThreads()
 	recovery := loadRecoverableRun()
 	state := &AppState{

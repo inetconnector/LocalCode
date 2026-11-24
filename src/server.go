@@ -224,12 +224,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	models, err := s.state.Ollama.Tags(ctx)
 	s.state.mu.RLock()
 	cfg := s.state.Config
+	swarmWave, swarmActive, swarmAgents := s.state.snapshotSwarmRosterLocked()
 	st := Status{
-		Version:            version,
-		EditingEngine:      cfg.EditingEngine,
-		OllamaOnline:       err == nil,
-		OllamaURL:          s.state.Ollama.BaseURL,
-		Models:             models,
+		Version:               version,
+		EditingEngine:         cfg.EditingEngine,
+		OllamaOnline:          err == nil,
+		OllamaURL:             s.state.Ollama.BaseURL,
+		NomaSupermodelEnabled: cfg.NomaSupermodelEnabled,
+		SwarmWave:             swarmWave,
+		SwarmActiveCount:      swarmActive,
+		SwarmAgents:           swarmAgents,
+		Models:                models,
 		SelectedModel:      s.state.Model,
 		GPU:                detectGPU(),
 		RootDir:            cfg.RootProjectDir,
@@ -936,6 +941,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			s.state.Ollama.BaseURL = firstOllamaCandidate()
 		}
 		s.state.Ollama.ContextLength = cfg.ContextLength
+		s.state.Ollama.NomaSupermodelEnabled = cfg.NomaSupermodelEnabled
 		s.state.mu.Unlock()
 		defaultMCPManager.Close()
 		s.state.UpdateProjectState(localizeConfigText(cfg, "Einstellungen geändert", "Settings changed"))

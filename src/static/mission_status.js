@@ -72,7 +72,11 @@
       'Wird erneut geprüft…':'Wird erneut geprüft…',
       'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.',
       'Wiederaufnahme wurde angenommen.':'Wiederaufnahme wurde angenommen.',
-      'Wiederaufnahme konnte nicht gestartet werden.':'Wiederaufnahme konnte nicht gestartet werden.'
+      'Wiederaufnahme konnte nicht gestartet werden.':'Wiederaufnahme konnte nicht gestartet werden.',
+      'Subagent-Schwarm':'Subagent-Schwarm',
+      'Welle':'Welle',
+      'done':'fertig',
+      'error':'Fehler'
     });
     Object.assign(i18n.dictionaries.en, {
       'Mission':'Mission',
@@ -142,7 +146,11 @@
       'Wird erneut geprüft…':'Revalidating…',
       'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery state changed. Refreshing the view.',
       'Wiederaufnahme wurde angenommen.':'Recovery continuation accepted.',
-      'Wiederaufnahme konnte nicht gestartet werden.':'Recovery continuation could not be started.'
+      'Wiederaufnahme konnte nicht gestartet werden.':'Recovery continuation could not be started.',
+      'Subagent-Schwarm':'Subagent Swarm',
+      'Welle':'Wave',
+      'done':'done',
+      'error':'error'
     });
   }
 
@@ -467,6 +475,45 @@
   }
 
   const originalRenderInspector = renderInspector;
+  function buildSwarmRosterCard(agents, wave) {
+    const card = document.createElement('div');
+    card.className = 'output-card mission-status-card';
+    card.dataset.swarmRoster = '1';
+
+    const head = document.createElement('div');
+    head.className = 'mission-status-head';
+    const title = document.createElement('div');
+    title.className = 'mission-status-title';
+    title.textContent = `${tr('Subagent-Schwarm')} · Antigravity 2.0`;
+    const activeCount = agents.filter(a => a && a.status === 'running').length;
+    const badge = document.createElement('span');
+    badge.className = `mission-status-state ${activeCount > 0 ? 'running' : 'succeeded'}`;
+    badge.textContent = activeCount > 0 ? `${activeCount} ${tr('running')}` : `${tr('Welle')} ${int(wave || 1)} · ${agents.length}`;
+    head.append(title, badge);
+    card.appendChild(head);
+
+    for (const agent of agents.slice(-8)) {
+      const row = document.createElement('div');
+      row.className = 'mission-task';
+      const rHead = document.createElement('div');
+      rHead.className = 'mission-task-head';
+      const name = document.createElement('div');
+      name.className = 'mission-task-id';
+      name.textContent = `${agent.name || agent.id || 'worker'} · ${agent.role || 'subagent'}`;
+      const st = document.createElement('span');
+      st.className = 'mission-task-state';
+      const dur = int(agent.duration_ms);
+      st.textContent = dur > 0 ? `${stateLabel(agent.status || 'done')} · ${dur}ms` : stateLabel(agent.status || 'running');
+      rHead.append(name, st);
+      const sub = document.createElement('div');
+      sub.className = 'mission-task-sub';
+      sub.textContent = String(agent.summary || agent.task || '');
+      row.append(rHead, sub);
+      card.appendChild(row);
+    }
+    return card;
+  }
+
   renderInspector = function() {
     originalRenderInspector();
     if (state.rightTab !== 'outputs') return;
@@ -476,10 +523,17 @@
     body.querySelector('[data-mission-status]')?.remove();
     body.querySelector('[data-orchestration-diagnostics]')?.remove();
     body.querySelector('[data-mission-recovery]')?.remove();
+    body.querySelector('[data-swarm-roster]')?.remove();
 
     const diagnostics = state.status?.orchestration;
     if (diagnostics) {
       const card = buildDiagnosticsCard(diagnostics);
+      if (list) list.prepend(card);
+      else body.prepend(card);
+    }
+    const swarmAgents = state.status?.swarm_agents;
+    if (Array.isArray(swarmAgents) && swarmAgents.length > 0) {
+      const card = buildSwarmRosterCard(swarmAgents, state.status?.swarm_wave);
       if (list) list.prepend(card);
       else body.prepend(card);
     }

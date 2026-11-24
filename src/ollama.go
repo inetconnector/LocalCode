@@ -22,12 +22,13 @@ import (
 )
 
 type OllamaClient struct {
-	BaseURL       string
-	HTTP          *http.Client
-	ContextLength int
-	AuthToken     string
-	APIKey        string
-	CustomHeaders map[string]string
+	BaseURL               string
+	HTTP                  *http.Client
+	ContextLength         int
+	AuthToken             string
+	APIKey                string
+	CustomHeaders         map[string]string
+	NomaSupermodelEnabled bool
 }
 
 func (o *OllamaClient) applyAuth(req *http.Request) {
@@ -40,6 +41,11 @@ func (o *OllamaClient) applyAuth(req *http.Request) {
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if o.NomaSupermodelEnabled {
+		req.Header.Set("X-Noma-Supermodel", "1")
+	} else {
+		req.Header.Set("X-Noma-Supermodel", "0")
 	}
 	for k, v := range o.CustomHeaders {
 		req.Header.Set(k, v)
@@ -67,14 +73,15 @@ type OllamaMessage struct {
 }
 
 type OllamaChatRequest struct {
-	Model     string           `json:"model"`
-	Messages  []OllamaMessage  `json:"messages"`
-	Stream    bool             `json:"stream"`
-	Format    any              `json:"format,omitempty"`
-	Tools     []map[string]any `json:"tools,omitempty"`
-	Think     any              `json:"think,omitempty"`
-	KeepAlive string           `json:"keep_alive,omitempty"`
-	Options   map[string]any   `json:"options,omitempty"`
+	Model      string           `json:"model"`
+	Messages   []OllamaMessage  `json:"messages"`
+	Stream     bool             `json:"stream"`
+	Format     any              `json:"format,omitempty"`
+	Tools      []map[string]any `json:"tools,omitempty"`
+	Think      any              `json:"think,omitempty"`
+	KeepAlive  string           `json:"keep_alive,omitempty"`
+	Supermodel *bool            `json:"supermodel,omitempty"`
+	Options    map[string]any   `json:"options,omitempty"`
 }
 
 type OllamaChatResponse struct {
@@ -737,13 +744,15 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 		}, detectLocalVRAMMB())
 	}
 	numPredict := computeDynamicNumPredict(effectiveCtx)
+	supermodelFlag := o.NomaSupermodelEnabled
 	request := OllamaChatRequest{
-		Model:     model,
-		Messages:  messages,
-		Stream:    streamMode,
-		Format:    fastOllamaFormat(schema),
-		Think:     thinkingModeForModel(model),
-		KeepAlive: "30m",
+		Model:      model,
+		Messages:   messages,
+		Stream:     streamMode,
+		Format:     fastOllamaFormat(schema),
+		Think:      thinkingModeForModel(model),
+		KeepAlive:  "30m",
+		Supermodel: &supermodelFlag,
 		Options: map[string]any{
 			"temperature":    temperatureForContext(ctx, 0.1),
 			"top_p":          0.9,
