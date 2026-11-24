@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -76,6 +77,24 @@ func mcpToolDefinitions() []map[string]any {
 				"additionalProperties": false,
 			},
 		},
+		{
+			"name":        "localcode_push_status",
+			"description": "Return zero-secret count and provider breakdown of registered UnifiedPush/FCM/APNs mobile approval targets.",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{},
+				"additionalProperties": false,
+			},
+		},
+		{
+			"name":        "localcode_relay_status",
+			"description": "Return public metadata (active, session_id, fingerprint, expires_at) for any active E2EE outbound relay pairing without exposing secrets.",
+			"inputSchema": map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{},
+				"additionalProperties": false,
+			},
+		},
 	}
 }
 
@@ -134,6 +153,39 @@ func (s *Server) dispatchMCPToolCall(name string, args map[string]any) (map[stri
 		return inspectUploadedImageFrame(raw)
 	case "localcode_apk_update_info":
 		return buildAPKUpdateMetadata(), nil
+	case "localcode_push_status":
+		s.state.mu.RLock()
+		providers := map[string]int{}
+		for _, target := range s.state.PushTargets {
+			providers[string(target.Provider)]++
+		}
+		count := len(s.state.PushTargets)
+		s.state.mu.RUnlock()
+		return map[string]any{
+			"schema":           "localcode.push_status.v1",
+			"registered_count": count,
+			"providers":        providers,
+			"zero_secret":      true,
+		}, nil
+	case "localcode_relay_status":
+		s.state.mu.RLock()
+		rp := s.state.RelayPairing
+		s.state.mu.RUnlock()
+		now := time.Now().UTC()
+		if rp == nil || now.After(rp.ExpiresAt) {
+			return map[string]any{
+				"schema": "localcode.relay_status.v1",
+				"active": false,
+			}, nil
+		}
+		return map[string]any{
+			"schema":      "localcode.relay_status.v1",
+			"active":      true,
+			"session_id":  rp.SessionID,
+			"relay_url":   rp.RelayURL,
+			"fingerprint": rp.Fingerprint,
+			"expires_at":  rp.ExpiresAt,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown MCP tool %q", name)
 	}

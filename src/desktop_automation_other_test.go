@@ -36,4 +36,35 @@ func TestDesktopAutomationOtherSecurityGuardsAndParsers(t *testing.T) {
 	if len(linWins) != 1 || linWins[0].PID != 5678 || linWins[0].Title != "NomaMica Studio" {
 		t.Fatalf("unexpected Linux wmctrl parsed windows: %+v", linWins)
 	}
+
+	// 4. DesktopType safety validation & AppleScript escaping
+	if err := validateDesktopTypePayload(""); err == nil {
+		t.Fatalf("empty text should fail")
+	}
+	if err := validateDesktopTypePayload("abc\x00def"); err == nil {
+		t.Fatalf("NUL byte should fail")
+	}
+	if err := validateDesktopTypePayload(strings.Repeat("a", maxDesktopTypeChars+1)); err == nil {
+		t.Fatalf("oversized text should fail")
+	}
+	if err := validateDesktopTypePayload("safe text"); err != nil {
+		t.Fatalf("valid text failed: %v", err)
+	}
+	script := buildMacTypeScript(`Studio "Main"`, `hello "world"`)
+	if !strings.Contains(script, `\"Main\"`) || !strings.Contains(script, `\"world\"`) {
+		t.Fatalf("AppleScript escaping failed: %s", script)
+	}
+}
+
+func TestTrayManagerOtherGracefulStop(t *testing.T) {
+	tm := NewTrayManager("http://127.0.0.1:32145", "de", true)
+	done := make(chan error, 1)
+	go func() {
+		done <- tm.Run()
+	}()
+	tm.Stop()
+	tm.Stop() // idempotent double stop must not panic
+	if err := <-done; err != nil {
+		t.Fatalf("TrayManager.Run returned unexpected error: %v", err)
+	}
 }

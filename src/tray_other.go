@@ -7,6 +7,9 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 )
 
 var (
@@ -18,6 +21,8 @@ type TrayManager struct {
 	url            string
 	language       string
 	startMinimized bool
+	stopCh         chan struct{}
+	stopOnce       sync.Once
 }
 
 func NewTrayManager(url, language string, startMinimized bool) *TrayManager {
@@ -25,12 +30,22 @@ func NewTrayManager(url, language string, startMinimized bool) *TrayManager {
 		url:            url,
 		language:       language,
 		startMinimized: startMinimized,
+		stopCh:         make(chan struct{}),
 	}
 }
 
 func (tm *TrayManager) Run() error {
-	log.Printf("System tray is supported on Windows. Running in standard background mode.")
-	select {}
+	log.Printf("LocalCode headless background manager running for %s (SIGINT/SIGTERM aware).", tm.url)
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	select {
+	case <-tm.stopCh:
+		return nil
+	case sig := <-sigCh:
+		log.Printf("LocalCode background manager received signal %v, shutting down cleanly.", sig)
+		return nil
+	}
 }
 
 func (tm *TrayManager) OpenUI() {
@@ -50,7 +65,13 @@ func (tm *TrayManager) ExitApp() {
 	os.Exit(0)
 }
 
-func (tm *TrayManager) Stop() {}
+func (tm *TrayManager) Stop() {
+	tm.stopOnce.Do(func() {
+		if tm.stopCh != nil {
+			close(tm.stopCh)
+		}
+	})
+}
 
 func openBrowserMaximized(url string) error {
 	return openBrowser(url)

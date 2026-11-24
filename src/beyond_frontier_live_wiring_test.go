@@ -666,7 +666,7 @@ func TestLocalCodeMCPServerJSONRPC(t *testing.T) {
 		t.Fatalf("MCP initialize failed code=%d body=%s", initRec.Code, initRec.Body.String())
 	}
 
-	// 2. tools/list exposes all 5 LocalCode MCP tools
+	// 2. tools/list exposes all 7 LocalCode MCP tools
 	listRec := callMCP(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("MCP tools/list code=%d", listRec.Code)
@@ -677,6 +677,8 @@ func TestLocalCodeMCPServerJSONRPC(t *testing.T) {
 		"localcode_list_pty_sessions",
 		"localcode_verify_frame",
 		"localcode_apk_update_info",
+		"localcode_push_status",
+		"localcode_relay_status",
 	} {
 		if !strings.Contains(listRec.Body.String(), `"`+toolName+`"`) {
 			t.Fatalf("MCP tools/list missing %q: %s", toolName, listRec.Body.String())

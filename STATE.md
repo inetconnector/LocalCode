@@ -181,6 +181,11 @@ Reset, Clean, Commit oder Push.
 - **Wave-13 Cross-Platform Desktop-Automation (`macOS` & `Linux`) — 2026-11-24 Wave 13:**
   - `src/desktop_automation_other.go` & `src/desktop_automation_other_test.go`: Native `DesktopListWindows` (`osascript`/`wmctrl`) & `DesktopScreenshot` (`screencapture`/`grim`/`gnome-screenshot`/`scrot`/`import`) mit striktem `ensureWithinRoot`-Path-Containment, erweiterter Sperrliste (`Keychain Access`, `1Password`, `Bitwarden`, `KeePass`, `polkit`, `gnome-keyring`) und 0 Shell-Injection implementiert.
   - Verifikation Wave 13: Cross-OS `go vet ./...` & `go test -c .` für `linux/amd64` und `darwin/arm64` **100 % PASS** (`linux_vet=0 linux_testc=0 darwin_vet=0 darwin_testc=0`).
+- **Wave-14 Zero-Stub Cross-Platform Automation, Signal-Aware Tray & 7-Tool-MCP — 2026-11-24 Wave 14:**
+  - `src/desktop_automation_other.go` & `src/desktop_automation_other_test.go`: Alle verbliebenen macOS/Linux-Stubs (`DesktopInspect`, `DesktopClick`, `DesktopType`) durch echte, injection-freie `osascript`- (`appleScriptStringLiteral`) & `xdotool`/`xprop`-Implementierungen mit 4096-Zeichen-Limit, NUL-Byte-Sperre und Sicherheitsfenster-Blockade ersetzt.
+  - `src/tray_other.go`: Blockierendes `select {}` und leeres `Stop() {}` durch echtes `SIGINT`/`SIGTERM`- & `stopCh`-Graceful-Shutdown (`sync.Once`, `TestTrayManagerOtherGracefulStop`) ersetzt.
+  - `src/mcp_server.go`: Loopback MCP-Server auf **7 geheimnisfreie Tools** erweitert (`#6: localcode_push_status`, `#7: localcode_relay_status`).
+  - Verifikation Wave 14: `go test -race` + 15-Assertion-Live-Smoke **PASS** (`4.516s`), Cross-OS `linux/amd64` & `darwin/arm64` `go vet` & `go test -c` **PASS**, CGO-freie Windows-Binaries neu gebaut.
 
 ## Canonical project-directory guard / Kanonische Projektverzeichnisgrenze — 2026-11-20
 
