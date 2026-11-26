@@ -5,9 +5,11 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestWindowsPipeFallbackPTY(t *testing.T) {
@@ -43,4 +45,17 @@ func TestWindowsPipeFallbackPTY(t *testing.T) {
 	if code != 0 || !strings.Contains(out.String(), "pipe_ok_marker") {
 		t.Fatalf("pipe fallback code=%d out=%q", code, out.String())
 	}
+}
+
+func TestWindowsMicaCStringAndDesktopListWindows(t *testing.T) {
+	if got := cStringPtrToGoString(0); got != "" {
+		t.Fatalf("cStringPtrToGoString(0)=%q", got)
+	}
+	buf := append([]byte("mica-k0-test-version"), 0)
+	if got := cStringPtrToGoString(uintptr(unsafe.Pointer(&buf[0]))); got != "mica-k0-test-version" {
+		t.Fatalf("cStringPtrToGoString=%q", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = DesktopListWindows(ctx, defaultConfig())
 }

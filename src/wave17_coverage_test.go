@@ -834,3 +834,198 @@ func TestFrontierRelayLockscreenPushAndApplyPatchEdgeCases(t *testing.T) {
 		t.Fatalf("applyPatchToProject delete: %v", err)
 	}
 }
+
+func TestWave17ProvidersRemoteSupermodelAndHelpers(t *testing.T) {
+	state := newWave17TestState(t)
+	rs := NewRemoteServer(state)
+
+	// handleToggleSupermodel directly: 405, 400, 200 true/false
+	rr := httptest.NewRecorder()
+	rs.handleToggleSupermodel(rr, httptest.NewRequest(http.MethodGet, "/remote/api/toggle-supermodel", nil))
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET toggle-supermodel status=%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	rs.handleToggleSupermodel(rr, httptest.NewRequest(http.MethodPost, "/remote/api/toggle-supermodel", strings.NewReader("{bad")))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad JSON toggle-supermodel status=%d", rr.Code)
+	}
+	for _, enabled := range []bool{true, false} {
+		body, _ := json.Marshal(map[string]bool{"enabled": enabled})
+		rr = httptest.NewRecorder()
+		rs.handleToggleSupermodel(rr, httptest.NewRequest(http.MethodPost, "/remote/api/toggle-supermodel", bytes.NewReader(body)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("POST toggle-supermodel(%v) status=%d body=%s", enabled, rr.Code, rr.Body.String())
+		}
+	}
+
+	// AgentFactory.RoleProfile
+	factory := NewAgentFactory()
+	if prof, ok := factory.RoleProfile(AgentRoleExplorer); !ok || len(prof.AllowedCapabilities) == 0 {
+		t.Fatalf("expected explorer role profile, got ok=%v prof=%+v", ok, prof)
+	}
+	if _, ok := factory.RoleProfile(AgentRole("nonexistent")); ok {
+		t.Fatal("unknown role should return false")
+	}
+
+	// ReplayWindow.CheckAndAccept
+	rw := NewReplayWindow()
+	if err := rw.CheckAndAccept(1); err != nil {
+		t.Fatalf("seq 1 failed: %v", err)
+	}
+	if err := rw.CheckAndAccept(1); err == nil {
+		t.Fatal("duplicate seq 1 must be rejected")
+	}
+	if err := rw.CheckAndAccept(2); err != nil {
+		t.Fatalf("seq 2 failed: %v", err)
+	}
+
+	// isAllowedReadOnlyPath
+	roDir := t.TempDir()
+	roCanon, _ := canonicalSandboxPath(roDir)
+	if isAllowedReadOnlyPath(filepath.Join(roDir, "a.txt"), nil) {
+		t.Fatal("empty readOnlyCanon must return false")
+	}
+	if !isAllowedReadOnlyPath(filepath.Join(roDir, "a.txt"), []string{roCanon}) {
+		t.Fatal("file inside readOnlyCanon must return true")
+	}
+	if isAllowedReadOnlyPath(t.TempDir(), []string{roCanon}) {
+		t.Fatal("unrelated dir must return false")
+	}
+
+	// stripHopByHopHeaders
+	hdr := http.Header{
+		"Connection":   []string{"keep-alive, X-Custom-Hop"},
+		"Keep-Alive":   []string{"timeout=5"},
+		"X-Custom-Hop": []string{"drop-me"},
+		"X-Keep":       []string{"preserve"},
+	}
+	stripHopByHopHeaders(hdr)
+	if hdr.Get("X-Keep") != "preserve" || hdr.Get("Keep-Alive") != "" || hdr.Get("X-Custom-Hop") != "" {
+		t.Fatalf("unexpected headers after stripHopByHopHeaders: %v", hdr)
+	}
+
+	// MissionRecoveryControlSnapshot error path on clean temp config
+	if _, err := state.MissionRecoveryControlSnapshot("missing-run-id"); err == nil {
+		t.Fatal("missing run id must error")
+	}
+
+	// OllamaClient.Tags & EnsureVisionModel against mock server
+	mockTagsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/api/tags") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{
+					{"name": "gemma3:4b", "size": 3000000000},
+					{"name": "qwen2.5-coder:14b", "size": 9000000000},
+				},
+			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/api/show") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"capabilities": []string{"completion", "vision"},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockTagsSrv.Close()
+	oc := NewOllamaClient()
+	oc.BaseURL = mockTagsSrv.URL
+	models, err := oc.Tags(context.Background())
+	if err != nil || len(models) != 2 {
+		t.Fatalf("OllamaClient.Tags err=%v models=%+v", err, models)
+	}
+	if vm, _, err := oc.EnsureVisionModel(context.Background()); err != nil || vm == "" {
+		t.Fatalf("EnsureVisionModel err=%v vm=%q", err, vm)
+	}
+
+	// OpenAI Chat + Responses, Anthropic, and Gemini Complete() against mock servers
+	oaiChatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/responses") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "resp_1",
+				"model":  "gpt-5",
+				"status": "completed",
+				"output": []map[string]any{
+					{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "responses ok"}}},
+					{"type": "function_call", "call_id": "fc_1", "name": "read_file", "arguments": `{"path":"a.go"}`},
+				},
+				"usage": map[string]any{"input_tokens": 12, "output_tokens": 8, "total_tokens": 20},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":    "chat_1",
+			"model": "gpt-5",
+			"choices": []map[string]any{
+				{
+					"finish_reason": "tool_calls",
+					"message": map[string]any{
+						"role":    "assistant",
+						"content": "chat ok",
+						"tool_calls": []map[string]any{
+							{"id": "call_1", "type": "function", "function": map[string]any{"name": "read_file", "arguments": `{"path":"b.go"}`}},
+						},
+					},
+				},
+			},
+			"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+		})
+	}))
+	defer oaiChatSrv.Close()
+
+	oai := NewOpenAIProvider("test-key", oaiChatSrv.URL)
+	if r, err := oai.Complete(context.Background(), InferenceRequest{Model: "gpt-5", Messages: []ProviderMessage{{Role: "user", Content: "hi"}}}); err != nil || r.Content != "chat ok" || len(r.ToolCalls) != 1 {
+		t.Fatalf("OpenAI Chat Complete err=%v r=%+v", err, r)
+	}
+	if r, err := oai.Complete(context.Background(), InferenceRequest{Model: "gpt-5", UseResponsesAPI: true, Messages: []ProviderMessage{{Role: "user", Content: "hi"}}}); err != nil || r.Content != "responses ok" || len(r.ToolCalls) != 1 {
+		t.Fatalf("OpenAI Responses Complete err=%v r=%+v", err, r)
+	}
+
+	anthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg_1",
+			"model":       "claude-sonnet-test",
+			"stop_reason": "tool_use",
+			"content": []map[string]any{
+				{"type": "thinking", "thinking": "checking"},
+				{"type": "text", "text": "anthropic ok"},
+				{"type": "tool_use", "id": "tu_1", "name": "read_file", "input": map[string]any{"path": "c.go"}},
+			},
+			"usage": map[string]any{"input_tokens": 20, "output_tokens": 10, "cache_read_input_tokens": 5},
+		})
+	}))
+	defer anthSrv.Close()
+	anth := NewAnthropicProvider("test-key", anthSrv.URL)
+	if r, err := anth.Complete(context.Background(), InferenceRequest{Model: "claude-sonnet-test", SystemPrompt: "sys", Messages: []ProviderMessage{{Role: "user", Content: "hi"}}}); err != nil || r.Content != "anthropic ok" || len(r.ToolCalls) != 1 {
+		t.Fatalf("Anthropic Complete err=%v r=%+v", err, r)
+	}
+
+	gemSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"candidates": []map[string]any{
+				{
+					"finishReason": "STOP",
+					"content": map[string]any{
+						"role": "model",
+						"parts": []map[string]any{
+							{"text": "gemini ok"},
+							{"functionCall": map[string]any{"name": "read_file", "args": map[string]any{"path": "d.go"}}},
+						},
+					},
+				},
+			},
+			"usageMetadata": map[string]any{"promptTokenCount": 14, "candidatesTokenCount": 6, "totalTokenCount": 20},
+		})
+	}))
+	defer gemSrv.Close()
+	gem := NewGeminiProvider("test-key", gemSrv.URL)
+	if r, err := gem.Complete(context.Background(), InferenceRequest{Model: "gemini-2.5-pro", SystemPrompt: "sys", Messages: []ProviderMessage{{Role: "user", Content: "hi"}}}); err != nil || r.Content != "gemini ok" || len(r.ToolCalls) != 1 {
+		t.Fatalf("Gemini Complete err=%v r=%+v", err, r)
+	}
+}
