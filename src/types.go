@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"log"
 	"path/filepath"
 	"strings"
@@ -64,67 +66,74 @@ type Config struct {
 	RemoteAndroidUpdateFeedURL string            `json:"remote_android_update_feed_url,omitempty"`
 	RemoteDevices              []RemoteDevice    `json:"remote_devices,omitempty"`
 
-	OllamaURL                         string  `json:"ollama_url"`
-	SetupDownloadsEnabled             bool    `json:"setup_downloads_enabled"`
-	OllamaAutoInstall                 bool    `json:"ollama_auto_install"`
-	OllamaAutoPull                    bool    `json:"ollama_auto_pull"`
-	OllamaDefaultModel                string  `json:"ollama_default_model"`
-	ComputeMeshEnabled                bool    `json:"computemesh_enabled"`
-	ComputeMeshURL                    string  `json:"computemesh_url"`
-	ComputeMeshAPIKey                 string  `json:"computemesh_api_key"`
-	ComputeMeshLocalNodeURL           string  `json:"computemesh_local_node_url"`
-	ComputeMeshAutoDetect             bool    `json:"computemesh_auto_detect"`
-	EditingEngine                     string  `json:"editing_engine"` // native | aider | claude | opencode | claw
-	AiderEnabled                      bool    `json:"aider_enabled"`
-	AiderAutoInstall                  bool    `json:"aider_auto_install"`
-	AiderVersion                      string  `json:"aider_version"`
-	AiderExecutable                   string  `json:"aider_executable,omitempty"`
-	AiderMainModel                    string  `json:"aider_main_model,omitempty"`
-	AiderArchitectMode                bool    `json:"aider_architect_mode"`
-	AiderArchitectModel               string  `json:"aider_architect_model,omitempty"`
-	AiderEditorModel                  string  `json:"aider_editor_model,omitempty"`
-	AiderEditFormat                   string  `json:"aider_edit_format"`
-	AiderEditorEditFormat             string  `json:"aider_editor_edit_format"`
-	AiderMapTokens                    int     `json:"aider_map_tokens"`
-	AiderMaxChatHistoryTokens         int     `json:"aider_max_chat_history_tokens"`
-	AiderAutoLint                     bool    `json:"aider_auto_lint"`
-	AiderAutoTest                     bool    `json:"aider_auto_test"`
-	AiderLintCommand                  string  `json:"aider_lint_command,omitempty"`
-	AiderTestCommand                  string  `json:"aider_test_command,omitempty"`
-	AiderUseGit                       bool    `json:"aider_use_git"`
-	AiderAutoCommits                  bool    `json:"aider_auto_commits"`
-	ClaudeCodeEnabled                 bool    `json:"claude_code_enabled"`
-	ClaudeCodeAutoInstall             bool    `json:"claude_code_auto_install"`
-	ClaudeCodeChannel                 string  `json:"claude_code_channel"`
-	ClaudeCodeExecutable              string  `json:"claude_code_executable,omitempty"`
-	ClaudeCodeModel                   string  `json:"claude_code_model,omitempty"`
-	ClaudeCodePermissionMode          string  `json:"claude_code_permission_mode"`
-	ClaudeCodeMaxTurns                int     `json:"claude_code_max_turns"`
-	OpenCodeEnabled                   bool    `json:"opencode_enabled"`
-	OpenCodeAutoInstall               bool    `json:"opencode_auto_install"`
-	OpenCodeVersion                   string  `json:"opencode_version"`
-	OpenCodeExecutable                string  `json:"opencode_executable,omitempty"`
-	OpenCodeModel                     string  `json:"opencode_model,omitempty"`
-	OpenCodeAgent                     string  `json:"opencode_agent,omitempty"`
-	OpenCodeAutoApprove               bool    `json:"opencode_auto_approve"`
-	ContextLength                     int     `json:"context_length"`
-	ContextCompactionEnabled          bool    `json:"context_compaction_enabled"`
-	ContextCompactionThresholdPercent int     `json:"context_compaction_threshold_percent"`
-	ContextCompactionKeepRecent       int     `json:"context_compaction_keep_recent"`
-	MaxAgentSteps                     int     `json:"max_agent_steps"`
-	CommandTimeout                    int     `json:"command_timeout_seconds"`
-	ModelTimeout                      int     `json:"model_timeout_seconds"`
-	ApprovalMode                      string  `json:"approval_mode"` // strict | balanced | auto | dangerous
-	SandboxMode                       string  `json:"sandbox_mode"`  // project | workspace | unrestricted
-	NetworkEnabled                    bool    `json:"network_enabled"`
-	WebSearchProvider                 string  `json:"web_search_provider"` // disabled | duckduckgo | ollama
-	WebSearchAPIKeyEnv                string  `json:"web_search_api_key_env"`
-	WebSearchMaxResults               int     `json:"web_search_max_results"`
-	WebFetchMaxBytes                  int64   `json:"web_fetch_max_bytes"`
-	ImageGeneratorProvider            string  `json:"image_generator_provider"` // disabled | automatic1111
-	ImageGeneratorURL                 string  `json:"image_generator_url"`
-	ImageGeneratorSteps               int     `json:"image_generator_steps"`
-	ImageGeneratorCFGScale            float64 `json:"image_generator_cfg_scale"`
+	OllamaURL                         string   `json:"ollama_url"`
+	NomaSupermodelEnabled             bool     `json:"noma_supermodel_enabled"`
+	SetupDownloadsEnabled             bool     `json:"setup_downloads_enabled"`
+	OllamaAutoInstall                 bool     `json:"ollama_auto_install"`
+	OllamaAutoPull                    bool     `json:"ollama_auto_pull"`
+	OllamaDefaultModel                string   `json:"ollama_default_model"`
+	ComputeMeshEnabled                bool     `json:"computemesh_enabled"`
+	ComputeMeshURL                    string   `json:"computemesh_url"`
+	ComputeMeshAPIKey                 string   `json:"computemesh_api_key"`
+	ComputeMeshLocalNodeURL           string   `json:"computemesh_local_node_url"`
+	ComputeMeshAutoDetect             bool     `json:"computemesh_auto_detect"`
+	EditingEngine                     string   `json:"editing_engine"` // native | aider | claude | opencode | claw
+	AiderEnabled                      bool     `json:"aider_enabled"`
+	AiderAutoInstall                  bool     `json:"aider_auto_install"`
+	AiderVersion                      string   `json:"aider_version"`
+	AiderExecutable                   string   `json:"aider_executable,omitempty"`
+	AiderMainModel                    string   `json:"aider_main_model,omitempty"`
+	AiderArchitectMode                bool     `json:"aider_architect_mode"`
+	AiderArchitectModel               string   `json:"aider_architect_model,omitempty"`
+	AiderEditorModel                  string   `json:"aider_editor_model,omitempty"`
+	AiderEditFormat                   string   `json:"aider_edit_format"`
+	AiderEditorEditFormat             string   `json:"aider_editor_edit_format"`
+	AiderMapTokens                    int      `json:"aider_map_tokens"`
+	AiderMaxChatHistoryTokens         int      `json:"aider_max_chat_history_tokens"`
+	AiderAutoLint                     bool     `json:"aider_auto_lint"`
+	AiderAutoTest                     bool     `json:"aider_auto_test"`
+	AiderLintCommand                  string   `json:"aider_lint_command,omitempty"`
+	AiderTestCommand                  string   `json:"aider_test_command,omitempty"`
+	AiderUseGit                       bool     `json:"aider_use_git"`
+	AiderAutoCommits                  bool     `json:"aider_auto_commits"`
+	ClaudeCodeEnabled                 bool     `json:"claude_code_enabled"`
+	ClaudeCodeAutoInstall             bool     `json:"claude_code_auto_install"`
+	ClaudeCodeChannel                 string   `json:"claude_code_channel"`
+	ClaudeCodeExecutable              string   `json:"claude_code_executable,omitempty"`
+	ClaudeCodeModel                   string   `json:"claude_code_model,omitempty"`
+	ClaudeCodePermissionMode          string   `json:"claude_code_permission_mode"`
+	ClaudeCodeMaxTurns                int      `json:"claude_code_max_turns"`
+	OpenCodeEnabled                   bool     `json:"opencode_enabled"`
+	OpenCodeAutoInstall               bool     `json:"opencode_auto_install"`
+	OpenCodeVersion                   string   `json:"opencode_version"`
+	OpenCodeExecutable                string   `json:"opencode_executable,omitempty"`
+	OpenCodeModel                     string   `json:"opencode_model,omitempty"`
+	OpenCodeAgent                     string   `json:"opencode_agent,omitempty"`
+	OpenCodeAutoApprove               bool     `json:"opencode_auto_approve"`
+	ContextLength                     int      `json:"context_length"`
+	ContextCompactionEnabled          bool     `json:"context_compaction_enabled"`
+	ContextCompactionThresholdPercent int      `json:"context_compaction_threshold_percent"`
+	ContextCompactionKeepRecent       int      `json:"context_compaction_keep_recent"`
+	MaxAgentSteps                     int      `json:"max_agent_steps"`
+	CommandTimeout                    int      `json:"command_timeout_seconds"`
+	ModelTimeout                      int      `json:"model_timeout_seconds"`
+	ApprovalMode                      string   `json:"approval_mode"` // strict | balanced | auto | dangerous
+	SandboxMode                       string   `json:"sandbox_mode"`  // project | workspace | unrestricted
+	OSSandboxEnabled                  bool     `json:"os_sandbox_enabled"`
+	SandboxAllowedDomains             []string `json:"sandbox_allowed_domains,omitempty"`
+	SandboxDeniedDomains              []string `json:"sandbox_denied_domains,omitempty"`
+	NetworkEnabled                    bool     `json:"network_enabled"`
+	InferenceProvider                 string   `json:"inference_provider,omitempty"` // auto | ollama | llamacpp | anthropic | openai | gemini
+	PromptCachingEnabled              bool     `json:"prompt_caching_enabled"`
+	ReasoningEffort                   string   `json:"reasoning_effort,omitempty"` // low | medium | high
+	WebSearchProvider                 string   `json:"web_search_provider"`        // disabled | duckduckgo | ollama
+	WebSearchAPIKeyEnv                string   `json:"web_search_api_key_env"`
+	WebSearchMaxResults               int      `json:"web_search_max_results"`
+	WebFetchMaxBytes                  int64    `json:"web_fetch_max_bytes"`
+	ImageGeneratorProvider            string   `json:"image_generator_provider"` // disabled | automatic1111
+	ImageGeneratorURL                 string   `json:"image_generator_url"`
+	ImageGeneratorSteps               int      `json:"image_generator_steps"`
+	ImageGeneratorCFGScale            float64  `json:"image_generator_cfg_scale"`
 
 	GitEnabled        bool   `json:"git_enabled"`
 	AutoStateUpdate   bool   `json:"auto_state_update"`
@@ -208,43 +217,62 @@ type ModelInfo struct {
 	ModifiedAt string `json:"modified_at,omitempty"`
 }
 
+type SwarmSubagentEntry struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Status      string `json:"status"` // running | completed | failed
+	Wave        int    `json:"wave"`
+	Task        string `json:"task,omitempty"`
+	Workspace   string `json:"workspace,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Summary     string `json:"summary,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	DurationMs  int64  `json:"duration_ms,omitempty"`
+}
+
 type Status struct {
-	Version              string      `json:"version"`
-	OllamaOnline         bool        `json:"ollama_online"`
-	OllamaURL            string      `json:"ollama_url,omitempty"`
-	OllamaError          string      `json:"ollama_error,omitempty"`
-	ComputeMeshOnline    bool        `json:"computemesh_online"`
-	ComputeMeshURL       string      `json:"computemesh_url,omitempty"`
-	ComputeMeshNode      string      `json:"computemesh_node,omitempty"`
-	ComputeMeshGPU       string      `json:"computemesh_gpu,omitempty"`
-	ComputeMeshVRAM      string      `json:"computemesh_vram,omitempty"`
-	ComputeMeshKeyMasked string      `json:"computemesh_key_masked,omitempty"`
-	ComputeMeshError     string      `json:"computemesh_error,omitempty"`
-	EditingEngine        string      `json:"editing_engine"`
-	AiderInstalled       bool        `json:"aider_installed"`
-	AiderVersion         string      `json:"aider_version,omitempty"`
-	EngineInstalled      bool        `json:"engine_installed"`
-	EngineVersion        string      `json:"engine_version,omitempty"`
-	EngineExecutable     string      `json:"engine_executable,omitempty"`
-	EngineAuthenticated  bool        `json:"engine_authenticated"`
-	EngineError          string      `json:"engine_error,omitempty"`
-	Models               []ModelInfo `json:"models"`
-	SelectedModel        string      `json:"selected_model"`
-	GPU                  string      `json:"gpu,omitempty"`
-	RootDir              string      `json:"root_dir"`
-	Project              string      `json:"project,omitempty"`
-	Running              bool        `json:"running"`
-	RunningProjects      []string    `json:"running_projects,omitempty"`
-	ActiveRunsCount      int         `json:"active_runs_count,omitempty"`
-	GitAvailable         bool        `json:"git_available"`
-	MCPCount             int         `json:"mcp_count"`
-	RunID                string      `json:"run_id,omitempty"`
-	RunPhase             string      `json:"run_phase,omitempty"`
-	RunStartedAt         time.Time   `json:"run_started_at,omitempty"`
-	LastProgressAt       time.Time   `json:"last_progress_at,omitempty"`
-	ResolvedLanguage     string      `json:"resolved_language"`
-	SystemLanguage       string      `json:"system_language"`
-	SupportedLanguages   []string    `json:"supported_languages"`
+	Version               string               `json:"version"`
+	OllamaOnline          bool                 `json:"ollama_online"`
+	OllamaURL             string               `json:"ollama_url,omitempty"`
+	OllamaError           string               `json:"ollama_error,omitempty"`
+	NomaSupermodelEnabled bool                 `json:"noma_supermodel_enabled"`
+	SwarmWave             int                  `json:"swarm_wave,omitempty"`
+	SwarmActiveCount      int                  `json:"swarm_active_count,omitempty"`
+	SwarmAgents           []SwarmSubagentEntry `json:"swarm_agents,omitempty"`
+	ComputeMeshOnline     bool                 `json:"computemesh_online"`
+	ComputeMeshURL        string               `json:"computemesh_url,omitempty"`
+	ComputeMeshNode       string               `json:"computemesh_node,omitempty"`
+	ComputeMeshGPU        string               `json:"computemesh_gpu,omitempty"`
+	ComputeMeshVRAM       string               `json:"computemesh_vram,omitempty"`
+	ComputeMeshKeyMasked  string               `json:"computemesh_key_masked,omitempty"`
+	ComputeMeshError      string               `json:"computemesh_error,omitempty"`
+	EditingEngine         string               `json:"editing_engine"`
+	AiderInstalled        bool                 `json:"aider_installed"`
+	AiderVersion          string               `json:"aider_version,omitempty"`
+	EngineInstalled       bool                 `json:"engine_installed"`
+	EngineVersion         string               `json:"engine_version,omitempty"`
+	EngineExecutable      string               `json:"engine_executable,omitempty"`
+	EngineAuthenticated   bool                 `json:"engine_authenticated"`
+	EngineError           string               `json:"engine_error,omitempty"`
+	Models                []ModelInfo          `json:"models"`
+	SelectedModel         string               `json:"selected_model"`
+	GPU                   string               `json:"gpu,omitempty"`
+	RootDir               string               `json:"root_dir"`
+	Project               string               `json:"project,omitempty"`
+	Running               bool                 `json:"running"`
+	RunningProjects       []string             `json:"running_projects,omitempty"`
+	ActiveRunsCount       int                  `json:"active_runs_count,omitempty"`
+	GitAvailable          bool                 `json:"git_available"`
+	MCPCount              int                  `json:"mcp_count"`
+	RunID                 string               `json:"run_id,omitempty"`
+	RunPhase              string               `json:"run_phase,omitempty"`
+	RunStartedAt          time.Time            `json:"run_started_at,omitempty"`
+	LastProgressAt        time.Time            `json:"last_progress_at,omitempty"`
+	ResolvedLanguage      string               `json:"resolved_language"`
+	SystemLanguage        string               `json:"system_language"`
+	SupportedLanguages    []string             `json:"supported_languages"`
 }
 
 type UIEvent struct {
@@ -295,14 +323,18 @@ type AppState struct {
 	RunStartedAt     time.Time
 	LastProgressAt   time.Time
 	LiveStreamText   string
+	LiveThinking     string
 	LiveStreamTokens int
 	LiveStreamTPS    float64
+	LiveUsage        UsageMetrics
+	PendingToolCalls []ToolCall
 	Recovery         *RunRecoveryState
 	Steering         agentSteeringState
 
 	Events                []UIEvent
 	Pending               *PendingAction
 	Continuation          *AgentContinuation
+	DiffHunkDecisions     map[string]DiffHunkDecision
 	Threads               map[string]*ChatThread
 	CurrentThread         string
 	RemoteListenAddr      string
@@ -312,6 +344,12 @@ type AppState struct {
 	ActiveRuns            map[string]*ActiveAgentRun
 	RunningProjects       map[string]int
 	PendingRemotePairings map[string]*PendingRemotePairing
+	SwarmWave             int
+	SwarmAgents           []SwarmSubagentEntry
+	PTY                   *PTYManager
+	LockscreenTokens      *LockscreenActionTokenManager
+	RelayPairing          *ActiveRelayPairingState
+	PushTargets           map[string]PushTarget
 
 	LastTask         string
 	LastSummary      string
@@ -356,6 +394,9 @@ type PendingRemotePairing struct {
 }
 
 func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
+	if ollama != nil {
+		ollama.NomaSupermodelEnabled = cfg.NomaSupermodelEnabled
+	}
 	threads := loadThreads()
 	recovery := loadRecoverableRun()
 	state := &AppState{
@@ -369,6 +410,7 @@ func NewAppState(cfg Config, ollama *OllamaClient) *AppState {
 		PendingRemotePairings: make(map[string]*PendingRemotePairing),
 		ActiveRuns:            make(map[string]*ActiveAgentRun),
 		RunningProjects:       make(map[string]int),
+		PushTargets:           make(map[string]PushTarget),
 		threadSaveCh:          make(chan map[string]*ChatThread, 1),
 		threadSaveStop:        make(chan struct{}),
 		threadSaveDone:        make(chan struct{}),
@@ -701,11 +743,72 @@ func (s *AppState) threadSaveWorker() {
 	}
 }
 
+// ActiveRelayPairingState holds public-facing metadata of the active E2EE relay pairing session.
+// Ephemeral private ECDH keys, auth secrets, and the live outbound bridge stay strictly in memory
+// (unexported, never serialized to JSON or disk).
+type ActiveRelayPairingState struct {
+	SessionID   string                  `json:"session_id"`
+	RelayURL    string                  `json:"relay_url"`
+	PairingURI  string                  `json:"pairing_uri"`
+	Fingerprint string                  `json:"fingerprint"`
+	CreatedAt   time.Time               `json:"created_at"`
+	ExpiresAt   time.Time               `json:"expires_at"`
+	TunnelLive  bool                    `json:"tunnel_live"`
+	privateKey  *ecdh.PrivateKey        `json:"-"`
+	authSecret  []byte                  `json:"-"`
+	bridge      *RelayWorkstationBridge `json:"-"`
+}
+
+// EnsureLockscreenTokenManager lazily initializes the cryptographic single-use token
+// manager used for out-of-band lockscreen approval actions.
+func (s *AppState) EnsureLockscreenTokenManager() (*LockscreenActionTokenManager, error) {
+	if s == nil {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.LockscreenTokens == nil {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return nil, err
+		}
+		mgr, err := NewLockscreenActionTokenManager(key, LockscreenActionTokenDefaultTTL)
+		if err != nil {
+			return nil, err
+		}
+		s.LockscreenTokens = mgr
+	}
+	return s.LockscreenTokens, nil
+}
+
+// EnsurePTYManager lazily initializes the workspace-bounded PTYManager for AppState.
+func (s *AppState) EnsurePTYManager() *PTYManager {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.PTY == nil {
+		s.PTY = NewPTYManager(s.Config.RootProjectDir)
+	}
+	return s.PTY
+}
+
 // Close flushes the newest queued chat snapshot and stops the persistence
-// worker. It is safe to call more than once.
+// worker and active PTY sessions. It is safe to call more than once.
 func (s *AppState) Close() {
 	defaultMCPManager.Close()
-	if s == nil || s.threadSaveStop == nil || s.threadSaveDone == nil {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	pty := s.PTY
+	s.PTY = nil
+	s.mu.Unlock()
+	if pty != nil {
+		pty.CloseAll()
+	}
+	if s.threadSaveStop == nil || s.threadSaveDone == nil {
 		return
 	}
 	s.threadSaveCloseOnce.Do(func() {

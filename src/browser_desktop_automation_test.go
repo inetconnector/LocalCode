@@ -238,3 +238,52 @@ func TestBrowserFallbackScreenshot(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserScreenshotRejectsPathTraversal(t *testing.T) {
+	base := t.TempDir()
+	project := filepath.Join(base, "project")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{}
+	cases := []struct {
+		name string
+		dest string
+	}{
+		{"relative parent traversal", filepath.Join("..", "outside", "escape.png")},
+		{"absolute outside path", filepath.Join(outside, "escape-abs.png")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := BrowserScreenshot(context.Background(), cfg, project, "https://example.com", tc.dest)
+			if err == nil {
+				t.Fatalf("expected path traversal error for destination %q, got nil", tc.dest)
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), "escapes") && !strings.Contains(strings.ToLower(err.Error()), "invalid") {
+				t.Fatalf("expected sandbox escape error for %q, got: %v", tc.dest, err)
+			}
+		})
+	}
+}
+
+func TestBrowserClickAndTypeFailWithoutPlaywrightMCP(t *testing.T) {
+	cfg := Config{}
+	project := t.TempDir()
+
+	if out, err := BrowserClick(context.Background(), cfg, project, "#submit"); err == nil {
+		t.Fatalf("expected BrowserClick without Playwright MCP to return error, got output=%q", out)
+	} else if !strings.Contains(err.Error(), "Playwright MCP") {
+		t.Fatalf("expected BrowserClick error to mention Playwright MCP, got: %v", err)
+	}
+
+	if out, err := BrowserType(context.Background(), cfg, project, "#search", "hello"); err == nil {
+		t.Fatalf("expected BrowserType without Playwright MCP to return error, got output=%q", out)
+	} else if !strings.Contains(err.Error(), "Playwright MCP") {
+		t.Fatalf("expected BrowserType error to mention Playwright MCP, got: %v", err)
+	}
+}

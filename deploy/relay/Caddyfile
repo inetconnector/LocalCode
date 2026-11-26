@@ -1,0 +1,13 @@
+# Replace relay.example.com with your domain (e.g. relay.inetconnector.com)
+{$RELAY_DOMAIN:relay.example.com} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+	reverse_proxy localcode-relay:8443 {
+		flush_interval -1
+	}
+}

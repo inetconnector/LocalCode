@@ -39,6 +39,7 @@ func NewServer(state *AppState) *Server {
 func (s *Server) routes() {
 	sub, _ := fs.Sub(staticFS, "static")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
+	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/api/ping", s.handlePing)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/mission-recovery", s.handleMissionRecovery)
@@ -56,6 +57,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/browse-root", s.handleBrowseRoot)
 	s.mux.HandleFunc("/api/reset-root", s.handleResetRoot)
 	s.mux.HandleFunc("/api/chat", s.handleChat)
+	s.mux.HandleFunc("/api/chat/runs", s.handleChatRunsSSE)
+	s.mux.HandleFunc("/api/providers/status", s.handleProvidersStatus)
+	s.mux.HandleFunc("/api/relay/status", s.handleRelayStatus)
+	s.mux.HandleFunc("/api/relay/pair", s.handleRelayPair)
+	s.mux.HandleFunc("/api/relay/attach-peer", s.handleRelayAttachPeer)
+	s.mux.HandleFunc("/api/diff/hunk", s.handleDiffHunk)
+	s.mux.HandleFunc("/api/diff/hunks", s.handleDiffHunk)
+	s.mux.HandleFunc("/api/push/lockscreen-token", s.handleIssueLockscreenToken)
+	s.mux.HandleFunc("/api/push/register-endpoint", s.handleRegisterPushEndpoint)
+	s.mux.HandleFunc("/api/push/notify-approval", s.handleNotifyApprovalPush)
+	s.mux.HandleFunc("/api/vision/verify-frame", s.handleVerifyFrame)
+	s.mux.HandleFunc("/mcp", s.handleMCPServer)
 	s.mux.HandleFunc("/api/threads", s.handleThreads)
 	s.mux.HandleFunc("/api/new-chat", s.handleNewChat)
 	s.mux.HandleFunc("/api/select-chat", s.handleSelectChat)
@@ -74,6 +87,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 	s.mux.HandleFunc("/api/remote/pairing", s.handleRemotePairing)
+	s.mux.HandleFunc("/api/remote/tunnel", s.handleRemoteTunnel)
 	s.mux.HandleFunc("/api/remote/pairing/decision", s.handleRemotePairingDecision)
 	s.mux.HandleFunc("/api/remote/pairing/pending", s.handleRemotePairingPending)
 	s.mux.HandleFunc("/api/remote/devices", s.handleRemoteDevices)
@@ -104,6 +118,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/adb/devices", s.handleADBDevices)
 	s.mux.HandleFunc("/api/adb/deploy", s.handleADBDeploy)
 	s.mux.HandleFunc("/api/adb/action", s.handleADBAction)
+	RegisterPTYRoutes(s.mux, s.state.EnsurePTYManager())
 }
 
 func loopbackRequestHost(value string) bool {
@@ -164,13 +179,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+var localCodeCapabilities = []string{
+	"stop-task-v1",
+	"steering-v1",
+	"pty-v1",
+	"apply-patch-v1",
+	"os-sandbox-v1",
+	"chat-runs-sse-v1",
+	"native-providers-v1",
+	"e2ee-relay-v1",
+	"push-lockscreen-v1",
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"status":       "ok",
+		"app":          "LocalCode",
+		"version":      version,
+		"license":      "Apache-2.0",
+		"capabilities": localCodeCapabilities,
+	})
+}
+
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0", "capabilities": []string{"stop-task-v1", "steering-v1"}})
+	_ = writeJSON(w, map[string]any{"app": "LocalCode", "version": version, "license": "Apache-2.0", "capabilities": localCodeCapabilities})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -183,28 +225,33 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	models, err := s.state.Ollama.Tags(ctx)
 	s.state.mu.RLock()
 	cfg := s.state.Config
+	swarmWave, swarmActive, swarmAgents := s.state.snapshotSwarmRosterLocked()
 	st := Status{
-		Version:            version,
-		EditingEngine:      cfg.EditingEngine,
-		OllamaOnline:       err == nil,
-		OllamaURL:          s.state.Ollama.BaseURL,
-		Models:             models,
-		SelectedModel:      s.state.Model,
-		GPU:                detectGPU(),
-		RootDir:            cfg.RootProjectDir,
-		Project:            s.state.Project,
-		Running:            s.state.Running,
-		RunningProjects:    s.state.GetRunningProjectsLocked(),
-		ActiveRunsCount:    len(s.state.ActiveRuns),
-		GitAvailable:       gitAvailable(s.state.Project, cfg),
-		MCPCount:           enabledMCPCount(cfg),
-		RunID:              s.state.RunID,
-		RunPhase:           s.state.RunPhase,
-		RunStartedAt:       s.state.RunStartedAt,
-		LastProgressAt:     s.state.LastProgressAt,
-		ResolvedLanguage:   resolvedLanguage(cfg),
-		SystemLanguage:     detectSystemLanguage(),
-		SupportedLanguages: append([]string(nil), supportedLanguages...),
+		Version:               version,
+		EditingEngine:         cfg.EditingEngine,
+		OllamaOnline:          err == nil,
+		OllamaURL:             s.state.Ollama.BaseURL,
+		NomaSupermodelEnabled: cfg.NomaSupermodelEnabled,
+		SwarmWave:             swarmWave,
+		SwarmActiveCount:      swarmActive,
+		SwarmAgents:           swarmAgents,
+		Models:                models,
+		SelectedModel:         s.state.Model,
+		GPU:                   detectGPU(),
+		RootDir:               cfg.RootProjectDir,
+		Project:               s.state.Project,
+		Running:               s.state.Running,
+		RunningProjects:       s.state.GetRunningProjectsLocked(),
+		ActiveRunsCount:       len(s.state.ActiveRuns),
+		GitAvailable:          gitAvailable(s.state.Project, cfg),
+		MCPCount:              enabledMCPCount(cfg),
+		RunID:                 s.state.RunID,
+		RunPhase:              s.state.RunPhase,
+		RunStartedAt:          s.state.RunStartedAt,
+		LastProgressAt:        s.state.LastProgressAt,
+		ResolvedLanguage:      resolvedLanguage(cfg),
+		SystemLanguage:        detectSystemLanguage(),
+		SupportedLanguages:    append([]string(nil), supportedLanguages...),
 	}
 	s.state.mu.RUnlock()
 	engineStatus := selectedCodingEngineStatus(ctx, cfg)
@@ -369,6 +416,9 @@ func (s *Server) applyRoot(root string) (string, error) {
 	if err := saveConfig(cfg); err != nil {
 		return "", err
 	}
+	if s.state.PTY != nil {
+		s.state.PTY.SetAllowedRoot(cfg.RootProjectDir)
+	}
 	return cfg.RootProjectDir, nil
 }
 
@@ -462,7 +512,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.state.StartAgentForThread(req.Message, req.Model, attachments, req.Project, req.ThreadID); err != nil {
-		http.Error(w, err.Error(), 409)
+		status := http.StatusConflict
+		if errors.Is(err, ErrBackendPreflightFailed) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -888,6 +942,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			s.state.Ollama.BaseURL = firstOllamaCandidate()
 		}
 		s.state.Ollama.ContextLength = cfg.ContextLength
+		s.state.Ollama.NomaSupermodelEnabled = cfg.NomaSupermodelEnabled
 		s.state.mu.Unlock()
 		defaultMCPManager.Close()
 		s.state.UpdateProjectState(localizeConfigText(cfg, "Einstellungen geändert", "Settings changed"))
@@ -1119,12 +1174,34 @@ func errorText(err error) string {
 }
 
 func chooseDefaultModel(models []ModelInfo, previous string) string {
-	// qwen2.5-coder:14b is the most reliable installed model for LocalCode's
-	// strict structured-action loop. Older versions preferred gpt-oss:20b,
-	// which can return a thinking trace without a final structured action.
-	for _, m := range models {
-		if m.Name == "qwen2.5-coder:14b" && strings.HasPrefix(strings.ToLower(previous), "gpt-oss") {
-			return m.Name
+	isAuxiliary := func(name string) bool {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		return strings.Contains(lower, "archive") || strings.Contains(lower, "backup") || strings.Contains(lower, "embed")
+	}
+	bestCoder := func() string {
+		bestName := ""
+		var bestSize int64 = -1
+		for _, m := range models {
+			lower := strings.ToLower(m.Name)
+			if isAuxiliary(lower) {
+				continue
+			}
+			if strings.Contains(lower, "coder") || strings.Contains(lower, "code") {
+				if bestName == "" || m.Size > bestSize {
+					bestName = m.Name
+					bestSize = m.Size
+				}
+			}
+		}
+		return bestName
+	}
+
+	// If a previous model was a reasoning-only model that emits thinking traces
+	// without structured actions and a dedicated coding model is installed,
+	// prefer the installed coding model automatically without hardcoding names.
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(previous)), "gpt-oss") {
+		if coder := bestCoder(); coder != "" {
+			return coder
 		}
 	}
 	if previous != "" {
@@ -1134,16 +1211,18 @@ func chooseDefaultModel(models []ModelInfo, previous string) string {
 			}
 		}
 	}
-	preferred := []string{"qwen2.5-coder:14b", "qwen2.5-coder:7b", "gpt-oss:20b"}
-	for _, p := range preferred {
+	if envDefault := configuredDefaultCodingModel(Config{}); envDefault != "" {
 		for _, m := range models {
-			if m.Name == p {
-				return p
+			if comparableModelName(m.Name) == comparableModelName(envDefault) {
+				return m.Name
 			}
 		}
 	}
+	if coder := bestCoder(); coder != "" {
+		return coder
+	}
 	for _, m := range models {
-		if strings.Contains(strings.ToLower(m.Name), "coder") {
+		if !isAuxiliary(m.Name) {
 			return m.Name
 		}
 	}
@@ -1527,16 +1606,6 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 		gatewayURL = defaultComputeMeshGatewayURL
 	}
 
-	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		model = "qwen/qwen2.5-7b-instruct"
-	}
-
-	prompt := strings.TrimSpace(req.Prompt)
-	if prompt == "" {
-		prompt = "Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft."
-	}
-
 	client := &OllamaClient{
 		BaseURL:   gatewayURL,
 		AuthToken: apiKey,
@@ -1545,6 +1614,41 @@ func (s *Server) handleComputeMeshTest(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+
+	s.state.mu.RLock()
+	activeModel := strings.TrimSpace(s.state.Model)
+	s.state.mu.RUnlock()
+
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		if tags, tagErr := client.Tags(ctx); tagErr == nil && len(tags) > 0 {
+			model = chooseDefaultModel(tags, activeModel)
+		}
+	}
+	if model == "" {
+		model = activeModel
+	}
+	if model == "" {
+		model = configuredDefaultCodingModel(cfg)
+	}
+	if model == "" {
+		model = strings.TrimSpace(cfg.LastModel)
+	}
+	if model == "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = writeJSON(w, map[string]any{
+			"ok":    false,
+			"error": "kein Modell ausgewählt oder auf dem ComputeMesh-Gateway verfügbar",
+			"model": "",
+			"url":   gatewayURL,
+		})
+		return
+	}
+
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt == "" {
+		prompt = "Hallo ComputeMesh! Bestätige bitte kurz deine GPU-Bereitschaft."
+	}
 
 	reply, err := client.ChatRaw(ctx, model, []OllamaMessage{{Role: "user", Content: prompt}}, nil)
 	if err != nil {

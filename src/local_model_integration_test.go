@@ -19,10 +19,6 @@ func TestLocalOllamaPacmanCloneSmoke(t *testing.T) {
 	t.Setenv("LOCALCODE_CACHE_HOME", t.TempDir())
 	t.Setenv("LOCALCODE_USER_HOME", t.TempDir())
 
-	model := strings.TrimSpace(os.Getenv("LOCALCODE_PACMAN_MODEL"))
-	if model == "" {
-		model = defaultCodingModel
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
@@ -34,6 +30,10 @@ func TestLocalOllamaPacmanCloneSmoke(t *testing.T) {
 	models, err := ollama.Tags(ctx)
 	if err != nil {
 		t.Fatalf("Ollama model inventory failed: %v", err)
+	}
+	model := strings.TrimSpace(os.Getenv("LOCALCODE_PACMAN_MODEL"))
+	if model == "" {
+		model = chooseDefaultModel(models, "")
 	}
 	found := false
 	for _, candidate := range models {

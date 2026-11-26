@@ -40,8 +40,11 @@ type ReplanRecord struct {
 type MissionReplanner struct {
 	mu            sync.RWMutex
 	factory       *AgentFactory
-	replanCycles  map[string]int      // taskID -> count
-	failureHashes map[string][]string // taskID -> list of symptom hashes
+	replanCycles  map[string]int      // originTaskID -> count
+	failureHashes map[string][]string // originTaskID -> list of symptom hashes
+	taskOrigin    map[string]string   // generated repair taskID -> originTaskID
+	originDeps    map[string][]string // originTaskID -> original dependencies
+	latestChain   map[string][]string // originTaskID -> [builderID, testID, reviewID]
 }
 
 func NewMissionReplanner(factory *AgentFactory) *MissionReplanner {
@@ -52,7 +55,37 @@ func NewMissionReplanner(factory *AgentFactory) *MissionReplanner {
 		factory:       factory,
 		replanCycles:  make(map[string]int),
 		failureHashes: make(map[string][]string),
+		taskOrigin:    make(map[string]string),
+		originDeps:    make(map[string][]string),
+		latestChain:   make(map[string][]string),
 	}
+}
+
+func (r *MissionReplanner) originForLocked(taskID string) string {
+	if r.taskOrigin != nil {
+		if origin, ok := r.taskOrigin[taskID]; ok && origin != "" {
+			return origin
+		}
+	}
+	return taskID
+}
+
+func buildReplanTaskID(prefix, originID string, cycle int, now int64) string {
+	base := strings.TrimSpace(originID)
+	if len(base) > 36 {
+		base = base[:36]
+	}
+	base = strings.TrimRight(base, "-._")
+	if base == "" {
+		base = "task"
+	}
+	suffix := fmt.Sprintf("c%d-%d", cycle, now%1_000_000_000)
+	id := fmt.Sprintf("%s-%s-%s", prefix, base, suffix)
+	if len(id) > maxAgentTaskIDLength {
+		id = id[:maxAgentTaskIDLength]
+		id = strings.TrimRight(id, "-._")
+	}
+	return id
 }
 
 func hashRepairSymptoms(reason string, repair *RepairProposal) string {
@@ -147,15 +180,16 @@ func (r *MissionReplanner) ReplanFailedTask(
 		return nil, nil, fmt.Errorf("%w: %s", errFailedTaskNotFound, failedTaskID)
 	}
 
-	// 2. Check replan cycle count (max 3 per task)
-	cycles := r.replanCycles[failedTaskID] + 1
+	// 2. Resolve root lineage and check replan cycle count (max 3 per origin task)
+	originID := r.originForLocked(failedTaskID)
+	cycles := r.replanCycles[originID] + 1
 	if cycles > maxTaskReplanCycles {
-		return nil, nil, fmt.Errorf("%w: task %s reached %d repair attempts", errReplanningMaxAttemptsExceeded, failedTaskID, cycles-1)
+		return nil, nil, fmt.Errorf("%w: task %s reached %d repair attempts", errReplanningMaxAttemptsExceeded, originID, cycles-1)
 	}
 
 	// 3. Stagnation detection via symptom hashing
 	symptomHash := hashRepairSymptoms(reason, repair)
-	history := r.failureHashes[failedTaskID]
+	history := r.failureHashes[originID]
 	consecutiveSame := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		if history[i] == symptomHash {
@@ -165,7 +199,7 @@ func (r *MissionReplanner) ReplanFailedTask(
 		}
 	}
 	if consecutiveSame >= 2 { // 3rd identical consecutive failure
-		return nil, nil, fmt.Errorf("%w: identical failure fingerprint %s observed %d times for task %s", errReplanningStagnationDetected, symptomHash, consecutiveSame+1, failedTaskID)
+		return nil, nil, fmt.Errorf("%w: identical failure fingerprint %s observed %d times for task %s", errReplanningStagnationDetected, symptomHash, consecutiveSame+1, originID)
 	}
 
 	// 4. Check total task count limit (max 32 tasks per mission)
@@ -177,7 +211,16 @@ func (r *MissionReplanner) ReplanFailedTask(
 	// 5. Construct Repair Pipeline Tasks
 	workspace := failedTask.Workspace
 	missionID := currentGraph.MissionID
+	model := failedTask.Model
 	now := time.Now().UnixNano()
+
+	if r.originDeps == nil {
+		r.originDeps = make(map[string][]string)
+	}
+	if _, recorded := r.originDeps[originID]; !recorded {
+		r.originDeps[originID] = append([]string(nil), failedTask.Dependencies...)
+	}
+	baseDeps := append([]string(nil), r.originDeps[originID]...)
 
 	repairBuilderObjective := fmt.Sprintf("Repair defect in task %s: %s", failedTaskID, reason)
 	if repair != nil && repair.Summary != "" {
@@ -195,8 +238,9 @@ func (r *MissionReplanner) ReplanFailedTask(
 	if err != nil {
 		return nil, nil, err
 	}
-	repairBuilder.ID = fmt.Sprintf("repair-builder-%s-c%d-%d", failedTaskID, cycles, now)
-	repairBuilder.Dependencies = append([]string{}, failedTask.Dependencies...)
+	repairBuilder.ID = buildReplanTaskID("repair-builder", originID, cycles, now)
+	repairBuilder.Dependencies = baseDeps
+	repairBuilder.Model = model
 
 	// Test Agent task
 	testAgent, err := r.factory.CreateGovernedTask(
@@ -210,8 +254,9 @@ func (r *MissionReplanner) ReplanFailedTask(
 	if err != nil {
 		return nil, nil, err
 	}
-	testAgent.ID = fmt.Sprintf("repair-test-%s-c%d-%d", failedTaskID, cycles, now)
+	testAgent.ID = buildReplanTaskID("repair-test", originID, cycles, now)
 	testAgent.Dependencies = []string{repairBuilder.ID}
+	testAgent.Model = model
 
 	// Reviewer task
 	reviewer, err := r.factory.CreateGovernedTask(
@@ -225,8 +270,9 @@ func (r *MissionReplanner) ReplanFailedTask(
 	if err != nil {
 		return nil, nil, err
 	}
-	reviewer.ID = fmt.Sprintf("repair-review-%s-c%d-%d", failedTaskID, cycles, now)
+	reviewer.ID = buildReplanTaskID("repair-review", originID, cycles, now)
 	reviewer.Dependencies = []string{testAgent.ID}
+	reviewer.Model = model
 
 	// 6. Build new task graph
 	newGraph := AgentTaskGraph{
@@ -238,19 +284,50 @@ func (r *MissionReplanner) ReplanFailedTask(
 	currentGraph.Tasks[failedIndex].State = AgentTaskFailed
 	currentGraph.Tasks[failedIndex].StateReason = fmt.Sprintf("Failed with replanning cycle %d: %s", cycles, reason)
 
-	newGraph.Tasks = append(newGraph.Tasks, currentGraph.Tasks...)
-	newGraph.Tasks = append(newGraph.Tasks, repairBuilder, testAgent, reviewer)
-
-	// Re-route any downstream tasks that depended on failedTask to depend on reviewer
-	for i := range newGraph.Tasks {
-		if newGraph.Tasks[i].ID == failedTaskID || newGraph.Tasks[i].ID == repairBuilder.ID || newGraph.Tasks[i].ID == testAgent.ID || newGraph.Tasks[i].ID == reviewer.ID {
-			continue
-		}
-		for j, dep := range newGraph.Tasks[i].Dependencies {
-			if dep == failedTaskID {
-				newGraph.Tasks[i].Dependencies[j] = reviewer.ID
+	// Collect IDs whose downstream dependents should be rerouted to the new reviewer.
+	rerouteTargets := map[string]bool{failedTaskID: true}
+	supersededChainIDs := map[string]bool{}
+	if prevChain := r.latestChain[originID]; len(prevChain) > 0 && failedTaskID != originID {
+		for _, prevID := range prevChain {
+			rerouteTargets[prevID] = true
+			if prevID != failedTaskID {
+				supersededChainIDs[prevID] = true
 			}
 		}
+	}
+
+	for _, existing := range currentGraph.Tasks {
+		copied := existing
+		copied.Dependencies = append([]string(nil), existing.Dependencies...)
+		copied.RequestedCapabilities = append([]AgentCapability(nil), existing.RequestedCapabilities...)
+		copied.Capabilities = append([]AgentCapability(nil), existing.Capabilities...)
+		if supersededChainIDs[copied.ID] && !isSuccessfulAgentTaskState(copied.State) && copied.State != AgentTaskFailed {
+			copied.State = AgentTaskCancelled
+			copied.StateReason = fmt.Sprintf("Superseded by repair cycle %d", cycles)
+		}
+		newGraph.Tasks = append(newGraph.Tasks, copied)
+	}
+	newGraph.Tasks = append(newGraph.Tasks, repairBuilder, testAgent, reviewer)
+
+	// Re-route any downstream tasks that depended on failedTask (or superseded previous repair tail) to depend on reviewer
+	for i := range newGraph.Tasks {
+		taskID := newGraph.Tasks[i].ID
+		if taskID == failedTaskID || supersededChainIDs[taskID] || taskID == repairBuilder.ID || taskID == testAgent.ID || taskID == reviewer.ID {
+			continue
+		}
+		seenDeps := make(map[string]bool, len(newGraph.Tasks[i].Dependencies))
+		updatedDeps := make([]string, 0, len(newGraph.Tasks[i].Dependencies))
+		for _, dep := range newGraph.Tasks[i].Dependencies {
+			nextDep := dep
+			if rerouteTargets[dep] {
+				nextDep = reviewer.ID
+			}
+			if !seenDeps[nextDep] {
+				seenDeps[nextDep] = true
+				updatedDeps = append(updatedDeps, nextDep)
+			}
+		}
+		newGraph.Tasks[i].Dependencies = updatedDeps
 	}
 
 	// 7. Check DAG Depth (max 5)
@@ -259,9 +336,19 @@ func (r *MissionReplanner) ReplanFailedTask(
 		return nil, nil, fmt.Errorf("%w: resulting DAG depth %d exceeds limit %d", errReplanningMaxDepthExceeded, depth, maxDAGDepthLimit)
 	}
 
-	// 8. Record replan state
-	r.replanCycles[failedTaskID] = cycles
-	r.failureHashes[failedTaskID] = append(r.failureHashes[failedTaskID], symptomHash)
+	// 8. Record replan state and lineage
+	if r.taskOrigin == nil {
+		r.taskOrigin = make(map[string]string)
+	}
+	if r.latestChain == nil {
+		r.latestChain = make(map[string][]string)
+	}
+	r.replanCycles[originID] = cycles
+	r.failureHashes[originID] = append(r.failureHashes[originID], symptomHash)
+	r.taskOrigin[repairBuilder.ID] = originID
+	r.taskOrigin[testAgent.ID] = originID
+	r.taskOrigin[reviewer.ID] = originID
+	r.latestChain[originID] = []string{repairBuilder.ID, testAgent.ID, reviewer.ID}
 
 	record := &ReplanRecord{
 		OriginalTaskID: failedTaskID,

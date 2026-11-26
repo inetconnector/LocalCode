@@ -14,17 +14,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type OllamaClient struct {
-	BaseURL       string
-	HTTP          *http.Client
-	ContextLength int
-	AuthToken     string
-	APIKey        string
-	CustomHeaders map[string]string
+	BaseURL               string
+	HTTP                  *http.Client
+	ContextLength         int
+	AuthToken             string
+	APIKey                string
+	CustomHeaders         map[string]string
+	NomaSupermodelEnabled bool
 }
 
 func (o *OllamaClient) applyAuth(req *http.Request) {
@@ -38,26 +42,46 @@ func (o *OllamaClient) applyAuth(req *http.Request) {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if o.NomaSupermodelEnabled {
+		req.Header.Set("X-Noma-Supermodel", "1")
+	} else {
+		req.Header.Set("X-Noma-Supermodel", "0")
+	}
 	for k, v := range o.CustomHeaders {
 		req.Header.Set(k, v)
 	}
 }
 
+type OllamaToolCall struct {
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Index     int            `json:"index,omitempty"`
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"function"`
+}
+
 type OllamaMessage struct {
-	Role     string   `json:"role"`
-	Content  string   `json:"content"`
-	Thinking string   `json:"thinking,omitempty"`
-	Images   []string `json:"images,omitempty"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content"`
+	Thinking   string           `json:"thinking,omitempty"`
+	Images     []string         `json:"images,omitempty"`
+	ToolCalls  []OllamaToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	ToolName   string           `json:"tool_name,omitempty"`
 }
 
 type OllamaChatRequest struct {
-	Model     string          `json:"model"`
-	Messages  []OllamaMessage `json:"messages"`
-	Stream    bool            `json:"stream"`
-	Format    any             `json:"format,omitempty"`
-	Think     any             `json:"think,omitempty"`
-	KeepAlive string          `json:"keep_alive,omitempty"`
-	Options   map[string]any  `json:"options,omitempty"`
+	Model      string           `json:"model"`
+	Messages   []OllamaMessage  `json:"messages"`
+	Stream     bool             `json:"stream"`
+	Format     any              `json:"format,omitempty"`
+	Tools      []map[string]any `json:"tools,omitempty"`
+	Think      any              `json:"think,omitempty"`
+	KeepAlive  string           `json:"keep_alive,omitempty"`
+	Supermodel *bool            `json:"supermodel,omitempty"`
+	Options    map[string]any   `json:"options,omitempty"`
 }
 
 type OllamaChatResponse struct {
@@ -67,6 +91,7 @@ type OllamaChatResponse struct {
 	Error           string        `json:"error,omitempty"`
 	PromptEvalCount int           `json:"prompt_eval_count,omitempty"`
 	EvalCount       int           `json:"eval_count,omitempty"`
+	EvalDuration    int64         `json:"eval_duration,omitempty"`
 }
 
 type ollamaTagsResponse struct {
@@ -269,20 +294,14 @@ func hasCapability(capabilities []string, wanted string) bool {
 }
 
 func visionPreference(name string) int {
-	name = strings.ToLower(name)
+	name = strings.ToLower(strings.TrimSpace(name))
 	switch {
-	case strings.Contains(name, "qwen3-vl"):
+	case strings.Contains(name, "-vl") || strings.Contains(name, "vision"):
 		return 100
-	case strings.Contains(name, "gemma3") || strings.Contains(name, "gemma4"):
-		return 90
-	case strings.Contains(name, "minicpm-v"):
-		return 80
-	case strings.Contains(name, "llava"):
-		return 70
-	case strings.Contains(name, "moondream"):
-		return 60
+	case strings.Contains(name, "multimodal") || strings.Contains(name, "vlm") || strings.Contains(name, "ocr"):
+		return 85
 	default:
-		return 10
+		return 50
 	}
 }
 
@@ -390,7 +409,13 @@ func (o *OllamaClient) EnsureVisionModel(ctx context.Context) (string, bool, err
 	if model, err := o.FindVisionModel(ctx); err == nil {
 		return model, false, nil
 	}
-	const fallback = "gemma3:4b"
+	fallback := strings.TrimSpace(os.Getenv("LOCALCODE_VISION_MODEL"))
+	if fallback == "" {
+		fallback = strings.TrimSpace(os.Getenv("OLLAMA_VISION_MODEL"))
+	}
+	if fallback == "" {
+		return "", false, errors.New("kein Vision-Modell in Ollama installiert; installiere ein Vision-fähiges Modell über 'ollama pull <vision-modell>' oder setze LOCALCODE_VISION_MODEL")
+	}
 	if err := o.Pull(ctx, fallback); err != nil {
 		return "", false, fmt.Errorf("kein Vision-Modell installiert und %s konnte nicht geladen werden: %w", fallback, err)
 	}
@@ -415,6 +440,13 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		"Beschreibe sichtbare Benutzeroberflächen, Fehlermeldungen, Quellcode, Diagramme, Dateinamen, Zustände und relevante Details. " +
 		"Lies sichtbaren Text möglichst vollständig. Erfinde nichts. Formuliere eine sachliche deutschsprachige Bildanalyse.\n\n" +
 		"Dateien: " + strings.Join(names, ", ") + "\nAufgabe des Nutzers: " + strings.TrimSpace(userTask)
+	describeCtx := 12288
+	if isLocalHostURL(o.BaseURL) {
+		describeCtx = computeDynamicLocalContext(Config{
+			ContextLength: o.ContextLength,
+			OllamaURL:     o.BaseURL,
+		}, detectLocalVRAMMB())
+	}
 	request := OllamaChatRequest{
 		Model:  model,
 		Stream: false,
@@ -426,7 +458,7 @@ func (o *OllamaClient) DescribeImages(ctx context.Context, model, userTask strin
 		KeepAlive: "30m",
 		Options: map[string]any{
 			"temperature": 0.1,
-			"num_ctx":     12288,
+			"num_ctx":     describeCtx,
 			"num_predict": 3072,
 		},
 	}
@@ -575,7 +607,7 @@ func fastOllamaFormat(schema any) any {
 	if m, ok := schema.(map[string]any); ok {
 		if t, ok := m["type"].(string); ok && t == "object" {
 			// Complex multi-property JSON schemas trigger llama.cpp's single-threaded CPU
-			// GBNF grammar sampler over the full token vocabulary (152k logits on Qwen2.5),
+			// GBNF grammar sampler over the full token vocabulary (150k+ logits),
 			// dropping GPU utilization to 0% and causing 100x slowdowns. Ollama's built-in
 			// "json" format runs at full GPU speed while Go strictly validates all fields.
 			return "json"
@@ -606,32 +638,127 @@ func (o *OllamaClient) Chat(ctx context.Context, model string, messages []Ollama
 	return o.ChatStream(ctx, model, messages, schema, nil)
 }
 
+const minLocalContextTokens = 8192
+
+var (
+	localVRAMOnce   sync.Once
+	localVRAMCached int
+	gpuVRAMPattern  = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*(mib|mb|gib|gb)\b`)
+)
+
+func parseGPUVRAMMB(gpuDesc string) int {
+	m := gpuVRAMPattern.FindStringSubmatch(strings.TrimSpace(gpuDesc))
+	if len(m) < 3 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || val <= 0 {
+		return 0
+	}
+	switch strings.ToLower(m[2]) {
+	case "gib", "gb":
+		return int(val * 1024)
+	default:
+		return int(val)
+	}
+}
+
+func detectLocalVRAMMB() int {
+	if raw := strings.TrimSpace(os.Getenv("LOCALCODE_DETECTED_VRAM_MB")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			return v
+		}
+	}
+	localVRAMOnce.Do(func() {
+		localVRAMCached = parseGPUVRAMMB(detectGPU())
+	})
+	return localVRAMCached
+}
+
+func hardwareLocalContextLimit(vramMB int) int {
+	switch {
+	case vramMB <= 0:
+		return 12288
+	case vramMB < 8192:
+		return 8192
+	case vramMB < 20480:
+		// 8–16 GB GPUs: cap at 12288 so 14B Q4 + Flash Attention + Q8_0 KV cache
+		// fits 100% in dedicated VRAM without WDDM shared-memory PCIe paging.
+		return 12288
+	default:
+		return 32768
+	}
+}
+
+// computeDynamicLocalContext replaces the legacy 6144 token cap with a
+// hardware/VRAM-aware dynamic context ceiling configurable via cfg.ContextLength
+// and LOCALCODE_MAX_LOCAL_CTX.
+func computeDynamicLocalContext(cfg Config, vramMB int) int {
+	hwCap := hardwareLocalContextLimit(vramMB)
+	rawEnv := strings.TrimSpace(os.Getenv("LOCALCODE_MAX_LOCAL_CTX"))
+	if rawEnv == "" && cfg.EnvironmentVars != nil {
+		rawEnv = strings.TrimSpace(cfg.EnvironmentVars["LOCALCODE_MAX_LOCAL_CTX"])
+	}
+	if rawEnv != "" {
+		if envMax, err := strconv.Atoi(rawEnv); err == nil && envMax > 0 {
+			hwCap = envMax
+		}
+	}
+	base := cfg.ContextLength
+	if base <= 0 {
+		base = hwCap
+	}
+	effective := base
+	if effective > hwCap {
+		effective = hwCap
+	}
+	if effective < minLocalContextTokens {
+		effective = minLocalContextTokens
+	}
+	return effective
+}
+
+// computeDynamicNumPredict scales local output generation capacity dynamically
+// as min(max(4096, effectiveCtx/4), 16384).
+func computeDynamicNumPredict(effectiveCtx int) int {
+	n := effectiveCtx / 4
+	if n < 4096 {
+		n = 4096
+	}
+	if n > 16384 {
+		n = 16384
+	}
+	return n
+}
+
 func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []OllamaMessage, schema any, onDelta func(accumulated string, tokens int, tps float64)) (string, error) {
 	streamMode := onDelta != nil
+	effectiveCtx := o.ContextLength
+	if effectiveCtx < 4096 {
+		effectiveCtx = contextForModel(model)
+	}
+	if isLocalHostURL(o.BaseURL) {
+		effectiveCtx = computeDynamicLocalContext(Config{
+			ContextLength: effectiveCtx,
+			OllamaURL:     o.BaseURL,
+		}, detectLocalVRAMMB())
+	}
+	numPredict := computeDynamicNumPredict(effectiveCtx)
+	supermodelFlag := o.NomaSupermodelEnabled
 	request := OllamaChatRequest{
-		Model:     model,
-		Messages:  messages,
-		Stream:    streamMode,
-		Format:    fastOllamaFormat(schema),
-		Think:     thinkingModeForModel(model),
-		KeepAlive: "30m",
+		Model:      model,
+		Messages:   messages,
+		Stream:     streamMode,
+		Format:     fastOllamaFormat(schema),
+		Think:      thinkingModeForModel(model),
+		KeepAlive:  "30m",
+		Supermodel: &supermodelFlag,
 		Options: map[string]any{
 			"temperature":    temperatureForContext(ctx, 0.1),
 			"top_p":          0.9,
 			"repeat_penalty": 1.08,
-			"num_ctx": func() int {
-				cfgCtx := o.ContextLength
-				if cfgCtx < 4096 {
-					cfgCtx = contextForModel(model)
-				}
-				if isLocalHostURL(o.BaseURL) && cfgCtx > 6144 {
-					// On 16 GB Windows GPUs with Ollama parallel slots (-np 4), num_ctx > 6144
-					// risks overflowing physical GDDR6X into WDDM PCIe shared RAM alongside Windows desktop VRAM.
-					return 6144
-				}
-				return cfgCtx
-			}(),
-			"num_predict": 2400,
+			"num_ctx":        effectiveCtx,
+			"num_predict":    numPredict,
 		},
 	}
 	data, err := json.Marshal(request)
@@ -719,7 +846,7 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 			var thinkingBuf strings.Builder
 			scanner := bufio.NewScanner(io.LimitReader(resp.Body, 16<<20))
 			scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-			startedAt := time.Now()
+			firstTokenAt := time.Time{}
 			lastEmit := time.Time{}
 			chunks := 0
 			for scanner.Scan() {
@@ -736,10 +863,16 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 					break
 				}
 				if chunk.Message.Content != "" {
+					if firstTokenAt.IsZero() {
+						firstTokenAt = time.Now()
+					}
 					contentBuf.WriteString(chunk.Message.Content)
 					chunks++
 				}
 				if chunk.Message.Thinking != "" {
+					if firstTokenAt.IsZero() {
+						firstTokenAt = time.Now()
+					}
 					thinkingBuf.WriteString(chunk.Message.Thinking)
 				}
 				if chunk.Done {
@@ -747,13 +880,18 @@ func (o *OllamaClient) ChatStream(ctx context.Context, model string, messages []
 					out.DoneReason = chunk.DoneReason
 					out.PromptEvalCount = chunk.PromptEvalCount
 					out.EvalCount = chunk.EvalCount
+					out.EvalDuration = chunk.EvalDuration
 				}
 				now := time.Now()
 				if lastEmit.IsZero() || now.Sub(lastEmit) >= 250*time.Millisecond || chunk.Done {
-					elapsed := now.Sub(startedAt).Seconds()
 					tps := 0.0
-					if elapsed > 0.1 && chunks > 0 {
-						tps = float64(chunks) / elapsed
+					if chunk.Done && chunk.EvalDuration > 0 && chunk.EvalCount > 0 {
+						tps = float64(chunk.EvalCount) / (float64(chunk.EvalDuration) / 1e9)
+					} else if !firstTokenAt.IsZero() && chunks > 1 {
+						elapsed := now.Sub(firstTokenAt).Seconds()
+						if elapsed > 0.05 {
+							tps = float64(chunks) / elapsed
+						}
 					}
 					onDelta(contentBuf.String(), chunks, tps)
 					lastEmit = now

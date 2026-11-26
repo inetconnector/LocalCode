@@ -72,7 +72,7 @@ func TestRuntimeBootstrapAgainstLocalOllamaFixture(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/tags":
 			if pulled.Load() {
-				_, _ = io.WriteString(w, `{"models":[{"name":"qwen2.5-coder:14b","size":123,"modified_at":"2026-08-16T20:00:00Z"}]}`)
+				_, _ = io.WriteString(w, `{"models":[{"name":"test-coder:14b","size":123,"modified_at":"2026-08-16T20:00:00Z"}]}`)
 			} else {
 				_, _ = io.WriteString(w, `{"models":[]}`)
 			}
@@ -96,7 +96,9 @@ func TestRuntimeBootstrapAgainstLocalOllamaFixture(t *testing.T) {
 		t.Fatalf("ensure Ollama detail=%q progress=%d err=%v", detail, len(progress), err)
 	}
 
-	existing := []ModelInfo{{Name: defaultCodingModel}}
+	const testModel = "test-coder:14b"
+	cfg.OllamaDefaultModel = testModel
+	existing := []ModelInfo{{Name: testModel}}
 	models, details, err := ensureConfiguredModelsWithProgress(context.Background(), cfg, client, existing, reporter)
 	if err != nil || len(models) != 1 || len(details) != 0 {
 		t.Fatalf("existing models=%#v details=%#v err=%v", models, details, err)
@@ -116,7 +118,7 @@ func TestRuntimeBootstrapAgainstLocalOllamaFixture(t *testing.T) {
 
 	pulled.Store(false)
 	models, details, err = ensureConfiguredModelsWithProgress(context.Background(), cfg, client, nil, reporter)
-	if err != nil || len(models) != 1 || models[0].Name != defaultCodingModel || len(details) != 1 || !pulled.Load() {
+	if err != nil || len(models) != 1 || models[0].Name != testModel || len(details) != 1 || !pulled.Load() {
 		t.Fatalf("pulled models=%#v details=%#v pulled=%v err=%v", models, details, pulled.Load(), err)
 	}
 }
@@ -185,7 +187,7 @@ exit /b 0`)
 
 func TestDiagnosticsAndServerStartupWithLocalFixtures(t *testing.T) {
 	cfg := isolateWave3Config(t)
-	cfg.LastModel = defaultCodingModel
+	cfg.LastModel = "test-coder:14b"
 	cfg.LastProject = ""
 	if err := saveConfig(cfg); err != nil {
 		t.Fatal(err)
@@ -202,7 +204,7 @@ func TestDiagnosticsAndServerStartupWithLocalFixtures(t *testing.T) {
 			_, _ = io.WriteString(w, `{"models":[]}`)
 			return
 		}
-		_, _ = io.WriteString(w, `{"models":[{"name":"qwen2.5-coder:14b","size":1,"modified_at":"2026-08-16T20:00:00Z"}]}`)
+		_, _ = io.WriteString(w, `{"models":[{"name":"test-coder:14b","size":1,"modified_at":"2026-08-16T20:00:00Z"}]}`)
 	}))
 	defer ollama.Close()
 	t.Setenv("OLLAMA_HOST", ollama.URL)

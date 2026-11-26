@@ -6,6 +6,10 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { Client } = require('./client');
 const { samePath, contained, validMessage } = require('./safety');
+const { t: translateExtra } = require('./i18n');
+const { InlineEditController, INLINE_EDIT_SCHEME } = require('./inline_edit');
+const { FimAutocompleteProvider } = require('./fim_autocomplete');
+const { runLoopbackAdversarialReview, formatAdversarialSummary } = require('./adversarial_review');
 const catalogs = { en: require('../media/en.json'), de: require('../media/de.json') };
 
 class LocalCode {
@@ -14,13 +18,32 @@ class LocalCode {
     this.thread = ''; this.project = ''; this.events = []; this.pending = null; this.status = {}; this.attachments = [];
     this.busy = false; this.disposed = false; this.generation = 0; this.baselines = new Map(); this.lastEditor = vscode.window.activeTextEditor;
     this.output = vscode.window.createOutputChannel('LocalCode');
+    this.inlineEdit = new InlineEditController({
+      vscode,
+      getLanguage: () => this.language,
+      getWorkspaceRoot: () => this.project,
+      log: text => this.output.appendLine(text)
+    });
+    this.fimProvider = new FimAutocompleteProvider({
+      vscode,
+      log: text => this.output.appendLine(text)
+    });
     context.subscriptions.push(this.output, this,
       vscode.window.registerWebviewViewProvider('localcode.chat', this, { webviewOptions: { retainContextWhenHidden: true } }),
       vscode.workspace.registerTextDocumentContentProvider('localcode-review', { provideTextDocumentContent: uri => this.baselines.get(uri.toString()) || '' }),
+      vscode.workspace.registerTextDocumentContentProvider(INLINE_EDIT_SCHEME, this.inlineEdit.provider),
       vscode.window.onDidChangeActiveTextEditor(editor => { if (editor) this.lastEditor = editor; }),
-      vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('localcode')) this.run(() => this.connect()); }),
+      vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('localcode')) {
+          this.fimProvider.reloadConfig();
+          this.run(() => this.connect());
+        }
+      }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => { this.project = ''; this.thread = ''; this.attachments = []; this.run(() => this.connect()); })
     );
+    if (vscode.languages && typeof vscode.languages.registerInlineCompletionItemProvider === 'function') {
+      context.subscriptions.push(vscode.languages.registerInlineCompletionItemProvider({ scheme: 'file' }, this.fimProvider));
+    }
     const commands = {
       open: () => vscode.commands.executeCommand('localcode.chat.focus'),
       openRight: () => vscode.commands.executeCommand('localcode.chat.focus'),
@@ -29,6 +52,56 @@ class LocalCode {
       addSelection: async () => {
         await this.addContext();
         await vscode.commands.executeCommand('localcode.chat.focus');
+      },
+      inlineEdit: () => this.inlineEdit.run(vscode.window.activeTextEditor || this.lastEditor),
+      inlineEditAccept: () => this.inlineEdit.accept(),
+      inlineEditReject: () => this.inlineEdit.reject(),
+      toggleFim: async () => {
+        const cfg = vscode.workspace.getConfiguration('localcode');
+        const next = !cfg.get('fimEnabled', true);
+        if (typeof cfg.update === 'function') {
+          await cfg.update('fimEnabled', next, true);
+        }
+        this.fimProvider.reloadConfig({ ...this.fimProvider.config, enabled: next });
+        vscode.window.showInformationMessage(this.t(next ? 'fimEnabledNotice' : 'fimDisabledNotice'));
+      },
+      providerStatus: async () => {
+        if (!this.client) await this.connect();
+        const status = await this.client.request('/api/providers/status');
+        const configuredCount = Object.values(status?.key_configured || {}).filter(Boolean).length;
+        const msg = this.t('providerStatusTemplate')
+          .replace('{provider}', String(status?.active_provider || 'ollama'))
+          .replace('{sandbox}', status?.os_sandbox_enabled ? 'ON' : 'OFF')
+          .replace('{count}', String(configuredCount));
+        vscode.window.showInformationMessage(msg);
+      },
+      adversarialReview: async () => {
+        const editor = vscode.window.activeTextEditor || this.lastEditor;
+        if (!editor || !editor.document) {
+          vscode.window.showWarningMessage(this.t('adversarialReviewNoEditor'));
+          return;
+        }
+        const selected = !editor.selection.isEmpty ? editor.document.getText(editor.selection) : editor.document.getText();
+        const cfg = vscode.workspace.getConfiguration('localcode');
+        const agentosUrl = cfg.get('agentosUrl', 'http://127.0.0.1:8000');
+        const report = await runLoopbackAdversarialReview({
+          agentosUrl,
+          authorProvider: 'anthropic',
+          codeOrDiff: selected,
+          filePath: editor.document.fileName || '',
+          lang: this.language
+        });
+        const line = formatAdversarialSummary(report, this.language);
+        this.output.appendLine(`[Adversarial Review] ${report.summary || line}`);
+        for (const f of report.findings || []) {
+          this.output.appendLine(`  [${f.severity}] L${f.line} ${f.code}: ${f.message}`);
+        }
+        if (report.verdict === 'APPROVED') {
+          vscode.window.showInformationMessage(line);
+        } else {
+          this.output.show(true);
+          vscode.window.showWarningMessage(line);
+        }
       },
       start: () => this.start(),
       settings: () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:inetconnector.localcode')
@@ -45,7 +118,7 @@ class LocalCode {
     }
     return 'en';
   }
-  t(key) { return catalogs[this.language][key] || key; }
+  t(key) { return catalogs[this.language][key] || translateExtra(this.language, key); }
   async run(fn) { try { return await fn(); } catch (err) { this.error(err); } }
   error(err) {
     const key = err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' ? 'disconnected' : err.message;
@@ -235,6 +308,14 @@ class LocalCode {
     if (snapshot.current_thread !== thread || !samePath(snapshot.project, this.project)) { this.thread = ''; this.events = []; this.pending = null; this.snapshot = null; this.render(); throw new Error('taskGone'); }
     this.connected = true; this.snapshot = snapshot; this.events = snapshot.events || []; this.pending = snapshot.pending; this.render();
   }
+  isProjectRunning(snapshot) {
+    if (!snapshot) return false;
+    if (Array.isArray(snapshot.running_projects)) {
+      if (snapshot.running_projects.some(p => samePath(p, this.project))) return true;
+      if (snapshot.running_projects.length > 0) return false;
+    }
+    return !!snapshot.running && (!snapshot.project || samePath(snapshot.project, this.project));
+  }
   async newTask() {
     if (!this.connected) await this.connect();
     if (!await this.workspace(true)) {
@@ -242,7 +323,7 @@ class LocalCode {
       return;
     }
     const global = await this.client.request('/api/snapshot');
-    if (global.running) throw new Error('busy');
+    if (this.isProjectRunning(global)) throw new Error('busy');
     const result = await this.client.request('/api/new-chat', { project: this.project });
     this.thread = result.thread.id; this.events = []; this.pending = null;
     await this.context.workspaceState.update('thread:' + this.project, this.thread);
@@ -367,9 +448,9 @@ class LocalCode {
       this.broadcast({ type: 'error', message: this.t('noWorkspace') });
       return;
     }
-    const current = await this.client.request('/api/snapshot');
-    if (current.running) {
-      if (current.current_thread !== this.thread || !samePath(current.project, this.project)) throw new Error('otherRun');
+    const current = await this.client.request(this.thread ? '/api/snapshot?thread_id=' + encodeURIComponent(this.thread) : '/api/snapshot');
+    if (current.running && (!current.project || samePath(current.project, this.project))) {
+      if (current.current_thread !== this.thread) throw new Error('otherRun');
       if (!this.canSteer) throw new Error('steerUpgrade');
       const prompt = message.message + (this.attachments.length ? '\n\n' + this.t('contextInstruction') + '\n' + JSON.stringify(this.attachments) : '');
       if (Buffer.byteLength(prompt) > 32768) throw new Error('steerLimit');
@@ -379,6 +460,7 @@ class LocalCode {
       this.broadcast({ type: 'sent', prompt: message.message, queued: true });
       await this.refresh(); return;
     }
+    if (this.isProjectRunning(current)) throw new Error('otherRun');
     const dirty = [];
     for (const doc of vscode.workspace.textDocuments.filter(d => d.isDirty && d.uri.scheme === 'file')) {
       try { await contained(this.project, doc.uri.fsPath); dirty.push(doc); } catch { /* other workspace */ }
@@ -395,7 +477,7 @@ class LocalCode {
   async stop() {
     if (!this.scopedStop) throw new Error('stopUpgrade');
     if (!this.thread) throw new Error('noTask');
-    const snapshot = await this.client.request('/api/snapshot');
+    const snapshot = await this.client.request('/api/snapshot?thread_id=' + encodeURIComponent(this.thread));
     if (!snapshot.running || snapshot.current_thread !== this.thread) throw new Error('otherRun');
     if (await vscode.window.showWarningMessage(this.t('sharedStop'), { modal: true }, this.t('confirmStop')) !== this.t('confirmStop')) return;
     // Recheck after the dialog. The backend atomically enforces the same run identity.
@@ -490,7 +572,7 @@ class LocalCode {
       }
     } finally { this.busy = false; this.render(); }
   }
-  dispose() { this.disposed = true; ++this.generation; clearTimeout(this.pollTimer); clearTimeout(this.retryTimer); this.endStream?.(); this.client?.dispose(); this.baselines.clear(); }
+  dispose() { this.disposed = true; ++this.generation; clearTimeout(this.pollTimer); clearTimeout(this.retryTimer); this.endStream?.(); this.client?.dispose(); this.inlineEdit?.dispose(); this.fimProvider?.dispose(); this.baselines.clear(); }
 }
 function activate(context) { return new LocalCode(context); }
 module.exports = { activate, LocalCode };

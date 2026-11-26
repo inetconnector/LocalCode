@@ -103,8 +103,6 @@ func ProbeRunningLocalComputeMeshNodeDetailed(ctx context.Context, customCandida
 	candidates := []string{
 		"http://127.0.0.1:8080",
 		"http://localhost:8080",
-		"http://127.0.0.1:8081",
-		"http://127.0.0.1:8000",
 		"http://127.0.0.1:11435",
 	}
 	if len(customCandidates) > 0 {
@@ -137,11 +135,8 @@ func ProbeRunningLocalComputeMeshNodeDetailed(ctx context.Context, customCandida
 			defer cancel()
 
 			res := probeResult{
-				url:      url,
-				status:   "🟢 Lokaler Mesh-Knoten aktiv (0% Fee, 0ms)",
-				id:       "test-node-custom",
-				gpu:      "NVIDIA GPU (CUDA)",
-				vramPool: "16.0 GB VRAM (Local Mesh)",
+				url:    url,
+				status: "🟢 Lokaler Mesh-Knoten aktiv (0% Fee, 0ms)",
 			}
 
 			// 1. Try /api/status for rich hardware and config details
@@ -402,10 +397,7 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 		Online:       false,
 		URL:          defaultComputeMeshGatewayURL,
 		LocalNodeURL: defaultComputeMeshLocalNodeURL,
-		NodeID:       "test-node-custom",
 		NodeStatus:   "Offline",
-		GPU:          "NVIDIA GeForce RTX 3080 Laptop GPU (16.0 GB VRAM, CUDA)",
-		VRAMPool:     "24.0 GB VRAM & 48.6 TFLOPS",
 	}
 
 	if cfg.ComputeMeshURL != "" {
@@ -471,13 +463,6 @@ func CheckComputeMeshStatus(ctx context.Context, cfg Config) ComputeMeshStatus {
 		if len(localModels) > 0 {
 			status.Models = append(status.Models, localModels...)
 		}
-	}
-
-	if status.Account == "" {
-		status.Account = "frede@inetconnector.com"
-	}
-	if status.NodeID == "" {
-		status.NodeID = "test-node-custom"
 	}
 
 	status.KeySource = keySource
@@ -584,18 +569,59 @@ func ConfigureComputeMeshForAppState(s *AppState) {
 		apiKey = detectedKey
 	}
 
-	targetURL := meshStatus.URL
-	if meshStatus.DirectLocal && meshStatus.LocalNodeURL != "" {
-		targetURL = meshStatus.LocalNodeURL
-	}
-
-	// Only override BaseURL if no explicit custom local URL was set by the user or if local mesh node was discovered
 	s.mu.Lock()
 	if s.Ollama == nil {
 		s.Ollama = NewOllamaClient()
 	}
-	if cfg.OllamaURL == "" || cfg.OllamaURL == defaultComputeMeshGatewayURL || meshStatus.DirectLocal {
-		s.Ollama.BaseURL = targetURL
+	currentOllama := s.Ollama
+	s.mu.Unlock()
+
+	probeOllamaTags := func(baseURL, token string, requireModels bool) bool {
+		if strings.TrimSpace(baseURL) == "" {
+			return false
+		}
+		probe := NewOllamaClient()
+		probe.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		probe.AuthToken = token
+		pCtx, pCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer pCancel()
+		models, err := probe.Tags(pCtx)
+		if err != nil {
+			return false
+		}
+		if requireModels && len(models) == 0 {
+			return false
+		}
+		return true
+	}
+
+	localOnline := probeOllamaTags(currentOllama.BaseURL, currentOllama.AuthToken, true)
+
+	// Candidate order: only switch s.Ollama.BaseURL to a ComputeMesh endpoint that actually
+	// implements Ollama-compatible `/api/tags` AND advertises at least one usable model.
+	candidates := []string{}
+	if meshStatus.DirectLocal && meshStatus.LocalNodeURL != "" {
+		candidates = append(candidates, meshStatus.LocalNodeURL)
+	}
+	if meshStatus.URL != "" && (len(candidates) == 0 || !strings.EqualFold(candidates[0], meshStatus.URL)) {
+		candidates = append(candidates, meshStatus.URL)
+	}
+
+	chosenURL := ""
+	for _, cand := range candidates {
+		if probeOllamaTags(cand, apiKey, true) {
+			chosenURL = cand
+			break
+		}
+	}
+	if chosenURL == "" {
+		return
+	}
+
+	localOffline := !localOnline
+	s.mu.Lock()
+	if localOffline || cfg.OllamaURL == defaultComputeMeshGatewayURL || (cfg.OllamaURL == "" && strings.EqualFold(chosenURL, meshStatus.LocalNodeURL)) {
+		s.Ollama.BaseURL = chosenURL
 		s.Ollama.AuthToken = apiKey
 	}
 	s.mu.Unlock()

@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
@@ -25,8 +26,11 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.util.Base64;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -35,16 +39,19 @@ import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -64,8 +71,10 @@ import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -79,6 +88,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -95,6 +108,21 @@ public final class MainActivity extends Activity {
     private static final String PREF_REMOTE_URL = "remote_url";
     private static final String PREF_TLS_FINGERPRINT = "tls_fingerprint";
     private static final String PREF_LAST_PROJECT = "last_project";
+    private static final String PREF_AUTH_TOKEN_ENC = "auth_token_enc";
+    private static final String PREF_RELAY_URL = "relay_url";
+    private static final String PREF_RELAY_SID = "relay_session_id";
+    private static final String PREF_RELAY_PUB = "relay_pub_b64";
+    private static final String PREF_RELAY_FP = "relay_fingerprint";
+    private static final String PREF_RELAY_AUTH_ENC = "relay_auth_enc";
+    private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
+    private static final String TOKEN_KEY_ALIAS = "localcode_remote_auth_token_aes256";
+    private static final String AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_BITS = 128;
+    private static final String STATE_REMOTE_URL = "state_remote_url";
+    private static final String STATE_EXPECTED_FP = "state_expected_fp";
+    private static final String STATE_WIZARD_TAB = "state_wizard_tab";
+    private static final String STATE_WEBVIEW = "state_webview";
     private static final String PREF_LAST_AUTO_UPDATE_SHA = "last_auto_update_sha";
     private static final String ACTION_SELF_UPDATE_STATUS = "com.inetconnector.localcode.SELF_UPDATE_STATUS";
     private static final String DEFAULT_EXTERNAL_UPDATE_FEED = "https://api.github.com/repos/inetconnector/LocalCode/releases/latest";
@@ -104,6 +132,9 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 702;
     private static final int REQUEST_SPEECH = 703;
     private static final int REQUEST_QR_SCAN = 704;
+    private static final int REQUEST_INSTALL_UNKNOWN_APPS = 705;
+    private static final String ACTION_APK_INSTALL_RESULT = "com.inetconnector.localcode.APK_INSTALL_RESULT";
+    private static final int MAX_APK_UPDATE_BYTES = 32 * 1024 * 1024;
 
     public static final class DiscoveredInstance {
         final String hostname;
@@ -128,9 +159,17 @@ public final class MainActivity extends Activity {
     private NsdManager nsdManager;
     private NsdManager.DiscoveryListener discoveryListener;
     private WifiManager.MulticastLock multicastLock;
+    private FrameLayout rootContainer;
     private WebView webView;
     private ScrollView discoveryPanel;
     private LinearLayout connectingOverlay;
+    private AlertDialog tlsWarningDialog;
+    private AlertDialog updateDialog;
+    private final AtomicBoolean updateCheckInFlight = new AtomicBoolean(false);
+    private volatile String lastPromptedUpdateSha = "";
+    private volatile String pendingUpdateOrigin = "";
+    private volatile String pendingUpdateSha256 = "";
+    private volatile String pendingUpdateVersion = "";
     private TextView connectingStatus;
     private TextView connectingTarget;
     private LinearLayout instancesContainer;
@@ -156,6 +195,7 @@ public final class MainActivity extends Activity {
     private volatile long lastAutoUpdateCheckMs = 0L;
     private BroadcastReceiver selfUpdateReceiver;
     private boolean discovering;
+    private volatile boolean inDiscoveryMode;
     private volatile boolean scanningLan;
     private volatile boolean scanningUdp;
     private int activeWizardTab = 0;
@@ -200,6 +240,13 @@ public final class MainActivity extends Activity {
         buildUi();
         registerSelfUpdateReceiver();
 
+        if (savedInstanceState != null) {
+            restoreActivityState(savedInstanceState);
+            if (!currentRemoteUrl.isEmpty() && isAllowedRemoteUrl(currentRemoteUrl) && validFingerprint(expectedFingerprint)) {
+                return;
+            }
+        }
+
         boolean handled = handleIntent(getIntent());
         if (handled) return;
         loadSavedConnection();
@@ -226,6 +273,74 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString(STATE_REMOTE_URL, currentRemoteUrl);
+        outState.putString(STATE_EXPECTED_FP, expectedFingerprint);
+        outState.putInt(STATE_WIZARD_TAB, activeWizardTab);
+        if (webView != null) {
+            Bundle webViewState = new Bundle();
+            webView.saveState(webViewState);
+            outState.putBundle(STATE_WEBVIEW, webViewState);
+        }
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        if (savedInstanceState != null) {
+            restoreActivityState(savedInstanceState);
+        }
+    }
+
+    private void restoreActivityState(Bundle savedInstanceState) {
+        if (savedInstanceState == null) return;
+        String savedUrl = savedInstanceState.getString(STATE_REMOTE_URL, "");
+        String savedFp = normalizeFingerprint(savedInstanceState.getString(STATE_EXPECTED_FP, ""));
+        int savedTab = savedInstanceState.getInt(STATE_WIZARD_TAB, 0);
+        selectWizardTab(savedTab);
+        if (isAllowedRemoteUrl(savedUrl) && validFingerprint(savedFp)) {
+            currentRemoteUrl = savedUrl;
+            expectedFingerprint = savedFp;
+            Bundle webViewState = savedInstanceState.getBundle(STATE_WEBVIEW);
+            if (discoveryPanel != null) discoveryPanel.setVisibility(View.GONE);
+            if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+            if (webView != null) {
+                webView.setVisibility(View.VISIBLE);
+                if (webViewState != null) {
+                    webView.restoreState(webViewState);
+                } else {
+                    webView.loadUrl(currentRemoteUrl);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (connectingOverlay != null && connectingOverlay.getVisibility() == View.VISIBLE) {
+            cancelConnectingAndOpenDiscovery();
+            return;
+        }
+        if (webView != null && webView.getVisibility() == View.VISIBLE) {
+            webView.evaluateJavascript(
+                    "(function(){return !!(window.LocalCodeRemoteControl&&typeof window.LocalCodeRemoteControl.handleBack==='function'&&window.LocalCodeRemoteControl.handleBack());})()",
+                    value -> {
+                        if ("true".equals(value)) {
+                            return;
+                        }
+                        if (webView != null && webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            MainActivity.super.onBackPressed();
+                        }
+                    });
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (gestureDetector != null && discoveryPanel != null && discoveryPanel.getVisibility() == View.VISIBLE) {
             gestureDetector.onTouchEvent(ev);
@@ -241,8 +356,8 @@ public final class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout root = new FrameLayout(this);
+        rootContainer = root;
         root.setBackgroundColor(0xFF0A0D14);
         root.setFitsSystemWindows(false);
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -273,7 +388,7 @@ public final class MainActivity extends Activity {
         discoveryPanel = new ScrollView(this);
         discoveryPanel.setBackgroundColor(0xFF0A0D14);
         discoveryPanel.setFillViewport(true);
-        discoveryPanel.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        discoveryPanel.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -417,18 +532,18 @@ public final class MainActivity extends Activity {
         tabManualLayout.addView(manTitle);
 
         TextView manSub = new TextView(this);
-        manSub.setText(tr("Gib die Remote-URL und optional den TLS-Fingerprint ein:", "Enter the remote URL and optional TLS fingerprint:"));
+        manSub.setText(tr("Gib die HTTPS-Remote-URL und den SHA-256 TLS-Fingerprint ein:", "Enter the HTTPS remote URL and SHA-256 TLS fingerprint:"));
         manSub.setTextSize(13f);
         manSub.setTextColor(0xFF94A3B8);
         manSub.setPadding(0, 0, 0, dp(14));
         tabManualLayout.addView(manSub);
 
-        manualUrl = createInputField("https://192.168.1.94:32146/remote");
+        manualUrl = createInputField("https://<LAN-IP>:32146/remote");
         LinearLayout.LayoutParams urlLp = fullWidthWrap();
         urlLp.setMargins(0, 0, 0, dp(10));
         tabManualLayout.addView(manualUrl, urlLp);
 
-        manualFingerprint = createInputField(tr("TLS-Fingerprint (optional bei HTTP)", "TLS fingerprint (optional for HTTP)"));
+        manualFingerprint = createInputField(tr("SHA-256 TLS-Fingerprint (64 Hex-Zeichen)", "SHA-256 TLS fingerprint (64 hex chars)"));
         LinearLayout.LayoutParams fpLp = fullWidthWrap();
         fpLp.setMargins(0, 0, 0, dp(16));
         tabManualLayout.addView(manualFingerprint, fpLp);
@@ -449,9 +564,16 @@ public final class MainActivity extends Activity {
         tabManualLayout.addView(open, fullWidthWrap());
         content.addView(tabManualLayout);
 
-        root.addView(discoveryPanel);
+        root.addView(discoveryPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 7. Connecting Overlay (shown while WebView connects/loads)
+        // 7. WebView (placed below connectingOverlay in FrameLayout so overlay never pushes WebView off-screen)
+        webView = new WebView(this);
+        webView.setBackgroundColor(0xFF0A0D14);
+        configureWebView();
+        webView.setVisibility(View.GONE);
+        root.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 8. Connecting Overlay (cleanly overlaid above WebView while connecting/loading)
         connectingOverlay = new LinearLayout(this);
         connectingOverlay.setOrientation(LinearLayout.VERTICAL);
         connectingOverlay.setGravity(Gravity.CENTER);
@@ -499,14 +621,7 @@ public final class MainActivity extends Activity {
         });
         connectingOverlay.addView(cancelConnBtn, fullWidthWrap());
 
-        root.addView(connectingOverlay, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // 8. WebView
-        webView = new WebView(this);
-        webView.setBackgroundColor(0xFF0A0D14);
-        configureWebView();
-        webView.setVisibility(View.GONE);
-        root.addView(webView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(connectingOverlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
         renderDiscoveredInstances();
@@ -854,15 +969,15 @@ public final class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            WebView.setWebContentsDebuggingEnabled(true);
+            WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
         }
         webView.addJavascriptInterface(new AndroidBridge(), "LocalCodeAndroid");
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                if (newProgress >= 85) {
+                if (newProgress >= 85 && !inDiscoveryMode) {
                     runOnUiThread(() -> {
-                        if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+                        if (!inDiscoveryMode && connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
                     });
                 }
             }
@@ -955,7 +1070,11 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (inDiscoveryMode || url == null || url.isEmpty() || "about:blank".equals(url)) {
+                    return;
+                }
                 runOnUiThread(() -> {
+                    if (inDiscoveryMode) return;
                     if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
                     if (webView != null) webView.setVisibility(View.VISIBLE);
                 });
@@ -964,16 +1083,28 @@ public final class MainActivity extends Activity {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 String observed = fingerprint(error.getCertificate());
-                if ((validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) || isPrivateHost(currentRemoteUrl)) {
-                    expectedFingerprint = observed;
-                    persistConnection(currentRemoteUrl, expectedFingerprint);
+                if (validFingerprint(expectedFingerprint) && expectedFingerprint.equalsIgnoreCase(observed)) {
                     handler.proceed();
                 } else {
                     handler.cancel();
-                    handleConnectionFailure(
-                            "TLS-Zertifikat nicht bestätigt. Erwartet: " + printable(expectedFingerprint) + " · Empfangen: " + printable(observed),
-                            "TLS certificate not confirmed. Expected: " + printable(expectedFingerprint) + " · Received: " + printable(observed));
+                    showTlsSecurityWarning(observed);
                 }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+                if (request != null && request.isForMainFrame()) {
+                    int statusCode = errorResponse != null ? errorResponse.getStatusCode() : 0;
+                    handleConnectionFailure(
+                            "Desktop-Remote antwortete mit HTTP " + statusCode + ". Suche LocalCode erneut …",
+                            "Desktop remote responded with HTTP " + statusCode + ". Searching for LocalCode again …");
+                }
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                runOnUiThread(MainActivity.this::recoverWebViewAfterCrash);
+                return true;
             }
 
             @Override
@@ -992,6 +1123,73 @@ public final class MainActivity extends Activity {
                         "Saved connection is not reachable (" + description + "). Searching for LocalCode again …");
             }
         });
+    }
+
+    private void showTlsSecurityWarning(String observedFingerprint) {
+        final String expectedDisplay = printable(expectedFingerprint);
+        final String observedDisplay = printable(observedFingerprint);
+        final String deMsg = "Sicherheitswarnung: Das TLS-Zertifikat stimmt nicht mit dem gepinnten Fingerprint überein oder es liegt kein gültiger Fingerprint vor.\n\nErwartet:\n"
+                + expectedDisplay + "\n\nEmpfangen:\n" + observedDisplay
+                + "\n\nDie Verbindung wurde blockiert. Kopple das Gerät über QR-Code oder PIN neu, wenn du diesem Desktop-PC vertraust.";
+        final String enMsg = "Security warning: The TLS certificate does not match the pinned fingerprint or no valid fingerprint is stored.\n\nExpected:\n"
+                + expectedDisplay + "\n\nReceived:\n" + observedDisplay
+                + "\n\nThe connection was blocked. Re-pair this device via QR code or PIN if you trust this desktop PC.";
+        runOnUiThread(() -> {
+            if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+            if (webView != null) {
+                try { webView.stopLoading(); } catch (Exception ignored) {}
+                webView.setVisibility(View.GONE);
+            }
+            if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
+            setStatus(tr(
+                    "TLS-Zertifikat nicht bestätigt. Erwartet: " + expectedDisplay + " · Empfangen: " + observedDisplay,
+                    "TLS certificate not confirmed. Expected: " + expectedDisplay + " · Received: " + observedDisplay));
+            if (isFinishing() || isDestroyed()) return;
+            if (tlsWarningDialog != null && tlsWarningDialog.isShowing()) {
+                tlsWarningDialog.dismiss();
+            }
+            tlsWarningDialog = new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(tr("TLS-Sicherheitswarnung", "TLS Security Warning"))
+                    .setMessage(tr(deMsg, enMsg))
+                    .setPositiveButton(tr("Neu koppeln (QR/PIN)", "Re-pair (QR/PIN)"), (dialog, which) -> {
+                        currentRemoteUrl = "";
+                        expectedFingerprint = "";
+                        clearSavedConnection();
+                        selectWizardTab(1);
+                        requestDiscoveryPermissionAndStart();
+                    })
+                    .setNegativeButton(tr("Abbrechen", "Cancel"), (dialog, which) -> {
+                        requestDiscoveryPermissionAndStart();
+                    })
+                    .setCancelable(true)
+                    .show();
+        });
+    }
+
+    private void recoverWebViewAfterCrash() {
+        if (isFinishing() || isDestroyed() || rootContainer == null) return;
+        if (webView != null) {
+            try {
+                webView.removeJavascriptInterface("LocalCodeAndroid");
+                rootContainer.removeView(webView);
+                webView.destroy();
+            } catch (Exception ignored) {}
+            webView = null;
+        }
+        webView = new WebView(this);
+        webView.setBackgroundColor(0xFF0A0D14);
+        configureWebView();
+        webView.setVisibility(View.GONE);
+        int insertIdx = Math.min(1, rootContainer.getChildCount());
+        rootContainer.addView(webView, insertIdx, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (!currentRemoteUrl.isEmpty() && isAllowedRemoteUrl(currentRemoteUrl) && validFingerprint(expectedFingerprint)) {
+            openRemote(currentRemoteUrl);
+        } else {
+            if (connectingOverlay != null) connectingOverlay.setVisibility(View.GONE);
+            if (discoveryPanel != null) discoveryPanel.setVisibility(View.VISIBLE);
+            setStatus(tr("WebView wurde wiederhergestellt. Bitte neu verbinden.", "WebView recovered. Please reconnect."));
+            requestDiscoveryPermissionAndStart();
+        }
     }
 
     @Override
@@ -1038,6 +1236,20 @@ public final class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_INSTALL_UNKNOWN_APPS) {
+            if (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls()) {
+                String origin = pendingUpdateOrigin;
+                String sha = pendingUpdateSha256;
+                String ver = pendingUpdateVersion;
+                pendingUpdateOrigin = "";
+                pendingUpdateSha256 = "";
+                pendingUpdateVersion = "";
+                if (!origin.isEmpty() && validFingerprint(sha)) {
+                    downloadAndInstallApkUpdate(origin, loadEncryptedAuthToken(), sha, ver);
+                }
+            }
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -1072,6 +1284,7 @@ public final class MainActivity extends Activity {
                 if (webView != null) {
                     webView.setVisibility(View.VISIBLE);
                 }
+                checkForApkUpdateAsync(false);
             });
         }
 
@@ -1187,6 +1400,45 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getAuthToken() {
+            return loadEncryptedAuthToken();
+        }
+
+        @JavascriptInterface
+        public void setAuthToken(String token) {
+            storeEncryptedAuthToken(token);
+            if (token != null && !token.trim().isEmpty()) {
+                checkForApkUpdateAsync(false);
+            }
+        }
+
+        @JavascriptInterface
+        public void checkForUpdate() {
+            checkForApkUpdateAsync(true);
+        }
+
+        @JavascriptInterface
+        public void clearAuthToken() {
+            clearEncryptedAuthToken();
+        }
+
+        @JavascriptInterface
+        public String getRelayPairingSummary() {
+            JSONObject info = new JSONObject();
+            try {
+                String relayUrl = preferences != null ? preferences.getString(PREF_RELAY_URL, "") : "";
+                String relaySid = preferences != null ? preferences.getString(PREF_RELAY_SID, "") : "";
+                String relayFp = preferences != null ? preferences.getString(PREF_RELAY_FP, "") : "";
+                boolean configured = isValidRelayEndpointUrl(relayUrl) && !relaySid.isEmpty() && validFingerprint(relayFp);
+                info.put("configured", configured);
+                info.put("relay_url", configured ? relayUrl : "");
+                info.put("session_id", configured ? relaySid : "");
+                info.put("fingerprint", configured ? relayFp : "");
+            } catch (Exception ignored) {}
+            return info.toString();
+        }
+
+        @JavascriptInterface
         public void resetConnection() {
             runOnUiThread(() -> {
                 currentRemoteUrl = "";
@@ -1215,6 +1467,87 @@ public final class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    private SecretKey getOrCreateTokenSecretKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+        keyStore.load(null);
+        if (keyStore.containsAlias(TOKEN_KEY_ALIAS)) {
+            KeyStore.Entry entry = keyStore.getEntry(TOKEN_KEY_ALIAS, null);
+            if (entry instanceof KeyStore.SecretKeyEntry) {
+                SecretKey existing = ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+                if (existing != null) {
+                    return existing;
+                }
+            }
+        }
+        KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
+        KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(
+                TOKEN_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build();
+        keyGenerator.init(spec);
+        return keyGenerator.generateKey();
+    }
+
+    private synchronized void storeEncryptedSecret(String prefKey, String secret) {
+        if (preferences == null) return;
+        if (secret == null || secret.trim().isEmpty()) {
+            preferences.edit().remove(prefKey).apply();
+            return;
+        }
+        try {
+            SecretKey key = getOrCreateTokenSecretKey();
+            Cipher cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, key);
+            byte[] iv = cipher.getIV();
+            byte[] cipherText = cipher.doFinal(secret.trim().getBytes(StandardCharsets.UTF_8));
+            byte[] combined = new byte[iv.length + cipherText.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(cipherText, 0, combined, iv.length, cipherText.length);
+            String encoded = Base64.encodeToString(combined, Base64.NO_WRAP);
+            preferences.edit().putString(prefKey, encoded).apply();
+        } catch (Exception ex) {
+            android.util.Log.e("LocalCodeRemote", "Failed to encrypt secret with Android Keystore", ex);
+        }
+    }
+
+    private synchronized void storeEncryptedAuthToken(String token) {
+        storeEncryptedSecret(PREF_AUTH_TOKEN_ENC, token);
+    }
+
+    private synchronized String loadEncryptedAuthToken() {
+        if (preferences == null) return "";
+        String encoded = preferences.getString(PREF_AUTH_TOKEN_ENC, "");
+        if (encoded == null || encoded.isEmpty()) return "";
+        try {
+            byte[] combined = Base64.decode(encoded, Base64.NO_WRAP);
+            if (combined.length <= GCM_IV_LENGTH) {
+                clearEncryptedAuthToken();
+                return "";
+            }
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            byte[] cipherText = new byte[combined.length - GCM_IV_LENGTH];
+            System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
+            System.arraycopy(combined, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
+            SecretKey key = getOrCreateTokenSecretKey();
+            Cipher cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            byte[] plain = cipher.doFinal(cipherText);
+            return new String(plain, StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            clearEncryptedAuthToken();
+            return "";
+        }
+    }
+
+    private synchronized void clearEncryptedAuthToken() {
+        if (preferences == null) return;
+        preferences.edit().remove(PREF_AUTH_TOKEN_ENC).apply();
     }
 
     private void startSpeaking(String text) {
@@ -1453,7 +1786,6 @@ public final class MainActivity extends Activity {
     private ArrayList<String> lanProbeCandidates() {
         ArrayList<String> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        addCandidateHost(out, seen, "192.168.1.94");
         addCandidateHost(out, seen, hostFromText(manualUrl == null ? "" : manualUrl.getText().toString()));
         addCandidateHost(out, seen, hostFromText(currentRemoteUrl));
         try {
@@ -1509,16 +1841,8 @@ public final class MainActivity extends Activity {
     private ProbeResult probeLocalCode(String host, int port) {
         ProbeResult result = probeLocalCodeEndpoint("https", host, port, true);
         if (result != null) return result;
-        result = probeLocalCodeEndpoint("http", host, port, false);
-        if (result != null) return result;
         if (port != DEFAULT_REMOTE_PORT) {
             result = probeLocalCodeEndpoint("https", host, DEFAULT_REMOTE_PORT, true);
-            if (result != null) return result;
-            result = probeLocalCodeEndpoint("http", host, DEFAULT_REMOTE_PORT, false);
-            if (result != null) return result;
-        }
-        if (port != 32145) {
-            result = probeLocalCodeEndpoint("http", host, 32145, false);
             if (result != null) return result;
         }
         return null;
@@ -1682,6 +2006,10 @@ public final class MainActivity extends Activity {
 
     private boolean handleIntent(Intent intent) {
         if (intent == null) return false;
+        if (ACTION_APK_INSTALL_RESULT.equals(intent.getAction())) {
+            handleApkInstallResultIntent(intent);
+            return true;
+        }
         String directUrl = intent.getStringExtra("connect_url");
         if (directUrl != null && !directUrl.trim().isEmpty() && isAllowedRemoteUrl(directUrl.trim())) {
             openRemote(directUrl.trim());
@@ -1689,13 +2017,17 @@ public final class MainActivity extends Activity {
         }
         if (intent.getData() == null) return false;
         Uri data = intent.getData();
-        if (!"localcode".equalsIgnoreCase(data.getScheme()) || !"pair".equalsIgnoreCase(data.getHost())) return false;
+        if (!"localcode".equalsIgnoreCase(data.getScheme())) return false;
+        if ("relay-pair".equalsIgnoreCase(data.getHost())) {
+            return handleRelayPairUri(data);
+        }
+        if (!"pair".equalsIgnoreCase(data.getHost())) return false;
         String target = data.getQueryParameter("url");
         String fp = normalizeFingerprint(data.getQueryParameter("fp"));
         String code = data.getQueryParameter("code");
         if (target != null && isAllowedRemoteUrl(target)) {
             stopDiscovery();
-            if (validFingerprint(fp) || expectedFingerprint.isEmpty()) {
+            if (validFingerprint(fp)) {
                 expectedFingerprint = fp;
             }
             String trimmedCode = code == null ? "" : code.trim();
@@ -1714,7 +2046,7 @@ public final class MainActivity extends Activity {
                         if (webView != null) {
                             webView.setVisibility(View.VISIBLE);
                             webView.evaluateJavascript(
-                                    "window.LocalCodeRemote&&window.LocalCodeRemote.pairWithCode(" + JSONObject.quote(trimmedCode) + ")",
+                                    "window.LocalCodeRemoteControl&&window.LocalCodeRemoteControl.pairWithCode(" + JSONObject.quote(trimmedCode) + ")",
                                     null);
                         }
                     });
@@ -1734,6 +2066,322 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private boolean handleRelayPairUri(Uri data) {
+        String relayUrl = data.getQueryParameter("relay");
+        String sid = data.getQueryParameter("sid");
+        String pub = data.getQueryParameter("pub");
+        String auth = data.getQueryParameter("auth");
+        String fp = normalizeFingerprint(data.getQueryParameter("fp"));
+        if (!isValidRelayEndpointUrl(relayUrl)
+                || sid == null || !sid.matches("[A-Za-z0-9_-]{8,128}")
+                || pub == null || pub.trim().isEmpty()
+                || auth == null || auth.trim().isEmpty()
+                || !validFingerprint(fp)) {
+            setStatus(tr(
+                    "Ungültiger oder unsicherer E2EE-Relay-Kopplungslink.",
+                    "Invalid or unsafe E2EE relay pairing link."));
+            return true;
+        }
+        if (preferences != null) {
+            preferences.edit()
+                    .putString(PREF_RELAY_URL, relayUrl.trim())
+                    .putString(PREF_RELAY_SID, sid.trim())
+                    .putString(PREF_RELAY_PUB, pub.trim())
+                    .putString(PREF_RELAY_FP, fp)
+                    .apply();
+        }
+        storeEncryptedSecret(PREF_RELAY_AUTH_ENC, auth.trim());
+        setStatus(tr(
+                "E2EE-Relay gekoppelt (Fingerprint: " + fp.substring(0, 12) + "…).",
+                "E2EE relay paired (fingerprint: " + fp.substring(0, 12) + "…)."));
+        return true;
+    }
+
+    private static boolean isValidRelayEndpointUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        Uri uri = Uri.parse(value.trim());
+        return "https".equalsIgnoreCase(uri.getScheme())
+                && uri.getHost() != null
+                && !uri.getHost().trim().isEmpty()
+                && uri.getUserInfo() == null;
+    }
+
+    private SSLContext createPinnedSSLContext(final String pinnedFp) throws Exception {
+        if (!validFingerprint(pinnedFp)) {
+            throw new CertificateException("Missing or invalid pinned TLS fingerprint");
+        }
+        TrustManager[] trustManagers = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        throw new CertificateException("Client auth unsupported");
+                    }
+
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        if (chain == null || chain.length == 0 || chain[0] == null) {
+                            throw new CertificateException("Empty server certificate chain");
+                        }
+                        try {
+                            byte[] der = chain[0].getEncoded();
+                            byte[] digest = MessageDigest.getInstance("SHA-256").digest(der);
+                            StringBuilder sb = new StringBuilder(digest.length * 2);
+                            for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+                            String observed = sb.toString();
+                            if (!pinnedFp.equalsIgnoreCase(observed)) {
+                                throw new CertificateException("TLS fingerprint mismatch: " + observed);
+                            }
+                        } catch (CertificateException ce) {
+                            throw ce;
+                        } catch (Exception ex) {
+                            throw new CertificateException("Certificate verification failed", ex);
+                        }
+                    }
+
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                }
+        };
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(null, trustManagers, new SecureRandom());
+        return ctx;
+    }
+
+    private static String extractRemoteOrigin(String rawUrl) {
+        String clean = cleanRemoteBaseUrl(rawUrl);
+        if (!isAllowedRemoteUrl(clean)) return "";
+        Uri uri = Uri.parse(clean);
+        int port = uri.getPort();
+        return "https://" + uri.getHost() + (port > 0 ? ":" + port : "");
+    }
+
+    private long currentInstalledVersionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) {
+                return pi.getLongVersionCode();
+            }
+            return pi.versionCode;
+        } catch (Exception ex) {
+            return 0L;
+        }
+    }
+
+    private String computeInstalledApkSha256() {
+        try {
+            ApplicationInfo appInfo = getApplicationInfo();
+            if (appInfo == null || appInfo.sourceDir == null) return "";
+            File apkFile = new File(appInfo.sourceDir);
+            if (!apkFile.isFile()) return "";
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[16384];
+            try (FileInputStream in = new FileInputStream(apkFile)) {
+                int read;
+                while ((read = in.read(buf)) > 0) {
+                    md.update(buf, 0, read);
+                }
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+            return sb.toString();
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
+    private void checkForApkUpdateAsync(final boolean manual) {
+        final String origin = extractRemoteOrigin(currentRemoteUrl);
+        final String pinnedFp = normalizeFingerprint(expectedFingerprint);
+        final String token = loadEncryptedAuthToken();
+        if (origin.isEmpty() || !validFingerprint(pinnedFp) || token == null || token.trim().isEmpty()) {
+            return;
+        }
+        if (!updateCheckInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        new Thread(() -> {
+            HttpsURLConnection conn = null;
+            try {
+                URL url = new URL(origin + "/remote/api/apk-update");
+                conn = (HttpsURLConnection) url.openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(5000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+                conn.setSSLSocketFactory(createPinnedSSLContext(pinnedFp).getSocketFactory());
+                conn.setHostnameVerifier((hostname, session) -> hostname != null && hostname.equalsIgnoreCase(Uri.parse(origin).getHost()));
+                if (conn.getResponseCode() != 200) return;
+                String body = readSmallResponse(conn.getInputStream());
+                JSONObject json = new JSONObject(body);
+                if (!json.optBoolean("available", false)) return;
+
+                final String remoteVersion = json.optString("version", "").trim();
+                final long remoteCode = json.optLong("version_code", 0L);
+                final String remoteSha = normalizeFingerprint(json.optString("sha256", ""));
+                if (!validFingerprint(remoteSha)) return;
+
+                long installedCode = currentInstalledVersionCode();
+                String installedSha = computeInstalledApkSha256();
+                boolean newerVersion = remoteCode > installedCode;
+                boolean sameVersionNewHash = (remoteCode > 0 && remoteCode == installedCode && !installedSha.isEmpty() && !remoteSha.equalsIgnoreCase(installedSha));
+                if (!newerVersion && !sameVersionNewHash) return;
+                if (!manual && remoteSha.equalsIgnoreCase(lastPromptedUpdateSha)) return;
+                lastPromptedUpdateSha = remoteSha;
+
+                runOnUiThread(() -> showApkUpdateDialog(origin, token.trim(), remoteVersion, remoteSha));
+            } catch (Exception ignored) {
+                // Silent fail-closed: network or TLS mismatch never prompts an unverified install.
+            } finally {
+                if (conn != null) conn.disconnect();
+                updateCheckInFlight.set(false);
+            }
+        }, "LocalCodeApkUpdateCheck").start();
+    }
+
+    private void showApkUpdateDialog(final String origin, final String token, final String remoteVersion, final String remoteSha) {
+        if (isFinishing() || isDestroyed()) return;
+        if (updateDialog != null && updateDialog.isShowing()) {
+            try { updateDialog.dismiss(); } catch (Exception ignored) {}
+        }
+        String shortHash = remoteSha.length() >= 12 ? remoteSha.substring(0, 12) : remoteSha;
+        String versionLabel = remoteVersion.isEmpty() ? "Release" : "v" + remoteVersion;
+        updateDialog = new AlertDialog.Builder(MainActivity.this)
+                .setTitle(tr("LocalCode Update verfügbar", "LocalCode Update Available"))
+                .setMessage(tr(
+                        "Eine neue signierte Release-APK (" + versionLabel + ", SHA-256: " + shortHash + "…) wurde auf deinem PC erkannt. Jetzt herunterladen und installieren?",
+                        "A new signed release APK (" + versionLabel + ", SHA-256: " + shortHash + "…) was detected on your PC. Download and install now?"))
+                .setPositiveButton(tr("Jetzt updaten", "Update now"), (dialog, which) -> {
+                    downloadAndInstallApkUpdate(origin, token, remoteSha, remoteVersion);
+                })
+                .setNegativeButton(tr("Später", "Later"), null)
+                .setCancelable(true)
+                .show();
+    }
+
+    private void downloadAndInstallApkUpdate(final String origin, final String token, final String expectedSha256, final String remoteVersion) {
+        final String pinnedFp = normalizeFingerprint(expectedFingerprint);
+        if (origin.isEmpty() || !validFingerprint(pinnedFp) || !validFingerprint(expectedSha256) || token == null || token.trim().isEmpty()) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            pendingUpdateOrigin = origin;
+            pendingUpdateSha256 = expectedSha256;
+            pendingUpdateVersion = remoteVersion;
+            setStatus(tr(
+                    "Bitte „Aus dieser Quelle zulassen“ für LocalCode aktivieren …",
+                    "Please enable 'Allow from this source' for LocalCode …"));
+            Intent permIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            try {
+                startActivityForResult(permIntent, REQUEST_INSTALL_UNKNOWN_APPS);
+            } catch (RuntimeException ex) {
+                showRemoteError("App-Installationsberechtigung konnte nicht geöffnet werden.", "Could not open install-packages permission.", ex);
+            }
+            return;
+        }
+
+        setStatus(tr("Lade signiertes Update herunter …", "Downloading signed update …"));
+        new Thread(() -> {
+            HttpsURLConnection conn = null;
+            PackageInstaller.Session session = null;
+            try {
+                URL url = new URL(origin + "/remote/api/apk-update/download");
+                conn = (HttpsURLConnection) url.openConnection();
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(20000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+                conn.setSSLSocketFactory(createPinnedSSLContext(pinnedFp).getSocketFactory());
+                conn.setHostnameVerifier((hostname, sessionTls) -> hostname != null && hostname.equalsIgnoreCase(Uri.parse(origin).getHost()));
+                if (conn.getResponseCode() != 200) {
+                    throw new IllegalStateException("HTTP " + conn.getResponseCode());
+                }
+
+                ByteArrayOutputStream apkBuffer = new ByteArrayOutputStream();
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                byte[] chunk = new byte[16384];
+                int total = 0;
+                try (InputStream in = conn.getInputStream()) {
+                    int read;
+                    while ((read = in.read(chunk)) > 0) {
+                        total += read;
+                        if (total > MAX_APK_UPDATE_BYTES) {
+                            throw new IllegalStateException("APK exceeds 32 MiB safety limit");
+                        }
+                        md.update(chunk, 0, read);
+                        apkBuffer.write(chunk, 0, read);
+                    }
+                }
+
+                byte[] digest = md.digest();
+                StringBuilder sb = new StringBuilder(digest.length * 2);
+                for (byte b : digest) sb.append(String.format(Locale.ROOT, "%02X", b));
+                String observedSha = sb.toString();
+                if (!expectedSha256.equalsIgnoreCase(observedSha)) {
+                    throw new SecurityException("APK SHA-256 mismatch (fail-closed)");
+                }
+
+                byte[] verifiedApkBytes = apkBuffer.toByteArray();
+                PackageInstaller installer = getPackageManager().getPackageInstaller();
+                PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
+                        PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                params.setAppPackageName(getPackageName());
+                params.setSize(verifiedApkBytes.length);
+                int sessionId = installer.createSession(params);
+                session = installer.openSession(sessionId);
+                try (OutputStream out = session.openWrite("localcode-update.apk", 0, verifiedApkBytes.length)) {
+                    out.write(verifiedApkBytes);
+                    session.fsync(out);
+                }
+
+                Intent callbackIntent = new Intent(MainActivity.this, MainActivity.class);
+                callbackIntent.setAction(ACTION_APK_INSTALL_RESULT);
+                int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+                PendingIntent pendingIntent = PendingIntent.getActivity(MainActivity.this, sessionId, callbackIntent, piFlags);
+                session.commit(pendingIntent.getIntentSender());
+                session.close();
+                session = null;
+            } catch (Exception ex) {
+                if (session != null) {
+                    try { session.abandon(); } catch (Exception ignored) {}
+                }
+                showRemoteError(
+                        "APK-Update abgebrochen (Integritäts- oder Netzwerkfehler).",
+                        "APK update aborted (integrity or network error).",
+                        ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex.getMessage()));
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }, "LocalCodeApkUpdateInstall").start();
+    }
+
+    private void handleApkInstallResultIntent(Intent intent) {
+        int statusCode = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (statusCode == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirmIntent = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirmIntent != null) {
+                confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    startActivity(confirmIntent);
+                } catch (RuntimeException ex) {
+                    showRemoteError("Update-Bestätigung konnte nicht gestartet werden.", "Could not launch update confirmation.", ex);
+                }
+            }
+            return;
+        }
+        if (statusCode == PackageInstaller.STATUS_SUCCESS) {
+            setStatus(tr("Update erfolgreich installiert.", "Update installed successfully."));
+        } else {
+            String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            setStatus(tr(
+                    "Update nicht installiert: " + (msg == null ? statusCode : msg),
+                    "Update not installed: " + (msg == null ? statusCode : msg)));
+        }
+    }
+
     private void openRemote(String target) {
         if (!isAllowedRemoteUrl(target)) {
             setStatus(tr(
@@ -1741,6 +2389,7 @@ public final class MainActivity extends Activity {
                     "Unsafe Remote address rejected."));
             return;
         }
+        inDiscoveryMode = false;
         currentRemoteUrl = target;
         persistConnection(target, expectedFingerprint);
         runOnUiThread(() -> {
@@ -1753,14 +2402,29 @@ public final class MainActivity extends Activity {
             if (webView != null) {
                 webView.setVisibility(View.VISIBLE);
                 webView.loadUrl(target);
+                final String watchedTarget = target;
+                webView.postDelayed(() -> {
+                    if (connectingOverlay != null
+                            && connectingOverlay.getVisibility() == View.VISIBLE
+                            && watchedTarget.equals(currentRemoteUrl)) {
+                        handleConnectionFailure(
+                                "Zeitüberschreitung bei " + watchedTarget + " – suche aktive PC-IP im WLAN …",
+                                "Connection timed out for " + watchedTarget + " – searching for active PC IP on Wi-Fi …");
+                    }
+                }, 8000L);
             }
         });
     }
 
     private void cancelConnectingAndOpenDiscovery() {
+        inDiscoveryMode = true;
+        currentRemoteUrl = "";
+        expectedFingerprint = "";
+        clearSavedConnection();
         runOnUiThread(() -> {
             if (webView != null) {
                 try { webView.stopLoading(); } catch (Exception ignored) {}
+                try { webView.loadUrl("about:blank"); } catch (Exception ignored) {}
                 webView.setVisibility(View.GONE);
             }
             if (connectingOverlay != null) {
@@ -1768,24 +2432,31 @@ public final class MainActivity extends Activity {
             }
             if (discoveryPanel != null) {
                 discoveryPanel.setVisibility(View.VISIBLE);
+                discoveryPanel.bringToFront();
             }
+            selectWizardTab(0);
+            renderDiscoveredInstances();
             setStatus(tr("Suche LocalCode im lokalen Netzwerk …", "Searching for LocalCode on the local network …"));
             requestDiscoveryPermissionAndStart();
         });
     }
 
     private void handleConnectionFailure(String germanMsg, String englishMsg) {
+        inDiscoveryMode = true;
         runOnUiThread(() -> {
             if (connectingOverlay != null) {
                 connectingOverlay.setVisibility(View.GONE);
             }
             if (webView != null) {
                 try { webView.stopLoading(); } catch (Exception ignored) {}
+                try { webView.loadUrl("about:blank"); } catch (Exception ignored) {}
                 webView.setVisibility(View.GONE);
             }
             if (discoveryPanel != null) {
                 discoveryPanel.setVisibility(View.VISIBLE);
+                discoveryPanel.bringToFront();
             }
+            renderDiscoveredInstances();
             setStatus(tr(germanMsg, englishMsg));
             requestDiscoveryPermissionAndStart();
         });
@@ -1820,6 +2491,7 @@ public final class MainActivity extends Activity {
     }
 
     private void clearSavedConnection() {
+        clearEncryptedAuthToken();
         if (preferences == null) return;
         preferences.edit().remove(PREF_REMOTE_URL).remove(PREF_TLS_FINGERPRINT).apply();
     }
@@ -1828,9 +2500,11 @@ public final class MainActivity extends Activity {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value.trim());
         String scheme = uri.getScheme();
-        if ((!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) || uri.getHost() == null || uri.getUserInfo() != null) return false;
+        if (!"https".equalsIgnoreCase(scheme) || uri.getHost() == null || uri.getUserInfo() != null) return false;
         String host = uri.getHost();
-        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)) return true;
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        if ("localhost".equals(lowerHost) || "127.0.0.1".equals(lowerHost)) return true;
+        if (lowerHost.endsWith(".trycloudflare.com") && lowerHost.length() > ".trycloudflare.com".length()) return true;
         if (!isLiteralIPv4(host) && !host.contains(":")) return false;
         try {
             return isPrivateAddress(InetAddress.getByName(host));
@@ -1860,23 +2534,6 @@ public final class MainActivity extends Activity {
 
     private static boolean isPrivateAddress(InetAddress address) {
         return address != null && (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.isSiteLocalAddress());
-    }
-
-    private static boolean isPrivateHost(String url) {
-        if (url == null || url.trim().isEmpty()) return false;
-        try {
-            Uri uri = Uri.parse(url.trim());
-            String host = uri.getHost();
-            if (host == null || host.trim().isEmpty()) return false;
-            host = host.trim().toLowerCase(Locale.ROOT);
-            if ("localhost".equals(host) || "127.0.0.1".equals(host) || "::1".equals(host)) return true;
-            if (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.")) return true;
-            if (host.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*")) return true;
-            if (host.endsWith(".local")) return true;
-            return false;
-        } catch (Exception ex) {
-            return false;
-        }
     }
 
     private static String attribute(Map<String, byte[]> attrs, String key) {
@@ -2225,7 +2882,7 @@ public final class MainActivity extends Activity {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
-            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isAllowedRemoteUrl(targetUrl)) {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
@@ -2267,7 +2924,7 @@ public final class MainActivity extends Activity {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(pinnedLanSSLContext(expectedFingerprint).getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
-            } else if (conn instanceof HttpsURLConnection && pinnedLan && isPrivateHost(targetUrl)) {
+            } else if (conn instanceof HttpsURLConnection && pinnedLan && isAllowedRemoteUrl(targetUrl)) {
                 HttpsURLConnection https = (HttpsURLConnection) conn;
                 https.setSSLSocketFactory(discoverySSLContext().getSocketFactory());
                 https.setHostnameVerifier(discoveryHostnameVerifier());
@@ -2415,6 +3072,14 @@ public final class MainActivity extends Activity {
         }
         stopDiscovery();
         cancelPendingFileChooser();
+        if (tlsWarningDialog != null && tlsWarningDialog.isShowing()) {
+            try { tlsWarningDialog.dismiss(); } catch (Exception ignored) {}
+            tlsWarningDialog = null;
+        }
+        if (updateDialog != null && updateDialog.isShowing()) {
+            try { updateDialog.dismiss(); } catch (Exception ignored) {}
+            updateDialog = null;
+        }
         if (tts != null) {
             try {
                 tts.stop();

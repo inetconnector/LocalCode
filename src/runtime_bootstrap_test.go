@@ -119,6 +119,7 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 	log.SetOutput(io.Discard)
 	t.Cleanup(func() { log.SetOutput(previousLogOutput) })
 
+	const testDefaultModel = "custom-coder:14b"
 	installed := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -127,7 +128,7 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Fatal(err)
 			}
-			if request.Model != defaultCodingModel || request.Stream {
+			if request.Model != testDefaultModel || request.Stream {
 				t.Fatalf("unexpected pull request: %#v", request)
 			}
 			installed = true
@@ -135,7 +136,7 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 		case "/api/tags":
 			models := []map[string]any{}
 			if installed {
-				models = append(models, map[string]any{"name": defaultCodingModel, "size": 1})
+				models = append(models, map[string]any{"name": testDefaultModel, "size": 1})
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"models": models})
 		default:
@@ -145,27 +146,30 @@ func TestEnsureConfiguredModelsPullsAndRefreshes(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultConfig()
+	cfg.OllamaDefaultModel = testDefaultModel
 	client := NewOllamaClient()
 	client.BaseURL = server.URL
 	models, details, err := ensureConfiguredModels(context.Background(), cfg, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !installed || len(models) != 1 || models[0].Name != defaultCodingModel {
+	if !installed || len(models) != 1 || models[0].Name != testDefaultModel {
 		t.Fatalf("model was not installed and refreshed: installed=%v models=%#v", installed, models)
 	}
-	if len(details) != 1 || !strings.Contains(details[0], defaultCodingModel) {
+	if len(details) != 1 || !strings.Contains(details[0], testDefaultModel) {
 		t.Fatalf("missing installation detail: %#v", details)
 	}
 }
 
 func TestSchemaEightEnablesRuntimeAutoSetupDuringMigration(t *testing.T) {
+	t.Setenv("LOCALCODE_DEFAULT_MODEL", "")
+	t.Setenv("OLLAMA_MODEL", "")
 	cfg := normalizeConfig(Config{SchemaVersion: 6})
 	if cfg.SchemaVersion != 11 || !cfg.OllamaAutoInstall || !cfg.OllamaAutoPull || !cfg.AiderAutoInstall {
 		t.Fatalf("runtime bootstrap migration incomplete: %#v", cfg)
 	}
-	if cfg.OllamaDefaultModel != defaultCodingModel {
-		t.Fatalf("default model = %q", cfg.OllamaDefaultModel)
+	if cfg.OllamaDefaultModel != "" {
+		t.Fatalf("default model must remain dynamic/empty when unconfigured, got %q", cfg.OllamaDefaultModel)
 	}
 }
 
@@ -234,6 +238,7 @@ func TestBootstrapProgressClampsAndLocalizes(t *testing.T) {
 func TestGermanSetupDownloadErrorsAreLocalized(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Language = "de"
+	cfg.OllamaDefaultModel = "test-coder:14b"
 	cfg.OllamaAutoPull = true
 	cfg.SetupDownloadsEnabled = false
 	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
@@ -279,13 +284,19 @@ func TestPlatformHelpersAndEnvironmentBranches(t *testing.T) {
 }
 
 func TestRequiredModelsFallbackAndEmptyModelChecks(t *testing.T) {
+	t.Setenv("LOCALCODE_DEFAULT_MODEL", "")
+	t.Setenv("OLLAMA_MODEL", "")
 	if modelInstalled([]ModelInfo{{Name: "qwen:latest"}}, "") {
 		t.Fatal("empty model name must never be installed")
 	}
 	cfg := Config{EditingEngine: editingEngineNative}
+	if missing := requiredOllamaModels(cfg, nil); len(missing) != 0 {
+		t.Fatalf("unconfigured default must not force-pull hardcoded models, got %#v", missing)
+	}
+	cfg.OllamaDefaultModel = "custom-coder:latest"
 	missing := requiredOllamaModels(cfg, nil)
-	if len(missing) != 1 || missing[0] != defaultCodingModel {
-		t.Fatalf("fallback models=%#v", missing)
+	if len(missing) != 1 || missing[0] != "custom-coder:latest" {
+		t.Fatalf("configured default models=%#v", missing)
 	}
 }
 
@@ -320,6 +331,7 @@ func TestNativeEngineAndAlreadyInstalledModelProgress(t *testing.T) {
 func TestAutomaticModelPullCanBeExplicitlyDisabled(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Language = "en"
+	cfg.OllamaDefaultModel = "test-coder:14b"
 	cfg.OllamaAutoPull = false
 	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
 	if err == nil || !strings.Contains(err.Error(), "automatic model download is disabled") {

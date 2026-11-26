@@ -125,12 +125,16 @@ func BrowserClick(ctx context.Context, cfg Config, project, selector string) (st
 				"selector": selector,
 			},
 		})
-		if mcpErr == nil && !strings.Contains(res, "isError\":true") {
-			return fmt.Sprintf("BROWSER CLICKED (via Playwright MCP)\nSelector: %s\n\n%s", selector, res), nil
+		if mcpErr != nil {
+			return "", fmt.Errorf("browser_click via Playwright MCP failed: %w", mcpErr)
 		}
+		if strings.Contains(res, "isError\":true") {
+			return "", fmt.Errorf("browser_click via Playwright MCP returned error: %s", res)
+		}
+		return fmt.Sprintf("BROWSER CLICKED (via Playwright MCP)\nSelector: %s\n\n%s", selector, res), nil
 	}
 
-	return fmt.Sprintf("BROWSER CLICKED\nTarget: %s\nNote: Enable Playwright MCP in Settings for live interactive session state.", selector), nil
+	return "", fmt.Errorf("browser_click is unavailable: Playwright MCP server is not enabled in Settings (target: %s)", selector)
 }
 
 // BrowserType types text into an input field matching selector.
@@ -148,12 +152,16 @@ func BrowserType(ctx context.Context, cfg Config, project, selector, text string
 				"value":    text,
 			},
 		})
-		if mcpErr == nil && !strings.Contains(res, "isError\":true") {
-			return fmt.Sprintf("BROWSER TYPED (via Playwright MCP)\nSelector: %s\nText: %s\n\n%s", selector, text, res), nil
+		if mcpErr != nil {
+			return "", fmt.Errorf("browser_type via Playwright MCP failed: %w", mcpErr)
 		}
+		if strings.Contains(res, "isError\":true") {
+			return "", fmt.Errorf("browser_type via Playwright MCP returned error: %s", res)
+		}
+		return fmt.Sprintf("BROWSER TYPED (via Playwright MCP)\nSelector: %s\nText: %s\n\n%s", selector, text, res), nil
 	}
 
-	return fmt.Sprintf("BROWSER TYPED\nTarget: %s\nText: %s\nNote: Enable Playwright MCP in Settings for live interactive session state.", selector, text), nil
+	return "", fmt.Errorf("browser_type is unavailable: Playwright MCP server is not enabled in Settings (target: %s)", selector)
 }
 
 // BrowserScreenshot captures a visual screenshot of the target URL or active browser page.
@@ -161,6 +169,9 @@ func BrowserScreenshot(ctx context.Context, cfg Config, project, targetURL, dest
 	targetURL = strings.TrimSpace(targetURL)
 	if targetURL == "" {
 		return "", errors.New("browser_screenshot requires a valid target URL or path")
+	}
+	if strings.TrimSpace(project) == "" {
+		return "", errors.New("browser_screenshot requires a valid project directory")
 	}
 	destination = strings.TrimSpace(destination)
 	if destination == "" {
@@ -172,11 +183,13 @@ func BrowserScreenshot(ctx context.Context, cfg Config, project, targetURL, dest
 		return "", err
 	}
 
-	outPath := destination
-	if !filepath.IsAbs(outPath) {
-		outPath = filepath.Join(project, destination)
+	outPath, err := ensureWithinRoot(project, destination)
+	if err != nil {
+		return "", fmt.Errorf("invalid browser screenshot destination: %w", err)
 	}
-	_ = os.MkdirAll(filepath.Dir(outPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		return "", fmt.Errorf("create browser screenshot directory: %w", err)
+	}
 
 	profileDir, err := os.MkdirTemp("", "localcode-browser-shot-*")
 	if err != nil {

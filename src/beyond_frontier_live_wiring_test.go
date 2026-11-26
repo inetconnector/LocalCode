@@ -1,0 +1,1028 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestServerChatRunsSSECompactStream(t *testing.T) {
+	project := t.TempDir()
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.Language = "en"
+
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	srv := httptest.NewServer(NewServer(state))
+	defer srv.Close()
+
+	body := strings.NewReader(`{"schema":"chat.run.events.v1","prompt":"/compact SSE live check","turn_id":"turn-sse-1"}`)
+	resp, err := srv.Client().Post(srv.URL+"/api/chat/runs", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST /api/chat/runs failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d want 200 (body=%s)", resp.StatusCode, raw)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("Content-Type=%q want text/event-stream", ct)
+	}
+
+	var events []string
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event:") {
+			events = append(events, strings.TrimSpace(strings.TrimPrefix(line, "event:")))
+		}
+	}
+	joined := strings.Join(events, ",")
+	for _, want := range []string{"run.started", "answer.final", "run.completed"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing SSE event %q in stream [%s]", want, joined)
+		}
+	}
+}
+
+func TestExecuteCommandOSSandboxLiveWiring(t *testing.T) {
+	project := t.TempDir()
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.OSSandboxEnabled = true
+	cfg.NetworkEnabled = false
+	cfg.CommandTimeout = 30
+
+	t.Setenv("OPENAI_API_KEY", "sk-secret-must-be-stripped-in-sandbox")
+
+	// Harmless command succeeds inside Win32 Job Object / Unix OS sandbox and strips secrets.
+	out, err := executeCommand(context.Background(), project, "echo SANDBOX_WIRED_OK", cfg)
+	if err != nil {
+		t.Fatalf("executeCommand harmless failed: %v (out=%s)", err, out)
+	}
+	if !strings.Contains(out, "SANDBOX_WIRED_OK") || !strings.Contains(out, "audit=") {
+		t.Fatalf("unexpected sandbox output: %s", out)
+	}
+
+	// Secret env var must not leak into child process environment.
+	outEnv, errEnv := executeCommand(context.Background(), project, "echo %OPENAI_API_KEY% $env:OPENAI_API_KEY", cfg)
+	if errEnv == nil && strings.Contains(outEnv, "sk-secret-must-be-stripped-in-sandbox") {
+		t.Fatalf("secret API key leaked inside sandboxed executeCommand: %s", outEnv)
+	}
+
+	// Protected credential path (~/.ssh/id_rsa) must be blocked fail-closed.
+	_, errSSH := executeCommand(context.Background(), project, "type ~/.ssh/id_rsa", cfg)
+	if errSSH == nil {
+		t.Fatalf("expected sandboxed executeCommand to block ~/.ssh/id_rsa")
+	}
+}
+
+func TestServerProvidersStatusNoSecretLeak(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	cfg.InferenceProvider = "anthropic"
+	cfg.PromptCachingEnabled = true
+	cfg.ReasoningEffort = "high"
+
+	const sentinelAnthropic = "sk-ant-test-secret-never-return-999"
+	t.Setenv("ANTHROPIC_API_KEY", sentinelAnthropic)
+
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	srv := httptest.NewServer(NewServer(state))
+	defer srv.Close()
+
+	resp, err := srv.Client().Get(srv.URL + "/api/providers/status")
+	if err != nil {
+		t.Fatalf("GET /api/providers/status failed: %v", err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, raw)
+	}
+	bodyStr := string(raw)
+	if strings.Contains(bodyStr, sentinelAnthropic) {
+		t.Fatalf("secret API key leaked in /api/providers/status response!")
+	}
+
+	var parsed struct {
+		ActiveProvider        string          `json:"active_provider"`
+		SupportsNativeTools   bool            `json:"supports_native_tools"`
+		SupportsPromptCaching bool            `json:"supports_prompt_caching"`
+		ConfiguredMode        string          `json:"configured_mode"`
+		KeyConfigured         map[string]bool `json:"key_configured"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("decode JSON: %v", err)
+	}
+	if parsed.ActiveProvider != "anthropic" || !parsed.SupportsNativeTools || !parsed.SupportsPromptCaching {
+		t.Fatalf("unexpected provider status: %+v", parsed)
+	}
+	if !parsed.KeyConfigured["anthropic"] {
+		t.Fatalf("expected key_configured.anthropic=true")
+	}
+}
+
+func TestRelayPairAndLockscreenApproveEndToEnd(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	desktopSrv := httptest.NewServer(NewServer(state))
+	defer desktopSrv.Close()
+
+	remoteSrv := httptest.NewServer(NewRemoteServer(state))
+	defer remoteSrv.Close()
+
+	// 1. Pair E2EE Relay & query status (public metadata only)
+	pairResp, err := desktopSrv.Client().Post(desktopSrv.URL+"/api/relay/pair", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST /api/relay/pair: %v", err)
+	}
+	pairBody, _ := io.ReadAll(pairResp.Body)
+	_ = pairResp.Body.Close()
+	if pairResp.StatusCode != http.StatusOK {
+		t.Fatalf("/api/relay/pair status=%d body=%s", pairResp.StatusCode, pairBody)
+	}
+	if !strings.Contains(string(pairBody), "localcode://relay-pair") || !strings.Contains(string(pairBody), "fingerprint") {
+		t.Fatalf("unexpected relay pair payload: %s", pairBody)
+	}
+
+	statusResp, err := desktopSrv.Client().Get(desktopSrv.URL + "/api/relay/status")
+	if err != nil {
+		t.Fatalf("GET /api/relay/status: %v", err)
+	}
+	statusBody, _ := io.ReadAll(statusResp.Body)
+	_ = statusResp.Body.Close()
+	if !strings.Contains(string(statusBody), `"active":true`) {
+		t.Fatalf("expected active relay session, got: %s", statusBody)
+	}
+
+	// 2. Reject "global" lockscreen token issuance fail-closed
+	badTokResp, err := desktopSrv.Client().Post(
+		desktopSrv.URL+"/api/push/lockscreen-token",
+		"application/json",
+		strings.NewReader(`{"approval_id":"ap-lock-1","decision":"global","device_id":"dev-1"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = badTokResp.Body.Close()
+	if badTokResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("global lockscreen token status=%d want 400", badTokResp.StatusCode)
+	}
+
+	// 3. Issue valid single-use "once" lockscreen token
+	tokResp, err := desktopSrv.Client().Post(
+		desktopSrv.URL+"/api/push/lockscreen-token",
+		"application/json",
+		strings.NewReader(`{"approval_id":"ap-lock-1","decision":"once","device_id":"dev-1"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokBody, _ := io.ReadAll(tokResp.Body)
+	_ = tokResp.Body.Close()
+	if tokResp.StatusCode != http.StatusOK {
+		t.Fatalf("issue token status=%d body=%s", tokResp.StatusCode, tokBody)
+	}
+	var tokParsed struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(tokBody, &tokParsed); err != nil || tokParsed.Token == "" {
+		t.Fatalf("invalid token payload: %s", tokBody)
+	}
+
+	// 4. Create paired mobile bearer token & pending approval
+	bearerRaw := make([]byte, 32)
+	_, _ = rand.Read(bearerRaw)
+	bearer := "tok-" + hex.EncodeToString(bearerRaw)
+	now := time.Now()
+	state.mu.Lock()
+	state.Config.RemoteDevices = []RemoteDevice{{
+		ID:         "dev-1",
+		Name:       "Pixel Lockscreen",
+		TokenHash:  remoteTokenHash(bearer),
+		PairedAt:   now,
+		LastSeenAt: now,
+	}}
+	pending := &PendingAction{
+		ID:     "ap-lock-1",
+		Result: make(chan ApprovalDecision, 1),
+	}
+	state.Pending = pending
+	state.mu.Unlock()
+
+	postApprove := func() *http.Response {
+		reqBody, _ := json.Marshal(map[string]string{
+			"token":       tokParsed.Token,
+			"approval_id": "ap-lock-1",
+			"device_id":   "dev-1",
+		})
+		req, _ := http.NewRequest(http.MethodPost, remoteSrv.URL+"/remote/api/lockscreen-approve", strings.NewReader(string(reqBody)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		resp, err := remoteSrv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	r1 := postApprove()
+	b1, _ := io.ReadAll(r1.Body)
+	_ = r1.Body.Close()
+	if r1.StatusCode != http.StatusOK || !strings.Contains(string(b1), `"persist":false`) {
+		t.Fatalf("lockscreen approve status=%d body=%s", r1.StatusCode, b1)
+	}
+
+	dec := <-pending.Result
+	if !dec.Approved || dec.Persist {
+		t.Fatalf("unexpected ApprovalDecision: %+v", dec)
+	}
+
+	// 5. Replaying same token must fail closed with 403 Forbidden
+	r2 := postApprove()
+	_ = r2.Body.Close()
+	if r2.StatusCode != http.StatusForbidden {
+		t.Fatalf("replay lockscreen token status=%d want 403", r2.StatusCode)
+	}
+}
+
+func TestRewindSlashCommandRestoresCheckpoint(t *testing.T) {
+	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	root := t.TempDir()
+	project := filepath.Join(root, "demo-rewind")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(project, "app.txt")
+	if err := os.WriteFile(targetFile, []byte("original-state-v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = root
+	cfg.LastProject = project
+	cfg.Language = "en"
+
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	th := newThread(project, "qwen2.5-coder:14b")
+	state.mu.Lock()
+	state.Project = project
+	state.Threads[th.ID] = th
+	state.CurrentThread = th.ID
+	state.mu.Unlock()
+
+	cp, err := state.CreateTurnCheckpoint(th.ID, project, "Edit app.txt")
+	if err != nil || cp == nil {
+		t.Fatalf("CreateTurnCheckpoint failed: cp=%v err=%v", cp, err)
+	}
+	state.AddEvent(UIEvent{Type: "user", Message: "Edit app.txt", CheckpointID: cp.ID})
+
+	if err := os.WriteFile(targetFile, []byte("mutated-state-v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := state.StartAgentForThread("/rewind", "qwen2.5-coder:14b", nil, project, th.ID); err != nil {
+		t.Fatalf("StartAgentForThread(/rewind) failed: %v", err)
+	}
+
+	gotBytes, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotBytes) != "original-state-v1" {
+		t.Fatalf("file content after /rewind = %q want %q", string(gotBytes), "original-state-v1")
+	}
+
+	state.mu.RLock()
+	running := state.Running
+	activeRuns := len(state.ActiveRuns)
+	lastSummary := state.LastSummary
+	state.mu.RUnlock()
+	if running || activeRuns != 0 {
+		t.Fatalf("expected idle state after /rewind, got running=%v activeRuns=%d", running, activeRuns)
+	}
+	if !strings.Contains(lastSummary, cp.ID) {
+		t.Fatalf("expected /rewind summary to mention checkpoint %s, got %q", cp.ID, lastSummary)
+	}
+}
+
+func TestRemoteSteerAndProvidersStatusEndpoints(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	cfg.InferenceProvider = "openai"
+	const sentinelKey = "sk-proj-never-leak-remote-999"
+	t.Setenv("OPENAI_API_KEY", sentinelKey)
+
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	bearerRaw := make([]byte, 32)
+	_, _ = rand.Read(bearerRaw)
+	bearer := "tok-" + hex.EncodeToString(bearerRaw)
+	now := time.Now()
+	th := newThread(cfg.RootProjectDir, "gpt-5")
+	state.mu.Lock()
+	state.Config.RemoteDevices = []RemoteDevice{{
+		ID:         "dev-steer-1",
+		Name:       "Galaxy S25",
+		TokenHash:  remoteTokenHash(bearer),
+		PairedAt:   now,
+		LastSeenAt: now,
+	}}
+	state.Threads[th.ID] = th
+	state.CurrentThread = th.ID
+	state.Running = true
+	state.RunID = "run-steer-1"
+	state.RunPhase = "running"
+	state.mu.Unlock()
+	state.beginAgentSteering("run-steer-1")
+
+	remoteSrv := httptest.NewServer(NewRemoteServer(state))
+	defer remoteSrv.Close()
+
+	// 1. GET /remote/api/providers-status (no secret leak)
+	provReq, _ := http.NewRequest(http.MethodGet, remoteSrv.URL+"/remote/api/providers-status", nil)
+	provReq.Header.Set("Authorization", "Bearer "+bearer)
+	provResp, err := remoteSrv.Client().Do(provReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provBody, _ := io.ReadAll(provResp.Body)
+	_ = provResp.Body.Close()
+	if provResp.StatusCode != http.StatusOK || !strings.Contains(string(provBody), `"active_provider":"openai"`) {
+		t.Fatalf("GET /remote/api/providers-status status=%d body=%s", provResp.StatusCode, provBody)
+	}
+	if strings.Contains(string(provBody), sentinelKey) {
+		t.Fatal("/remote/api/providers-status leaked raw API key")
+	}
+
+	// 2. POST /remote/api/steer during active run -> 202 Accepted & queued in mailbox
+	steerReq, _ := http.NewRequest(http.MethodPost, remoteSrv.URL+"/remote/api/steer", strings.NewReader(`{"message":"Switch to table-driven tests"}`))
+	steerReq.Header.Set("Content-Type", "application/json")
+	steerReq.Header.Set("Authorization", "Bearer "+bearer)
+	steerResp, err := remoteSrv.Client().Do(steerReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steerBody, _ := io.ReadAll(steerResp.Body)
+	_ = steerResp.Body.Close()
+	if steerResp.StatusCode != http.StatusAccepted || !strings.Contains(string(steerBody), `"state":"queued"`) {
+		t.Fatalf("POST /remote/api/steer status=%d body=%s", steerResp.StatusCode, steerBody)
+	}
+
+	drained := state.drainAgentSteering("run-steer-1")
+	if len(drained) != 1 || drained[0].Message != "Switch to table-driven tests" {
+		t.Fatalf("unexpected drained steering messages: %+v", drained)
+	}
+}
+
+func TestHooksV2PreToolUseVetoInAgentLoop(t *testing.T) {
+	project := t.TempDir()
+	hookDir := filepath.Join(project, ".localcode")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	vetoCmd := "echo 'policy veto: write_file blocked' >&2; exit 2"
+	if runtime.GOOS == "windows" {
+		vetoCmd = "[Console]::Error.WriteLine('policy veto: write_file blocked'); exit 2"
+	}
+	hooksJSON, err := json.Marshal(map[string]any{
+		"hooks": []HookDefinition{{
+			Name:        "block-writes",
+			Event:       HookEventPreToolUse,
+			Type:        "command",
+			Command:     vetoCmd,
+			ToolMatcher: "write_file",
+			TimeoutSec:  10,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "hooks.json"), hooksJSON, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	defs, err := LoadProjectHooksV2(project)
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("LoadProjectHooksV2 defs=%+v err=%v", defs, err)
+	}
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	_, runErr := RunHooksV2(context.Background(), project, cfg, defs, HookPayload{
+		Event:   HookEventPreToolUse,
+		Project: project,
+		Action:  AgentAction{Action: "write_file", Path: "blocked.txt", Message: "write"},
+	})
+	if _, isVeto := IsHookVetoError(runErr); !isVeto {
+		t.Fatalf("expected *HookVetoError from PreToolUse exit 2, got %v", runErr)
+	}
+}
+
+func TestAgentLoopRoutesThroughNativeFrontierProviderAndTranslatesToolCalls(t *testing.T) {
+	var seenCacheControl bool
+	var seenNativeTools bool
+	anthropicMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, `"cache_control"`) {
+			seenCacheControl = true
+		}
+		if strings.Contains(bodyStr, `"tools"`) && strings.Contains(bodyStr, `"apply_patch"`) {
+			seenNativeTools = true
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-opus-4-1\",\"usage\":{\"input_tokens\":42}}}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"read_file\",\"input\":{}}}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"README.md\\\",\\\"message\\\":\\\"Inspect README\\\"}\"}}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":12}}\n\n")
+		_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer anthropicMock.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-local-test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", anthropicMock.URL)
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	cfg.InferenceProvider = "anthropic"
+	cfg.PromptCachingEnabled = true
+	cfg.LastModel = "claude-opus-4-1"
+
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	action, usedModel, err := state.nextAgentAction(context.Background(), "claude-opus-4-1", []OllamaMessage{
+		{Role: "system", Content: "You are a coding assistant."},
+		{Role: "user", Content: "Read README.md"},
+	})
+	if err != nil {
+		t.Fatalf("nextAgentAction via Anthropic provider failed: %v", err)
+	}
+	if usedModel != "claude-opus-4-1" {
+		t.Fatalf("usedModel=%q want claude-opus-4-1", usedModel)
+	}
+	if action.Action != "read_file" || action.Path != "README.md" {
+		t.Fatalf("translated native tool call mismatch: %+v", action)
+	}
+	if !seenCacheControl {
+		t.Fatalf("expected Anthropic request to include prompt caching cache_control")
+	}
+	if !seenNativeTools {
+		t.Fatalf("expected Anthropic request to include native tool definitions (incl. apply_patch)")
+	}
+}
+
+func TestVerifyFrameEndpointsDetectBlackScreenAndPassRichUI(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	srv := NewServer(state)
+
+	// 1. Pure black 32x32 PNG -> fails with BLANK_OR_BLACK_SCREEN
+	var blackBuf bytes.Buffer
+	blackImg := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	if err := png.Encode(&blackBuf, blackImg); err != nil {
+		t.Fatal(err)
+	}
+	blackReqPayload, _ := json.Marshal(map[string]string{
+		"image_base64": "data:image/png;base64," + base64.StdEncoding.EncodeToString(blackBuf.Bytes()),
+	})
+	recBlack := httptest.NewRecorder()
+	reqBlack := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/vision/verify-frame", bytes.NewReader(blackReqPayload))
+	reqBlack.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(recBlack, reqBlack)
+	if recBlack.Code != http.StatusOK || !strings.Contains(recBlack.Body.String(), `"passed":false`) || !strings.Contains(recBlack.Body.String(), "BLANK_OR_BLACK_SCREEN") {
+		t.Fatalf("black frame check mismatch code=%d body=%s", recBlack.Code, recBlack.Body.String())
+	}
+
+	// 2. Rich high-contrast UI PNG -> passes
+	richImg := image.NewRGBA(image.Rect(0, 0, 48, 32))
+	for y := 0; y < 32; y++ {
+		for x := 0; x < 48; x++ {
+			c := color.RGBA{R: 18, G: 24, B: 38, A: 255}
+			if y >= 4 && y < 12 && x >= 4 && x < 44 {
+				c = color.RGBA{R: 56, G: 189, B: 248, A: 255}
+			} else if y >= 16 && y < 28 && x >= 4 && x < 24 {
+				c = color.RGBA{R: 241, G: 245, B: 249, A: 255}
+			}
+			richImg.SetRGBA(x, y, c)
+		}
+	}
+	var richBuf bytes.Buffer
+	if err := png.Encode(&richBuf, richImg); err != nil {
+		t.Fatal(err)
+	}
+	richReqPayload, _ := json.Marshal(map[string]string{
+		"image_base64": base64.StdEncoding.EncodeToString(richBuf.Bytes()),
+	})
+	recRich := httptest.NewRecorder()
+	reqRich := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/vision/verify-frame", bytes.NewReader(richReqPayload))
+	reqRich.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(recRich, reqRich)
+	if recRich.Code != http.StatusOK || !strings.Contains(recRich.Body.String(), `"passed":true`) {
+		t.Fatalf("rich UI frame check mismatch code=%d body=%s", recRich.Code, recRich.Body.String())
+	}
+
+	// 3. Authenticated Mobile Remote endpoint /remote/api/verify-frame
+	token, _, err := state.DirectPairRemoteDevice("Galaxy S25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSrv := NewRemoteServer(state)
+	recRemote := httptest.NewRecorder()
+	reqRemote := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/verify-frame", bytes.NewReader(richReqPayload))
+	reqRemote.Header.Set("Content-Type", "application/json")
+	reqRemote.Header.Set("Authorization", "Bearer "+token)
+	remoteSrv.ServeHTTP(recRemote, reqRemote)
+	if recRemote.Code != http.StatusOK || !strings.Contains(recRemote.Body.String(), `"passed":true`) {
+		t.Fatalf("remote verify-frame mismatch code=%d body=%s", recRemote.Code, recRemote.Body.String())
+	}
+}
+
+func TestRemoteAPKUpdateManifestAndDownloadEndpoint(t *testing.T) {
+	tmpDir := t.TempDir()
+	fakeAPK := filepath.Join(tmpDir, "LocalCode-Remote.apk")
+	apkBytes := []byte("PK\x03\x04localcode-signed-release-apk-bytes-test")
+	if err := os.WriteFile(fakeAPK, apkBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALCODE_APK_PATH", fakeAPK)
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, _, err := state.DirectPairRemoteDevice("Galaxy S25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteSrv := NewRemoteServer(state)
+
+	// 1. Unauthenticated request is rejected fail-closed (401)
+	unauthRec := httptest.NewRecorder()
+	unauthReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update", nil)
+	remoteSrv.ServeHTTP(unauthRec, unauthReq)
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without bearer token, got %d", unauthRec.Code)
+	}
+
+	// 2. Authenticated manifest request returns available=true, sha256, version_code
+	metaRec := httptest.NewRecorder()
+	metaReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update", nil)
+	metaReq.Header.Set("Authorization", "Bearer "+token)
+	remoteSrv.ServeHTTP(metaRec, metaReq)
+	if metaRec.Code != http.StatusOK {
+		t.Fatalf("apk-update manifest status=%d body=%s", metaRec.Code, metaRec.Body.String())
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(metaRec.Body.Bytes(), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["available"] != true || meta["download_path"] != "/remote/api/apk-update/download" {
+		t.Fatalf("unexpected apk-update manifest: %+v", meta)
+	}
+	expectedSHA, _ := meta["sha256"].(string)
+	if len(expectedSHA) != 64 {
+		t.Fatalf("expected 64-hex sha256 in manifest, got %q", expectedSHA)
+	}
+
+	// 3. Authenticated download returns exact APK bytes and matching X-APK-SHA256 header
+	dlRec := httptest.NewRecorder()
+	dlReq := httptest.NewRequest(http.MethodGet, "https://127.0.0.1:32146/remote/api/apk-update/download", nil)
+	dlReq.Header.Set("Authorization", "Bearer "+token)
+	remoteSrv.ServeHTTP(dlRec, dlReq)
+	if dlRec.Code != http.StatusOK {
+		t.Fatalf("apk-update download status=%d body=%s", dlRec.Code, dlRec.Body.String())
+	}
+	if dlRec.Header().Get("X-APK-SHA256") != expectedSHA {
+		t.Fatalf("X-APK-SHA256=%q want %q", dlRec.Header().Get("X-APK-SHA256"), expectedSHA)
+	}
+	if !bytes.Equal(dlRec.Body.Bytes(), apkBytes) {
+		t.Fatalf("downloaded APK bytes mismatch")
+	}
+}
+
+func TestLocalCodeMCPServerJSONRPC(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-must-never-leak")
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+	srv := NewServer(state)
+
+	callMCP := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/mcp", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		srv.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 1. initialize
+	initRec := callMCP(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
+	if initRec.Code != http.StatusOK || !strings.Contains(initRec.Body.String(), `"localcode-mcp-server"`) {
+		t.Fatalf("MCP initialize failed code=%d body=%s", initRec.Code, initRec.Body.String())
+	}
+
+	// 2. tools/list exposes all 7 LocalCode MCP tools
+	listRec := callMCP(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("MCP tools/list code=%d", listRec.Code)
+	}
+	for _, toolName := range []string{
+		"localcode_health",
+		"localcode_providers_status",
+		"localcode_list_pty_sessions",
+		"localcode_verify_frame",
+		"localcode_apk_update_info",
+		"localcode_push_status",
+		"localcode_relay_status",
+	} {
+		if !strings.Contains(listRec.Body.String(), `"`+toolName+`"`) {
+			t.Fatalf("MCP tools/list missing %q: %s", toolName, listRec.Body.String())
+		}
+	}
+
+	// 3. tools/call localcode_providers_status reports anthropic=true without leaking secret
+	provRec := callMCP(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"localcode_providers_status","arguments":{}}}`)
+	if provRec.Code != http.StatusOK || !strings.Contains(provRec.Body.String(), `"isError":false`) {
+		t.Fatalf("MCP providers status failed: %s", provRec.Body.String())
+	}
+	if strings.Contains(provRec.Body.String(), "sk-ant-super-secret") {
+		t.Fatalf("MCP providers status leaked secret API key!")
+	}
+
+	// 4. tools/call localcode_verify_frame detects pure black PNG
+	var blackBuf bytes.Buffer
+	_ = png.Encode(&blackBuf, image.NewRGBA(image.Rect(0, 0, 16, 16)))
+	frameArgs, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "localcode_verify_frame",
+			"arguments": map[string]any{"image_base64": base64.StdEncoding.EncodeToString(blackBuf.Bytes())},
+		},
+	})
+	frameRec := callMCP(string(frameArgs))
+	if frameRec.Code != http.StatusOK || !strings.Contains(frameRec.Body.String(), "BLANK_OR_BLACK_SCREEN") {
+		t.Fatalf("MCP verify_frame mismatch: %s", frameRec.Body.String())
+	}
+}
+
+func TestUnifiedPushRegisterAndApprovalNotifyEndToEnd(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, device, err := state.DirectPairRemoteDevice("Galaxy-S25-Push")
+	if err != nil {
+		t.Fatalf("DirectPairRemoteDevice failed: %v", err)
+	}
+
+	localSrv := NewServer(state)
+	remoteSrv := NewRemoteServer(state)
+
+	// 1. Fail-closed: plaintext non-loopback HTTP UnifiedPush URL MUST be rejected (400).
+	badRec := httptest.NewRecorder()
+	badBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":"http://push.example.com/hook"}`, device.ID)
+	badReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(badBody))
+	badReq.Header.Set("Authorization", "Bearer "+token)
+	badReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-loopback plaintext push endpoint, got %d body=%s", badRec.Code, badRec.Body.String())
+	}
+
+	// 2. Start a real local UnifiedPush HTTP receiver and register it via /remote/api/push/register-endpoint.
+	var receivedBody []byte
+	var receivedUrgency string
+	var receivedTopic string
+	var receivedPayload ZeroSecretPushPayload
+	pushReceiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedUrgency = r.Header.Get("Urgency")
+		receivedTopic = r.Header.Get("Topic")
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = body
+		_ = json.Unmarshal(body, &receivedPayload)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer pushReceiver.Close()
+
+	regRec := httptest.NewRecorder()
+	regBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":%q}`, device.ID, pushReceiver.URL)
+	regReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(regBody))
+	regReq.Header.Set("Authorization", "Bearer "+token)
+	regReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusOK || !strings.Contains(regRec.Body.String(), `"registered_count":1`) {
+		t.Fatalf("push register failed code=%d body=%s", regRec.Code, regRec.Body.String())
+	}
+
+	// 3. Attach pending approval and trigger /api/push/notify-approval with a dirty secret-like project string.
+	resultCh := make(chan ApprovalDecision, 1)
+	state.mu.Lock()
+	state.Pending = &PendingAction{
+		ID:     "appr-push-live-01",
+		Result: resultCh,
+	}
+	state.mu.Unlock()
+
+	notifyRec := httptest.NewRecorder()
+	notifyBody := `{"approval_id":"appr-push-live-01","project_name":"C:\\repo\\secret sk-ant-1234567890abcdef"}`
+	notifyReq := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/push/notify-approval", strings.NewReader(notifyBody))
+	notifyReq.Header.Set("Content-Type", "application/json")
+	localSrv.ServeHTTP(notifyRec, notifyReq)
+	if notifyRec.Code != http.StatusOK || !strings.Contains(notifyRec.Body.String(), `"delivered":1`) {
+		t.Fatalf("push notify failed code=%d body=%s", notifyRec.Code, notifyRec.Body.String())
+	}
+
+	// 4. Verify Zero-Secret-Push-Policy and RFC 8030 headers on received payload.
+	if receivedUrgency != "high" || !strings.HasPrefix(receivedTopic, "lc-") {
+		t.Fatalf("unexpected UnifiedPush headers urgency=%q topic=%q", receivedUrgency, receivedTopic)
+	}
+	if strings.Contains(string(receivedBody), "sk-ant-") {
+		t.Fatalf("Zero-Secret push policy violated! body=%s", string(receivedBody))
+	}
+	if receivedPayload.Project != "LocalCode Project" || receivedPayload.ApprovalID != "appr-push-live-01" {
+		t.Fatalf("unexpected sanitized push payload: %+v", receivedPayload)
+	}
+	if receivedPayload.ApproveOnceToken == "" || receivedPayload.RejectToken == "" {
+		t.Fatalf("missing lockscreen action tokens in push payload: %+v", receivedPayload)
+	}
+
+	// 5. Redeem single-use approve_once_token on /remote/api/lockscreen-approve, then verify replay is blocked (403).
+	approveBody, _ := json.Marshal(map[string]any{
+		"token":       receivedPayload.ApproveOnceToken,
+		"approval_id": "appr-push-live-01",
+		"device_id":   device.ID,
+	})
+	apprRec := httptest.NewRecorder()
+	apprReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	apprReq.Header.Set("Authorization", "Bearer "+token)
+	apprReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(apprRec, apprReq)
+	if apprRec.Code != http.StatusOK {
+		t.Fatalf("lockscreen approve failed code=%d body=%s", apprRec.Code, apprRec.Body.String())
+	}
+	select {
+	case dec := <-resultCh:
+		if !dec.Approved || dec.Persist {
+			t.Fatalf("expected non-persistent single approval, got %+v", dec)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for lockscreen approval decision")
+	}
+
+	replayRec := httptest.NewRecorder()
+	replayReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	replayReq.Header.Set("Authorization", "Bearer "+token)
+	replayReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on replayed lockscreen token, got %d body=%s", replayRec.Code, replayRec.Body.String())
+	}
+}
+
+func TestRequestApprovalAutoDispatchesZeroSecretUnifiedPush(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	state := NewAppState(cfg, newOfflineTestOllamaClient(t))
+	defer state.Close()
+
+	token, device, err := state.DirectPairRemoteDevice("Galaxy-S25-AutoPush")
+	if err != nil {
+		t.Fatalf("DirectPairRemoteDevice failed: %v", err)
+	}
+	remoteSrv := NewRemoteServer(state)
+
+	pushCh := make(chan ZeroSecretPushPayload, 1)
+	pushReceiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var p ZeroSecretPushPayload
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &p); err == nil {
+			select {
+			case pushCh <- p:
+			default:
+			}
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer pushReceiver.Close()
+
+	// Register UnifiedPush target via authenticated remote endpoint
+	regRec := httptest.NewRecorder()
+	regBody := fmt.Sprintf(`{"device_id":%q,"provider":"unifiedpush","endpoint":%q}`, device.ID, pushReceiver.URL)
+	regReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/push/register-endpoint", strings.NewReader(regBody))
+	regReq.Header.Set("Authorization", "Bearer "+token)
+	regReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(regRec, regReq)
+	if regRec.Code != http.StatusOK {
+		t.Fatalf("push register failed code=%d body=%s", regRec.Code, regRec.Body.String())
+	}
+
+	// Start requestApprovalWithPreview in a goroutine — it MUST auto-dispatch a Zero-Secret push!
+	type approvalRes struct {
+		ok  bool
+		err error
+	}
+	doneCh := make(chan approvalRes, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() {
+		ok, err := state.requestApprovalWithPreview(ctx, cfg.RootProjectDir, AgentAction{
+			Action:  "run_command",
+			Command: "echo hello",
+			Message: "Run verification echo",
+		}, "echo hello")
+		doneCh <- approvalRes{ok: ok, err: err}
+	}()
+
+	var payload ZeroSecretPushPayload
+	select {
+	case payload = <-pushCh:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for automatic UnifiedPush notification from requestApprovalWithPreview")
+	}
+
+	if payload.ApproveOnceToken == "" || payload.ApprovalID == "" {
+		t.Fatalf("expected valid approval_id & approve_once_token in auto push, got %+v", payload)
+	}
+
+	// Redeem the received lockscreen token over /remote/api/lockscreen-approve to unblock requestApprovalWithPreview
+	approveBody, _ := json.Marshal(map[string]any{
+		"token":       payload.ApproveOnceToken,
+		"approval_id": payload.ApprovalID,
+		"device_id":   device.ID,
+	})
+	apprRec := httptest.NewRecorder()
+	apprReq := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:32146/remote/api/lockscreen-approve", bytes.NewReader(approveBody))
+	apprReq.Header.Set("Authorization", "Bearer "+token)
+	apprReq.Header.Set("Content-Type", "application/json")
+	remoteSrv.ServeHTTP(apprRec, apprReq)
+	if apprRec.Code != http.StatusOK {
+		t.Fatalf("lockscreen approve failed code=%d body=%s", apprRec.Code, apprRec.Body.String())
+	}
+
+	select {
+	case res := <-doneCh:
+		if res.err != nil || !res.ok {
+			t.Fatalf("expected requestApprovalWithPreview to return (true, nil), got (%v, %v)", res.ok, res.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for requestApprovalWithPreview to unblock")
+	}
+}
+
+func TestStartAgentForThreadFailsClosedWhenBackendOfflineOr404AndRendersNothing(t *testing.T) {
+	project := t.TempDir()
+
+	// Case 1: Backend returns HTTP 404 (exact screenshot scenario: localhost:8080 -> 404 page not found)
+	badBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer badBackend.Close()
+
+	client := NewOllamaClient()
+	client.BaseURL = badBackend.URL
+	cfg := defaultConfig()
+	cfg.RootProjectDir = project
+	cfg.LastProject = project
+	cfg.LastModel = "qwen2.5:3b"
+	cfg.Language = "de"
+
+	state := NewAppState(cfg, client)
+	defer state.Close()
+	srv := NewServer(state)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"erstelle einen original flappy birds klon","model":"qwen2.5:3b","project":`+mustJSON(project)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 Service Unavailable for 404/offline backend, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "404") || !strings.Contains(rec.Body.String(), "nicht gestartet") {
+		t.Fatalf("expected clear German preflight error message, got: %s", rec.Body.String())
+	}
+
+	state.mu.RLock()
+	running := state.Running
+	activeCount := len(state.ActiveRuns)
+	eventCount := len(state.Events)
+	state.mu.RUnlock()
+	if running || activeCount != 0 || eventCount != 0 {
+		t.Fatalf("backend-offline preflight must NOT start run or render any events: running=%v active=%d events=%d", running, activeCount, eventCount)
+	}
+
+	// Case 2: Backend is online, but requested model is NOT installed -> immediate 503 & 0 events
+	wrongModelBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"models": []map[string]any{{"name": "qwen2.5-coder:14b"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer wrongModelBackend.Close()
+
+	client2 := NewOllamaClient()
+	client2.BaseURL = wrongModelBackend.URL
+	state2 := NewAppState(cfg, client2)
+	defer state2.Close()
+	srv2 := NewServer(state2)
+
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"erstelle flappy bird","model":"missing-model:99b","project":`+mustJSON(project)+`}`))
+	req2.Header.Set("Content-Type", "application/json")
+	srv2.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for missing model, got %d body=%s", rec2.Code, rec2.Body.String())
+	}
+	state2.mu.RLock()
+	events2 := len(state2.Events)
+	state2.mu.RUnlock()
+	if events2 != 0 {
+		t.Fatalf("missing model preflight must render 0 events, got %d", events2)
+	}
+
+	// Case 3: Cloud provider (Anthropic) without API key -> immediate 503 & 0 events
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	cfgCloud := defaultConfig()
+	cfgCloud.RootProjectDir = project
+	cfgCloud.LastProject = project
+	cfgCloud.InferenceProvider = "anthropic"
+	state3 := NewAppState(cfgCloud, client2)
+	defer state3.Close()
+	srv3 := NewServer(state3)
+
+	rec3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:32145/api/chat",
+		strings.NewReader(`{"message":"hello","model":"claude-opus-4-6","project":`+mustJSON(project)+`}`))
+	req3.Header.Set("Content-Type", "application/json")
+	srv3.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for missing Anthropic key, got %d body=%s", rec3.Code, rec3.Body.String())
+	}
+	state3.mu.RLock()
+	events3 := len(state3.Events)
+	state3.mu.RUnlock()
+	if events3 != 0 {
+		t.Fatalf("missing cloud API key preflight must render 0 events, got %d", events3)
+	}
+
+	// Case 4: isFatalBackendError immediately detects HTTP 404 / connection errors so retry loop never spams
+	if !isFatalBackendError(fmt.Errorf("kein Modell lieferte eine gültige Agentenaktion: qwen2.5:3b: Ollama HTTP 404: 404 page not found")) {
+		t.Fatalf("expected Ollama HTTP 404 to be classified as fatal backend error")
+	}
+	if isFatalBackendError(fmt.Errorf("invalid json syntax in agent action")) {
+		t.Fatalf("normal JSON parse error should not be classified as fatal backend error")
+	}
+}

@@ -33,6 +33,8 @@ var defaultStagnationTracker = &StagnationTracker{
 	fingerprints: make(map[string][]string),
 }
 
+var integratorMergeMu sync.Mutex
+
 func (t *StagnationTracker) RecordAttempt(taskID string, failingEvidence string) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -67,6 +69,9 @@ func IntegrateBuilderWorktree(ctx context.Context, wt *AgentWorktreeWorkspace, t
 	if wt == nil || strings.TrimSpace(wt.MainProject) == "" || strings.TrimSpace(wt.BranchName) == "" {
 		return nil, errIntegratorWorkspaceNil
 	}
+
+	integratorMergeMu.Lock()
+	defer integratorMergeMu.Unlock()
 
 	project := filepath.Clean(wt.MainProject)
 

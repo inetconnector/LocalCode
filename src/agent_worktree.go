@@ -38,6 +38,7 @@ type AgentWorktreeWorkspace struct {
 
 type worktreeRegistry struct {
 	mu        sync.Mutex
+	gitOpMu   sync.Mutex
 	worktrees map[string]*AgentWorktreeWorkspace
 }
 
@@ -196,8 +197,10 @@ func CreateAgentWorktree(ctx context.Context, project, missionID, taskID, baseCo
 		return nil, err
 	}
 
-	// 5. Run git worktree add
+	// 5. Run git worktree add (serialized per repo metadata to avoid .git lock contention across parallel builders)
+	defaultWorktreeRegistry.gitOpMu.Lock()
 	out, err := runGit(ctx, project, []string{"worktree", "add", "-b", branchName, targetPath, baseCommit}, cfg)
+	defaultWorktreeRegistry.gitOpMu.Unlock()
 	if err != nil {
 		defaultWorktreeRegistry.unregister(workspace)
 		_ = os.RemoveAll(targetPath)
@@ -207,30 +210,83 @@ func CreateAgentWorktree(ctx context.Context, project, missionID, taskID, baseCo
 	return workspace, nil
 }
 
+func parseGitPorcelainPaths(cleanStatus string) []string {
+	var paths []string
+	for _, line := range strings.Split(cleanStatus, "\n") {
+		raw := strings.TrimRight(line, "\r")
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var filePath string
+		if len(raw) > 3 && raw[2] == ' ' {
+			filePath = strings.TrimSpace(raw[3:])
+		} else {
+			trimmed := strings.TrimLeft(raw, " ")
+			if idx := strings.IndexByte(trimmed, ' '); idx >= 0 {
+				filePath = strings.TrimSpace(trimmed[idx+1:])
+			}
+		}
+		if idx := strings.Index(filePath, " -> "); idx >= 0 {
+			filePath = strings.TrimSpace(filePath[idx+4:])
+		}
+		filePath = strings.Trim(filePath, `"`)
+		if filePath != "" {
+			paths = append(paths, filepath.ToSlash(filePath))
+		}
+	}
+	return paths
+}
+
+func appendUniqueFilePaths(base []string, extra ...string) []string {
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	out := make([]string, 0, len(base)+len(extra))
+	for _, item := range base {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	for _, item := range extra {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func CollectAgentWorktreeResult(ctx context.Context, wt *AgentWorktreeWorkspace, cfg Config) (*AgentResult, error) {
 	if wt == nil || !wt.Active {
 		return nil, errWorktreeNotFound
 	}
 
-	// 1. Inspect status
+	// 1. Inspect uncommitted working tree status
 	statusOut, err := runGit(ctx, wt.WorktreePath, []string{"status", "--porcelain"}, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("git status failed in worktree: %w", err)
 	}
 	cleanStatus := extractGitStdout(statusOut)
+	changedFiles := parseGitPorcelainPaths(cleanStatus)
 
-	var changedFiles []string
-	for _, line := range strings.Split(cleanStatus, "\n") {
-		line = strings.TrimSpace(line)
-		if len(line) > 3 {
-			filePath := strings.TrimSpace(line[3:])
-			if filePath != "" {
-				changedFiles = append(changedFiles, filepath.ToSlash(filePath))
+	// 2. Also inspect committed changes between base commit and worktree HEAD
+	if strings.TrimSpace(wt.BaseCommit) != "" {
+		if committedOut, diffErr := runGit(ctx, wt.WorktreePath, []string{"diff", "--name-only", wt.BaseCommit + "..HEAD"}, cfg); diffErr == nil {
+			for _, line := range strings.Split(extractGitStdout(committedOut), "\n") {
+				f := strings.TrimSpace(line)
+				if f != "" {
+					changedFiles = appendUniqueFilePaths(changedFiles, filepath.ToSlash(f))
+				}
 			}
 		}
 	}
 
-	// 2. Inspect diff against base commit
+	// 3. Inspect diff against base commit
 	diffOut, _ := runGit(ctx, wt.WorktreePath, []string{"diff", wt.BaseCommit}, cfg)
 	cleanDiff := extractGitStdout(diffOut)
 	if len(cleanDiff) > 16000 {
@@ -250,6 +306,54 @@ func CollectAgentWorktreeResult(ctx context.Context, wt *AgentWorktreeWorkspace,
 	return result, nil
 }
 
+// CommitAgentWorktreeChanges stages and commits any uncommitted builder edits
+// strictly inside the isolated worktree branch so IntegrateBuilderWorktree can
+// perform a clean --no-ff merge into the target branch.
+func CommitAgentWorktreeChanges(ctx context.Context, wt *AgentWorktreeWorkspace, message string, cfg Config) (string, []string, error) {
+	if wt == nil || !wt.Active {
+		return "", nil, errWorktreeNotFound
+	}
+	if err := validateWorktreePathContainment(wt.WorktreePath); err != nil {
+		return "", nil, err
+	}
+	statusOut, err := runGit(ctx, wt.WorktreePath, []string{"status", "--porcelain"}, cfg)
+	if err != nil {
+		return "", nil, fmt.Errorf("git status failed before worktree commit: %w", err)
+	}
+	cleanStatus := extractGitStdout(statusOut)
+	if strings.TrimSpace(cleanStatus) != "" {
+		if _, err := runGit(ctx, wt.WorktreePath, []string{"add", "-A"}, cfg); err != nil {
+			return "", nil, fmt.Errorf("git add failed in worktree: %w", err)
+		}
+		commitMsg := strings.TrimSpace(message)
+		if commitMsg == "" {
+			commitMsg = fmt.Sprintf("Builder task %s changes", wt.TaskID)
+		}
+		if out, err := runGit(ctx, wt.WorktreePath, []string{"commit", "-m", commitMsg}, cfg); err != nil {
+			return "", nil, fmt.Errorf("git commit failed in worktree (%s): %w", strings.TrimSpace(out), err)
+		}
+	}
+
+	headOut, err := runGit(ctx, wt.WorktreePath, []string{"rev-parse", "--verify", "HEAD"}, cfg)
+	if err != nil {
+		return "", nil, fmt.Errorf("git rev-parse HEAD failed in worktree: %w", err)
+	}
+	commitSHA := extractGitStdout(headOut)
+
+	var changedFiles []string
+	if strings.TrimSpace(wt.BaseCommit) != "" {
+		if diffOut, diffErr := runGit(ctx, wt.WorktreePath, []string{"diff", "--name-only", wt.BaseCommit + "..HEAD"}, cfg); diffErr == nil {
+			for _, line := range strings.Split(extractGitStdout(diffOut), "\n") {
+				f := strings.TrimSpace(line)
+				if f != "" {
+					changedFiles = appendUniqueFilePaths(changedFiles, filepath.ToSlash(f))
+				}
+			}
+		}
+	}
+	return commitSHA, changedFiles, nil
+}
+
 func CleanupAgentWorktree(ctx context.Context, wt *AgentWorktreeWorkspace, force bool, cfg Config) error {
 	if wt == nil {
 		return nil
@@ -261,9 +365,11 @@ func CleanupAgentWorktree(ctx context.Context, wt *AgentWorktreeWorkspace, force
 		args = []string{"worktree", "remove", "--force", wt.WorktreePath}
 	}
 
+	defaultWorktreeRegistry.gitOpMu.Lock()
 	_, err := runGit(ctx, wt.MainProject, args, cfg)
 	// Even if git worktree remove returned an error, run prune and clean up directory
 	_, _ = runGit(ctx, wt.MainProject, []string{"worktree", "prune"}, cfg)
+	defaultWorktreeRegistry.gitOpMu.Unlock()
 	_ = os.RemoveAll(wt.WorktreePath)
 
 	return err

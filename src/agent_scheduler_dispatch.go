@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 type AgentScheduledTaskResult struct {
@@ -92,12 +94,40 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpoint(proje
 	return s.runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded(project, cfg, graph, scheduler, execute, checkpoint, nil)
 }
 
+type scheduledTaskCompletion struct {
+	lease         AgentResourceLease
+	executionTask AgentTask
+	result        AgentResult
+	runErr        error
+}
+
 // runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded is the recovery
 // accounting boundary. Historical durable usage is copied into the run before
 // admission and every newly observed task usage is accumulated onto that seed;
 // a continuation therefore cannot reset a task budget by starting a new
 // scheduler invocation.
+//
+// When scheduler resource limits permit multiple concurrent slots (e.g.
+// Limits.ModelInference > 1 or independent resource classes), ready tasks run
+// concurrently in isolated worker goroutines. When effective concurrency is 1,
+// execution stays strictly deterministic FIFO.
 func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor, checkpoint scheduledReadOnlyAgentCheckpoint, seed map[string]AgentUsage) (AgentScheduledRun, error) {
+	return s.runScheduledAgentGraphConcurrent(project, cfg, graph, scheduler, execute, checkpoint, seed)
+}
+
+// runScheduledAgentGraphConcurrent executes a validated AgentTaskGraph through
+// AgentScheduler using an asynchronous goroutine dispatcher.
+//
+// Invariants:
+//   - Only the single coordinator goroutine calls QueueReady, AdmitNext,
+//     prepareScheduledAgentTask, finalizeScheduledAgentTask, checkpoint, and
+//     mutates run.Results / run.UsageByTask.
+//   - Worker goroutines operate strictly on detached AgentTask copies and
+//     report results back via a buffered channel.
+//   - On cancellation or terminal error, all in-flight worker goroutines are
+//     drained and joined via sync.WaitGroup before returning (0 leaked
+//     goroutines), preserving cancellation-first and completion-first semantics.
+func (s *AppState) runScheduledAgentGraphConcurrent(project string, cfg Config, graph *AgentTaskGraph, scheduler *AgentScheduler, execute scheduledReadOnlyAgentExecutor, checkpoint scheduledReadOnlyAgentCheckpoint, seed map[string]AgentUsage) (AgentScheduledRun, error) {
 	usageByTask, err := cloneAgentUsageByTask(seed)
 	if err != nil {
 		return AgentScheduledRun{UsageByTask: map[string]AgentUsage{}}, err
@@ -131,64 +161,136 @@ func (s *AppState) runScheduledReadOnlyAgentGraphWithExecutorAndCheckpointSeeded
 		return run, fmt.Errorf("agent scheduler already has %d active task(s)", snapshot.Running)
 	}
 
-	for {
-		if err := scheduler.QueueReady(graph, nil); err != nil {
-			publishCheckpoint()
-			return run, err
-		}
-		publishCheckpoint()
-		lease, admitted, err := scheduler.AdmitNext(graph)
-		if err != nil {
-			publishCheckpoint()
-			if err == context.Canceled {
-				return run, context.Canceled
-			}
-			return run, err
-		}
-		if !admitted {
-			publishCheckpoint()
-			return run, nil
-		}
+	bufSize := len(graph.Tasks)
+	if bufSize < 16 {
+		bufSize = 16
+	}
+	completions := make(chan scheduledTaskCompletion, bufSize)
+	var wg sync.WaitGroup
+	inFlight := 0
 
-		executionTask, err := scheduler.prepareScheduledAgentTask(graph, lease, cfg)
-		if err != nil {
-			publishCheckpoint()
-			if lease.Context.Err() != nil {
-				return run, context.Canceled
+	finalizeCompletion := func(comp scheduledTaskCompletion) (agentScheduledFinalizeOutcome, error) {
+		result := comp.result
+		if comp.runErr != nil {
+			prefix := "Scheduled read-only child execution failed: "
+			if comp.executionTask.Role == AgentRoleBuilder || comp.executionTask.Role == AgentRoleIntegrator || comp.executionTask.Role == AgentRoleTestAgent {
+				prefix = "Scheduled child execution failed: "
 			}
-			return run, err
-		}
-		publishCheckpoint()
-
-		result, runErr := execute(lease.Context, project, cfg, executionTask)
-		if runErr != nil {
 			result = AgentResult{
 				Status:  AgentResultBlocked,
-				Summary: "Scheduled read-only child execution failed: " + strings.TrimSpace(runErr.Error()),
-				Usage:   result.Usage,
+				Summary: prefix + strings.TrimSpace(comp.runErr.Error()),
+				Usage:   comp.result.Usage,
 			}
 		}
-		next := scheduledAgentTaskTerminalState(result, runErr)
-		if lease.Context.Err() != nil {
+		next := scheduledAgentTaskTerminalState(result, comp.runErr)
+		if comp.lease.Context.Err() != nil {
 			next = AgentTaskCancelled
 		}
 
-		finalized, finalizeErr := scheduler.finalizeScheduledAgentTask(graph, lease, result, next)
+		finalized, finalizeErr := scheduler.finalizeScheduledAgentTask(graph, comp.lease, result, next)
 		if finalizeErr != nil {
 			publishCheckpoint()
-			return run, finalizeErr
+			return finalized, finalizeErr
 		}
 		if finalized.Applied {
-			cumulative, usageErr := addAgentUsage(run.UsageByTask[executionTask.ID], result.Usage)
+			cumulative, usageErr := addAgentUsage(run.UsageByTask[comp.executionTask.ID], result.Usage)
 			if usageErr != nil {
 				publishCheckpoint()
-				return run, fmt.Errorf("task %q usage: %w", executionTask.ID, usageErr)
+				return finalized, fmt.Errorf("task %q usage: %w", comp.executionTask.ID, usageErr)
 			}
-			run.UsageByTask[executionTask.ID] = cumulative
-			run.Results = append(run.Results, AgentScheduledTaskResult{TaskID: executionTask.ID, Role: executionTask.Role, Result: result})
+			run.UsageByTask[comp.executionTask.ID] = cumulative
+			run.Results = append(run.Results, AgentScheduledTaskResult{
+				TaskID: comp.executionTask.ID,
+				Role:   comp.executionTask.Role,
+				Result: result,
+			})
 		}
 		publishCheckpoint()
+		return finalized, nil
+	}
+
+	drainInFlight := func(cancelRemaining bool) {
+		if cancelRemaining && inFlight > 0 {
+			_ = scheduler.CancelMission(graph)
+		}
+		for inFlight > 0 {
+			comp := <-completions
+			inFlight--
+			_, _ = finalizeCompletion(comp)
+		}
+		wg.Wait()
+		publishCheckpoint()
+	}
+
+	for {
+		if err := scheduler.QueueReady(graph, nil); err != nil {
+			drainInFlight(errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
+			return run, err
+		}
+		publishCheckpoint()
+
+		for {
+			lease, admitted, err := scheduler.AdmitNext(graph)
+			if err != nil {
+				if err == context.Canceled || errors.Is(err, context.Canceled) {
+					drainInFlight(true)
+					return run, context.Canceled
+				}
+				drainInFlight(true)
+				return run, err
+			}
+			if !admitted {
+				break
+			}
+
+			executionTask, err := scheduler.prepareScheduledAgentTask(graph, lease, cfg)
+			if err != nil {
+				if lease.Context.Err() != nil {
+					drainInFlight(true)
+					return run, context.Canceled
+				}
+				_ = scheduler.CancelTask(graph, lease.TaskID)
+				drainInFlight(true)
+				return run, err
+			}
+			publishCheckpoint()
+
+			inFlight++
+			wg.Add(1)
+			go func(taskLease AgentResourceLease, taskCopy AgentTask) {
+				defer wg.Done()
+				result, runErr := execute(taskLease.Context, project, cfg, taskCopy)
+				completions <- scheduledTaskCompletion{
+					lease:         taskLease,
+					executionTask: taskCopy,
+					result:        result,
+					runErr:        runErr,
+				}
+			}(lease, executionTask)
+		}
+
+		if inFlight == 0 {
+			publishCheckpoint()
+			wg.Wait()
+			return run, nil
+		}
+
+		var comp scheduledTaskCompletion
+		select {
+		case comp = <-completions:
+			inFlight--
+		case <-scheduler.missionCtx.Done():
+			drainInFlight(true)
+			return run, context.Canceled
+		}
+
+		finalized, finalizeErr := finalizeCompletion(comp)
+		if finalizeErr != nil {
+			drainInFlight(true)
+			return run, finalizeErr
+		}
 		if finalized.State == AgentTaskCancelled {
+			drainInFlight(inFlight > 0)
 			return run, context.Canceled
 		}
 	}

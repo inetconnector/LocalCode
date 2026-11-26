@@ -72,7 +72,11 @@
       'Wird erneut geprüft…':'Wird erneut geprüft…',
       'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.',
       'Wiederaufnahme wurde angenommen.':'Wiederaufnahme wurde angenommen.',
-      'Wiederaufnahme konnte nicht gestartet werden.':'Wiederaufnahme konnte nicht gestartet werden.'
+      'Wiederaufnahme konnte nicht gestartet werden.':'Wiederaufnahme konnte nicht gestartet werden.',
+      'Subagent-Schwarm':'Subagent-Schwarm',
+      'Welle':'Welle',
+      'done':'fertig',
+      'error':'Fehler'
     });
     Object.assign(i18n.dictionaries.en, {
       'Mission':'Mission',
@@ -142,28 +146,32 @@
       'Wird erneut geprüft…':'Revalidating…',
       'Recovery-Zustand hat sich geändert. Ansicht wird aktualisiert.':'Recovery state changed. Refreshing the view.',
       'Wiederaufnahme wurde angenommen.':'Recovery continuation accepted.',
-      'Wiederaufnahme konnte nicht gestartet werden.':'Recovery continuation could not be started.'
+      'Wiederaufnahme konnte nicht gestartet werden.':'Recovery continuation could not be started.',
+      'Subagent-Schwarm':'Subagent Swarm',
+      'Welle':'Wave',
+      'done':'done',
+      'error':'error'
     });
   }
 
   const style = document.createElement('style');
   style.id = 'localcode-mission-status-style';
   style.textContent = `
-    .mission-status-card{border-color:rgba(255,255,255,0.07);background:#16191e}
-    .orchestration-diagnostics-card{border-color:rgba(255,255,255,0.07);background:#16191e}
-    .mission-recovery-card{border-color:#725f32;background:#201c13}
-    .mission-status-head{display:flex;gap:6px;align-items:center;margin-bottom:6px}
-    .mission-status-title{font-weight:700;font-size:12px;min-width:0;flex:1;overflow-wrap:anywhere}
-    .mission-status-state{font-size:9.5px;border:1px solid rgba(255,255,255,0.09);border-radius:99px;padding:2px 7px;white-space:nowrap;color:#bcd7f5}
-    .mission-status-state.ready,.mission-status-state.succeeded{border-color:#386b49;color:#8ee2a7}
-    .mission-status-state.failed,.mission-status-state.budget_exhausted,.mission-status-state.saturated,.mission-status-state.backend_unavailable,.mission-status-state.model_unavailable{border-color:#7b4b4b;color:#ffaaaa}
-    .mission-status-state.cancelled{border-color:#756543;color:#e3c980}
-    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:108px minmax(0,1fr);gap:4px 10px;font-size:10.5px;margin-top:6px;align-items:start}
-    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#8b949e;min-width:0;overflow-wrap:anywhere}
-    .mission-status-meta span:nth-child(even),.mission-budget-grid span:nth-child(even),.mission-resource-grid span:nth-child(even){min-width:0;overflow-wrap:anywhere;word-break:break-word;text-align:right;color:#e6edf3}
-    .mission-status-section{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06)}.mission-status-section-title{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#7d8590;font-weight:700;margin-bottom:5px}
-    .mission-task{border:1px solid rgba(255,255,255,0.06);background:#121519;border-radius:6px;padding:5px 7px;margin-top:4px}.mission-task-head{display:flex;gap:6px;align-items:center}.mission-task-id{min-width:0;flex:1;font:10px var(--code-font);overflow-wrap:anywhere}.mission-task-state{font-size:9px;color:#b0bac4}.mission-task-sub{font-size:9px;color:#7d8590;margin-top:2px;overflow-wrap:anywhere}
-    .mission-recovery-copy{font-size:10px;color:#b9b09b;line-height:1.45;margin:3px 0 6px}.mission-recovery-action{margin-top:6px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid #776339;background:#2d2618;border-radius:6px;padding:4px 8px;font-size:10px;color:#f2dfad}.mission-recovery-btn:hover{background:#3b311e}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:9.5px;color:#d8c58f;margin-top:5px}
+    .mission-status-card{border-color:rgba(255,255,255,0.06);background:#11141c}
+    .orchestration-diagnostics-card{border-color:rgba(255,255,255,0.06);background:#11141c}
+    .mission-recovery-card{border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.07)}
+    .mission-status-head{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    .mission-status-title{font-weight:550;font-size:12.5px;letter-spacing:-.01em;color:#f1f5f9;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mission-status-state{font-size:10px;font-weight:500;border:1px solid rgba(96,165,250,0.28);background:rgba(59,130,246,0.1);border-radius:99px;padding:2px 8px;white-space:nowrap;flex-shrink:0;color:#93c5fd}
+    .mission-status-state.ready,.mission-status-state.succeeded{border-color:rgba(52,211,153,0.32);background:rgba(52,211,153,0.1);color:#6ee7b7}
+    .mission-status-state.failed,.mission-status-state.budget_exhausted,.mission-status-state.saturated,.mission-status-state.backend_unavailable,.mission-status-state.model_unavailable{border-color:rgba(239,68,68,0.32);background:rgba(239,68,68,0.1);color:#fca5a5}
+    .mission-status-state.cancelled{border-color:rgba(245,158,11,0.32);background:rgba(245,158,11,0.1);color:#fcd34d}
+    .mission-status-meta,.mission-budget-grid,.mission-resource-grid{display:grid;grid-template-columns:88px minmax(0,1fr);gap:5px 8px;font-size:11px;line-height:1.4;margin-top:6px;align-items:baseline}
+    .mission-status-meta span:nth-child(odd),.mission-budget-grid span:nth-child(odd),.mission-resource-grid span:nth-child(odd){color:#647082;min-width:0;overflow-wrap:anywhere;font-weight:450}
+    .mission-status-meta span:nth-child(even),.mission-budget-grid span:nth-child(even),.mission-resource-grid span:nth-child(even){min-width:0;overflow-wrap:anywhere;word-break:break-word;text-align:right;color:#cbd5e1;font-weight:450}
+    .mission-status-section{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.055)}.mission-status-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.075em;color:#647082;font-weight:600;margin-bottom:6px}
+    .mission-task{border:1px solid rgba(255,255,255,0.055);background:#0d1017;border-radius:7px;padding:6px 8px;margin-top:5px}.mission-task-head{display:flex;gap:6px;align-items:center}.mission-task-id{min-width:0;flex:1;font:11px var(--ui-font);font-weight:500;color:#d6dde8;overflow-wrap:anywhere}.mission-task-state{font-size:10px;color:#8b95a5;font-family:var(--code-font);white-space:nowrap}.mission-task-sub{font-size:10px;color:#647082;margin-top:2px;overflow-wrap:anywhere;font-family:var(--code-font)}
+    .mission-recovery-copy{font-size:11px;color:#d6cba8;line-height:1.45;margin:3px 0 6px}.mission-recovery-action{margin-top:6px;display:flex;justify-content:flex-end}.mission-recovery-btn{border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.14);border-radius:7px;padding:4px 9px;font-size:11px;font-weight:500;color:#fde68a}.mission-recovery-btn:hover{background:rgba(245,158,11,0.22)}.mission-recovery-btn:disabled{opacity:.5;cursor:default}.mission-recovery-message{font-size:10px;color:#fcd34d;margin-top:5px}
   `;
   document.head.appendChild(style);
 
@@ -467,6 +475,45 @@
   }
 
   const originalRenderInspector = renderInspector;
+  function buildSwarmRosterCard(agents, wave) {
+    const card = document.createElement('div');
+    card.className = 'output-card mission-status-card';
+    card.dataset.swarmRoster = '1';
+
+    const head = document.createElement('div');
+    head.className = 'mission-status-head';
+    const title = document.createElement('div');
+    title.className = 'mission-status-title';
+    title.textContent = `${tr('Subagent-Schwarm')} · NOMA × MICA`;
+    const activeCount = agents.filter(a => a && a.status === 'running').length;
+    const badge = document.createElement('span');
+    badge.className = `mission-status-state ${activeCount > 0 ? 'running' : 'succeeded'}`;
+    badge.textContent = activeCount > 0 ? `${activeCount} ${tr('running')}` : `${tr('Welle')} ${int(wave || 1)} · ${agents.length}`;
+    head.append(title, badge);
+    card.appendChild(head);
+
+    for (const agent of agents.slice(-8)) {
+      const row = document.createElement('div');
+      row.className = 'mission-task';
+      const rHead = document.createElement('div');
+      rHead.className = 'mission-task-head';
+      const name = document.createElement('div');
+      name.className = 'mission-task-id';
+      name.textContent = `${agent.name || agent.id || 'worker'} · ${agent.role || 'subagent'}`;
+      const st = document.createElement('span');
+      st.className = 'mission-task-state';
+      const dur = int(agent.duration_ms);
+      st.textContent = dur > 0 ? `${stateLabel(agent.status || 'done')} · ${dur}ms` : stateLabel(agent.status || 'running');
+      rHead.append(name, st);
+      const sub = document.createElement('div');
+      sub.className = 'mission-task-sub';
+      sub.textContent = String(agent.summary || agent.task || '');
+      row.append(rHead, sub);
+      card.appendChild(row);
+    }
+    return card;
+  }
+
   renderInspector = function() {
     originalRenderInspector();
     if (state.rightTab !== 'outputs') return;
@@ -476,10 +523,17 @@
     body.querySelector('[data-mission-status]')?.remove();
     body.querySelector('[data-orchestration-diagnostics]')?.remove();
     body.querySelector('[data-mission-recovery]')?.remove();
+    body.querySelector('[data-swarm-roster]')?.remove();
 
     const diagnostics = state.status?.orchestration;
     if (diagnostics) {
       const card = buildDiagnosticsCard(diagnostics);
+      if (list) list.prepend(card);
+      else body.prepend(card);
+    }
+    const swarmAgents = state.status?.swarm_agents;
+    if (Array.isArray(swarmAgents) && swarmAgents.length > 0) {
+      const card = buildSwarmRosterCard(swarmAgents, state.status?.swarm_wave);
       if (list) list.prepend(card);
       else body.prepend(card);
     }

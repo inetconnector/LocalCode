@@ -4,5 +4,20 @@
   "addSelection": "Add Selection to Chat", "start": "Start LocalCode", "settings": "Extension Settings", "chat": "Chat",
   "serverUrl": "LocalCode Desktop loopback URL. Only HTTP on 127.0.0.1, localhost or [::1] is accepted. Shared with the desktop application.",
   "executablePath": "Absolute path to an installed LocalCode executable. Empty uses the standard Windows per-user installation. Launched only by Start LocalCode.",
-  "language": "Interface language. Automatic follows the Windows display language reported by LocalCode; falls back to the IDE language while disconnected."
+  "language": "Interface language. Automatic follows the Windows display language reported by LocalCode; falls back to the IDE language while disconnected.",
+  "inlineEdit": "Inline Edit (Ctrl+K)",
+  "inlineEditAccept": "Accept Inline Edit",
+  "inlineEditReject": "Reject Inline Edit",
+  "toggleFim": "Toggle Local FIM Autocomplete",
+  "providerStatus": "Check Provider & OS-Sandbox Status",
+  "adversarialReview": "Run Cross-Vendor Adversarial Review",
+  "agentosUrl": "Loopback HTTP URL of AgentOS for Cross-Vendor Adversarial Review (e.g. http://127.0.0.1:8010). Non-loopback URLs are blocked.",
+  "fimEnabled": "Enable local Fill-in-the-Middle (FIM) inline autocomplete using a loopback model endpoint.",
+  "fimModel": "Local model used for low-latency FIM inline autocomplete (for example qwen2.5-coder:1.5b).",
+  "fimEndpoint": "Loopback HTTP endpoint for FIM autocomplete (Ollama or llama.cpp, e.g. http://127.0.0.1:11434). Non-loopback URLs are blocked.",
+  "fimDebounceMs": "Debounce delay in milliseconds before requesting a FIM completion after typing.",
+  "fimLatencyBudgetMs": "Maximum latency budget in milliseconds for a single FIM completion request.",
+  "fimTemplate": "Prompt token template for FIM autocomplete (auto, qwen, starcoder, or codellama).",
+  "inlineEditEndpoint": "Optional loopback HTTP endpoint for Inline Edit (defaults to fimEndpoint when empty).",
+  "inlineEditModel": "Optional local model for Inline Edit (defaults to fimModel when empty)."
 }

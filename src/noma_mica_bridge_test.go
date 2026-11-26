@@ -154,20 +154,22 @@ func TestOfflinePackageInstallGuardBlocksNpmInstallWhenNetworkDisabled(t *testin
 }
 
 func TestEffectiveCompactionContextLengthMatchesLocalOllamaNumCtx(t *testing.T) {
+	t.Setenv("LOCALCODE_DETECTED_VRAM_MB", "16384")
+	t.Setenv("LOCALCODE_MAX_LOCAL_CTX", "")
 	localCfg := defaultConfig()
 	localCfg.OllamaURL = "http://127.0.0.1:11434"
 	localCfg.ContextLength = 32768
-	if got := effectiveCompactionContextLength(localCfg); got != 6144 {
-		t.Fatalf("local Ollama compaction context = %d, want 6144", got)
+	if got := effectiveCompactionContextLength(localCfg); got != 12288 {
+		t.Fatalf("local Ollama compaction context = %d, want 12288", got)
 	}
 	defaultLocalCfg := defaultConfig()
 	defaultLocalCfg.OllamaURL = ""
 	defaultLocalCfg.ContextLength = 32768
-	if got := effectiveCompactionContextLength(defaultLocalCfg); got != 6144 {
-		t.Fatalf("default empty OllamaURL compaction context = %d, want 6144", got)
+	if got := effectiveCompactionContextLength(defaultLocalCfg); got != 12288 {
+		t.Fatalf("default empty OllamaURL compaction context = %d, want 12288", got)
 	}
-	if got := postCompactionTokenTarget(localCfg); got >= 4000 {
-		t.Fatalf("local Ollama post-compaction target = %d, want < 4000", got)
+	if got := postCompactionTokenTarget(localCfg); got >= 8000 {
+		t.Fatalf("local Ollama post-compaction target = %d, want < 8000", got)
 	}
 	remoteCfg := localCfg
 	remoteCfg.OllamaURL = "https://computemesh.example.com"

@@ -121,21 +121,22 @@ func mergeDefaultMCPServers(existing []MCPServerConfig) []MCPServerConfig {
 func defaultConfig() Config {
 	return Config{
 		SchemaVersion: 11, RootProjectDir: preferredProjectRoot(), Port: 32145, RemoteEnabled: false, RemoteBindHost: "127.0.0.1", RemotePort: 32146, ProjectAliases: map[string]string{},
-		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: defaultCodingModel,
+		SetupDownloadsEnabled: true, OllamaAutoInstall: true, OllamaAutoPull: true, OllamaDefaultModel: configuredDefaultCodingModel(Config{}),
 		ComputeMeshEnabled: true, ComputeMeshURL: "https://computemesh.inetconnector.com", ComputeMeshLocalNodeURL: "http://localhost:8080", ComputeMeshAutoDetect: true,
 		EditingEngine: "native", AiderEnabled: true, AiderAutoInstall: true, AiderVersion: aiderPinnedVersion,
 		AiderEditFormat: "diff", AiderEditorEditFormat: "editor-diff", AiderMapTokens: 4096, AiderMaxChatHistoryTokens: 8192,
 		AiderAutoLint: true, AiderAutoTest: true, AiderUseGit: true, AiderAutoCommits: false,
 		ClaudeCodeEnabled: true, ClaudeCodeAutoInstall: true, ClaudeCodeChannel: "stable", ClaudeCodeModel: "sonnet", ClaudeCodePermissionMode: "acceptEdits", ClaudeCodeMaxTurns: 24,
 		OpenCodeEnabled: true, OpenCodeAutoInstall: true, OpenCodeVersion: "1.18.16", OpenCodeAgent: "build", OpenCodeAutoApprove: true,
-		ContextLength: 32768, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 60, CommandTimeout: 300, ModelTimeout: 240,
+		ContextLength: 12288, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 68, ContextCompactionKeepRecent: 12, MaxAgentSteps: 0, CommandTimeout: 300, ModelTimeout: 240,
 		ApprovalMode: "strict", SandboxMode: "project", NetworkEnabled: true,
+		InferenceProvider: "auto", PromptCachingEnabled: true, ReasoningEffort: "medium",
 		WebSearchProvider: "duckduckgo", WebSearchAPIKeyEnv: "OLLAMA_API_KEY", WebSearchMaxResults: 6,
 		WebFetchMaxBytes: 2 << 20, ImageGeneratorProvider: "automatic1111", ImageGeneratorURL: "http://127.0.0.1:7860", ImageGeneratorSteps: 20, ImageGeneratorCFGScale: 7.0,
 		GitEnabled: true, AutoStateUpdate: true,
 		StateFile: "STATE.md", CreateProjectDocs: true, BlockedCommandPatterns: defaultBlockedPatterns(),
-		UITheme: "dark", UIAccent: "#2f81f7", UIBackground: "#171717", UIForeground: "#f3f4f6",
-		UIFont: "Segoe UI", CodeFont: "Cascadia Mono", UILeftWidth: 296, UIRightWidth: 340,
+		UITheme: "dark", UIAccent: "#3b82f6", UIBackground: "#0b0c10", UIForeground: "#eceff4",
+		UIFont: "Segoe UI Variable Text", CodeFont: "Cascadia Code", UILeftWidth: 264, UIRightWidth: 272,
 		UITerminalHeight: 260, ShowBottomBar: true, TerminalDock: "bottom", TerminalShell: "powershell",
 		AgentEnvironment: "windows-native", DefaultOpenTarget: "vscode", Language: "auto",
 		ResponseSpeed: "balanced", ProfileName: "Local user", AvatarInitials: "LC",
@@ -508,7 +509,7 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.ContextCompactionKeepRecent < 6 || cfg.ContextCompactionKeepRecent > 40 {
 		cfg.ContextCompactionKeepRecent = d.ContextCompactionKeepRecent
 	}
-	if cfg.MaxAgentSteps < 10 || cfg.MaxAgentSteps > 200 {
+	if cfg.MaxAgentSteps < 0 || (cfg.MaxAgentSteps > 0 && cfg.MaxAgentSteps < 10) || cfg.MaxAgentSteps > 1000 {
 		cfg.MaxAgentSteps = d.MaxAgentSteps
 	}
 	if cfg.CommandTimeout < 10 || cfg.CommandTimeout > 3600 {
@@ -529,9 +530,21 @@ func normalizeConfig(cfg Config) Config {
 		cfg.SandboxMode = d.SandboxMode
 	}
 	switch cfg.SandboxMode {
-	case "project", "workspace", "unrestricted":
+	case "project", "workspace", "unrestricted", "os":
 	default:
 		cfg.SandboxMode = d.SandboxMode
+	}
+	cfg.InferenceProvider = strings.ToLower(strings.TrimSpace(cfg.InferenceProvider))
+	switch cfg.InferenceProvider {
+	case "auto", "ollama", "llamacpp", "anthropic", "openai", "gemini":
+	default:
+		cfg.InferenceProvider = d.InferenceProvider
+	}
+	cfg.ReasoningEffort = strings.ToLower(strings.TrimSpace(cfg.ReasoningEffort))
+	switch cfg.ReasoningEffort {
+	case "low", "medium", "high":
+	default:
+		cfg.ReasoningEffort = d.ReasoningEffort
 	}
 	if cfg.WebSearchProvider == "" {
 		cfg.WebSearchProvider = d.WebSearchProvider

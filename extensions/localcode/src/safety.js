@@ -24,8 +24,13 @@ async function contained(root, file) {
 }
 function validMessage(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
-  const simple = ['ready', 'refresh', 'newTask', 'chooseTask', 'chooseWorkspace', 'addContext', 'addDiagnostics', 'clearContext', 'start', 'settings', 'desktop', 'review', 'stop'];
+  const simple = ['ready', 'refresh', 'newTask', 'chooseTask', 'chooseWorkspace', 'addDiagnostics', 'clearContext', 'pasteClipboard', 'openRight', 'start', 'settings', 'desktop', 'review', 'stop'];
   if (simple.includes(m.type)) return Object.keys(m).length === 1;
+  if (m.type === 'addContext') {
+    const keys = Object.keys(m);
+    if (keys.length === 1) return true;
+    return keys.length === 2 && Object.prototype.hasOwnProperty.call(m, 'kind') && ['active', 'choose', 'clipboard', 'diagnostics'].includes(m.kind);
+  }
   if (m.type === 'send') return typeof m.message === 'string' && m.message.trim().length > 0 && m.message.length <= 100000 && typeof m.model === 'string' && m.model.length <= 256 && Object.keys(m).length === 3;
   if (m.type === 'approve') return typeof m.id === 'string' && m.id.length <= 128 && ['once', 'reject'].includes(m.decision) && Object.keys(m).length === 3;
   if (m.type === 'openFile') return typeof m.path === 'string' && m.path.length <= 4096 && Object.keys(m).length === 2;

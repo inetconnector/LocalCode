@@ -416,6 +416,40 @@ func executeCommand(parent context.Context, projectRoot, command string, cfg Con
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
+	if cfg.OSSandboxEnabled || strings.EqualFold(strings.TrimSpace(cfg.SandboxMode), "os") {
+		if err := commandBlocked(cfg, command); err != nil {
+			return "", err
+		}
+		policy := DefaultOSSandboxPolicy(projectRoot)
+		policy.AllowNetwork = cfg.NetworkEnabled
+		policy.AllowedDomains = append([]string(nil), cfg.SandboxAllowedDomains...)
+		policy.DeniedDomains = append([]string(nil), cfg.SandboxDeniedDomains...)
+		policy.Timeout = timeout
+		policy.StripSecrets = true
+
+		res, err := RunSandboxedShell(parent, policy, projectRoot, command, cfg.EnvironmentVars)
+		var out strings.Builder
+		if strings.TrimSpace(res.Stdout) != "" {
+			out.WriteString(strings.TrimRight(res.Stdout, "\r\n"))
+			out.WriteByte('\n')
+		}
+		if strings.TrimSpace(res.Stderr) != "" {
+			if out.Len() > 0 {
+				out.WriteByte('\n')
+			}
+			out.WriteString("STDERR:\n")
+			out.WriteString(strings.TrimRight(res.Stderr, "\r\n"))
+			out.WriteByte('\n')
+		}
+		fmt.Fprintf(&out, "[sandbox=%s exit=%d audit=%s]", res.SandboxBackend, res.ExitCode, res.AuditDigest)
+		if err != nil {
+			return truncateText(out.String(), 60000), err
+		}
+		if res.ExitCode != 0 {
+			return truncateText(out.String(), 60000), fmt.Errorf("sandboxed command exited with code %d", res.ExitCode)
+		}
+		return truncateText(out.String(), 60000), nil
+	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	return runProjectCommand(ctx, projectRoot, command, cfg)

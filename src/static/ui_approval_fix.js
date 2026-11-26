@@ -3,7 +3,7 @@
   'use strict';
 
   const css = `
-    :root{--rightW:260px}
+    :root{--rightW:268px}
     html,body,#app,.main-screen{max-width:100vw;overflow-x:hidden}
     .rightbar{min-width:0;max-width:300px;overflow:hidden}
     .right-body{min-width:0;max-width:100%;overflow-x:hidden!important}
@@ -21,10 +21,10 @@
       right:auto!important;
       bottom:auto!important;
       transform:translate(-50%,-50%)!important;
-      width:min(760px,calc(100vw - 48px))!important;
-      max-width:760px!important;
+      width:min(720px,calc(100vw - 48px))!important;
+      max-width:720px!important;
       min-width:0!important;
-      max-height:min(72vh,640px)!important;
+      max-height:min(76vh,660px)!important;
       padding:0!important;
       margin:0!important;
       display:flex!important;
@@ -32,10 +32,11 @@
       align-items:stretch!important;
       gap:0!important;
       overflow:hidden!important;
-      background:#1c2226!important;
-      border:1px solid #46545d!important;
-      border-radius:16px!important;
-      box-shadow:0 0 0 100vmax rgba(0,0,0,.48),0 24px 90px rgba(0,0,0,.72)!important;
+      background:rgba(16,19,27,0.97)!important;
+      backdrop-filter:blur(20px)!important;
+      border:1px solid rgba(255,255,255,0.11)!important;
+      border-radius:14px!important;
+      box-shadow:0 0 0 100vmax rgba(3,5,9,.62),0 24px 80px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,0.05)!important;
     }
     .approval-dock.hidden{display:none!important}
     .approval-dock-copy{
@@ -47,12 +48,12 @@
       overflow:auto!important;
     }
     .approval-dock-kicker{
-      margin:0 0 6px!important;
-      color:#74adff!important;
-      font-size:11px!important;
-      font-weight:750!important;
+      margin:0 0 5px!important;
+      color:#60a5fa!important;
+      font-size:10.5px!important;
+      font-weight:600!important;
       line-height:1.2!important;
-      letter-spacing:.09em!important;
+      letter-spacing:.08em!important;
       white-space:normal!important;
       overflow-wrap:normal!important;
       word-break:normal!important;
@@ -61,8 +62,10 @@
       width:100%!important;
       min-width:0!important;
       margin:0!important;
-      font-size:16px!important;
-      font-weight:680!important;
+      font-size:15px!important;
+      font-weight:600!important;
+      letter-spacing:-.015em!important;
+      color:#f1f5f9!important;
       line-height:1.38!important;
       white-space:normal!important;
       overflow-wrap:anywhere!important;
@@ -72,10 +75,10 @@
       display:flex!important;
       width:100%!important;
       min-width:0!important;
-      gap:7px 12px!important;
+      gap:6px 12px!important;
       flex-wrap:wrap!important;
-      margin-top:8px!important;
-      color:#9eabb2!important;
+      margin-top:6px!important;
+      color:#8b95a5!important;
       font-size:11px!important;
       line-height:1.4!important;
       white-space:normal!important;
@@ -87,19 +90,28 @@
       width:100%!important;
       min-width:0!important;
       max-width:100%!important;
-      max-height:280px!important;
+      max-height:300px!important;
       margin:12px 0 0!important;
-      padding:11px 12px!important;
+      padding:0!important;
       overflow-x:hidden!important;
       overflow-y:auto!important;
-      background:#111618!important;
-      border:1px solid #35434b!important;
+      background:#090b10!important;
+      border:1px solid rgba(255,255,255,0.07)!important;
       border-radius:10px!important;
       white-space:pre-wrap!important;
       overflow-wrap:anywhere!important;
       word-break:break-word!important;
-      font-size:11px!important;
-      line-height:1.48!important;
+      font-size:11.5px!important;
+      line-height:1.5!important;
+    }
+    .approval-dock-preview:not(:has(.diff-box)){
+      padding:10px 12px!important;
+    }
+    .approval-dock-preview .diff-box{
+      border:0!important;
+      border-radius:0!important;
+      background:transparent!important;
+      margin:0!important;
     }
     .approval-dock-preview.hidden{display:none!important}
     .approval-dock-actions{
@@ -111,37 +123,67 @@
       gap:8px!important;
       flex-wrap:wrap!important;
       margin:0!important;
-      padding:14px 20px 18px!important;
-      border-top:1px solid #303b41!important;
-      background:#192024!important;
+      padding:13px 20px 15px!important;
+      border-top:1px solid rgba(255,255,255,0.065)!important;
+      background:rgba(12,14,20,0.85)!important;
     }
     .approval-dock .approve,.approval-dock .reject,.approval-dock .always{
       flex:0 1 auto!important;
       min-width:0!important;
       max-width:100%!important;
-      min-height:36px!important;
+      min-height:32px!important;
       height:auto!important;
-      padding:8px 12px!important;
+      padding:6px 13px!important;
       border-radius:8px!important;
       font-size:12px!important;
-      font-weight:650!important;
+      font-weight:550!important;
       line-height:1.25!important;
       white-space:normal!important;
       overflow-wrap:anywhere!important;
       word-break:normal!important;
+      transition:all .14s ease!important;
+    }
+    .approval-dock .approve{
+      background:#f1f5f9!important;
+      color:#0b0c10!important;
+      border:1px solid transparent!important;
+    }
+    .approval-dock .approve:hover{
+      background:#ffffff!important;
+    }
+    .approval-dock .always{
+      background:rgba(255,255,255,0.045)!important;
+      color:#cbd5e1!important;
+      border:1px solid rgba(255,255,255,0.11)!important;
+    }
+    .approval-dock .always:hover{
+      background:rgba(59,130,246,0.15)!important;
+      border-color:rgba(96,165,250,0.42)!important;
+      color:#f8fafc!important;
+    }
+    .approval-dock .reject{
+      background:rgba(239,68,68,0.08)!important;
+      border:1px solid rgba(239,68,68,0.24)!important;
+      color:#fca5a5!important;
+      margin-right:auto!important;
+    }
+    .approval-dock .reject:hover{
+      background:rgba(239,68,68,0.18)!important;
+      border-color:rgba(248,113,113,0.45)!important;
     }
     body.has-approval .composer-zone{padding-bottom:18px!important}
 
     @media(max-width:980px){
       :root{--rightW:240px}
       .rightbar{max-width:280px}
-      .approval-dock{width:min(700px,calc(100vw - 32px))!important;max-height:76vh!important}
+      .approval-dock{width:min(680px,calc(100vw - 32px))!important;max-height:76vh!important}
     }
     @media(max-width:720px){
       .approval-dock{width:calc(100vw - 20px)!important;max-height:82vh!important}
       .approval-dock-copy{padding:15px 15px 12px!important}
       .approval-dock-actions{padding:12px 15px 15px!important;justify-content:stretch!important}
       .approval-dock-actions button{flex:1 1 210px!important}
+      .approval-dock .reject{margin-right:0!important}
     }
   `;
 

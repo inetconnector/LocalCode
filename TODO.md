@@ -1,7 +1,7 @@
 # LocalCode — open work / offene Arbeit
 
-**Verified:** 2026-11-20 Europe/Berlin
-**Merged base:** `96ad7f7d76e6b2f5b01308be52199cc9d895d9ea`, master / published release `v6.9.3`; newer local UI build installed, not published.
+**Verified:** 2026-11-23 Europe/Berlin
+**Merged base:** `96ad7f7d76e6b2f5b01308be52199cc9d895d9ea`, master / published release `v6.9.3`; lokale „Beyond Frontier“-Erweiterungen (Phasen 0–4: OS-Sandbox, `apply_patch`, ConPTY, E2EE-Relay `dist/localcode-relay.exe`, VS Code VSIX `localcode-0.1.0.vsix` inkl. Inline-Edit/FIM, Android Keystore-Hardening & `FrameLayout`-Lifecycle-Fixes) lokal gebaut & getestet, nicht gepusht/veröffentlicht.
 **Active branch:** `master`.
 **Roadmap reference:** #32. Current implemented reality and detailed restart context: `STATE.md`.
 
@@ -16,15 +16,15 @@ uncommitted documentation/toolchain changes remain preserved.
 
 ## Offene Punkte (aus `STATE.md`)
 
-| Bereich | Beschreibung | Akzeptanzkriterium |
+| Bereich | Beschreibung | Status / Akzeptanzkriterium |
 |--------|--------------|--------------------|
-| Android Startup | Schwarzbild beim Neustart, persistente Projekt‑Wiederherstellung | App startet ohne schwarzes Bild, letztes Projekt wird automatisch wiederhergestellt |
-| UI Redesign | Kombobox‑Overflow, Schriftgrößen, Glassmorphism‑Design | UI ist responsiv, keine Layout‑Überläufe, moderne Optik |
-| ComputeMesh Integration | Auto‑Discovery, Zero‑Fee‑Compute, Provider‑Key‑Auto‑Discovery | ComputeMesh‑Knoten werden automatisch entdeckt und genutzt |
-| Tests & Coverage | Fehlende Race‑Tests, Coverage < 80% | `go test -race` läuft ohne Fehler, Coverage ≥ 80% |
-| VS IX Veröffentlichung | Open VSX & Marketplace‑Listing | Extension ist veröffentlicht und installierbar |
-| Installer & Binaries | Build‑Fehler, Signatur | `LocalCode-Setup.exe` und portable Binaries bauen erfolgreich |
-| Documentation | `README.md`, `STATE.md` Synchronisation | Dokumentation spiegelt aktuellen Stand wider |
+| Android Startup & Security | Schwarzbild-Fix (`FrameLayout`), TLS-Pinning ohne `isPrivateHost`-Bypass, DPAPI-Signatur | Lokal gebaut & verifiziert (`apksigner verify` / Keystore-Hardening); Geräte-Re-Deploy offen |
+| Unified Studio & UI | Modulares `NomaMica Studio` (`ui/studio`) mit ConPTY, Side-by-Side Diff & Live-Proxy | Lokal gebaut & getestet (`12/12` + Live Cross-Runtime Smoke PASS) |
+| ComputeMesh Integration | Auto‑Discovery & Hardcode-Bereinigung | Lokal implementiert & getestet (`go test -race`) |
+| Tests & Coverage | Fokus-Suites mit `go test -race` + VS Code Extension Tests | `go test -race` Integration/Feature-Suites & `11/11` Extension-Tests PASS; Gesamt-Repo-Coverage-Lauf separat bei Release |
+| VSIX Veröffentlichung | Open VSX & Marketplace‑Listing (`localcode-0.1.0.vsix` lokal gebaut) | **Offen:** Extension im Registry veröffentlichen (Publisher-Credentials erforderlich) |
+| Installer & Binaries | `localcode-relay.exe` gebaut; `LocalCode-Setup.exe` Voll-Release | `localcode-relay.exe` gebaut; Voll-Installer bei Release-Build erzeugen |
+| Documentation | `README.md`, `STATE.md`, `TODO.md` Synchronisation | `STATE.md` & `TODO.md` auf Stand 2026-11-23 |
 
 ## Permanent completion rules / Dauerhafte Abschlussregeln
 

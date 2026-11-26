@@ -4,5 +4,20 @@
   "addSelection": "Auswahl zum Chat hinzufügen", "start": "LocalCode starten", "settings": "Erweiterungseinstellungen", "chat": "Chat",
   "serverUrl": "Loopback-URL von LocalCode Desktop. Nur HTTP auf 127.0.0.1, localhost oder [::1] ist erlaubt. Gemeinsame Verbindung mit der Desktop-Anwendung.",
   "executablePath": "Absoluter Pfad zur installierten LocalCode-Programmdatei. Leer verwendet die Windows-Benutzerinstallation. Start nur über LocalCode starten.",
-  "language": "Oberflächensprache. Automatisch folgt der von LocalCode gemeldeten Windows-Anzeigesprache; ohne Verbindung gilt die IDE-Sprache."
+  "language": "Oberflächensprache. Automatisch folgt der von LocalCode gemeldeten Windows-Anzeigesprache; ohne Verbindung gilt die IDE-Sprache.",
+  "inlineEdit": "Inline-Edit (Strg+K)",
+  "inlineEditAccept": "Inline-Edit übernehmen",
+  "inlineEditReject": "Inline-Edit verwerfen",
+  "toggleFim": "Lokale FIM-Autovervollständigung umschalten",
+  "providerStatus": "Provider- & OS-Sandbox-Status prüfen",
+  "adversarialReview": "Cross-Vendor Adversarial Review ausführen",
+  "agentosUrl": "Lokale Loopback-HTTP-URL von AgentOS für Cross-Vendor Adversarial Review (z. B. http://127.0.0.1:8010). Externe URLs werden blockiert.",
+  "fimEnabled": "Lokale Fill-in-the-Middle (FIM) Inline-Autovervollständigung über einen lokalen Loopback-Endpunkt aktivieren.",
+  "fimModel": "Lokales Modell für latenzarme FIM-Autovervollständigung (z. B. qwen2.5-coder:1.5b).",
+  "fimEndpoint": "Lokaler Loopback-HTTP-Endpunkt für FIM-Autovervollständigung (Ollama oder llama.cpp, z. B. http://127.0.0.1:11434). Externe URLs werden blockiert.",
+  "fimDebounceMs": "Verzögerung (Debounce) in Millisekunden vor einer FIM-Anfrage nach Tastatureingaben.",
+  "fimLatencyBudgetMs": "Maximales Latenzbudget in Millisekunden für eine einzelne FIM-Anfrage.",
+  "fimTemplate": "Prompt-Token-Vorlage für FIM-Autovervollständigung (auto, qwen, starcoder oder codellama).",
+  "inlineEditEndpoint": "Optionaler lokaler Loopback-HTTP-Endpunkt für Inline-Edit (verwendet standardmäßig fimEndpoint, wenn leer).",
+  "inlineEditModel": "Optionales lokales Modell für Inline-Edit (verwendet standardmäßig fimModel, wenn leer)."
 }

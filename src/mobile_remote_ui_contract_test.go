@@ -310,7 +310,157 @@ func TestRemoteQRInstantPairingAndAutoDismissContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(javaBytes), `LocalCodeRemote.pairWithCode(`) {
-		t.Fatal("MainActivity.java must hand scanned QR codes directly to LocalCodeRemote.pairWithCode")
+	if !strings.Contains(string(javaBytes), `LocalCodeRemoteControl.pairWithCode(`) {
+		t.Fatal("MainActivity.java must hand scanned QR codes directly to LocalCodeRemoteControl.pairWithCode")
+	}
+	if strings.Contains(string(javaBytes), `LocalCodeRemote.pairWithCode(`) {
+		t.Fatal("MainActivity.java must not call the broken LocalCodeRemote.pairWithCode global")
+	}
+}
+
+func TestMobileRemoteSecurityAndBehaviorFixes(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	// 1. Keystore-backed auth token bridge integration
+	for _, required := range []string{
+		`window.LocalCodeAndroid?.getAuthToken`,
+		`window.LocalCodeAndroid?.setAuthToken`,
+		`window.LocalCodeAndroid?.clearAuthToken`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("remote.html missing Android Keystore token bridge call %q", required)
+		}
+	}
+
+	// 2. renderMarkdown must escape HTML before applying Markdown formatting
+	rmStart := strings.Index(page, "function renderMarkdown(raw){")
+	if rmStart < 0 {
+		t.Fatal("renderMarkdown not found in remote.html")
+	}
+	rmEnd := strings.Index(page[rmStart:], "\nasync function api(")
+	if rmEnd < 0 {
+		t.Fatal("could not isolate renderMarkdown body")
+	}
+	rmBody := page[rmStart : rmStart+rmEnd]
+	escIdx := strings.Index(rmBody, "esc(String(raw))")
+	boldIdx := strings.Index(rmBody, "<strong>$1</strong>")
+	if escIdx < 0 || boldIdx < 0 || escIdx > boldIdx {
+		t.Fatalf("renderMarkdown must escape raw HTML before Markdown formatting; escIdx=%d boldIdx=%d", escIdx, boldIdx)
+	}
+
+	// 3. STT result must NOT auto-send
+	voiceIdx := strings.Index(page, "window.localCodeVoiceResult=")
+	if voiceIdx < 0 {
+		t.Fatal("localCodeVoiceResult handler missing")
+	}
+	voiceLine := page[voiceIdx : voiceIdx+strings.Index(page[voiceIdx:], "\n")]
+	if strings.Contains(voiceLine, "send()") {
+		t.Fatalf("localCodeVoiceResult must not auto-send voice transcription: %s", voiceLine)
+	}
+
+	// 4. refresh() must gate select-project behind initial restore instead of spamming every 5s
+	if !strings.Contains(page, "state.projectInitialized") || !strings.Contains(page, "state.syncedProject") {
+		t.Fatal("refresh() must track projectInitialized/syncedProject to avoid 5s select-project spam")
+	}
+}
+
+func TestMobileRemoteOfflineOutboxContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`localcodeRemoteOutboxV1`,
+		`function loadOfflineOutbox()`,
+		`function saveOfflineOutbox(`,
+		`function enqueueOfflinePrompt(`,
+		`async function flushOfflineOutbox()`,
+		`window.addEventListener('online'`,
+		`outbox_queued:'Offline — Nachricht lokal zwischengespeichert`,
+		`outbox_queued:'Offline — prompt queued locally`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html offline outbox contract missing %q", required)
+		}
+	}
+
+	// Ensure offline outbox helpers never store auth tokens in the outbox payload
+	enqueueIdx := strings.Index(page, "function enqueueOfflinePrompt(")
+	flushIdx := strings.Index(page, "async function flushOfflineOutbox(")
+	if enqueueIdx < 0 || flushIdx < 0 || flushIdx <= enqueueIdx {
+		t.Fatal("could not isolate enqueueOfflinePrompt in remote.html")
+	}
+	enqueueBody := page[enqueueIdx:flushIdx]
+	if strings.Contains(enqueueBody, "state.token") || strings.Contains(enqueueBody, "loadAuthToken") {
+		t.Fatal("offline outbox must never persist auth tokens in localStorage")
+	}
+}
+
+func TestMobileRemotePrioritySteeringContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`steer_sent:'Hinweis an laufenden Agenten gesendet.'`,
+		`steer_sent:'Steering note sent to running agent.'`,
+		`/remote/api/steer`,
+		`state.status?.running&&msg&&attachments.length===0`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html priority steering contract missing %q", required)
+		}
+	}
+}
+
+func TestMobileRemoteSelfUpdateVoiceBargeInAndFrameCheckContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`id="checkUpdateBtn"`,
+		`window.LocalCodeAndroid?.checkForUpdate`,
+		`/remote/api/apk-update`,
+		`/remote/api/verify-frame`,
+		`async function verifyAttachedImageFrame(`,
+		`function startVoiceInput(){stopSpeaking();`,
+		`check_update:'Auf App-Update prüfen'`,
+		`check_update:'Check for App Update'`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html Wave 7 contract missing %q", required)
+		}
+	}
+}
+
+func TestMobileRemoteUnifiedPushRegistrationContract(t *testing.T) {
+	remoteBytes, err := os.ReadFile(filepath.Join("static", "remote.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(remoteBytes)
+
+	for _, required := range []string{
+		`id="pushEndpointInput"`,
+		`id="savePushEndpointBtn"`,
+		`/remote/api/push/register-endpoint`,
+		`push_endpoint_label:'UnifiedPush-Endpunkt (Zero-Secret)'`,
+		`push_endpoint_label:'UnifiedPush endpoint (Zero-Secret)'`,
+		`provider:'unifiedpush'`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Fatalf("mobile remote.html Wave 11 UnifiedPush contract missing %q", required)
+		}
 	}
 }

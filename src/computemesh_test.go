@@ -338,3 +338,125 @@ func TestComputeMeshEndpoints(t *testing.T) {
 		t.Fatalf("unexpected test response: %+v", testRes)
 	}
 }
+
+func TestCheckComputeMeshStatusHasNoHardcodedDefaults(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("USERPROFILE", tempHome)
+	t.Setenv("LOCALCODE_USER_HOME", tempHome)
+	t.Setenv("APPDATA", tempHome)
+	t.Setenv("LOCALAPPDATA", tempHome)
+	t.Setenv("COMPUTEMESH_API_KEY", "")
+	t.Setenv("COMPUTEMESH_PROVIDER_KEY", "")
+	t.Setenv("COMPUTEMESH_KEY", "")
+	t.Setenv("COMPUTEMESH_AUTH_TOKEN", "")
+	t.Setenv("COMPUTEMESH_URL", "")
+	t.Setenv("COMPUTEMESH_NODE_URL", "")
+
+	// Closed local server guarantees immediate connection refused without hitting real network
+	closedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	deadURL := closedSrv.URL
+	closedSrv.Close()
+
+	cfg := Config{
+		ComputeMeshEnabled:      true,
+		ComputeMeshAutoDetect:   false,
+		ComputeMeshURL:          deadURL,
+		ComputeMeshLocalNodeURL: deadURL,
+	}
+
+	status := CheckComputeMeshStatus(context.Background(), cfg)
+	if status.Online {
+		t.Fatalf("expected offline status when unreachable, got online=%v", status.Online)
+	}
+	if status.Account != "" {
+		t.Fatalf("expected empty Account when unprobed, got %q", status.Account)
+	}
+	if status.NodeID != "" {
+		t.Fatalf("expected empty NodeID when unprobed, got %q", status.NodeID)
+	}
+	if status.GPU != "" {
+		t.Fatalf("expected empty GPU when unprobed, got %q", status.GPU)
+	}
+	if status.VRAMPool != "" {
+		t.Fatalf("expected empty VRAMPool when unprobed, got %q", status.VRAMPool)
+	}
+
+	// Source check: ensure removed personal/demo defaults never creep back in
+	srcBytes, err := os.ReadFile("computemesh.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(srcBytes)
+	for _, forbidden := range []string{
+		"frede@inetconnector.com",
+		"test-node-custom",
+		"NVIDIA GeForce RTX 3080",
+		"24.0 GB VRAM",
+	} {
+		if strings.Contains(src, forbidden) {
+			t.Fatalf("src/computemesh.go still contains hardcoded personal/demo string %q", forbidden)
+		}
+	}
+}
+
+func TestConfigureComputeMeshDoesNotOverwriteWorkingOllamaWith404Node(t *testing.T) {
+	workingOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer workingOllama.Close()
+
+	healthOnlyNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"live":true,"ready":true,"runtime":{"instance_id":"node-8080"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer healthOnlyNode.Close()
+
+	cfg := defaultConfig()
+	cfg.RootProjectDir = t.TempDir()
+	cfg.OllamaURL = workingOllama.URL
+	cfg.ComputeMeshEnabled = true
+	cfg.ComputeMeshAutoDetect = false
+	cfg.ComputeMeshLocalNodeURL = healthOnlyNode.URL
+	cfg.ComputeMeshURL = healthOnlyNode.URL
+
+	ollamaClient := NewOllamaClient()
+	ollamaClient.BaseURL = workingOllama.URL
+	state := NewAppState(cfg, ollamaClient)
+
+	ConfigureComputeMeshForAppState(state)
+	if state.Ollama.BaseURL != workingOllama.URL {
+		t.Fatalf("expected working Ollama URL %q to be preserved, got %q", workingOllama.URL, state.Ollama.BaseURL)
+	}
+
+	// Edge case: ComputeMesh returns HTTP 200 on /api/tags, but empty unusable model list -> preserve working Ollama!
+	emptyModelsNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/health" {
+			_, _ = w.Write([]byte(`{"live":true,"ready":true}`))
+			return
+		}
+		if r.URL.Path == "/api/tags" {
+			_, _ = w.Write([]byte(`{"models":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer emptyModelsNode.Close()
+
+	cfg.ComputeMeshLocalNodeURL = emptyModelsNode.URL
+	cfg.ComputeMeshURL = emptyModelsNode.URL
+	state2 := NewAppState(cfg, ollamaClient)
+	ConfigureComputeMeshForAppState(state2)
+	if state2.Ollama.BaseURL != workingOllama.URL {
+		t.Fatalf("expected working Ollama URL %q to be preserved when ComputeMesh returns empty models, got %q", workingOllama.URL, state2.Ollama.BaseURL)
+	}
+}

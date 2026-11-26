@@ -8,7 +8,9 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net"
@@ -46,6 +48,7 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/pair-status", s.handlePairStatus)
 	s.mux.HandleFunc("/remote/api/unpair", s.withAuth(s.handleUnpair))
 	s.mux.HandleFunc("/remote/api/status", s.withAuth(s.handleStatus))
+	s.mux.HandleFunc("/remote/api/supermodel", s.withAuth(s.handleToggleSupermodel))
 	s.mux.HandleFunc("/remote/api/projects", s.withAuth(s.handleProjects))
 	s.mux.HandleFunc("/remote/api/select-project", s.withAuth(s.handleSelectProject))
 	s.mux.HandleFunc("/remote/api/threads", s.withAuth(s.handleThreads))
@@ -53,7 +56,14 @@ func (s *RemoteServer) routes() {
 	s.mux.HandleFunc("/remote/api/select-chat", s.withAuth(s.handleSelectChat))
 	s.mux.HandleFunc("/remote/api/snapshot", s.withAuth(s.handleSnapshot))
 	s.mux.HandleFunc("/remote/api/chat", s.withAuth(s.handleChat))
+	s.mux.HandleFunc("/remote/api/steer", s.withAuth(s.handleSteer))
+	s.mux.HandleFunc("/remote/api/providers-status", s.withAuth(s.handleProvidersStatus))
+	s.mux.HandleFunc("/remote/api/verify-frame", s.withAuth(s.handleVerifyFrame))
+	s.mux.HandleFunc("/remote/api/apk-update", s.withAuth(s.handleAPKUpdate))
+	s.mux.HandleFunc("/remote/api/apk-update/download", s.withAuth(s.handleAPKUpdateDownload))
 	s.mux.HandleFunc("/remote/api/approve", s.withAuth(s.handleApprove))
+	s.mux.HandleFunc("/remote/api/lockscreen-approve", s.withAuth(s.handleLockscreenApprove))
+	s.mux.HandleFunc("/remote/api/push/register-endpoint", s.withAuth(s.handleRegisterPushEndpoint))
 	s.mux.HandleFunc("/remote/api/stop", s.withAuth(s.handleStop))
 	s.mux.HandleFunc("/remote/api/event-ticket", s.withAuth(s.handleEventTicket))
 	s.mux.HandleFunc("/remote/api/events", s.withStreamTicket(s.handleEvents))
@@ -395,28 +405,57 @@ func (s *RemoteServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.state.mu.RLock()
 	cfg := s.state.Config
+	swarmWave, swarmActive, swarmAgents := s.state.snapshotSwarmRosterLocked()
 	status := map[string]any{
-		"app":                 "LocalCode Remote",
-		"version":             version,
-		"project":             s.state.Project,
-		"root_dir":            cfg.RootProjectDir,
-		"model":               s.state.Model,
-		"running":             s.state.Running,
-		"running_projects":    s.state.GetRunningProjectsLocked(),
-		"active_runs_count":   len(s.state.ActiveRuns),
-		"pending":             s.state.Pending != nil,
-		"current_thread":      s.state.CurrentThread,
-		"run_id":              s.state.RunID,
-		"run_phase":           s.state.RunPhase,
-		"remote_urls":         append([]string(nil), s.state.RemoteURLs...),
-		"editing_engine":      cfg.EditingEngine,
-		"approval_mode":       cfg.ApprovalMode,
-		"resolved_language":   resolvedLanguage(cfg),
-		"paired_device_count": len(cfg.RemoteDevices),
+		"app":                     "LocalCode Remote",
+		"version":                 version,
+		"project":                 s.state.Project,
+		"root_dir":                cfg.RootProjectDir,
+		"model":                   s.state.Model,
+		"running":                 s.state.Running,
+		"running_projects":        s.state.GetRunningProjectsLocked(),
+		"active_runs_count":       len(s.state.ActiveRuns),
+		"pending":                 s.state.Pending != nil,
+		"current_thread":          s.state.CurrentThread,
+		"run_id":                  s.state.RunID,
+		"run_phase":               s.state.RunPhase,
+		"remote_urls":             append([]string(nil), s.state.RemoteURLs...),
+		"editing_engine":          cfg.EditingEngine,
+		"approval_mode":           cfg.ApprovalMode,
+		"resolved_language":       resolvedLanguage(cfg),
+		"paired_device_count":     len(cfg.RemoteDevices),
+		"noma_supermodel_enabled": cfg.NomaSupermodelEnabled,
+		"swarm_wave":              swarmWave,
+		"swarm_active_count":      swarmActive,
+		"swarm_agents":            swarmAgents,
 	}
 	s.state.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, status)
+}
+
+func (s *RemoteServer) handleToggleSupermodel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	s.state.mu.Lock()
+	s.state.Config.NomaSupermodelEnabled = req.Enabled
+	if s.state.Ollama != nil {
+		s.state.Ollama.NomaSupermodelEnabled = req.Enabled
+	}
+	cfg := s.state.Config
+	s.state.mu.Unlock()
+	_ = saveConfig(cfg)
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{"ok": true, "noma_supermodel_enabled": req.Enabled})
 }
 
 func (s *RemoteServer) handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -627,11 +666,111 @@ func (s *RemoteServer) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.state.StartAgentForThread(req.Message, req.Model, attachments, req.Project, req.ThreadID); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		status := http.StatusConflict
+		if errors.Is(err, ErrBackendPreflightFailed) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleSteer queues a mid-run priority steering instruction from authenticated mobile clients.
+func (s *RemoteServer) handleSteer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ThreadID string `json:"thread_id"`
+		RunID    string `json:"run_id"`
+		ID       string `json:"id"`
+		Message  string `json:"message"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 40000), &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.state.mu.RLock()
+	activeThread := s.state.CurrentThread
+	activeRun := s.state.RunID
+	s.state.mu.RUnlock()
+
+	threadID := strings.TrimSpace(req.ThreadID)
+	if threadID == "" {
+		threadID = activeThread
+	}
+	runID := strings.TrimSpace(req.RunID)
+	if runID == "" {
+		runID = activeRun
+	}
+	steerID := strings.TrimSpace(req.ID)
+	if steerID == "" {
+		steerID = "remote-steer-" + newID()
+	}
+
+	if err := s.state.queueAgentSteering(threadID, runID, steerID, req.Message); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = writeJSON(w, map[string]any{"ok": true, "id": steerID, "state": "queued"})
+}
+
+// handleProvidersStatus exposes secret-free provider capability metadata to mobile clients.
+func (s *RemoteServer) handleProvidersStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, buildProvidersStatusPayload(s.state))
+}
+
+func (s *RemoteServer) handleVerifyFrame(w http.ResponseWriter, r *http.Request) {
+	handleVerifyFrameHTTP(w, r)
+}
+
+func (s *RemoteServer) handleAPKUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = writeJSON(w, buildAPKUpdateMetadata())
+}
+
+func (s *RemoteServer) handleAPKUpdateDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	apkPath, _, err := resolveReleaseAPKPath()
+	if err != nil {
+		http.Error(w, "release APK not available", http.StatusNotFound)
+		return
+	}
+	digest, sizeBytes, err := computeFileSHA256Hex(apkPath)
+	if err != nil {
+		http.Error(w, "failed to read release APK", http.StatusInternalServerError)
+		return
+	}
+	f, err := os.Open(apkPath)
+	if err != nil {
+		http.Error(w, "failed to open release APK", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+	w.Header().Set("Content-Disposition", `attachment; filename="LocalCode-Remote.apk"`)
+	w.Header().Set("X-APK-SHA256", digest)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.FormatInt(sizeBytes, 10))
+	_, _ = io.Copy(w, io.LimitReader(f, sizeBytes))
 }
 
 func (s *RemoteServer) handleApprove(w http.ResponseWriter, r *http.Request) {
@@ -681,6 +820,68 @@ func (s *RemoteServer) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *RemoteServer) handleLockscreenApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token      string `json:"token"`
+		ApprovalID string `json:"approval_id"`
+		DeviceID   string `json:"device_id"`
+	}
+	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	mgr, err := s.state.EnsureLockscreenTokenManager()
+	if err != nil {
+		http.Error(w, "lockscreen token manager unavailable", http.StatusInternalServerError)
+		return
+	}
+	claims, err := mgr.VerifyAndConsumeActionToken(req.Token, req.ApprovalID, req.DeviceID, time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	// Strictly enforce non-persistent single-use decisions ("once" or "reject").
+	if claims.Decision != LockscreenDecisionOnce && claims.Decision != LockscreenDecisionReject {
+		http.Error(w, ErrActionDecisionForbidden.Error(), http.StatusForbidden)
+		return
+	}
+
+	s.state.mu.RLock()
+	pending := s.state.Pending
+	s.state.mu.RUnlock()
+	if pending == nil || pending.ID != claims.ApprovalID {
+		http.Error(w, "pending action not found", http.StatusNotFound)
+		return
+	}
+
+	decision := ApprovalDecision{
+		Approved: claims.Decision == LockscreenDecisionOnce,
+		Persist:  false,
+	}
+	select {
+	case pending.Result <- decision:
+	default:
+		http.Error(w, "approval already handled", http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = writeJSON(w, map[string]any{
+		"ok":          true,
+		"approval_id": claims.ApprovalID,
+		"decision":    string(claims.Decision),
+		"persist":     false,
+	})
+}
+
+func (s *RemoteServer) handleRegisterPushEndpoint(w http.ResponseWriter, r *http.Request) {
+	handlePushRegisterHTTP(s.state, w, r)
 }
 
 func (s *RemoteServer) handleStop(w http.ResponseWriter, r *http.Request) {
@@ -1092,18 +1293,54 @@ func (s *Server) handleRemotePairingPending(w http.ResponseWriter, r *http.Reque
 	_ = writeJSON(w, map[string]any{"ok": true, "pending": pendingList, "auto_pair": s.state.Config.RemoteAutoPair})
 }
 
+func isVirtualOrIgnoredLANInterface(ifaceName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(ifaceName))
+	if lower == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"virtual", "vethernet", "default switch", "hyper-v", "wsl",
+		"docker", "vmware", "vbox", "virtualbox", "loopback",
+		"bluetooth", "npcap", "teredo", "isatap",
+		"tailscale", "zerotier", "wireguard", "wintun",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func primaryOutboundIPv4() string {
+	conn, err := net.DialTimeout("udp4", "1.1.1.1:80", 150*time.Millisecond)
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || udpAddr.IP == nil {
+		return ""
+	}
+	ip := udpAddr.IP.To4()
+	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return ""
+	}
+	return ip.String()
+}
+
 func activeLANIPv4Addresses() []string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil
 	}
+	preferred := primaryOutboundIPv4()
 	out := []string{}
+	physicalMatch := false
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		name := strings.ToLower(iface.Name + " " + iface.HardwareAddr.String())
-		if strings.Contains(name, "virtual") || strings.Contains(name, "wsl") || strings.Contains(name, "loopback") {
+		if isVirtualOrIgnoredLANInterface(iface.Name) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -1123,10 +1360,23 @@ func activeLANIPv4Addresses() []string {
 				continue
 			}
 			value := ip.String()
+			if value == preferred {
+				physicalMatch = true
+			}
 			if !containsString(out, value) {
 				out = append(out, value)
 			}
 		}
+	}
+	if preferred != "" && physicalMatch {
+		reordered := make([]string, 0, len(out))
+		reordered = append(reordered, preferred)
+		for _, v := range out {
+			if v != preferred {
+				reordered = append(reordered, v)
+			}
+		}
+		return reordered
 	}
 	return out
 }

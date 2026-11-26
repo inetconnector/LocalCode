@@ -139,9 +139,11 @@ func (f *AgentFactory) SanitizeTaskCapabilities(role AgentRole, requested []Agen
 		allowedSet[cap] = true
 	}
 
+	seen := make(map[AgentCapability]bool, len(profile.AllowedCapabilities))
 	result := make([]AgentCapability, 0, len(profile.AllowedCapabilities))
 	for _, req := range requested {
-		if allowedSet[req] {
+		if allowedSet[req] && !seen[req] {
+			seen[req] = true
 			result = append(result, req)
 		}
 	}
@@ -152,6 +154,45 @@ func (f *AgentFactory) SanitizeTaskCapabilities(role AgentRole, requested []Agen
 	}
 
 	return result
+}
+
+// RoleProfile returns the governed security profile for a known agent role.
+func (f *AgentFactory) RoleProfile(role AgentRole) (RoleSecurityProfile, bool) {
+	profile, ok := roleSecurityProfiles[role]
+	if !ok {
+		return RoleSecurityProfile{}, false
+	}
+	profile.AllowedCapabilities = append([]AgentCapability(nil), profile.AllowedCapabilities...)
+	return profile, true
+}
+
+// GovernedCapabilitiesForTask sanitizes caller-requested capabilities against the
+// role's governed security profile and ensures the role's baseline envelope is
+// present without ever granting any capability outside the profile.
+func (f *AgentFactory) GovernedCapabilitiesForTask(role AgentRole, requested []AgentCapability) []AgentCapability {
+	sanitized := f.SanitizeTaskCapabilities(role, requested)
+	profile, ok := roleSecurityProfiles[role]
+	if !ok {
+		profile = roleSecurityProfiles[AgentRoleExplorer]
+	}
+	present := make(map[AgentCapability]bool, len(sanitized))
+	for _, cap := range sanitized {
+		present[cap] = true
+	}
+	for _, required := range profile.AllowedCapabilities {
+		if !present[required] {
+			present[required] = true
+			sanitized = append(sanitized, required)
+		}
+	}
+	return sanitized
+}
+
+func requiredCapabilitiesForAgentRole(role AgentRole) []AgentCapability {
+	if profile, ok := roleSecurityProfiles[role]; ok {
+		return append([]AgentCapability(nil), profile.AllowedCapabilities...)
+	}
+	return capabilitiesForAgentRole(role)
 }
 
 // ResolveDeferredTools returns only the tools strictly permitted for the given role and capabilities.
