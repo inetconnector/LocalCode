@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -316,5 +317,132 @@ func TestHandleChatRunsSSEValidationAndOllamaCompleteBranches(t *testing.T) {
 	sseSrv.ServeHTTP(rrSSE, req)
 	if rrSSE.Code != http.StatusOK || !strings.Contains(rrSSE.Body.String(), "run.started") {
 		t.Fatalf("SSE chat runs status=%d body=%s", rrSSE.Code, rrSSE.Body.String())
+	}
+}
+
+func TestEnsureRemoteTunnelHandleAgentActionRollbackAndMCPHeaders(t *testing.T) {
+	// 1. ensureRemoteMobileTunnel missing binary + fake binary + reuse + cancel
+	stopRemoteMobileTunnel()
+	origResolver := cloudflaredBinaryResolver
+	t.Cleanup(func() {
+		cloudflaredBinaryResolver = origResolver
+		stopRemoteMobileTunnel()
+	})
+	cloudflaredBinaryResolver = func() string { return "" }
+	if _, err := ensureRemoteMobileTunnel(context.Background(), 32146); err == nil {
+		t.Fatal("missing cloudflared binary must error")
+	}
+
+	tmpBinDir := t.TempDir()
+	var fakeBin string
+	if runtime.GOOS == "windows" {
+		fakeBin = filepath.Join(tmpBinDir, "fake-cloudflared.cmd")
+		script := "@echo off\r\necho https://ci-unit-4g.trycloudflare.com 1>&2\r\nping -n 3 127.0.0.1 >nul\r\n"
+		_ = os.WriteFile(fakeBin, []byte(script), 0o700)
+	} else {
+		fakeBin = filepath.Join(tmpBinDir, "fake-cloudflared.sh")
+		script := "#!/bin/sh\necho https://ci-unit-4g.trycloudflare.com >&2\nsleep 2\n"
+		_ = os.WriteFile(fakeBin, []byte(script), 0o700)
+	}
+	cloudflaredBinaryResolver = func() string { return fakeBin }
+	gotURL, err := ensureRemoteMobileTunnel(context.Background(), 0)
+	if err != nil || gotURL != "https://ci-unit-4g.trycloudflare.com" {
+		t.Fatalf("ensureRemoteMobileTunnel err=%v url=%q", err, gotURL)
+	}
+	// Cached hit
+	if reused, err := ensureRemoteMobileTunnel(context.Background(), 32146); err != nil || reused != gotURL {
+		t.Fatalf("cached tunnel reuse failed: url=%q err=%v", reused, err)
+	}
+	stopRemoteMobileTunnel()
+
+	// Context cancellation timeout path with silent mock binary
+	var silentBin string
+	if runtime.GOOS == "windows" {
+		silentBin = filepath.Join(tmpBinDir, "silent-cf.cmd")
+		_ = os.WriteFile(silentBin, []byte("@echo off\r\nping -n 4 127.0.0.1 >nul\r\n"), 0o700)
+	} else {
+		silentBin = filepath.Join(tmpBinDir, "silent-cf.sh")
+		_ = os.WriteFile(silentBin, []byte("#!/bin/sh\nsleep 3\n"), 0o700)
+	}
+	cloudflaredBinaryResolver = func() string { return silentBin }
+	shortCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := ensureRemoteMobileTunnel(shortCtx, 32146); err == nil {
+		t.Fatal("cancelled tunnel start must fail")
+	}
+
+	// 2. handleAgentAction broad dispatch coverage
+	state := newWave17TestState(t)
+	proj := t.TempDir()
+	state.Config.ApprovalMode = "dangerous"
+	state.Config.RootProjectDir = filepath.Dir(proj)
+	state.Project = proj
+	state.EnsurePTYManager().SetAllowedRoot(proj)
+	_ = os.WriteFile(filepath.Join(proj, "demo.txt"), []byte("hello world\nsecond line\n"), 0o600)
+
+	actions := []AgentAction{
+		{Action: "project_info"},
+		{Action: "command_list"},
+		{Action: "command_read", Name: "missing-cmd"},
+		{Action: "tool_inventory"},
+		{Action: "list_files"},
+		{Action: "read_file", Path: "demo.txt"},
+		{Action: "search_text", Query: "hello"},
+		{Action: "create_dir", Path: "sub"},
+		{Action: "write_file", Path: "sub/new.txt", Content: "created\n"},
+		{Action: "replace_text", Path: "sub/new.txt", OldText: "created", NewText: "updated"},
+		{Action: "delete_file", Path: "sub/new.txt"},
+		{Action: "pty_list"},
+		{Action: "browser_inspect", Target: "#root"},
+		{Action: "unknown_nonexistent_action"},
+	}
+	for _, act := range actions {
+		_, _ = state.handleAgentAction(context.Background(), proj, act)
+	}
+
+	// 3. rollbackCommittedPatches covering moved (existing + new dest), modified & added files
+	rbDir := t.TempDir()
+	origFile := filepath.Join(rbDir, "orig.txt")
+	movedDest := filepath.Join(rbDir, "moved.txt")
+	movedExistingDest := filepath.Join(rbDir, "existing.txt")
+	orig2 := filepath.Join(rbDir, "orig2.txt")
+	addedFile := filepath.Join(rbDir, "added.txt")
+	modFile := filepath.Join(rbDir, "mod.txt")
+	_ = os.WriteFile(movedDest, []byte("new-moved"), 0o600)
+	_ = os.WriteFile(movedExistingDest, []byte("overwritten"), 0o600)
+	_ = os.WriteFile(addedFile, []byte("brand-new"), 0o600)
+	_ = os.WriteFile(modFile, []byte("after-edit"), 0o600)
+
+	if err := rollbackCommittedPatches([]committedFileSnapshot{
+		{fullPath: modFile, originalExists: true, originalBytes: []byte("before-edit"), originalMode: 0o600},
+		{fullPath: addedFile, originalExists: false},
+		{fullPath: origFile, originalExists: true, originalBytes: []byte("src1"), originalMode: 0o600, moved: true, moveToFull: movedDest, moveDestExists: false},
+		{fullPath: orig2, originalExists: true, originalBytes: []byte("src2"), originalMode: 0o600, moved: true, moveToFull: movedExistingDest, moveDestExists: true, moveDestBytes: []byte("old-dest"), moveDestMode: 0o600},
+	}); err != nil {
+		t.Fatalf("rollbackCommittedPatches: %v", err)
+	}
+	if raw, _ := os.ReadFile(modFile); string(raw) != "before-edit" {
+		t.Fatalf("modFile not restored: %q", string(raw))
+	}
+	if _, err := os.Stat(addedFile); !os.IsNotExist(err) {
+		t.Fatal("addedFile should have been removed on rollback")
+	}
+	if raw, _ := os.ReadFile(movedExistingDest); string(raw) != "old-dest" {
+		t.Fatalf("movedExistingDest not restored: %q", string(raw))
+	}
+
+	// 4. resolveMCPHeaders with GitHub preset + AuthEnv
+	t.Setenv("TEST_GH_TOKEN_ENV", "tok_test_value_12345")
+	hdrs := resolveMCPHeaders(context.Background(), defaultConfig(), proj, MCPServerConfig{
+		Name:    "github",
+		Preset:  "github",
+		AuthEnv: "TEST_GH_TOKEN_ENV",
+		Headers: map[string]string{
+			"X-Project":     "${PROJECT}",
+			"Authorization": "Bearer ${TEST_GH_TOKEN_ENV}",
+		},
+	})
+	if hdrs["Authorization"] != "Bearer tok_test_value_12345" {
+		t.Fatalf("unexpected resolved MCP headers: %+v", hdrs)
 	}
 }

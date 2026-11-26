@@ -18,11 +18,12 @@ import (
 )
 
 var (
-	remoteTunnelMu      sync.Mutex
-	remoteTunnelCmd     *exec.Cmd
-	remoteTunnelURL     string
-	remoteTunnelStarted time.Time
-	tryCloudflareRe     = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
+	remoteTunnelMu            sync.Mutex
+	remoteTunnelCmd           *exec.Cmd
+	remoteTunnelURL           string
+	remoteTunnelStarted       time.Time
+	tryCloudflareRe           = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
+	cloudflaredBinaryResolver = findCloudflaredBinary
 )
 
 func findCloudflaredBinary() string {
@@ -70,7 +71,7 @@ func ensureRemoteMobileTunnel(ctx context.Context, remotePort int) (string, erro
 	if existing := currentRemoteTunnelURL(); existing != "" {
 		return existing, nil
 	}
-	bin := findCloudflaredBinary()
+	bin := cloudflaredBinaryResolver()
 	if bin == "" {
 		return "", errors.New("cloudflared nicht installiert (benötigt für 4G/5G Mobildaten-Tunnel)")
 	}
