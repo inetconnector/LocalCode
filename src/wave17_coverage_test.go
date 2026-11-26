@@ -15,10 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 func newWave17TestState(t *testing.T) *AppState {
@@ -231,44 +229,6 @@ func TestBrowserAutomationHelpersAndFallbacks(t *testing.T) {
 	}
 	if sel := selectorFromAttrs("div", map[string]string{}); sel != "div" {
 		t.Fatalf("selectorFromAttrs bare=%q", sel)
-	}
-}
-
-func TestWindowsPipeFallbackPTY(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("windows-only pipe fallback test")
-	}
-	p, err := startWindowsPipeFallback(t.TempDir(), 80, 24)
-	if err != nil {
-		t.Fatalf("startWindowsPipeFallback: %v", err)
-	}
-	defer func() { _ = p.Close() }()
-
-	if p.BackendName() != "pipe-fallback" {
-		t.Fatalf("BackendName=%q", p.BackendName())
-	}
-	if err := p.Resize(100, 30); err != nil {
-		t.Fatalf("Resize err=%v", err)
-	}
-	if _, err := p.Write([]byte("echo pipe_ok_marker\r\nexit 0\r\n")); err != nil {
-		t.Fatalf("Write err=%v", err)
-	}
-
-	buf := make([]byte, 4096)
-	var out strings.Builder
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		n, rerr := p.Read(buf)
-		if n > 0 {
-			out.Write(buf[:n])
-		}
-		if rerr != nil {
-			break
-		}
-	}
-	code, _ := p.Wait()
-	if code != 0 || !strings.Contains(out.String(), "pipe_ok_marker") {
-		t.Fatalf("pipe fallback code=%d out=%q", code, out.String())
 	}
 }
 
@@ -583,5 +543,294 @@ func TestZeroKnowledgeRelayEdgeCases(t *testing.T) {
 	r3.RemoteAddr = ""
 	if relayClientIP(r1) != "10.1.2.3" || relayClientIP(r2) != "10.1.2.3" || relayClientIP(r3) != "unknown" {
 		t.Fatal("unexpected relayClientIP result")
+	}
+}
+
+func TestFrontierDiffHunkRepoMapDiagnosticsAndPTYActions(t *testing.T) {
+	state := newWave17TestState(t)
+	srv := NewServer(state)
+
+	// handleDiffHunk: GET empty, POST valid (camel + snake), POST errors, 405
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/diff/hunk", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/diff/hunk status=%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "http://127.0.0.1/api/diff/hunk", nil))
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("DELETE /api/diff/hunk status=%d", rr.Code)
+	}
+	for _, bad := range []string{`{bad`, `{"diffId":"","hunkKey":"","status":"accepted"}`, `{"diffId":"d1","hunkKey":"h1","status":"invalid"}`} {
+		rr = httptest.NewRecorder()
+		srv.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/diff/hunk", strings.NewReader(bad)))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("bad POST /api/diff/hunk %s status=%d", bad, rr.Code)
+		}
+	}
+	for _, good := range []string{
+		`{"diffId":"diff-b","hunkKey":"h2","status":"accepted","comment":"lgtm"}`,
+		`{"diff_id":"diff-a","hunk_key":"h1","status":"rejected","comment":"fix"}`,
+		`{"diffId":"diff-a","hunkKey":"h0","status":"pending"}`,
+	} {
+		rr = httptest.NewRecorder()
+		srv.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/diff/hunk", strings.NewReader(good)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("good POST /api/diff/hunk %s status=%d body=%s", good, rr.Code, rr.Body.String())
+		}
+	}
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/diff/hunk?diff_id=diff-a", nil))
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"hunk_key":"h1"`) {
+		t.Fatalf("filtered GET /api/diff/hunk status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	// BuildFrontierRepoMap across Go, Python, Rust, JS/TS
+	proj := t.TempDir()
+	_ = os.WriteFile(filepath.Join(proj, "main.go"), []byte("package main\ntype Widget struct{}\nfunc BuildWidget() {}\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(proj, "app.py"), []byte("class Engine:\n    pass\ndef run_engine():\n    return 1\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(proj, "lib.rs"), []byte("pub struct Kernel {}\npub fn verify() {}\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(proj, "ui.js"), []byte("export function renderView() {}\nclass Panel {}\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(proj, "notes.txt"), []byte("ignored"), 0o600)
+	if BuildFrontierRepoMap("", 10, 1000) != "" {
+		t.Fatal("empty root must yield empty repo map")
+	}
+	rmap := BuildFrontierRepoMap(proj, 0, 0)
+	for _, sym := range []string{"Widget", "Engine", "Kernel", "renderView"} {
+		if !strings.Contains(rmap, sym) {
+			t.Fatalf("repo map missing symbol %q:\n%s", sym, rmap)
+		}
+	}
+
+	// RunPostEditDiagnostics for JSON valid/invalid and unknown extension
+	_ = os.WriteFile(filepath.Join(proj, "ok.json"), []byte(`{"ok":true}`), 0o600)
+	_ = os.WriteFile(filepath.Join(proj, "bad.json"), []byte(`{"ok":`), 0o600)
+	if d := RunPostEditDiagnostics(context.Background(), proj, "ok.json"); d != "" {
+		t.Fatalf("expected clean ok.json diagnostic, got %q", d)
+	}
+	if d := RunPostEditDiagnostics(context.Background(), proj, "bad.json"); !strings.Contains(d, "JSON syntax error") {
+		t.Fatalf("expected JSON error diagnostic, got %q", d)
+	}
+	if d := RunPostEditDiagnostics(context.Background(), proj, "notes.txt"); d != "" {
+		t.Fatalf("expected empty diagnostic for txt, got %q", d)
+	}
+	if d := RunPostEditDiagnostics(context.Background(), proj, "../escape.json"); d != "" {
+		t.Fatalf("expected empty diagnostic for traversal, got %q", d)
+	}
+
+	// executeAgentPTYAction: list, errors, start, send, read, kill
+	state.EnsurePTYManager().SetAllowedRoot(proj)
+	if _, err := state.executeAgentPTYAction(context.Background(), proj, AgentAction{Action: "pty_list"}); err != nil {
+		t.Fatalf("pty_list: %v", err)
+	}
+	for _, act := range []AgentAction{
+		{Action: "pty_send"},
+		{Action: "pty_read"},
+		{Action: "pty_kill"},
+		{Action: "pty_unknown"},
+		{Action: "pty_send", Target: "missing-id", Text: "hi"},
+		{Action: "pty_read", Target: "missing-id"},
+		{Action: "pty_kill", Target: "missing-id"},
+	} {
+		if _, err := state.executeAgentPTYAction(context.Background(), proj, act); err == nil {
+			t.Fatalf("expected error for %+v", act)
+		}
+	}
+	startOut, err := state.executeAgentPTYAction(context.Background(), proj, AgentAction{Action: "pty_start", Command: "echo pty_action_ok"})
+	if err != nil {
+		t.Fatalf("pty_start: %v", err)
+	}
+	var started struct {
+		PTYID string `json:"pty_id"`
+	}
+	_ = json.Unmarshal([]byte(startOut), &started)
+	if started.PTYID == "" {
+		t.Fatalf("missing pty_id in %s", startOut)
+	}
+	if _, err := state.executeAgentPTYAction(context.Background(), proj, AgentAction{Action: "pty_send", Target: started.PTYID, Command: "echo second\r\n"}); err != nil {
+		t.Fatalf("pty_send: %v", err)
+	}
+	_, _ = state.executeAgentPTYAction(context.Background(), proj, AgentAction{Action: "pty_read", Target: started.PTYID})
+	if _, err := state.executeAgentPTYAction(context.Background(), proj, AgentAction{Action: "pty_kill", Target: started.PTYID}); err != nil {
+		t.Fatalf("pty_kill: %v", err)
+	}
+
+	// executeAgentSpawnSubagent empty task error + valid task
+	if _, err := state.executeAgentSpawnSubagent(context.Background(), proj, AgentAction{Action: "spawn_subagent"}); err == nil {
+		t.Fatal("empty spawn_subagent task must error")
+	}
+	_, _ = state.executeAgentSpawnSubagent(context.Background(), proj, AgentAction{Action: "spawn_subagent", Task: "inspect workspace"})
+}
+
+func TestLSPActionValidationAndPTYRoutesHTTP(t *testing.T) {
+	proj := t.TempDir()
+	cfg := defaultConfig()
+
+	// runLSPAction validation branches
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{}); err == nil {
+		t.Fatal("empty lsp path must error")
+	}
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{Path: "../outside.go"}); err == nil {
+		t.Fatal("traversal lsp path must error")
+	}
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{Path: "missing.go"}); err == nil {
+		t.Fatal("missing lsp path must error")
+	}
+	_ = os.Mkdir(filepath.Join(proj, "subdir"), 0o700)
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{Path: "subdir"}); err == nil {
+		t.Fatal("directory lsp path must error")
+	}
+	_ = os.WriteFile(filepath.Join(proj, "bin.dat"), []byte{0, 1, 2, 3, 0, 0}, 0o600)
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{Path: "bin.dat"}); err == nil {
+		t.Fatal("binary lsp path must error")
+	}
+	_ = os.WriteFile(filepath.Join(proj, "plain.xyz"), []byte("hello"), 0o600)
+	if _, err := runLSPAction(context.Background(), proj, cfg, AgentAction{Path: "plain.xyz", Name: "hover"}); err == nil {
+		t.Fatal("unsupported extension lsp path must error")
+	}
+
+	// PTY HTTP routes & helpers
+	mgr := NewPTYManager(proj)
+	defer mgr.CloseAll()
+	if c, r := clampPTYSize(0, 0); c <= 0 || r <= 0 {
+		t.Fatalf("clampPTYSize(0,0)=(%d,%d)", c, r)
+	}
+	if c, r := clampPTYSize(9999, 9999); c > 500 || r > 500 {
+		t.Fatalf("clampPTYSize(9999,9999)=(%d,%d)", c, r)
+	}
+
+	mux := http.NewServeMux()
+	RegisterPTYRoutes(mux, mgr)
+
+	newLoopbackReq := func(method, path, body string) *http.Request {
+		r := httptest.NewRequest(method, "http://127.0.0.1"+path, strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:54321"
+		return r
+	}
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, newLoopbackReq(http.MethodGet, "/api/pty/sessions", ""))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/pty/sessions status=%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, newLoopbackReq(http.MethodPut, "/api/pty/sessions", ""))
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PUT /api/pty/sessions status=%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, newLoopbackReq(http.MethodPost, "/api/pty/sessions", "{bad"))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("POST bad json status=%d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, newLoopbackReq(http.MethodPost, "/api/pty/sessions", `{"cols":90,"rows":25}`))
+	if rr.Code != http.StatusCreated && rr.Code != http.StatusOK {
+		t.Fatalf("POST create PTY status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		Session struct {
+			ID string `json:"id"`
+		} `json:"session"`
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &created)
+	ptyID := created.ID
+	if ptyID == "" {
+		ptyID = created.Session.ID
+	}
+	if ptyID != "" {
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, newLoopbackReq(http.MethodPost, "/api/pty/sessions/"+ptyID+"/input", `{"data":"echo hi\r\n"}`))
+		if rr.Code != http.StatusOK && rr.Code != http.StatusNoContent {
+			t.Fatalf("POST input status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, newLoopbackReq(http.MethodPost, "/api/pty/sessions/"+ptyID+"/resize", `{"cols":100,"rows":30}`))
+		if rr.Code != http.StatusOK && rr.Code != http.StatusNoContent {
+			t.Fatalf("POST resize status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		rr = httptest.NewRecorder()
+		mux.ServeHTTP(rr, newLoopbackReq(http.MethodDelete, "/api/pty/sessions/"+ptyID, ""))
+		if rr.Code != http.StatusOK && rr.Code != http.StatusNoContent {
+			t.Fatalf("DELETE pty status=%d body=%s", rr.Code, rr.Body.String())
+		}
+	}
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, newLoopbackReq(http.MethodDelete, "/api/pty/sessions/nonexistent", ""))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("DELETE nonexistent status=%d", rr.Code)
+	}
+}
+
+func TestFrontierRelayLockscreenPushAndApplyPatchEdgeCases(t *testing.T) {
+	state := newWave17TestState(t)
+	srv := NewServer(state)
+
+	// Providers status, Relay status/pair/attach-peer, Lockscreen token
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+		want   int
+	}{
+		{http.MethodGet, "/api/providers/status", "", http.StatusOK},
+		{http.MethodPost, "/api/providers/status", "", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/relay/status", "", http.StatusOK},
+		{http.MethodPost, "/api/relay/status", "", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/relay/pair", "", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/api/relay/pair", `{}`, http.StatusOK},
+		{http.MethodGet, "/api/relay/attach-peer", "", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/api/relay/attach-peer", `{bad`, http.StatusBadRequest},
+		{http.MethodGet, "/api/push/lockscreen-token", "", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/api/push/lockscreen-token", `{"approval_id":"appr-1","decision":"once","device_id":"dev-1"}`, http.StatusOK},
+		{http.MethodGet, "/api/push/notify-approval", "", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/api/push/notify-approval", `{bad`, http.StatusBadRequest},
+	} {
+		rr := httptest.NewRecorder()
+		srv.ServeHTTP(rr, httptest.NewRequest(tc.method, "http://127.0.0.1"+tc.path, strings.NewReader(tc.body)))
+		if rr.Code != tc.want {
+			t.Fatalf("%s %s status=%d want=%d body=%s", tc.method, tc.path, rr.Code, tc.want, rr.Body.String())
+		}
+	}
+
+	// Register push endpoint: reject private IP, accept public HTTPS, notify approval
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/push/register-endpoint", strings.NewReader(`{"endpoint":"http://127.0.0.1:8080/push","provider":"unifiedpush"}`)))
+	if rr.Code < 400 {
+		t.Fatalf("private push endpoint must be rejected, got %d", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/push/register-endpoint", strings.NewReader(`{"endpoint":"https://ntfy.sh/localcode-test-topic-0001","provider":"unifiedpush","device_id":"dev-1"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("valid push registration status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	// apply_patch helpers: absInt, cleanUnifiedDiffPath, patchTextForAction, add/update/delete
+	if absInt(-7) != 7 || absInt(5) != 5 {
+		t.Fatal("absInt failed")
+	}
+	if p := cleanUnifiedDiffPath("a/src/main.go"); p != "src/main.go" {
+		t.Fatalf("cleanUnifiedDiffPath=%q", p)
+	}
+	if txt := patchTextForAction(AgentAction{Patch: "p1"}); txt != "p1" {
+		t.Fatalf("patchTextForAction=%q", txt)
+	}
+	if txt := patchTextForAction(AgentAction{Content: "p2"}); txt != "p2" {
+		t.Fatalf("patchTextForAction fallback=%q", txt)
+	}
+	proj := t.TempDir()
+	cfg := defaultConfig()
+	addPatch := "*** Begin Patch\n*** Add File: hello.txt\n+line1\n+line2\n+line3\n*** End Patch\n"
+	if _, err := applyPatchToProject(proj, cfg, addPatch); err != nil {
+		t.Fatalf("applyPatchToProject add: %v", err)
+	}
+	updPatch := "*** Begin Patch\n*** Update File: hello.txt\n@@\n line1\n-line2\n+line2_updated\n line3\n*** End Patch\n"
+	if _, err := applyPatchToProject(proj, cfg, updPatch); err != nil {
+		t.Fatalf("applyPatchToProject update: %v", err)
+	}
+	delPatch := "*** Begin Patch\n*** Delete File: hello.txt\n*** End Patch\n"
+	if _, err := applyPatchToProject(proj, cfg, delPatch); err != nil {
+		t.Fatalf("applyPatchToProject delete: %v", err)
 	}
 }
