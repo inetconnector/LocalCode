@@ -500,7 +500,7 @@ func TestMCPServerAllToolsAndProviderClientHelpers(t *testing.T) {
 }
 
 func TestZeroKnowledgeRelayEdgeCases(t *testing.T) {
-	srv := NewZeroKnowledgeRelayServer(RelayServerConfig{
+	srv := NewZeroKnowledgeRelayServer(ZeroKnowledgeRelayConfig{
 		MaxQueueDepth:   2,
 		MaxFrameBytes:   1024,
 		MaxSessions:     2,
