@@ -159,17 +159,24 @@ func TestSteeringRejectsStaleApprovalWithoutGrantingAuthority(t *testing.T) {
 
 func TestSteeringTransportStrictRequestAndRemoteIsolation(t *testing.T) {
 	t.Setenv("LOCALCODE_CONFIG_HOME", t.TempDir())
-	for _, route := range []string{"/remote/api/steer", "/remote/api/stop-task"} {
+	// /remote/api/steer is an authenticated mobile priority-steering route and must fail-closed with 401 when unauthenticated.
+	for _, method := range []string{http.MethodPost, http.MethodGet} {
 		rr := httptest.NewRecorder()
-		NewRemoteServer(&AppState{}).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, route, strings.NewReader(`{}`)))
-		if rr.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("remote route %s returned %d", route, rr.Code)
+		NewRemoteServer(&AppState{}).ServeHTTP(rr, httptest.NewRequest(method, "/remote/api/steer", strings.NewReader(`{}`)))
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated remote %s /remote/api/steer returned %d, want 401", method, rr.Code)
 		}
-		rr = httptest.NewRecorder()
-		NewRemoteServer(&AppState{}).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, route, nil))
-		if rr.Code != http.StatusNotFound {
-			t.Fatalf("remote GET route %s returned %d", route, rr.Code)
-		}
+	}
+	// /remote/api/stop-task remains unexposed on RemoteServer.
+	rrStopPost := httptest.NewRecorder()
+	NewRemoteServer(&AppState{}).ServeHTTP(rrStopPost, httptest.NewRequest(http.MethodPost, "/remote/api/stop-task", strings.NewReader(`{}`)))
+	if rrStopPost.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("remote route /remote/api/stop-task returned %d", rrStopPost.Code)
+	}
+	rrStopGet := httptest.NewRecorder()
+	NewRemoteServer(&AppState{}).ServeHTTP(rrStopGet, httptest.NewRequest(http.MethodGet, "/remote/api/stop-task", nil))
+	if rrStopGet.Code != http.StatusNotFound {
+		t.Fatalf("remote GET route /remote/api/stop-task returned %d", rrStopGet.Code)
 	}
 	for _, body := range []string{`{}`, `{"thread_id":"t","run_id":"r","id":"1","message":"hello","extra":1}`, `{"thread_id":"t","run_id":"r","id":"1","message":"hello"} {}`} {
 		rr := httptest.NewRecorder()

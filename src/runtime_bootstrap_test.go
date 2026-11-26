@@ -238,6 +238,7 @@ func TestBootstrapProgressClampsAndLocalizes(t *testing.T) {
 func TestGermanSetupDownloadErrorsAreLocalized(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Language = "de"
+	cfg.OllamaDefaultModel = "test-coder:14b"
 	cfg.OllamaAutoPull = true
 	cfg.SetupDownloadsEnabled = false
 	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
@@ -330,6 +331,7 @@ func TestNativeEngineAndAlreadyInstalledModelProgress(t *testing.T) {
 func TestAutomaticModelPullCanBeExplicitlyDisabled(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Language = "en"
+	cfg.OllamaDefaultModel = "test-coder:14b"
 	cfg.OllamaAutoPull = false
 	_, _, err := ensureConfiguredModels(context.Background(), cfg, NewOllamaClient(), nil)
 	if err == nil || !strings.Contains(err.Error(), "automatic model download is disabled") {

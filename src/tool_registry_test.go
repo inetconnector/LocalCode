@@ -701,8 +701,8 @@ func TestSuggestedGitActionIsExecutedFromYesIntent(t *testing.T) {
 }
 
 func TestContextCompactionThreshold(t *testing.T) {
-	cfg := normalizeConfig(Config{SchemaVersion: 4, ContextLength: 4096, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 50, ContextCompactionKeepRecent: 8})
-	messages := []OllamaMessage{{Role: "system", Content: strings.Repeat("s", 2000)}, {Role: "user", Content: strings.Repeat("u", 7000)}}
+	cfg := normalizeConfig(Config{SchemaVersion: 4, ContextLength: 8192, ContextCompactionEnabled: true, ContextCompactionThresholdPercent: 50, ContextCompactionKeepRecent: 8})
+	messages := []OllamaMessage{{Role: "system", Content: strings.Repeat("s", 2000)}, {Role: "user", Content: strings.Repeat("u", 16000)}}
 	if !shouldCompactMessages(messages, cfg) {
 		t.Fatalf("expected compaction, estimated=%d", estimateMessageTokens(messages))
 	}
