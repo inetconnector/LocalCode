@@ -323,12 +323,12 @@ type PTYManager struct {
 	MaxSessions int
 	IdleTimeout time.Duration
 
-	mu          sync.Mutex
-	sessions    map[string]*PTYSession
-	stopSweep   chan struct{}
-	sweepOnce   sync.Once
-	closedAll   bool
-	startFunc   func(workspaceRoot string, cols, rows int) (ptyBackend, error)
+	mu        sync.Mutex
+	sessions  map[string]*PTYSession
+	stopSweep chan struct{}
+	sweepOnce sync.Once
+	closedAll bool
+	startFunc func(workspaceRoot string, cols, rows int) (ptyBackend, error)
 }
 
 // NewPTYManager creates a PTYManager bounded by allowedRoot (when non-empty),

@@ -24,14 +24,14 @@ const (
 )
 
 var (
-	ptyKernel32                        = syscall.NewLazyDLL("kernel32.dll")
-	procCreatePseudoConsole            = ptyKernel32.NewProc("CreatePseudoConsole")
-	procResizePseudoConsole            = ptyKernel32.NewProc("ResizePseudoConsole")
-	procClosePseudoConsole             = ptyKernel32.NewProc("ClosePseudoConsole")
-	procInitProcThreadAttributeList    = ptyKernel32.NewProc("InitializeProcThreadAttributeList")
-	procUpdateProcThreadAttribute      = ptyKernel32.NewProc("UpdateProcThreadAttribute")
-	procDeleteProcThreadAttributeList  = ptyKernel32.NewProc("DeleteProcThreadAttributeList")
-	procCreateProcessW                 = ptyKernel32.NewProc("CreateProcessW")
+	ptyKernel32                       = syscall.NewLazyDLL("kernel32.dll")
+	procCreatePseudoConsole           = ptyKernel32.NewProc("CreatePseudoConsole")
+	procResizePseudoConsole           = ptyKernel32.NewProc("ResizePseudoConsole")
+	procClosePseudoConsole            = ptyKernel32.NewProc("ClosePseudoConsole")
+	procInitProcThreadAttributeList   = ptyKernel32.NewProc("InitializeProcThreadAttributeList")
+	procUpdateProcThreadAttribute     = ptyKernel32.NewProc("UpdateProcThreadAttribute")
+	procDeleteProcThreadAttributeList = ptyKernel32.NewProc("DeleteProcThreadAttributeList")
+	procCreateProcessW                = ptyKernel32.NewProc("CreateProcessW")
 )
 
 type winStartupInfoExW struct {
@@ -79,17 +79,17 @@ func startPTYProcess(workspaceRoot string, cols, rows int) (ptyBackend, error) {
 }
 
 type windowsConPTY struct {
-	hPC        uintptr
-	hProcess   syscall.Handle
-	inFile     *os.File
-	outFile    *os.File
-	mu         sync.Mutex
-	pcClosed   bool
-	closed     bool
-	exitCode   int
-	waitErr    error
-	waitDone   chan struct{}
-	closeOnce  sync.Once
+	hPC       uintptr
+	hProcess  syscall.Handle
+	inFile    *os.File
+	outFile   *os.File
+	mu        sync.Mutex
+	pcClosed  bool
+	closed    bool
+	exitCode  int
+	waitErr   error
+	waitDone  chan struct{}
+	closeOnce sync.Once
 }
 
 func startWindowsConPTY(workspaceRoot string, cols, rows int) (*windowsConPTY, error) {

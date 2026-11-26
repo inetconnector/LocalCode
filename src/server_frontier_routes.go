@@ -461,10 +461,10 @@ func (s *Server) handleRelayAttachPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		SessionID       string `json:"session_id"`
-		PeerPublicB64   string `json:"peer_public_b64"`
-		LocalTargetURL  string `json:"local_target_url"`
-		LocalAuthToken  string `json:"local_auth_token"`
+		SessionID      string `json:"session_id"`
+		PeerPublicB64  string `json:"peer_public_b64"`
+		LocalTargetURL string `json:"local_target_url"`
+		LocalAuthToken string `json:"local_auth_token"`
 	}
 	if err := readJSON(io.LimitReader(r.Body, 16*1024), &req); err != nil {
 		http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)

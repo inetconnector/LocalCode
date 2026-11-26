@@ -29,13 +29,13 @@ const (
 )
 
 var (
-	sandboxKernel32                = syscall.NewLazyDLL("kernel32.dll")
-	procCreateJobObjectW           = sandboxKernel32.NewProc("CreateJobObjectW")
-	procSetInformationJobObject    = sandboxKernel32.NewProc("SetInformationJobObject")
-	procAssignProcessToJobObject   = sandboxKernel32.NewProc("AssignProcessToJobObject")
-	procTerminateJobObject         = sandboxKernel32.NewProc("TerminateJobObject")
-	procOpenProcess                = sandboxKernel32.NewProc("OpenProcess")
-	procGetExitCodeProcess         = sandboxKernel32.NewProc("GetExitCodeProcess")
+	sandboxKernel32              = syscall.NewLazyDLL("kernel32.dll")
+	procCreateJobObjectW         = sandboxKernel32.NewProc("CreateJobObjectW")
+	procSetInformationJobObject  = sandboxKernel32.NewProc("SetInformationJobObject")
+	procAssignProcessToJobObject = sandboxKernel32.NewProc("AssignProcessToJobObject")
+	procTerminateJobObject       = sandboxKernel32.NewProc("TerminateJobObject")
+	procOpenProcess              = sandboxKernel32.NewProc("OpenProcess")
+	procGetExitCodeProcess       = sandboxKernel32.NewProc("GetExitCodeProcess")
 )
 
 type jobObjectBasicLimitInformation struct {

@@ -78,18 +78,25 @@ func findMicaFFILibraryWindows() string {
 	return ""
 }
 
+var (
+	micaKernel32DLL    = syscall.NewLazyDLL("kernel32.dll")
+	micaProcLstrlenA   = micaKernel32DLL.NewProc("lstrlenA")
+	micaProcRtlMoveMem = micaKernel32DLL.NewProc("RtlMoveMemory")
+)
+
 func cStringPtrToGoString(ptr uintptr) string {
 	if ptr == 0 {
 		return ""
 	}
-	buf := make([]byte, 0, 128)
-	for i := uintptr(0); i < 4096; i++ {
-		b := *(*byte)(unsafe.Pointer(ptr + i))
-		if b == 0 {
-			break
-		}
-		buf = append(buf, b)
+	n, _, _ := micaProcLstrlenA.Call(ptr)
+	if n == 0 {
+		return ""
 	}
+	if n > 4096 {
+		n = 4096
+	}
+	buf := make([]byte, n)
+	_, _, _ = micaProcRtlMoveMem.Call(uintptr(unsafe.Pointer(&buf[0])), ptr, n)
 	return string(buf)
 }
 

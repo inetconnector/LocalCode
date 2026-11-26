@@ -152,10 +152,15 @@ func (s *Server) handleRemoteTunnel(w http.ResponseWriter, r *http.Request) {
 		base := currentRemoteTunnelURL()
 		w.Header().Set("Content-Type", "application/json")
 		_ = writeJSON(w, map[string]any{
-			"ok":          true,
-			"running":     base != "",
-			"tunnel_url":  base,
-			"remote_url":  func() string { if base != "" { return base + "/remote" }; return "" }(),
+			"ok":         true,
+			"running":    base != "",
+			"tunnel_url": base,
+			"remote_url": func() string {
+				if base != "" {
+					return base + "/remote"
+				}
+				return ""
+			}(),
 			"cloudflared": findCloudflaredBinary() != "",
 		})
 		return

@@ -99,11 +99,11 @@ func (l *relayRateLimiter) PurgeIdle(cutoff time.Time) {
 }
 
 type relaySessionMailbox struct {
-	mu               sync.Mutex
-	authTokenHash    [sha256.Size]byte
-	lastActivity     time.Time
-	toWorkstation    []json.RawMessage
-	toMobile         []json.RawMessage
+	mu                sync.Mutex
+	authTokenHash     [sha256.Size]byte
+	lastActivity      time.Time
+	toWorkstation     []json.RawMessage
+	toMobile          []json.RawMessage
 	notifyWorkstation chan struct{}
 	notifyMobile      chan struct{}
 }
@@ -120,13 +120,13 @@ func newRelaySessionMailbox(tokenHash [sha256.Size]byte, now time.Time) *relaySe
 // ZeroKnowledgeRelayServer forwards opaque E2EE envelopes between workstation and mobile
 // endpoints without ever possessing decryption keys or observing plaintext payloads.
 type ZeroKnowledgeRelayServer struct {
-	cfg      ZeroKnowledgeRelayConfig
-	mu       sync.RWMutex
-	sessions map[string]*relaySessionMailbox
-	limiter  *relayRateLimiter
-	closedCh chan struct{}
+	cfg       ZeroKnowledgeRelayConfig
+	mu        sync.RWMutex
+	sessions  map[string]*relaySessionMailbox
+	limiter   *relayRateLimiter
+	closedCh  chan struct{}
 	closeOnce sync.Once
-	nowFn    func() time.Time
+	nowFn     func() time.Time
 }
 
 // NewZeroKnowledgeRelayServer creates a bounded, rate-limited zero-knowledge relay server.

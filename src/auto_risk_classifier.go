@@ -426,19 +426,19 @@ func isCriticalCredentialOrHookPath(projectRoot, rawPath string, blockedPaths []
 	base := filepath.Base(slashed)
 
 	criticalExactBases := map[string]bool{
-		"id_rsa":          true,
-		"id_rsa.pub":      false,
-		"id_ed25519":      true,
-		"id_ecdsa":        true,
-		"id_dsa":          true,
-		"authorized_keys": true,
-		".netrc":          true,
+		"id_rsa":           true,
+		"id_rsa.pub":       false,
+		"id_ed25519":       true,
+		"id_ecdsa":         true,
+		"id_dsa":           true,
+		"authorized_keys":  true,
+		".netrc":           true,
 		".git-credentials": true,
-		".npmrc":          true,
-		".pypirc":         true,
-		"credentials":     true,
+		".npmrc":           true,
+		".pypirc":          true,
+		"credentials":      true,
 		"credentials.json": true,
-		"secrets.json":    true,
+		"secrets.json":     true,
 	}
 	if criticalExactBases[base] {
 		return true

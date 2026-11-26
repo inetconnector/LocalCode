@@ -19,9 +19,9 @@ import (
 // EgressProxyConfig configures a per-run loopback HTTP/HTTPS CONNECT proxy
 // that enforces a domain allowlist/denylist and SSRF protection.
 type EgressProxyConfig struct {
-	AllowedDomains []string                                                         `json:"allowed_domains,omitempty"`
-	DeniedDomains  []string                                                         `json:"denied_domains,omitempty"`
-	DialTimeout    time.Duration                                                    `json:"-"`
+	AllowedDomains []string                                                          `json:"allowed_domains,omitempty"`
+	DeniedDomains  []string                                                          `json:"denied_domains,omitempty"`
+	DialTimeout    time.Duration                                                     `json:"-"`
 	DialContext    func(ctx context.Context, network, addr string) (net.Conn, error) `json:"-"`
 	LookupIP       func(ctx context.Context, host string) ([]net.IP, error)          `json:"-"`
 }
